@@ -119,7 +119,9 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 		want  string
 	}{{false, "  main (trunk)\n  └─ alpha (#1)\n    └─ beta (#2)"}, {true, "\x1b[1;33mmain (trunk)\x1b[0m"}} {
 		var output bytes.Buffer
-		writePreview(&output, plan, Presentation{Color: test.color})
+		if err := writeLinkPlan(&output, plan, Presentation{Color: test.color}); err != nil {
+			t.Fatal(err)
+		}
 		if !strings.Contains(output.String(), test.want) || strings.Count(output.String(), "main (trunk)") != 1 || strings.Count(output.String(), "gh stack link --base main alpha beta") != 1 {
 			t.Errorf("preview = %q", output.String())
 		}
@@ -138,7 +140,9 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			presentation := Presentation{Color: test.color}
-			writePreview(&output, plan, presentation)
+			if err := writeLinkPlan(&output, plan, presentation); err != nil {
+				t.Fatal(err)
+			}
 			want := presentation.accent("Command to run") + "\n" + presentation.command("gh stack link --base main beta") + "\n"
 			if got := output.String(); !strings.Contains(got, want) || strings.Contains(got, "$ gh stack link") || strings.Contains(got, "│gh stack") {
 				t.Errorf("preview = %q", got)
@@ -150,7 +154,9 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 func TestLinkPreviewCommandUsesShellSafeArguments(t *testing.T) {
 	plan := link.Plan{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"feature;synthetic"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "feature;synthetic"}}}
 	var output bytes.Buffer
-	writePreview(&output, plan, Presentation{})
+	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(output.String(), "gh stack link --base main 'feature;synthetic'") {
 		t.Errorf("preview = %q", output.String())
 	}
@@ -196,7 +202,9 @@ func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
 		},
 	}
 	var output bytes.Buffer
-	writePreview(&output, plan, Presentation{})
+	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
 	if got := output.String(); !strings.Contains(got, "beta (unresolved: closed pull request)") || !strings.Contains(got, "beta-two (unresolved: no open pull request)") || strings.Contains(got, "(#0)") {
 		t.Errorf("preview = %q", got)
 	}
@@ -226,12 +234,29 @@ func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	flush, link := eventIndex(events, "flush"), eventIndex(events, "link")
-	if flush < 0 || link < 0 || flush > link {
+	inspections := eventIndexes(events, "inspect")
+	firstWrite := eventIndex(events, "write")
+	if len(inspections) != 2 || firstWrite < 0 || flush < 0 || link < 0 || inspections[1] > firstWrite || firstWrite > flush || flush > link {
 		t.Errorf("events = %v, want flush before link", events)
 	}
 	output := writer.String()
 	if strings.Count(output, "main (trunk)") != 1 || strings.Count(output, "gh stack link --base main alpha beta") != 1 || !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") {
 		t.Errorf("output = %q", output)
+	}
+}
+
+func TestLinkApplyDoesNotRenderReadyPlanWhenRevalidationIsCanceled(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events}
+	github := &cliGitHub{events: &events, inspectErrAt: 2, inspectErr: context.Canceled}
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command.SetArgs([]string{"link", "--apply"})
+	if err := command.Execute(); err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	output := writer.String()
+	if strings.Contains(output, "Ready to apply") || strings.Contains(output, "Applied —") || eventIndex(events, "flush") >= 0 || eventIndex(events, "link") >= 0 || !strings.Contains(output, "Not applied: context canceled") {
+		t.Errorf("events = %v output = %q", events, output)
 	}
 }
 
@@ -265,6 +290,20 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
 	}
 	if eventIndex(events, "link") >= 0 || !strings.Contains(writer.String(), "Not applied: flush ready-to-apply output") {
 		t.Errorf("events = %v output = %q", events, writer.String())
+	}
+}
+
+func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events, writeErr: context.Canceled}
+	github := &cliGitHub{events: &events}
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command.SetArgs([]string{"link", "--apply"})
+	if err := command.Execute(); err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	if eventIndex(events, "link") >= 0 || eventIndex(events, "flush") >= 0 {
+		t.Errorf("events = %v", events)
 	}
 }
 
@@ -361,12 +400,22 @@ func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 }
 
 type cliGitHub struct {
-	links   int
-	events  *[]string
-	linkErr error
+	links        int
+	events       *[]string
+	linkErr      error
+	inspectErrAt int
+	inspectErr   error
+	inspectCalls int
 }
 
-func (*cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+func (f *cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+	f.inspectCalls++
+	if f.events != nil {
+		*f.events = append(*f.events, "inspect")
+	}
+	if f.inspectErr != nil && f.inspectCalls == f.inspectErrAt {
+		return nil, f.inspectErr
+	}
 	prs := make([]githubstack.PullRequest, 0, len(branches))
 	base := "main"
 	for index, branch := range branches {
@@ -387,11 +436,15 @@ type recordingWriter struct {
 	bytes.Buffer
 	events   *[]string
 	flushErr error
+	writeErr error
 }
 
 func (w *recordingWriter) Write(data []byte) (int, error) {
 	if w.events != nil {
 		*w.events = append(*w.events, "write")
+	}
+	if w.writeErr != nil {
+		return 0, w.writeErr
 	}
 	return w.Buffer.Write(data)
 }
@@ -409,6 +462,16 @@ func eventIndex(events []string, want string) int {
 		}
 	}
 	return -1
+}
+
+func eventIndexes(events []string, want string) []int {
+	var indexes []int
+	for index, event := range events {
+		if event == want {
+			indexes = append(indexes, index)
+		}
+	}
+	return indexes
 }
 
 type cliGitHubMissing struct{ links int }

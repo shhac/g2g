@@ -102,6 +102,20 @@ identities map between the tools, and how membership divergence should be
 represented. Initial `sync` scope is a selected linear path only. Tree-wide
 forked-stack support needs a separate design with an explicit safety model.
 
+## Preview and GitHub-read behavior
+
+`link` renders a synthetic unresolved node (for example, `feature-b
+(unresolved: no open pull request)`) when a selected path lacks an unambiguous
+open PR mapping. It gives an actionable reason and blocks `--apply`; it never
+turns unresolved state into an inferred repair.
+
+One plan performs two bounded read-only GitHub CLI calls: `gh repo view` obtains
+the repository identity, then one aliased `gh api graphql` request fetches PR
+head/base/state/number/URL only for every selected branch. `--apply` repeats the
+same reads during revalidation before the sole mutation. The batch boundary
+remains `internal/githubstack.Inspect`, with PATH-backed fixtures and no secret
+handling in application code.
+
 ## Release roadmap and required quality gates
 
 The following sequence is mandatory. A release must not skip its final

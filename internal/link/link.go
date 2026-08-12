@@ -208,6 +208,19 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 }
 
 func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
+	plan, err := s.RevalidateWithTrunk(ctx, requestedBranch, requestedTrunk, preview)
+	if err != nil {
+		return Plan{}, err
+	}
+	if err := s.Execute(ctx, plan); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
+}
+
+// RevalidateWithTrunk checks the exact preview immediately before mutation.
+// Callers may render the returned plan only after this succeeds.
+func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
@@ -224,10 +237,19 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 	if len(plan.Issues) != 0 {
 		return Plan{}, fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
 	}
-	if err := s.GitHub.Link(ctx, plan.Base, plan.Branches); err != nil {
-		return Plan{}, err
-	}
 	return plan, nil
+}
+
+// Execute invokes the sole GitHub mutation for a revalidated, apply-eligible
+// plan. It does not rediscover or render anything.
+func (s Service) Execute(ctx context.Context, plan Plan) error {
+	if s.GitHub == nil {
+		return fmt.Errorf("link service is not fully configured")
+	}
+	if len(plan.Issues) != 0 {
+		return fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
+	}
+	return s.GitHub.Link(ctx, plan.Base, plan.Branches)
 }
 
 // Equal compares every fact that can affect the command shown in a preview or

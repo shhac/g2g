@@ -55,14 +55,20 @@ ancestor of the selected branch.
 
 Preview renders the selected stack graph once and always shows the exact
 `gh stack link` command it validated. `--apply` re-discovers and revalidates
-before it invokes that command. Manually copying the displayed command is a
-separate, deliberate snapshot action and does not cause `gt2gh` to re-resolve
-anything.
+before it prints one `Ready to apply` graph and command, flushes that output,
+and invokes the command. On success it prints a concise confirmation; on
+failure it never claims that changes were made. Manually copying the displayed
+command is a separate, deliberate snapshot action and does not cause `gt2gh`
+to re-resolve anything.
 
 Color is enabled only for an interactive terminal. It is disabled for redirected
 output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
 for scripts. The renderer keeps plan data separate from ANSI decoration, leaving
 room for a future structured format without scraping terminal text.
+
+Interactive confirmation or a cancellation/cooldown period before mutation is
+intentionally deferred; it needs a separate safety design and is not implied by
+the current `--apply` flow.
 
 ## Homebrew
 

@@ -41,9 +41,12 @@ Before mutation, the command validates Graphite version and display grammar,
 the local branch set, and existing PR states/base relationships; it shows the resolved
 bottom-to-top order and fails before calling `gh` when discovery is incomplete,
 ambiguous, unsupported, or stale. `--apply` requires a clean worktree and
-repeats discovery immediately before the sole mutation. Per-operation timeouts
-bound CLI calls. No branch is checked out. Graphite is read only: production
-code must not use Graphite's internal metadata/configuration or `--debug`.
+repeats discovery immediately before the sole mutation. After that final
+revalidation it renders and flushes one neutral `Ready to apply` graph and
+copyable command before invoking `gh`; success output is emitted only after
+`gh` succeeds. Per-operation timeouts bound CLI calls. No branch is checked
+out. Graphite is read only: production code must not use Graphite's internal
+metadata/configuration or `--debug`.
 
 `gh stack link` can push branches and create/update pull requests, so it is the
 only intended side effect. Existing matching PRs are displayed and their bases
@@ -51,9 +54,9 @@ must already match the declared Graphite path (trunk for the bottom PR, then
 each preceding branch); this is the read-only native-stack relationship check
 available without checkout. Every non-trunk selected-path branch must have
 exactly one open PR so the preview graph is fully labeled; absent, duplicate,
-non-open, or divergent mappings fail closed before preview or apply. Tests use
-fake `gt` and `gh` executables on `PATH`, so they never need credentials,
-network access, or real CLI installations.
+non-open, or divergent mappings render as actionable unresolved nodes and block
+apply. Tests use fake `gt` and `gh` executables on `PATH`, so they never need
+credentials, network access, or real CLI installations.
 
 ## CLI shape
 
@@ -75,6 +78,13 @@ Completion is static for commands and flags and dynamic for `--branch` and
 do not trigger a checkout or mutation. Preview output may use color on a
 terminal, but remains plain and legible for redirected output, `NO_COLOR`, or
 `TERM=dumb`.
+
+The exact command line is bare for reliable copy/drag selection: in plain
+output it follows a `Command to run` heading, while color-capable output uses a
+subtle background and bold text without adding prompt or border characters to
+the command itself. A future interactive confirmation/cancellation cooldown is
+explicitly deferred pending its own safety design; the current `--apply` has no
+delay or hidden confirmation step.
 
 ## Future direction: `sync`
 

@@ -95,15 +95,27 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			writePreview(cmd.OutOrStdout(), plan, presentation)
 			if !apply {
+				writePreview(cmd.OutOrStdout(), plan, presentation)
 				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link; copying the displayed command is your deliberate snapshot choice.")
 				return nil
 			}
-			if _, err := service.ApplyWithTrunk(ctx, branch, trunk, plan); err != nil {
+			validated, err := service.RevalidateWithTrunk(ctx, branch, trunk, plan)
+			if err != nil {
+				writeNotApplied(cmd.OutOrStdout(), presentation, err)
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied:")+" gh stack link completed after revalidation.")
+			writeReadyToApply(cmd.OutOrStdout(), validated, presentation)
+			if err := flushOutput(cmd.OutOrStdout()); err != nil {
+				writeNotApplied(cmd.OutOrStdout(), presentation, err)
+				return err
+			}
+			if err := service.Execute(ctx, validated); err != nil {
+				writeNotApplied(cmd.OutOrStdout(), presentation, err)
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))
+			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
 			return nil
 		},
 	}
@@ -118,6 +130,15 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 }
 
 func writePreview(writer io.Writer, plan link.Plan, presentation Presentation) {
+	writeLinkPlan(writer, plan, presentation)
+}
+
+func writeReadyToApply(writer io.Writer, plan link.Plan, presentation Presentation) {
+	fmt.Fprintln(writer, presentation.accent("Ready to apply"))
+	writeLinkPlan(writer, plan, presentation)
+}
+
+func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) {
 	preview := newLinkPreview(plan)
 	fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", preview.TargetSource)), preview.Target)
 	fmt.Fprintln(writer, presentation.accent("Link stack (bottom to top):"))
@@ -132,10 +153,30 @@ func writePreview(writer io.Writer, plan link.Plan, presentation Presentation) {
 		}
 		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), presentation.accent(label))
 	}
-	fmt.Fprintf(writer, "%s: %s\n", presentation.accent("Proposed command"), preview.commandText())
+	writeCommand(writer, preview.commandText(), presentation)
 	if preview.ApplyBlocked {
 		fmt.Fprintln(writer, "Apply blocked: resolve every unresolved GitHub PR mapping first.")
 	}
+}
+
+func writeCommand(writer io.Writer, command string, presentation Presentation) {
+	fmt.Fprintln(writer, presentation.accent("Command to run"))
+	fmt.Fprintln(writer, presentation.command(command))
+}
+
+func writeNotApplied(writer io.Writer, presentation Presentation, err error) {
+	fmt.Fprintln(writer, presentation.accent("Not applied")+": "+err.Error())
+}
+
+type outputFlusher interface{ Flush() error }
+
+func flushOutput(writer io.Writer) error {
+	if flusher, ok := writer.(outputFlusher); ok {
+		if err := flusher.Flush(); err != nil {
+			return fmt.Errorf("flush ready-to-apply output: %w", err)
+		}
+	}
+	return nil
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {

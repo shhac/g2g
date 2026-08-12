@@ -100,7 +100,7 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	for _, expected := range []string{
 		"Resolved target (--branch): beta",
 		"main (trunk)", "alpha (#1)", "beta (#2)",
-		"Proposed command: gh stack link --base main alpha beta",
+		"Command to run\ngh stack link --base main alpha beta",
 		"No changes were made.",
 	} {
 		if !strings.Contains(output, expected) {
@@ -123,6 +123,27 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 		if !strings.Contains(output.String(), test.want) || strings.Count(output.String(), "main (trunk)") != 1 || strings.Count(output.String(), "gh stack link --base main alpha beta") != 1 {
 			t.Errorf("preview = %q", output.String())
 		}
+	}
+}
+
+func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
+	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "beta"}}}
+	for _, test := range []struct {
+		name  string
+		color bool
+	}{
+		{name: "plain", color: false},
+		{name: "color", color: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			presentation := Presentation{Color: test.color}
+			writePreview(&output, plan, presentation)
+			want := presentation.accent("Command to run") + "\n" + presentation.command("gh stack link --base main beta") + "\n"
+			if got := output.String(); !strings.Contains(got, want) || strings.Contains(got, "$ gh stack link") || strings.Contains(got, "│gh stack") {
+				t.Errorf("preview = %q", got)
+			}
+		})
 	}
 }
 
@@ -187,11 +208,63 @@ func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "Applied: gh stack link completed after revalidation.") {
+	if !strings.Contains(output, "Applied — GitHub stack updated") || !strings.Contains(output, "Changes were made.") {
 		t.Errorf("output = %q", output)
 	}
 	if github.links != 1 {
 		t.Errorf("Link calls = %d, want 1", github.links)
+	}
+}
+
+func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events}
+	github := &cliGitHub{events: &events}
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command.SetArgs([]string{"link", "--apply"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	flush, link := eventIndex(events, "flush"), eventIndex(events, "link")
+	if flush < 0 || link < 0 || flush > link {
+		t.Errorf("events = %v, want flush before link", events)
+	}
+	output := writer.String()
+	if strings.Count(output, "main (trunk)") != 1 || strings.Count(output, "gh stack link --base main alpha beta") != 1 || !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") {
+		t.Errorf("output = %q", output)
+	}
+}
+
+func TestLinkApplyReportsCancellationWithoutSuccess(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events}
+	github := &cliGitHub{events: &events, linkErr: context.Canceled}
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command.SetArgs([]string{"link", "--apply"})
+	err := command.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	output := writer.String()
+	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Not applied: context canceled") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
+		t.Errorf("output = %q", output)
+	}
+	if flush, link := eventIndex(events, "flush"), eventIndex(events, "link"); flush < 0 || link < 0 || flush > link {
+		t.Errorf("events = %v, want flush before link", events)
+	}
+}
+
+func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events, flushErr: context.Canceled}
+	github := &cliGitHub{events: &events}
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command.SetArgs([]string{"link", "--apply"})
+	if err := command.Execute(); err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	if eventIndex(events, "link") >= 0 || !strings.Contains(writer.String(), "Not applied: flush ready-to-apply output") {
+		t.Errorf("events = %v output = %q", events, writer.String())
 	}
 }
 
@@ -287,7 +360,11 @@ func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
 }
 
-type cliGitHub struct{ links int }
+type cliGitHub struct {
+	links   int
+	events  *[]string
+	linkErr error
+}
 
 func (*cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
 	prs := make([]githubstack.PullRequest, 0, len(branches))
@@ -300,7 +377,38 @@ func (*cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.P
 }
 func (f *cliGitHub) Link(context.Context, string, []string) error {
 	f.links++
-	return nil
+	if f.events != nil {
+		*f.events = append(*f.events, "link")
+	}
+	return f.linkErr
+}
+
+type recordingWriter struct {
+	bytes.Buffer
+	events   *[]string
+	flushErr error
+}
+
+func (w *recordingWriter) Write(data []byte) (int, error) {
+	if w.events != nil {
+		*w.events = append(*w.events, "write")
+	}
+	return w.Buffer.Write(data)
+}
+func (w *recordingWriter) Flush() error {
+	if w.events != nil {
+		*w.events = append(*w.events, "flush")
+	}
+	return w.flushErr
+}
+
+func eventIndex(events []string, want string) int {
+	for index, event := range events {
+		if event == want {
+			return index
+		}
+	}
+	return -1
 }
 
 type cliGitHubMissing struct{ links int }

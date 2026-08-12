@@ -73,6 +73,18 @@ func TestCompletionScripts(t *testing.T) {
 	}
 }
 
+func TestNamedExecutableGeneratesMatchingZshCompletion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := NewNamed("v0.2.1", "g2g", &stdout, &stderr)
+	command.SetArgs([]string{"completion", "zsh"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "#compdef g2g") {
+		t.Errorf("zsh completion = %q", stdout.String())
+	}
+}
+
 func TestCompletionRejectsUnknownShell(t *testing.T) {
 	if _, err := execute(t, "completion", "powershell"); err == nil {
 		t.Fatal("Execute() error = nil, want error")

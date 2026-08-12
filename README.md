@@ -36,6 +36,16 @@ supported display grammar and a compatible `gh` with `stack link`. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
 
+## Homebrew
+
+Homebrew keeps the formula name as `gt2gh` but installs the executable as
+`g2g`:
+
+```sh
+brew install shhac/tap/gt2gh
+g2g link
+```
+
 `gt2gh sync` is also preview-first. It compares the selected Graphite path to
 existing open GitHub PR bases, identifies aligned and divergent relationships,
 and can reconcile the native stack only with `--apply`. It deliberately refuses

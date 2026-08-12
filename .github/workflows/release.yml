@@ -19,3 +19,4 @@ jobs:
       desc: "Bridge Graphite-managed linear stacks to GitHub native stacks"
       formula_class: Gt2gh
       help_match: "Link a linear Graphite stack to GitHub"
+      installed_binary_name: g2g

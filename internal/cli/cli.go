@@ -24,8 +24,15 @@ const (
 	completionTimeout = 3 * time.Second
 )
 
-// New creates the root command. version is injected by main at build time.
+// New creates the canonical gt2gh root command. version is injected by main at
+// build time.
 func New(version string, stdout, stderr io.Writer) *cobra.Command {
+	return NewNamed(version, "gt2gh", stdout, stderr)
+}
+
+// NewNamed creates the root command for the executable name used to invoke it.
+// This keeps generated shell completions correct for a package-manager alias.
+func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Command {
 	runner := subprocess.ExecRunner{}
 	linkService := link.Service{
 		Git:      localgit.Client{Runner: runner},
@@ -33,7 +40,7 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 		GitHub:   githubstack.Client{Runner: runner},
 	}
 	syncService := syncer.Service{Discoverer: linkService, Git: linkService.Git, GitHub: linkService.GitHub}
-	return NewWithServices(version, stdout, stderr, linkService, syncService)
+	return newWithServices(version, commandName, stdout, stderr, linkService, syncService)
 }
 
 // NewWithService creates the root command with injectable link dependencies.
@@ -45,8 +52,15 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 // NewWithServices creates the root command with injectable link and sync
 // dependencies. It keeps unit tests offline while New wires subprocesses.
 func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
+	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService)
+}
+
+func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
+	if commandName == "" {
+		commandName = "gt2gh"
+	}
 	root := &cobra.Command{
-		Use:               "gt2gh",
+		Use:               commandName,
 		Short:             "Bridge Graphite-managed stacks to GitHub native stacks",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
@@ -135,9 +149,9 @@ func newCompletion(root *cobra.Command) *cobra.Command {
 	return cmd
 }
 
-// Execute runs the root command with the process streams.
-func Execute(version string) {
-	root := New(version, os.Stdout, os.Stderr)
+// Execute runs the root command with the process streams and executable name.
+func Execute(version, commandName string) {
+	root := NewNamed(version, commandName, os.Stdout, os.Stderr)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)

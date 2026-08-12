@@ -39,3 +39,24 @@ only intended future side effect.
 leaves room for future, separately designed workflows without making a bare
 invocation mutate state. Bare `gt2gh` shows help. Standard `--help` and
 `--version` behavior is kept in the small standard-library parser.
+
+## Future direction: `sync`
+
+`sync` is not implemented and its command-line interface is intentionally not
+committed yet. Its direction is one-way reconciliation: discover the Graphite
+structure and GitHub's native stack relationships, compare branches tracked by
+both systems, identify divergence, and make GitHub match Graphite. Graphite
+remains authoritative throughout.
+
+Discovery must be read-only and produce a dry-run report before there is any
+apply path. A future explicit apply mode should show the proposed GitHub
+changes, require an unambiguous linear stack, and refuse to repair missing,
+ambiguous, or partially mapped branches automatically. It should not mutate
+Graphite, infer a relationship for a branch known to only one system, or turn a
+local working-tree state into a repair decision.
+
+Open questions include which GitHub native-stack data and repair operations are
+available in the supported `gh` versions, how branch and remote identities map
+between the tools, and how parent, order, and membership divergence should be
+represented. Initial `sync` scope, if adopted, is linear stacks only. Tree or
+forked-stack support needs a separate design with an explicit safety model.

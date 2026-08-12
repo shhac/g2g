@@ -3,12 +3,27 @@ name: gt2gh
 description: |
   Develop, test, or safely use the gt2gh Go CLI that bridges Graphite-managed
   branch stacks to GitHub native stacks. Use when working on gt2gh commands,
-  Graphite/GitHub stack discovery or linking, future reconciliation design, CLI
-  tests, or release readiness. Triggers: "gt2gh", "Graphite GitHub stack",
-  "gh stack link", "Graphite stack linking", "gt2gh link", "gt2gh sync".
+  Graphite/GitHub stack discovery or linking, reconciliation, CLI tests, or
+  release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
+  link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
+  "g2g sync".
 ---
 
 # gt2gh
+
+## Command identity and discovery
+
+- Keep `gt2gh` as the project, repository, skill, release-asset, and Homebrew
+  formula name. Homebrew installs the executable as `g2g`; source builds and
+  unrenamed release archives use `gt2gh`.
+- At the start of a task, reuse a usable command already resolved in the task
+  context. Otherwise, discover it once locally: try `g2g --version` first, then
+  `gt2gh --version`. Select the first command that succeeds. If neither works,
+  state that the user must install `brew install shhac/tap/gt2gh` or provide a
+  source/release-archive `gt2gh` binary; do not assume either command exists.
+- Record the selected command as the task's `GT2GH_CMD` and use it for every
+  later invocation. Do not re-detect it unless it fails or the environment
+  changes. Use `g2g` in Homebrew examples and `gt2gh` in source/archive examples.
 
 ## Work in this repository
 
@@ -17,10 +32,10 @@ description: |
   path in bottom-to-top order; do not manage, reorder, rebase, submit, or merge
   Graphite branches. A selected branch may sit in a forked tree, but siblings
   and descendants are not part of a v0.1 link.
-- `gt2gh link` previews by default. Its optional `--branch` target must work
-  without checkout; `--apply` is the only path that may invoke `gh stack link`.
-  Bare `gt2gh` prints help. `gt2gh sync` is preview-first and only applies when
-  every selected-path branch already has an open GitHub PR; it must not create
+- `link` previews by default. Its optional `--branch` target must work without
+  checkout; `--apply` is the only path that may invoke `gh stack link`. Bare
+  invocation prints help. `sync` is preview-first and only applies when every
+  selected-path branch already has an open GitHub PR; it must not create
   Graphite-only mappings or repair closed/non-open PRs.
 - Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
   read Graphite internal metadata/configuration or use `gt --debug`: supported
@@ -41,7 +56,8 @@ description: |
 
 ## Use safely
 
-- Use `gt2gh --help` or `gt2gh link --help` to inspect the current interface.
-- Treat the future `sync` direction as design-only until an explicit command and
-  apply protocol exist. Require read-only discovery and dry-run output before
-  any reconciliation design can change GitHub state.
+- After command discovery, use the resolved command's `--help` or `link --help`
+  to inspect the current interface (for example, `g2g link --help` after a
+  Homebrew install).
+- Require read-only discovery and dry-run output before `sync --apply` can
+  change GitHub state.

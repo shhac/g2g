@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/subprocess"
+	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
 const (
@@ -26,17 +27,24 @@ const (
 // New creates the root command. version is injected by main at build time.
 func New(version string, stdout, stderr io.Writer) *cobra.Command {
 	runner := subprocess.ExecRunner{}
-	service := link.Service{
+	linkService := link.Service{
 		Git:      localgit.Client{Runner: runner},
 		Graphite: graphite.Client{Runner: runner},
 		GitHub:   githubstack.Client{Runner: runner},
 	}
-	return NewWithService(version, stdout, stderr, service)
+	syncService := syncer.Service{Discoverer: linkService, Git: linkService.Git, GitHub: linkService.GitHub}
+	return NewWithServices(version, stdout, stderr, linkService, syncService)
 }
 
 // NewWithService creates the root command with injectable link dependencies.
 // It keeps unit tests offline while New wires the production subprocesses.
 func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
+	return NewWithServices(version, stdout, stderr, service, syncer.Service{Discoverer: service, Git: service.Git, GitHub: service.GitHub})
+}
+
+// NewWithServices creates the root command with injectable link and sync
+// dependencies. It keeps unit tests offline while New wires subprocesses.
+func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
 	root := &cobra.Command{
 		Use:               "gt2gh",
 		Short:             "Bridge Graphite-managed stacks to GitHub native stacks",
@@ -50,6 +58,7 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.AddCommand(newLink(service))
+	root.AddCommand(newSync(syncService, service))
 	root.AddCommand(newCompletion(root))
 	return root
 }

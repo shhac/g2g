@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
+	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
 func execute(t *testing.T, args ...string) (string, error) {
@@ -29,12 +30,21 @@ func executeWithService(t *testing.T, service link.Service, args ...string) (str
 	return stdout.String(), err
 }
 
+func executeWithServices(t *testing.T, linkService link.Service, syncService syncer.Service, args ...string) (string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	command := NewWithServices("v0.2.0", &stdout, &stderr, linkService, syncService)
+	command.SetArgs(args)
+	err := command.Execute()
+	return stdout.String(), err
+}
+
 func TestBareCommandShowsHelp(t *testing.T) {
 	output, err := execute(t)
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "  link") {
+	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") {
 		t.Errorf("help = %q", output)
 	}
 }
@@ -129,6 +139,46 @@ func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 	}
 }
 
+func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
+	github := &cliSyncGitHub{}
+	service := syncer.Service{
+		Discoverer: cliSyncDiscoverer{},
+		Git:        cliSyncGit{},
+		GitHub:     github,
+	}
+	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync")
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	for _, expected := range []string{"Resolved target (current Git branch): beta", "beta: divergent (PR #2 base main, want alpha)", "Preview only"} {
+		if !strings.Contains(output, expected) {
+			t.Errorf("preview missing %q:\n%s", expected, output)
+		}
+	}
+	if github.links != 0 {
+		t.Errorf("Link calls = %d, want 0", github.links)
+	}
+}
+
+func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
+	discoverer := &cliApplyDiscoverer{}
+	github := &cliSyncGitHub{}
+	service := syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}
+	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync", "--branch", "beta", "--apply")
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if discoverer.branch != "beta" {
+		t.Errorf("selected branch = %q, want beta", discoverer.branch)
+	}
+	if github.links != 1 {
+		t.Errorf("Link calls = %d, want 1", github.links)
+	}
+	if !strings.Contains(output, "Applied: GitHub native stack reconciliation completed after revalidation.") {
+		t.Errorf("output = %q", output)
+	}
+}
+
 func cliService(github *cliGitHub) link.Service {
 	return link.Service{
 		Git:      cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
@@ -164,6 +214,39 @@ func (*cliGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest,
 	return nil, nil
 }
 func (f *cliGitHub) Link(context.Context, string, []string) error {
+	f.links++
+	return nil
+}
+
+type cliSyncDiscoverer struct{}
+
+func (cliSyncDiscoverer) Discover(context.Context, string) (link.Plan, error) {
+	return link.Plan{
+		Target:       "beta",
+		TargetSource: "current Git branch",
+		Trunk:        "main",
+		Branches:     []string{"alpha", "beta"},
+		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}},
+	}, nil
+}
+
+type cliApplyDiscoverer struct{ branch string }
+
+func (f *cliApplyDiscoverer) Discover(_ context.Context, branch string) (link.Plan, error) {
+	f.branch = branch
+	return link.Plan{
+		Target: "beta", TargetSource: "--branch", Trunk: "main", Branches: []string{"alpha", "beta"},
+		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}},
+	}, nil
+}
+
+type cliSyncGit struct{}
+
+func (cliSyncGit) Clean(context.Context) error { return nil }
+
+type cliSyncGitHub struct{ links int }
+
+func (f *cliSyncGitHub) Link(context.Context, string, []string) error {
 	f.links++
 	return nil
 }

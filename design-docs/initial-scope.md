@@ -1,6 +1,6 @@
 # Initial scope
 
-**Status:** v0.1 implementation in progress, August 2026.
+**Status:** v0.2 implementation in progress; v0.1.0 released, August 2026.
 **Graphite display contract:** pinned to Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
@@ -57,6 +57,7 @@ The implemented surface is:
 
 ```text
 gt2gh link [--branch <local-graphite-branch>] [--apply]
+gt2gh sync [--branch <local-graphite-branch>] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 
@@ -66,23 +67,28 @@ local branches; they do not trigger a checkout or mutation.
 
 ## Future direction: `sync`
 
-`sync` is not implemented and its command-line interface is intentionally not
-committed yet. Its direction is one-way reconciliation: discover the Graphite
-structure and GitHub's native stack relationships, compare branches tracked by
-both systems, identify divergence, and make GitHub match Graphite. Graphite
-remains authoritative throughout.
+`sync` is one-way reconciliation: it discovers the Graphite structure and
+GitHub's native-stack relationship encoded by open PR bases, compares branches
+tracked by both systems, identifies divergence, and makes GitHub match
+Graphite only through explicit `--apply`. Graphite remains authoritative.
 
-Discovery must be read-only and produce a dry-run report before there is any
-apply path. A future explicit apply mode should show the proposed GitHub
-changes, require an unambiguous linear stack, and refuse to repair missing,
-ambiguous, or partially mapped branches automatically. It should not mutate
-Graphite, infer a relationship for a branch known to only one system, or turn a
-local working-tree state into a repair decision.
+Discovery is read-only and produces a dry-run report. `gt2gh sync` shares the
+optional no-checkout `--branch` selector with `link`; absent it prominently
+reports the current Git branch target. It classifies each selected-path branch
+as aligned, divergent, missing (no PR), or unsafe (non-open PR). Apply requires
+a clean worktree, revalidates the exact preview, and invokes `gh stack link`
+only if every selected-path branch has exactly one open PR. That allows the
+supported GitHub command to reconcile eligible native-stack relationships while
+avoiding unsafe automatic repair.
 
-Open questions include which GitHub native-stack data and repair operations are
-available in the supported `gh` versions, how branch and remote identities map
-between the tools, and how parent, order, and membership divergence should be
-represented. Initial `sync` scope, if adopted, is linear stacks only. Tree or
+It does not mutate Graphite, infer a relationship for a branch known to only
+one system, create PR mappings for Graphite-only branches, repair a closed or
+non-open PR, or turn local working-tree state into a repair decision.
+
+Open questions include which GitHub native-stack repair operations beyond
+`gh stack link` are available in supported `gh` versions, how branch and remote
+identities map between the tools, and how membership divergence should be
+represented. Initial `sync` scope is a selected linear path only. Tree-wide
 forked-stack support needs a separate design with an explicit safety model.
 
 ## Release roadmap and required quality gates
@@ -119,8 +125,7 @@ small.
 
 1. Implement `sync` as the design described above: one-way reconciliation from
    Graphite to GitHub, with read-only discovery/dry-run first and explicit apply
-   for any GitHub change. `sync` remains design-only and post-v0.1.0 until this
-   milestone begins.
+   for any GitHub change. This milestone is now in progress after v0.1.0.
 2. Immediately before creating the v0.2.0 tag, run the same fresh
    `improve-code-structure` assessment requesting around sixteen concrete
    recommendations. Independently judge and implement only the valid,

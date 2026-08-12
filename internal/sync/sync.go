@@ -1,0 +1,175 @@
+// Package sync implements Graphite-authoritative, conservative GitHub stack
+// reconciliation.
+package sync
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/gt2gh/internal/link"
+)
+
+// Discoverer supplies the common, read-only Graphite and GitHub facts.
+type Discoverer interface {
+	Discover(context.Context, string) (link.Plan, error)
+}
+
+// Git supplies the local precondition needed before an explicit apply.
+type Git interface {
+	Clean(context.Context) error
+}
+
+// GitHub provides the one deliberate reconciliation mutation.
+type GitHub interface {
+	Link(context.Context, string, []string) error
+}
+
+// Service reconciles only a fully mapped, open GitHub PR path. It never
+// creates mappings for Graphite-only branches or repairs closed PRs.
+type Service struct {
+	Discoverer Discoverer
+	Git        Git
+	GitHub     GitHub
+}
+
+// State describes a single Graphite branch's existing GitHub relationship.
+type State string
+
+const (
+	Aligned   State = "aligned"
+	Divergent State = "divergent"
+	Missing   State = "missing"
+	Unsafe    State = "unsafe"
+)
+
+// Item compares one Graphite branch to the expected GitHub PR base.
+type Item struct {
+	Branch       string
+	ExpectedBase string
+	State        State
+	PullRequest  *githubstack.PullRequest
+}
+
+// Plan is a Graphite-authoritative reconciliation preview.
+type Plan struct {
+	Link  link.Plan
+	Items []Item
+}
+
+// Preview discovers the selected path and classifies GitHub's existing PR
+// relationship. It is entirely read-only.
+func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, error) {
+	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
+		return Plan{}, fmt.Errorf("sync service is not fully configured")
+	}
+	plan, err := s.Discoverer.Discover(ctx, requestedBranch)
+	if err != nil {
+		return Plan{}, err
+	}
+	items, err := classify(plan)
+	if err != nil {
+		return Plan{}, err
+	}
+	return Plan{Link: plan, Items: items}, nil
+}
+
+// Apply revalidates the preview, then asks gh to update the native stack only
+// when every Graphite branch is already represented by an open PR. This avoids
+// silently creating mappings or repairing closed/ambiguous state.
+func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
+	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
+		return Plan{}, fmt.Errorf("sync service is not fully configured")
+	}
+	if err := s.Git.Clean(ctx); err != nil {
+		return Plan{}, err
+	}
+	plan, err := s.Preview(ctx, requestedBranch)
+	if err != nil {
+		return Plan{}, err
+	}
+	if !samePlan(plan, preview) {
+		return Plan{}, fmt.Errorf("sync plan changed during revalidation; rerun without --apply to review the new plan")
+	}
+	if err := plan.applyBlocker(); err != nil {
+		return Plan{}, err
+	}
+	if err := s.GitHub.Link(ctx, plan.Link.Trunk, plan.Link.Branches); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
+}
+
+func classify(plan link.Plan) ([]Item, error) {
+	byBranch := make(map[string]githubstack.PullRequest, len(plan.PullRequests))
+	for _, pr := range plan.PullRequests {
+		if _, exists := byBranch[pr.Head]; exists {
+			return nil, fmt.Errorf("GitHub returned multiple pull requests for branch %q; refusing ambiguous sync", pr.Head)
+		}
+		byBranch[pr.Head] = pr
+	}
+	base := plan.Trunk
+	items := make([]Item, 0, len(plan.Branches))
+	for _, branch := range plan.Branches {
+		item := Item{Branch: branch, ExpectedBase: base, State: Missing}
+		if pr, exists := byBranch[branch]; exists {
+			item.PullRequest = &pr
+			switch {
+			case pr.State != "OPEN":
+				item.State = Unsafe
+			case pr.Base == base:
+				item.State = Aligned
+			default:
+				item.State = Divergent
+			}
+		}
+		items = append(items, item)
+		base = branch
+	}
+	return items, nil
+}
+
+func samePlan(left, right Plan) bool {
+	if !left.Link.Equal(right.Link) || len(left.Items) != len(right.Items) {
+		return false
+	}
+	for index := range left.Items {
+		if left.Items[index].Branch != right.Items[index].Branch || left.Items[index].ExpectedBase != right.Items[index].ExpectedBase || left.Items[index].State != right.Items[index].State || !samePullRequest(left.Items[index].PullRequest, right.Items[index].PullRequest) {
+			return false
+		}
+	}
+	return true
+}
+
+func samePullRequest(left, right *githubstack.PullRequest) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+// Summary returns concise state counts for a preview.
+func (p Plan) Summary() string {
+	counts := make(map[State]int)
+	for _, item := range p.Items {
+		counts[item.State]++
+	}
+	return fmt.Sprintf("aligned=%d divergent=%d missing=%d unsafe=%d", counts[Aligned], counts[Divergent], counts[Missing], counts[Unsafe])
+}
+
+// CanApply explains whether the conservative v0.2 scope permits apply.
+func (p Plan) CanApply() bool {
+	return p.applyBlocker() == nil
+}
+
+func (p Plan) applyBlocker() error {
+	for _, item := range p.Items {
+		switch item.State {
+		case Missing:
+			return fmt.Errorf("branch %q has no GitHub pull request; refusing to create a mapping during sync", item.Branch)
+		case Unsafe:
+			return fmt.Errorf("branch %q has a non-open GitHub pull request; refusing automatic repair", item.Branch)
+		}
+	}
+	return nil
+}

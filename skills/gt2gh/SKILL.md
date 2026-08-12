@@ -19,7 +19,9 @@ description: |
   and descendants are not part of a v0.1 link.
 - `gt2gh link` previews by default. Its optional `--branch` target must work
   without checkout; `--apply` is the only path that may invoke `gh stack link`.
-  Bare `gt2gh` prints help. `sync` remains design-only until v0.2.0 work begins.
+  Bare `gt2gh` prints help. `gt2gh sync` is preview-first and only applies when
+  every selected-path branch already has an open GitHub PR; it must not create
+  Graphite-only mappings or repair closed/non-open PRs.
 - Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
   read Graphite internal metadata/configuration or use `gt --debug`: supported
   production discovery is strict, version-pinned noninteractive CLI parsing.

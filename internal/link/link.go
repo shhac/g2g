@@ -46,7 +46,10 @@ type Plan struct {
 	PullRequests []githubstack.PullRequest
 }
 
-func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error) {
+// Discover resolves a Graphite path and read-only GitHub PR facts without
+// deciding whether their current native-stack relationship is safe to link.
+// sync uses this to report divergence before choosing its own apply policy.
+func (s Service) Discover(ctx context.Context, requestedBranch string) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
@@ -75,10 +78,21 @@ func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error)
 	if err != nil {
 		return Plan{}, err
 	}
-	if err := validatePRs(prs, stack.Trunk, stack.Branches); err != nil {
+	return Plan{Target: target, TargetSource: source, Trunk: stack.Trunk, Branches: stack.Branches, PullRequests: prs}, nil
+}
+
+// Plan applies link's stricter policy: existing pull requests must already
+// have the expected base relationship. sync deliberately has a separate,
+// explicit reconciliation policy for detected divergence.
+func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error) {
+	plan, err := s.Discover(ctx, requestedBranch)
+	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Target: target, TargetSource: source, Trunk: stack.Trunk, Branches: stack.Branches, PullRequests: prs}, nil
+	if err := validatePRs(plan.PullRequests, plan.Trunk, plan.Branches); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
 }
 
 func resolveTarget(ctx context.Context, git Git, requestedBranch string) (string, string, error) {
@@ -131,7 +145,7 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 	if err != nil {
 		return Plan{}, err
 	}
-	if !samePlan(plan, preview) {
+	if !plan.Equal(preview) {
 		return Plan{}, fmt.Errorf("link plan changed during revalidation; rerun without --apply to review the new plan")
 	}
 	if err := s.GitHub.Link(ctx, plan.Trunk, plan.Branches); err != nil {
@@ -140,7 +154,9 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 	return plan, nil
 }
 
-func samePlan(left, right Plan) bool {
+// Equal compares every fact that can affect the command shown in a preview or
+// the GitHub action performed after revalidation.
+func (left Plan) Equal(right Plan) bool {
 	if left.Target != right.Target || left.TargetSource != right.TargetSource || left.Trunk != right.Trunk || !sameStrings(left.Branches, right.Branches) || len(left.PullRequests) != len(right.PullRequests) {
 		return false
 	}

@@ -11,17 +11,37 @@ The stable v1 command shape is:
 gt2gh link
 ```
 
-This initial release is only a safe project skeleton. `gt2gh link` reports
-that linking is not implemented and runs no external commands. `--help` and
-`--version` are available now; bare `gt2gh` shows the help text.
+`gt2gh link` is a safe preview by default. It resolves the checked-out Git
+branch as its target, reads the Graphite path from its declared trunk to that
+target, inspects matching GitHub pull requests, and prints the exact proposed
+bottom-to-top command. Nothing changes unless `--apply` is present.
+
+```sh
+# Preview the path ending at the current branch.
+gt2gh link
+
+# Preview a Graphite-tracked local branch without checking it out.
+gt2gh link --branch feature/top
+
+# Revalidate, then allow gh to create/update the native GitHub stack.
+gt2gh link --branch feature/top --apply
+```
+
+`--help`, `--version`, and `completion bash|zsh|fish` are available; bare
+`gt2gh` shows help. The command requires Graphite CLI 1.8.6 exactly for its
+supported display grammar and a compatible `gh` with `stack link`. Its tests
+use fake executables on `PATH`, so they need neither authentication nor a
+network connection.
 
 ## Structure
 
 - `cmd/gt2gh`: executable entry point.
-- `internal/cli`: standard-library command parsing and safe placeholder.
-- `internal/subprocess`: future boundary for `gt` and `gh` invocations.
+- `internal/cli`: Cobra command parsing, preview output, and completion.
+- `internal/graphite`: strict, version-pinned read-only Graphite display parser.
+- `internal/git`, `internal/githubstack`: read-only repository and PR seams.
+- `internal/link`: Graphite-authoritative plan/apply orchestration.
+- `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.
 - `internal/testutil`: fake executables installed on `PATH` during tests.
 - `design-docs`: concise scope and safety notes.
 
-Run the test suite with `go test ./...`. The tests do not require Graphite,
-GitHub CLI, authentication, or network access.
+Run the test suite with `go test ./...`.

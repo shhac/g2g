@@ -1,0 +1,2 @@
+# Graphite's captured tree drawing includes meaningful guide-only whitespace.
+internal/graphite/testdata/*.txt -whitespace

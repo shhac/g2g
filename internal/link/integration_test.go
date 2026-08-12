@@ -1,0 +1,84 @@
+package link_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	localgit "github.com/shhac/gt2gh/internal/git"
+	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/gt2gh/internal/testutil"
+)
+
+func TestProductionAdaptersUseOnlyFakedReadOnlyDiscoveryUntilApply(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("..", "graphite", "testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	fixturePath := filepath.Join(temporary, "graphite-log.txt")
+	argumentsPath := filepath.Join(temporary, "arguments.txt")
+	if err := os.WriteFile(fixturePath, fixture, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", fixturePath)
+	t.Setenv("CLI_ARGUMENTS", argumentsPath)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"git": `printf 'git %s\n' "$*" >> "$CLI_ARGUMENTS"
+case "$1 $2" in
+  "branch --show-current") printf 'gamma-deep\n' ;;
+  "branch --format=%(refname:short)") printf '%s\n' main alpha beta beta-one beta-two beta-two-deep gamma gamma-deep ;;
+  "status --porcelain") ;;
+  *) exit 9 ;;
+esac`,
+		"gt": `printf 'gt %s\n' "$*" >> "$CLI_ARGUMENTS"
+case "$1" in
+  --version) printf '1.8.6\n' ;;
+  log) cat "$GT_FIXTURE" ;;
+  *) exit 9 ;;
+esac`,
+		"gh": `printf 'gh %s\n' "$*" >> "$CLI_ARGUMENTS"
+case "$1 $2" in
+  "pr list") printf '[]\n' ;;
+  "stack link") ;;
+  *) exit 9 ;;
+esac`,
+	})
+	runner := subprocess.ExecRunner{}
+	service := link.Service{
+		Git:      localgit.Client{Runner: runner},
+		Graphite: graphite.Client{Runner: runner},
+		GitHub:   githubstack.Client{Runner: runner},
+	}
+
+	plan, err := service.Plan(context.Background(), "gamma-deep")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if got, want := strings.Join(plan.Branches, ","), "alpha,gamma,gamma-deep"; got != want {
+		t.Fatalf("planned branches = %q, want %q", got, want)
+	}
+	arguments, err := os.ReadFile(argumentsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(arguments), "gh stack link") || strings.Contains(string(arguments), "checkout") {
+		t.Fatalf("preview invoked a mutation or checkout:\n%s", arguments)
+	}
+
+	if _, err := service.Apply(context.Background(), "gamma-deep", plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	arguments, err = os.ReadFile(argumentsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Count(string(arguments), "gh stack link --base main alpha gamma gamma-deep"), 1; got != want {
+		t.Fatalf("apply link calls = %d, want %d:\n%s", got, want, arguments)
+	}
+}

@@ -1,53 +1,136 @@
-// Package cli parses and dispatches gt2gh commands.
+// Package cli defines the gt2gh command-line interface.
 package cli
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	localgit "github.com/shhac/gt2gh/internal/git"
+	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
-var errUsage = errors.New("invalid command; run 'gt2gh --help' for usage")
+const (
+	linkTimeout       = 20 * time.Second
+	completionTimeout = 3 * time.Second
+)
 
-const usage = `Usage:
-  gt2gh link
+// New creates the root command. version is injected by main at build time.
+func New(version string, stdout, stderr io.Writer) *cobra.Command {
+	runner := subprocess.ExecRunner{}
+	service := link.Service{
+		Git:      localgit.Client{Runner: runner},
+		Graphite: graphite.Client{Runner: runner},
+		GitHub:   githubstack.Client{Runner: runner},
+	}
+	return NewWithService(version, stdout, stderr, service)
+}
 
-Commands:
-  link      Link a linear Graphite stack to GitHub (planned; no changes yet)
+// NewWithService creates the root command with injectable link dependencies.
+// It keeps unit tests offline while New wires the production subprocesses.
+func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
+	root := &cobra.Command{
+		Use:               "gt2gh",
+		Short:             "Bridge Graphite-managed stacks to GitHub native stacks",
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		Args:              cobra.NoArgs,
+		RunE:              func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+		Version:           version,
+		DisableAutoGenTag: true,
+	}
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.AddCommand(newLink(service))
+	root.AddCommand(newCompletion(root))
+	return root
+}
 
-Options:
-  -h, --help       Show this help message
-      --version    Show the version
-`
+func newLink(service link.Service) *cobra.Command {
+	var branch string
+	var apply bool
+	cmd := &cobra.Command{
+		Use:   "link",
+		Short: "Link a linear Graphite stack to GitHub (preview by default)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
+			defer cancel()
+			plan, err := service.Plan(ctx, branch)
+			if err != nil {
+				return err
+			}
+			writePreview(cmd.OutOrStdout(), plan)
+			if !apply {
+				fmt.Fprintln(cmd.OutOrStdout(), "Preview only: rerun with --apply to invoke gh stack link.")
+				return nil
+			}
+			if _, err := service.Apply(ctx, branch, plan); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Applied: gh stack link completed after revalidation.")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to link (defaults to current branch)")
+	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
+	_ = cmd.RegisterFlagCompletionFunc("branch", func(command *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
+		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
+		defer cancel()
+		branches, err := service.BranchCompletions(ctx, prefix)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
+		}
+		return branches, cobra.ShellCompDirectiveNoFileComp
+	})
+	return cmd
+}
 
-// Run parses args and writes command output to stdout. It deliberately does
-// not invoke gt or gh yet: the link workflow is only a safe placeholder.
-func Run(args []string, stdout io.Writer, version string) error {
-	switch len(args) {
-	case 0:
-		_, _ = io.WriteString(stdout, usage)
-		return nil
-	case 1:
+func writePreview(writer io.Writer, plan link.Plan) {
+	fmt.Fprintf(writer, "Resolved target (%s): %s\n", plan.TargetSource, plan.Target)
+	fmt.Fprintf(writer, "Declared Graphite trunk: %s\n", plan.Trunk)
+	fmt.Fprintf(writer, "Graphite path (bottom to top): %s\n", strings.Join(plan.Branches, " -> "))
+	if len(plan.PullRequests) == 0 {
+		fmt.Fprintln(writer, "GitHub PR inspection: no existing pull requests for this path; gh may create them on --apply.")
+	} else {
+		fmt.Fprintln(writer, "GitHub PR inspection:")
+		for _, pr := range plan.PullRequests {
+			fmt.Fprintf(writer, "  #%d %s (%s, base %s)\n", pr.Number, pr.Head, pr.State, pr.Base)
+		}
+	}
+	fmt.Fprintf(writer, "Proposed command: gh stack link --base %s %s\n", plan.Trunk, strings.Join(plan.Branches, " "))
+}
+
+func newCompletion(root *cobra.Command) *cobra.Command {
+	cmd := &cobra.Command{Use: "completion [bash|zsh|fish]", Short: "Generate shell completion scripts", Args: cobra.ExactArgs(1)}
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		switch args[0] {
-		case "-h", "--help", "help":
-			_, _ = io.WriteString(stdout, usage)
-			return nil
-		case "--version":
-			_, _ = fmt.Fprintln(stdout, version)
-			return nil
-		case "link":
-			_, _ = fmt.Fprintln(stdout, "gt2gh link is not implemented yet; no commands were run.")
-			return nil
+		case "bash":
+			return root.GenBashCompletion(cmd.OutOrStdout())
+		case "zsh":
+			return root.GenZshCompletion(cmd.OutOrStdout())
+		case "fish":
+			return root.GenFishCompletion(cmd.OutOrStdout(), true)
 		default:
-			return errUsage
+			return fmt.Errorf("unsupported shell %q (want bash, zsh, or fish)", args[0])
 		}
-	case 2:
-		if args[0] == "link" && (args[1] == "-h" || args[1] == "--help") {
-			_, _ = io.WriteString(stdout, "Usage: gt2gh link\n\nThis command is planned but not implemented yet.\n")
-			return nil
-		}
-		fallthrough
-	default:
-		return errUsage
+	}
+	return cmd
+}
+
+// Execute runs the root command with the process streams.
+func Execute(version string) {
+	root := New(version, os.Stdout, os.Stderr)
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
 	}
 }

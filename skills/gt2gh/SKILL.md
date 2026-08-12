@@ -13,20 +13,25 @@ description: |
 ## Work in this repository
 
 - Read `README.md` and `design-docs/initial-scope.md` before changing behavior.
-- Treat Graphite as authoritative. Preserve a discovered linear stack's
-  bottom-to-top order; do not manage, reorder, rebase, submit, or merge it.
-- Keep forked or tree-shaped stacks unsupported until their behavior has been
-  designed explicitly. Decline ambiguous stack shapes rather than guessing.
-- Do not claim that the current CLI links or synchronizes anything. Today,
-  bare `gt2gh` prints help and `gt2gh link` is a safe no-op placeholder.
+- Treat Graphite as authoritative. Preserve the selected declared-trunk-to-leaf
+  path in bottom-to-top order; do not manage, reorder, rebase, submit, or merge
+  Graphite branches. A selected branch may sit in a forked tree, but siblings
+  and descendants are not part of a v0.1 link.
+- `gt2gh link` previews by default. Its optional `--branch` target must work
+  without checkout; `--apply` is the only path that may invoke `gh stack link`.
+  Bare `gt2gh` prints help. `sync` remains design-only until v0.2.0 work begins.
+- Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
+  read Graphite internal metadata/configuration or use `gt --debug`: supported
+  production discovery is strict, version-pinned noninteractive CLI parsing.
 
 ## Develop and test
 
 - Keep external process calls behind `internal/subprocess.Runner`. Tests must
-  use fake `gt` and `gh` executables on `PATH`; never require credentials,
-  network access, or real CLI installations.
-- Add behavior only behind explicit subcommands and safety gates. Show the
-  resolved branch order before any future GitHub mutation.
+  use fake `gt` and `gh` executables on `PATH`, including captured supported
+  Graphite text fixtures; never require credentials, network access, or real
+  CLI installations.
+- Preserve the `completion bash|zsh|fish` interface. Dynamic `--branch`
+  completion must remain deterministic, read-only, and checkout-free.
 - Run `gofmt -w` on changed Go files and `go test ./...`. Use `go vet ./...`
   when changing Go code or preparing a release.
 - Use `git hunk` for any staging. Do not commit, tag, push, or invoke real

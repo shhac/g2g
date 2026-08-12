@@ -1,0 +1,42 @@
+◯ main
+│ 9 seconds ago
+│ 
+│ 612a36f - base
+│
+◯ alpha
+│ 8 seconds ago
+│ 
+│ 434de28 - alpha
+│
+├──┐
+│  ◯ beta
+│  │ 8 seconds ago
+│  │ 
+│  │ 4025e65 - beta
+│  │
+│  ├──┐
+│  │  ◯ beta-one
+│  │    8 seconds ago
+│  │    
+│  │    8b02262 - beta-one
+│  │   
+│  ◯ beta-two
+│  │ 8 seconds ago
+│  │ 
+│  │ c981666 - beta-two
+│  │
+│  ◯ beta-two-deep
+│    7 seconds ago
+│    
+│    768e41b - beta-two-deep
+│   
+◯ gamma
+│ 7 seconds ago
+│ 
+│ de894de - gamma
+│
+◉ gamma-deep (current)
+  7 seconds ago
+  
+  30cb120 - gamma-deep
+ 

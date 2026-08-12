@@ -1,0 +1,4 @@
+◯  trunk
+◯─┬─┐  foundation
+│ │ ◯    synthetic-worktree-sibling (needs restack) (synthetic worktree)
+│ ◉      synthetic-selected (synthetic worktree)

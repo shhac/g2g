@@ -56,22 +56,46 @@ func TestParseLogTracksNeedsRestackBranch(t *testing.T) {
 	}
 }
 
-func TestParseLogIgnoresSecondaryRestackAnnotationOutsideSelectedPath(t *testing.T) {
-	parsed := parseFixture(t, "restack-annotation-stack.txt")
-	if got, want := strings.Join(pathToRoot(t, parsed, "synthetic-selected"), ","), "trunk,foundation,synthetic-selected"; got != want {
-		t.Errorf("selected path = %q, want %q", got, want)
-	}
-	if _, exists := parsed.nodes["synthetic-sibling"]; !exists {
-		t.Error("missing sibling with restack annotation")
+func TestParseLogAcceptsKnownBranchLabelSuffixes(t *testing.T) {
+	for label, want := range map[string]string{
+		"synthetic-branch":                                      "synthetic-branch",
+		"synthetic-branch (current)":                            "synthetic-branch",
+		"synthetic-branch (needs restack)":                      "synthetic-branch",
+		"synthetic-branch (synthetic worktree)":                 "synthetic-branch",
+		"synthetic-branch (needs restack) (synthetic worktree)": "synthetic-branch",
+	} {
+		t.Run(label, func(t *testing.T) {
+			parsed, err := parseLog("◯  trunk\n◯  " + label + "\n")
+			if err != nil {
+				t.Fatalf("parseLog() error = %v", err)
+			}
+			if _, exists := parsed.nodes[want]; !exists {
+				t.Errorf("missing branch %q", want)
+			}
+		})
 	}
 }
 
-func TestParseLogRejectsUnknownBranchStatus(t *testing.T) {
+func TestParseLogKeepsWorktreeAnnotatedSiblingOutsideSelectedPath(t *testing.T) {
+	parsed := parseFixture(t, "worktree-annotation-stack.txt")
+	if got, want := strings.Join(pathToRoot(t, parsed, "synthetic-selected"), ","), "trunk,foundation,synthetic-selected"; got != want {
+		t.Errorf("selected path = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(pathToRoot(t, parsed, "synthetic-worktree-sibling"), ","), "trunk,foundation,synthetic-worktree-sibling"; got != want {
+		t.Errorf("sibling path = %q, want %q", got, want)
+	}
+}
+
+func TestParseLogRejectsMalformedBranchLabelSuffixes(t *testing.T) {
 	for _, label := range []string{
-		"synthetic-feature (synthetic status)",
 		"synthetic-feature (synthetic annotation) (needs restack)",
 		"synthetic-feature (needs restack) (synthetic annotation) (another annotation)",
 		"synthetic-feature (needs restack) (current)",
+		"synthetic-feature (current) (needs restack)",
+		"synthetic-feature (current) (synthetic worktree)",
+		"synthetic-feature (needs restack) (nested (annotation))",
+		"synthetic-feature ()",
+		"synthetic-feature (needs restack) (needs restack)",
 	} {
 		t.Run(label, func(t *testing.T) {
 			_, err := parseLog("◯  trunk\n◯  " + label + "\n")

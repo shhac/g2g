@@ -103,8 +103,8 @@ exit 9`,
 	}
 }
 
-func TestClientDiscoversPathAlongsideAnnotatedRestackSibling(t *testing.T) {
-	fixture, err := os.ReadFile(filepath.Join("testdata", "restack-annotation-stack.txt"))
+func TestClientDiscoversPathAlongsideWorktreeAnnotatedSibling(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "worktree-annotation-stack.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}

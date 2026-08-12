@@ -159,14 +159,9 @@ func parseBranchLabel(label string) (string, bool) {
 	case 0:
 		return base, true
 	case 1:
-		return base, markers[0] == "current" || markers[0] == "needs restack"
+		return base, markers[0] == "current" || markers[0] == "needs restack" || isOpaqueWorktreeAnnotation(markers[0])
 	case 2:
-		if markers[0] == "current" && markers[1] == "needs restack" {
-			return base, true
-		}
-		return base, markers[0] == "needs restack" && isOpaqueRestackAnnotation(markers[1])
-	case 3:
-		return base, markers[0] == "current" && markers[1] == "needs restack" && isOpaqueRestackAnnotation(markers[2])
+		return base, markers[0] == "needs restack" && isOpaqueWorktreeAnnotation(markers[1])
 	default:
 		return "", false
 	}
@@ -192,7 +187,7 @@ func splitLabelMarkers(label string) (string, []string, bool) {
 	return label, reversed, true
 }
 
-func isOpaqueRestackAnnotation(marker string) bool {
+func isOpaqueWorktreeAnnotation(marker string) bool {
 	return marker != "current" && marker != "needs restack"
 }
 

@@ -1,3 +1,3 @@
 ◯  trunk
 ◯  foundation
-◉  synthetic-feature (current) (needs restack)
+◉  synthetic-feature (needs restack)

@@ -16,34 +16,30 @@ gt --version
 It then runs exactly:
 
 ```text
-gt log --all --reverse --no-interactive
+gt log short --all --reverse --no-interactive
 ```
 
-The fixture at
+The fully synthetic fixture at
 [`internal/graphite/testdata/irregular-stack.txt`](../internal/graphite/testdata/irregular-stack.txt)
-was captured from an isolated disposable Git repository tracked with Graphite
-1.8.6. It includes unequal sibling paths and a nested fork. No user repository,
-Graphite submission, PR creation, or Graphite API mutation was involved.
+models the compact 1.8.6 tree grammar with unequal sibling paths, a repeated
+connector, and a nested fork. It contains no user repository data. Tests use
+only fake executables on `PATH`.
 
 ## Accepted grammar
 
-The parser accepts an ordered sequence of branch records. Each record is:
+The parser accepts an ordered sequence of compact branch rows. Each row has a
+tree prefix made of `│ ` or `  ` groups, followed by `◯` or `◉`, an even run of
+at least two spaces, and a nonempty branch name with optional ` (current)`. The
+spaces are visual label padding. A row may put a connector between the node glyph
+and its name padding: `─┐` opens one child lane, and `─┬─…┬─┐` opens exactly its
+number of visual child lanes. One empty separator line may appear only between
+rows that do not open a connector.
 
-1. a tree-guide prefix made of `│  ` or `   ` groups, followed by `◯ ` or `◉ `,
-   a nonempty branch name, and optional ` (current)`;
-2. a graph-prefixed relative-time line;
-3. a graph-only blank line;
-4. a graph-prefixed abbreviated lowercase commit hash, ` - `, and title;
-5. a graph-only connector line.
-
-One unprefixed empty separator line may appear between complete branch records.
-Leading, consecutive, terminal, or fork-adjacent separators are rejected.
-
-Between records, only `├──┐` or `└──┐` fork markers with the same graph prefix
-are accepted. An increased depth must immediately follow its marker. Traversal
-depth reconstructs a selected branch's parent chain; sibling and descendant
-paths are excluded from the returned link path. The first depth-zero record is
-the declared Graphite trunk for this pinned display contract.
+The next deeper row must occupy the exact lane opened by its preceding
+connector. Equal-depth rows extend a branch; shallower rows attach to the node
+that opened that lane. Traversal reconstructs only the selected branch's
+declared-trunk-to-leaf ancestry, excluding siblings and descendants. The first
+depth-zero row is the declared Graphite trunk for this pinned display contract.
 
 Any different version, unclassified line, duplicate branch, malformed record,
 or inconsistent fork/depth transition is an error. The parser tests mutate each

@@ -92,9 +92,9 @@ func (c Client) read(ctx context.Context) (graph, error) {
 		return graph{}, fmt.Errorf("unsupported Graphite CLI version %q; gt2gh supports display grammar from %s only", got, SupportedVersion)
 	}
 
-	output, err := c.Runner.Run(ctx, "gt", "log", "--all", "--reverse", "--no-interactive")
+	output, err := c.Runner.Run(ctx, "gt", "log", "short", "--all", "--reverse", "--no-interactive")
 	if err != nil {
-		return graph{}, commandError("gt log --all --reverse --no-interactive", err, output)
+		return graph{}, commandError("gt log short --all --reverse --no-interactive", err, output)
 	}
 	return parseLog(string(output))
 }

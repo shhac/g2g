@@ -29,25 +29,25 @@ func TestClientUsesSupportedReadOnlyCommands(t *testing.T) {
   exit 0
 fi
 printf '%s\n' "$*" >> "$GT_ARGUMENTS"
-if [ "$*" = "log --all --reverse --no-interactive" ]; then
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then
   cat "$GT_FIXTURE"
   exit 0
 fi
 exit 9`,
 	})
 
-	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(context.Background(), "beta-two-deep")
+	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(context.Background(), "beta-side")
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if got, want := strings.Join(stack.Branches, ","), "alpha,beta,beta-two,beta-two-deep"; got != want {
+	if got, want := strings.Join(stack.Branches, ","), "alpha,beta,beta-top,beta-side"; got != want {
 		t.Errorf("branches = %q, want %q", got, want)
 	}
 	called, err := os.ReadFile(arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(called), "log --all --reverse --no-interactive\n"; got != want {
+	if got, want := string(called), "log short --all --reverse --no-interactive\n"; got != want {
 		t.Errorf("gt calls = %q, want %q", got, want)
 	}
 }

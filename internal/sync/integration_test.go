@@ -34,7 +34,7 @@ func TestProductionAdaptersPreviewAndApplyWithPathFakes(t *testing.T) {
 		"git": `printf 'git %s\n' "$*" >> "$CLI_ARGUMENTS"
 case "$1 $2" in
   "branch --show-current") printf 'gamma-deep\n' ;;
-  "branch --format=%(refname:short)") printf '%s\n' main alpha beta beta-one beta-two beta-two-deep gamma gamma-deep ;;
+  "branch --format=%(refname:short)") printf '%s\n' main alpha beta beta-top beta-side gamma gamma-deep delta delta-deep epsilon epsilon-deep ;;
   "status --porcelain") ;;
   *) exit 9 ;;
 esac`,

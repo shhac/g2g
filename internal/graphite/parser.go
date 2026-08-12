@@ -3,14 +3,7 @@ package graphite
 import (
 	"bufio"
 	"fmt"
-	"regexp"
 	"strings"
-)
-
-var (
-	timeLine   = regexp.MustCompile(`^[│ ]*(?:[0-9]+ (?:seconds?|minutes?|hours?|days?|weeks?|months?|years?) ago|just now|now)$`)
-	commitLine = regexp.MustCompile(`^[│ ]*[0-9a-f]{7,40} - .+$`)
-	guideLine  = regexp.MustCompile(`^[│ ]*$`)
 )
 
 type graph struct {
@@ -26,22 +19,16 @@ type node struct {
 type record struct {
 	name  string
 	depth int
+	span  int
 	line  int
 }
 
-type event struct {
-	fork   *record
-	record *record
-}
-
-// parseLog accepts exactly the Graphite 1.8.6 output emitted by:
+// parseLog accepts exactly the compact Graphite 1.8.6 output emitted by:
 //
-//	gt log --all --reverse --no-interactive
+//	gt log short --all --reverse --no-interactive
 //
-// The fixture grammar is intentionally small: each branch record is a graph
-// heading followed by time, blank, abbreviated-commit, and guide lines. One
-// empty separator line may appear between complete records. Fork markers must
-// precede an increased graph depth. Any other syntax is drift.
+// Each nonempty line is one branch node, optionally followed by a connector
+// that opens visual lanes for children. Any other syntax is display drift.
 func parseLog(output string) (graph, error) {
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(output))
@@ -55,98 +42,55 @@ func parseLog(output string) (graph, error) {
 		return graph{}, fmt.Errorf("Graphite display is empty")
 	}
 
-	events, err := parseEvents(lines)
-	if err != nil {
-		return graph{}, err
-	}
-	return buildGraph(events)
-}
-
-func parseEvents(lines []string) ([]event, error) {
-	var events []event
+	var records []record
 	separator := false
-	for index := 0; index < len(lines); {
-		if lines[index] == "" {
-			if separator || len(events) == 0 || events[len(events)-1].record == nil || index == len(lines)-1 {
-				return nil, drift(index+1, lines[index])
+	for index, line := range lines {
+		if line == "" {
+			if separator || len(records) == 0 || index == len(lines)-1 || records[len(records)-1].span != 0 {
+				return graph{}, drift(index+1, line)
 			}
 			separator = true
-			index++
 			continue
 		}
-		if depth, ok := parseForkMarker(lines[index]); ok {
-			if separator {
-				return nil, drift(index+1, lines[index])
-			}
-			fork := record{depth: depth, line: index + 1}
-			events = append(events, event{fork: &fork})
-			index++
-			continue
+		record, ok := parseRecord(line, index+1)
+		if !ok {
+			return graph{}, drift(index+1, line)
 		}
-		record, err := parseRecord(lines, index)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event{record: &record})
+		records = append(records, record)
 		separator = false
-		index += 5
 	}
-	return events, nil
+	return buildGraph(records)
 }
 
-func parseRecord(lines []string, index int) (record, error) {
-	if index+4 >= len(lines) {
-		return record{}, drift(index+1, lines[index])
-	}
-	name, depth, ok := parseHeading(lines[index])
-	if !ok || !timeLine.MatchString(lines[index+1]) || !guideLine.MatchString(lines[index+2]) || !commitLine.MatchString(lines[index+3]) || !guideLine.MatchString(lines[index+4]) {
-		return record{}, drift(index+1, lines[index])
-	}
-	return record{name: name, depth: depth, line: index + 1}, nil
-}
-
-func buildGraph(events []event) (graph, error) {
+func buildGraph(records []record) (graph, error) {
 	result := graph{nodes: make(map[string]node)}
-	var previous *record
 	lastAtDepth := make(map[int]string)
-	markerDepth := -1
+	var previous *record
 
-	for _, event := range events {
-		if event.fork != nil {
-			depth := event.fork.depth
-			if previous == nil || markerDepth >= 0 {
-				return graph{}, drift(event.fork.line, "fork marker")
-			}
-			if depth != previous.depth {
-				return graph{}, drift(event.fork.line, "fork marker")
-			}
-			markerDepth = depth
-			continue
-		}
-		current := *event.record
+	for _, current := range records {
 		if _, exists := result.nodes[current.name]; exists {
 			return graph{}, fmt.Errorf("Graphite display repeats branch %q", current.name)
 		}
-
 		if previous == nil {
-			if current.depth != 0 || markerDepth >= 0 {
+			if current.depth != 0 {
 				return graph{}, drift(current.line, current.name)
 			}
 			result.trunk = current.name
+			result.nodes[current.name] = node{name: current.name}
 		} else {
 			switch {
 			case current.depth > previous.depth:
-				if current.depth != previous.depth+1 || markerDepth != previous.depth {
+				if previous.span == 0 || current.depth != previous.depth+previous.span {
 					return graph{}, drift(current.line, current.name)
 				}
 				result.nodes[current.name] = node{name: current.name, parent: previous.name}
 			case current.depth == previous.depth:
-				if markerDepth >= 0 {
+				if previous.span != 0 {
 					return graph{}, drift(current.line, current.name)
 				}
 				result.nodes[current.name] = node{name: current.name, parent: previous.name}
 			case current.depth < previous.depth:
-				if markerDepth >= 0 {
+				if previous.span != 0 {
 					return graph{}, drift(current.line, current.name)
 				}
 				parent, exists := lastAtDepth[current.depth]
@@ -156,50 +100,57 @@ func buildGraph(events []event) (graph, error) {
 				result.nodes[current.name] = node{name: current.name, parent: parent}
 			}
 		}
-		markerDepth = -1
-		if previous == nil {
-			result.nodes[current.name] = node{name: current.name}
-		}
 		lastAtDepth[current.depth] = current.name
+		for depth := current.depth + 1; depth <= current.depth+current.span; depth++ {
+			lastAtDepth[depth] = current.name
+		}
 		previous = &current
 	}
-	if markerDepth >= 0 {
-		return graph{}, fmt.Errorf("Graphite display ends after a fork marker")
+	if previous.span != 0 {
+		return graph{}, fmt.Errorf("Graphite display ends after a fork connector")
 	}
 	return result, nil
 }
 
-func parseHeading(line string) (string, int, bool) {
+func parseRecord(line string, lineNumber int) (record, bool) {
 	remainder, depth := trimGraphPrefix(line)
-	var name string
-	switch {
-	case strings.HasPrefix(remainder, "◯ "):
-		name = strings.TrimPrefix(remainder, "◯ ")
-	case strings.HasPrefix(remainder, "◉ "):
-		name = strings.TrimPrefix(remainder, "◉ ")
-	default:
-		return "", 0, false
+	if !strings.HasPrefix(remainder, "◯") && !strings.HasPrefix(remainder, "◉") {
+		return record{}, false
 	}
+	remainder = remainder[len("◯"):]
+	span := 0
+	if strings.HasPrefix(remainder, "─") {
+		span = 1
+		remainder = strings.TrimPrefix(remainder, "─")
+		for strings.HasPrefix(remainder, "┬─") {
+			span++
+			remainder = strings.TrimPrefix(remainder, "┬─")
+		}
+		if !strings.HasPrefix(remainder, "┐") {
+			return record{}, false
+		}
+		remainder = strings.TrimPrefix(remainder, "┐")
+	}
+	padding := len(remainder) - len(strings.TrimLeft(remainder, " "))
+	if padding < 2 || padding%2 != 0 {
+		return record{}, false
+	}
+	name := remainder[padding:]
 	name = strings.TrimSuffix(name, " (current)")
 	if name == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, "\t\r\n") {
-		return "", 0, false
+		return record{}, false
 	}
-	return name, depth, true
-}
-
-func parseForkMarker(line string) (int, bool) {
-	remainder, depth := trimGraphPrefix(line)
-	return depth, remainder == "├──┐" || remainder == "└──┐"
+	return record{name: name, depth: depth, span: span, line: lineNumber}, true
 }
 
 func trimGraphPrefix(line string) (string, int) {
 	depth := 0
 	for {
 		switch {
-		case strings.HasPrefix(line, "│  "):
-			line = strings.TrimPrefix(line, "│  ")
-		case strings.HasPrefix(line, "   "):
-			line = strings.TrimPrefix(line, "   ")
+		case strings.HasPrefix(line, "│ "):
+			line = strings.TrimPrefix(line, "│ ")
+		case strings.HasPrefix(line, "  "):
+			line = strings.TrimPrefix(line, "  ")
 		default:
 			return line, depth
 		}

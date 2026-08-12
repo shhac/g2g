@@ -19,7 +19,8 @@ g2g link
 
 The `link` command is a safe preview by default. It resolves the checked-out Git
 branch as its target, reads the Graphite path from its declared trunk to that
-target, and inspects matching GitHub pull requests. When at least two
+target, and inspects matching GitHub pull requests. Its concise output shows a
+target, one self-describing graph, and a command only when valid. When at least two
 PR-backed branches need linking, it prints the exact proposed bottom-to-top
 command. A one-PR path is a successful no-op: it prints `Nothing to link` and
 never constructs an invalid `gh stack link` command. Preview clearly states
@@ -65,8 +66,10 @@ to re-resolve anything.
 
 Color is enabled only for an interactive terminal. It is disabled for redirected
 output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
-for scripts. The renderer keeps plan data separate from ANSI decoration, leaving
-room for a future structured format without scraping terminal text.
+for scripts. In color output, headers, trunks, branches, PR numbers, unresolved
+state, and success use distinct restrained roles; the renderer keeps plan data
+separate from ANSI decoration, leaving room for a future structured format
+without scraping terminal text.
 
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by

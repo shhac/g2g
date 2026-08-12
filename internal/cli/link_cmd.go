@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
 )
 
@@ -85,10 +87,10 @@ func writeReadyToApply(writer io.Writer, plan link.Plan, presentation Presentati
 
 func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) error {
 	preview := newLinkPreview(plan)
-	if _, err := fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", preview.TargetSource)), preview.Target); err != nil {
+	if _, err := fmt.Fprintf(writer, "%s: %s\n", presentation.accent("Target"), presentation.branch(preview.Target)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(writer, presentation.accent("Link stack (bottom to top):")); err != nil {
+	if _, err := fmt.Fprintln(writer); err != nil {
 		return err
 	}
 	for index, node := range preview.Nodes {
@@ -98,13 +100,16 @@ func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) 
 			}
 			continue
 		}
-		label := fmt.Sprintf("%s (#%d)", node.Branch, node.PRNumber)
+		label := presentation.branch(node.Branch) + " (" + presentation.pr(fmt.Sprintf("#%d", node.PRNumber)) + ")"
 		if node.Unresolved != "" {
-			label = fmt.Sprintf("%s (unresolved: %s)", node.Branch, node.Unresolved)
+			label = presentation.branch(node.Branch) + " " + presentation.problem(fmt.Sprintf("(unresolved: %s)", node.Unresolved))
 		}
-		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), presentation.accent(label)); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), label); err != nil {
 			return err
 		}
+	}
+	if _, err := fmt.Fprintln(writer); err != nil {
+		return err
 	}
 	if preview.NothingToLink {
 		if _, err := fmt.Fprintln(writer, "Nothing to link — this stack has one pull request."); err != nil {
@@ -116,7 +121,7 @@ func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) 
 		}
 	}
 	if preview.ApplyBlocked {
-		if _, err := fmt.Fprintln(writer, "Apply blocked: resolve every unresolved GitHub PR mapping first."); err != nil {
+		if _, err := fmt.Fprintln(writer, presentation.problem("Apply blocked: resolve every unresolved GitHub PR mapping first.")); err != nil {
 			return err
 		}
 	}
@@ -132,7 +137,31 @@ func writeCommand(writer io.Writer, command string, presentation Presentation) e
 }
 
 func writeNotApplied(writer io.Writer, presentation Presentation, err error) {
-	fmt.Fprintln(writer, presentation.accent("Not applied")+": "+err.Error())
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, presentation.problem("Not applied"))
+
+	summary := err.Error()
+	var commandErr *githubstack.CommandError
+	if errors.As(err, &commandErr) {
+		summary = commandErr.Summary()
+	}
+	fmt.Fprintln(writer, summary)
+
+	if diagnostic := commandDiagnostic(err); diagnostic != "" {
+		fmt.Fprintln(writer)
+		fmt.Fprintln(writer, presentation.subdued("Diagnostic:"))
+		for _, line := range strings.Split(diagnostic, "\n") {
+			fmt.Fprintln(writer, presentation.subdued("  "+line))
+		}
+	}
+}
+
+func commandDiagnostic(err error) string {
+	var commandErr *githubstack.CommandError
+	if errors.As(err, &commandErr) {
+		return commandErr.Diagnostic()
+	}
+	return ""
 }
 
 type outputFlusher interface{ Flush() error }

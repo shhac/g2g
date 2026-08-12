@@ -2,6 +2,7 @@ package githubstack
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,5 +70,24 @@ func TestParsePullRequestsRejectsInvalidNode(t *testing.T) {
 func TestBoundedMessage(t *testing.T) {
 	if got := boundedMessage(strings.Repeat("x", 501)); !strings.HasSuffix(got, "…") || len(got) != 503 {
 		t.Errorf("boundedMessage() = %q", got)
+	}
+}
+
+func TestClientLinkSeparatesSummaryFromSyntheticDiagnostic(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gh": `printf '%s\n' '! [rejected] synthetic-a -> synthetic-a (non-fast-forward)' >&2
+printf '%s\n' 'error: failed to push synthetic refs' >&2
+exit 1`,
+	})
+	err := (Client{Runner: subprocess.ExecRunner{}}).Link(context.Background(), "main", []string{"alpha", "beta"})
+	var commandErr *CommandError
+	if !errors.As(err, &commandErr) {
+		t.Fatalf("Link() error = %v, want CommandError", err)
+	}
+	if got, want := commandErr.Summary(), "gh stack link failed."; got != want {
+		t.Errorf("summary = %q, want %q", got, want)
+	}
+	if got, want := commandErr.Diagnostic(), "! [rejected] synthetic-a -> synthetic-a (non-fast-forward)\nerror: failed to push synthetic refs"; got != want {
+		t.Errorf("diagnostic = %q, want %q", got, want)
 	}
 }

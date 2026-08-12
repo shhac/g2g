@@ -27,6 +27,24 @@ type Client struct {
 	Runner subprocess.Runner
 }
 
+// CommandError separates a terse external-command summary from its bounded
+// diagnostic output so callers can present each once in an appropriate place.
+type CommandError struct {
+	Command string
+	Cause   error
+	Output  string
+}
+
+func (e *CommandError) Error() string { return e.Command + " failed: " + e.Cause.Error() }
+func (e *CommandError) Unwrap() error { return e.Cause }
+func (e *CommandError) Summary() string {
+	if strings.HasPrefix(e.Command, "gh stack link ") {
+		return "gh stack link failed."
+	}
+	return e.Command + " failed."
+}
+func (e *CommandError) Diagnostic() string { return boundedMessage(e.Output) }
+
 func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, error) {
 	if c.Runner == nil {
 		return nil, fmt.Errorf("GitHub runner is not configured")
@@ -112,11 +130,7 @@ func (c Client) Link(ctx context.Context, trunk string, branches []string) error
 }
 
 func commandError(command string, err error, output []byte) error {
-	message := boundedMessage(string(output))
-	if message == "" {
-		return fmt.Errorf("%s failed: %w", command, err)
-	}
-	return fmt.Errorf("%s failed: %w (%s)", command, err, message)
+	return &CommandError{Command: command, Cause: err, Output: string(output)}
 }
 
 func boundedMessage(message string) string {

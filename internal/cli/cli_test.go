@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -98,7 +99,7 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	for _, expected := range []string{
-		"Resolved target (--branch): beta",
+		"Target: beta",
 		"main (trunk)", "alpha (#1)", "beta (#2)",
 		"Command to run\ngh stack link --base main alpha beta",
 		"No changes were made.",
@@ -125,6 +126,47 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 		if !strings.Contains(output.String(), test.want) || strings.Count(output.String(), "main (trunk)") != 1 || strings.Count(output.String(), "gh stack link --base main alpha beta") != 1 {
 			t.Errorf("preview = %q", output.String())
 		}
+	}
+}
+
+func TestLinkPlanSnapshots(t *testing.T) {
+	resolved := link.Plan{
+		Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"},
+		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}},
+	}
+	unresolved := resolved
+	unresolved.Issues = []link.Issue{{Branch: "beta", Reason: "no open pull request"}}
+	for _, test := range []struct {
+		name         string
+		plan         link.Plan
+		presentation Presentation
+		want         string
+	}{
+		{
+			name: "plain resolved", plan: resolved,
+			want: "Target: beta\n\n  main (trunk)\n  └─ alpha (#1)\n    └─ beta (#2)\n\nCommand to run\ngh stack link --base main alpha beta\n",
+		},
+		{
+			name: "color resolved", plan: resolved, presentation: Presentation{Color: true},
+			want: "\x1b[1;36mTarget\x1b[0m: \x1b[1;37mbeta\x1b[0m\n\n  \x1b[1;33mmain (trunk)\x1b[0m\n  └─ \x1b[1;37malpha\x1b[0m (\x1b[35m#1\x1b[0m)\n    └─ \x1b[1;37mbeta\x1b[0m (\x1b[35m#2\x1b[0m)\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgh stack link --base main alpha beta\x1b[0m\n",
+		},
+		{
+			name: "plain unresolved", plan: unresolved,
+			want: "Target: beta\n\n  main (trunk)\n  └─ alpha (#1)\n    └─ beta (unresolved: no open pull request)\n\nCommand to run\ngh stack link --base main alpha beta\nApply blocked: resolve every unresolved GitHub PR mapping first.\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := writeLinkPlan(&output, test.plan, test.presentation); err != nil {
+				t.Fatal(err)
+			}
+			if got := output.String(); got != test.want {
+				t.Errorf("snapshot = %q, want %q", got, test.want)
+			}
+			if strings.Contains(output.String(), "Link stack") || strings.Contains(output.String(), "bottom to top") || strings.Contains(output.String(), "current Git branch") {
+				t.Errorf("snapshot has redundant leader: %q", output.String())
+			}
+		})
 	}
 }
 
@@ -168,8 +210,8 @@ func TestLinkPreviewReportsNothingToLinkForOnePullRequest(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "current branch", args: []string{"link"}, want: "Resolved target (current Git branch): alpha"},
-		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Resolved target (--branch): alpha"},
+		{name: "current branch", args: []string{"link"}, want: "Target: alpha"},
+		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Target: alpha"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHub{}
@@ -195,7 +237,7 @@ func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "Resolved target (current Git branch): beta") {
+	if !strings.Contains(output, "Target: beta") {
 		t.Errorf("output = %q", output)
 	}
 	if github.links != 0 {
@@ -325,7 +367,7 @@ func TestLinkApplyDoesNotRenderReadyPlanWhenRevalidationIsCanceled(t *testing.T)
 		t.Fatal("Execute() error = nil")
 	}
 	output := writer.String()
-	if strings.Contains(output, "Ready to apply") || strings.Contains(output, "Applied —") || eventIndex(events, "flush") >= 0 || eventIndex(events, "link") >= 0 || !strings.Contains(output, "Not applied: context canceled") {
+	if strings.Contains(output, "Ready to apply") || strings.Contains(output, "Applied —") || eventIndex(events, "flush") >= 0 || eventIndex(events, "link") >= 0 || !strings.Contains(output, "Not applied\ncontext canceled") {
 		t.Errorf("events = %v output = %q", events, output)
 	}
 }
@@ -341,11 +383,37 @@ func TestLinkApplyReportsCancellationWithoutSuccess(t *testing.T) {
 		t.Fatal("Execute() error = nil")
 	}
 	output := writer.String()
-	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Not applied: context canceled") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
+	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Not applied\ncontext canceled") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
 		t.Errorf("output = %q", output)
 	}
 	if flush, link := eventIndex(events, "flush"), eventIndex(events, "link"); flush < 0 || link < 0 || flush > link {
 		t.Errorf("events = %v, want flush before link", events)
+	}
+}
+
+func TestLinkApplyFailureOutputUsesOneBoundedDiagnosticBlock(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		diagnostic string
+	}{
+		{name: "non-fast-forward", diagnostic: "! [rejected] synthetic-a -> synthetic-a (non-fast-forward)\nerror: failed to push synthetic refs"},
+		{name: "generic", diagnostic: "synthetic gh stack failure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := &cliGitHub{linkErr: &githubstack.CommandError{Command: "gh stack link --base main alpha beta", Cause: errors.New("exit status 1"), Output: test.diagnostic}}
+			output, err := executeWithService(t, cliService(github), "link", "--apply")
+			if err == nil {
+				t.Fatal("Execute() error = nil")
+			}
+			if !strings.Contains(output, "\n\nNot applied\ngh stack link failed.\n\nDiagnostic:\n") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
+				t.Errorf("output = %q", output)
+			}
+			for _, line := range strings.Split(test.diagnostic, "\n") {
+				if strings.Count(output, line) != 1 {
+					t.Errorf("diagnostic line %q appears %d times in %q", line, strings.Count(output, line), output)
+				}
+			}
+		})
 	}
 }
 
@@ -358,7 +426,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
 	}
-	if eventIndex(events, "link") >= 0 || !strings.Contains(writer.String(), "Not applied: flush ready-to-apply output") {
+	if eventIndex(events, "link") >= 0 || !strings.Contains(writer.String(), "Not applied\nflush ready-to-apply output") {
 		t.Errorf("events = %v output = %q", events, writer.String())
 	}
 }

@@ -49,6 +49,20 @@ func TestParseLogKeepsMultipleTrunksSeparate(t *testing.T) {
 	}
 }
 
+func TestParseLogTracksNeedsRestackBranch(t *testing.T) {
+	parsed := parseFixture(t, "needs-restack-stack.txt")
+	if got, want := strings.Join(pathToRoot(t, parsed, "synthetic-feature"), ","), "trunk,foundation,synthetic-feature"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+}
+
+func TestParseLogRejectsUnknownBranchStatus(t *testing.T) {
+	_, err := parseLog("◯  trunk\n◯  synthetic-feature (synthetic status)\n")
+	if err == nil || !strings.Contains(err.Error(), "unsupported Graphite display grammar") {
+		t.Fatalf("parseLog() error = %v, want grammar drift", err)
+	}
+}
+
 func TestParseLogRejectsCompactGrammarDrift(t *testing.T) {
 	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
 	if err != nil {

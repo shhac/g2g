@@ -140,12 +140,42 @@ func parseRecord(line string, lineNumber int) (record, bool) {
 	if padding < 2 || padding%2 != 0 {
 		return record{}, false
 	}
-	name := remainder[padding:]
-	name = strings.TrimSuffix(name, " (current)")
-	if name == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, "\t\r\n") {
+	name, ok := parseBranchLabel(remainder[padding:])
+	if !ok {
 		return record{}, false
 	}
 	return record{name: name, depth: depth, span: span, line: lineNumber}, true
+}
+
+func parseBranchLabel(label string) (string, bool) {
+	seenCurrent := false
+	seenNeedsRestack := false
+	for strings.HasSuffix(label, ")") {
+		index := strings.LastIndex(label, " (")
+		if index < 0 {
+			break
+		}
+		marker := label[index:]
+		switch marker {
+		case " (current)":
+			if seenCurrent {
+				return "", false
+			}
+			seenCurrent = true
+		case " (needs restack)":
+			if seenNeedsRestack {
+				return "", false
+			}
+			seenNeedsRestack = true
+		default:
+			return "", false
+		}
+		label = label[:index]
+	}
+	if label == "" || strings.TrimSpace(label) != label || strings.ContainsAny(label, "\t\r\n") {
+		return "", false
+	}
+	return label, true
 }
 
 func trimGraphPrefix(line string) (string, int) {

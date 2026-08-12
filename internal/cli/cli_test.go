@@ -99,10 +99,9 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"Resolved target (--branch): beta",
-		"Resolved Graphite trunk (Graphite-declared ancestry): main",
-		"Graphite path (bottom to top): alpha -> beta",
+		"main (trunk)", "alpha (#1)", "beta (#2)",
 		"Proposed command: gh stack link --base main alpha beta",
-		"Preview only",
+		"No changes were made.",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("preview missing %q:\n%s", expected, output)
@@ -110,6 +109,20 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	}
 	if github.links != 0 {
 		t.Errorf("Link calls = %d, want 0", github.links)
+	}
+}
+
+func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
+	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}
+	for _, test := range []struct {
+		color bool
+		want  string
+	}{{false, "  main (trunk)\n  └─ alpha (#1)\n    └─ beta (#2)"}, {true, "\x1b[1;33mmain (trunk)\x1b[0m"}} {
+		var output bytes.Buffer
+		writePreview(&output, plan, Presentation{Color: test.color})
+		if !strings.Contains(output.String(), test.want) || strings.Count(output.String(), "main (trunk)") != 1 || strings.Count(output.String(), "gh stack link --base main alpha beta") != 1 {
+			t.Errorf("preview = %q", output.String())
+		}
 	}
 }
 
@@ -172,7 +185,7 @@ func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, expected := range []string{"Resolved target (current Git branch): beta", "beta: divergent (PR #2 base main, want alpha)", "Preview only"} {
+	for _, expected := range []string{"Resolved target (current Git branch): beta", "beta: divergent (PR #2 base main, want alpha)", "No changes were made."} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("preview missing %q:\n%s", expected, output)
 		}

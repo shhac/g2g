@@ -56,6 +56,9 @@ func NewWithServices(version string, stdout, stderr io.Writer, service link.Serv
 }
 
 func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
+	return newWithPresentation(version, commandName, stdout, stderr, service, syncService, detectPresentation(stdout))
+}
+func newWithPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, presentation Presentation) *cobra.Command {
 	if commandName == "" {
 		commandName = "gt2gh"
 	}
@@ -71,13 +74,13 @@ func newWithServices(version, commandName string, stdout, stderr io.Writer, serv
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
-	root.AddCommand(newLink(service))
-	root.AddCommand(newSync(syncService, service))
+	root.AddCommand(newLink(service, presentation))
+	root.AddCommand(newSync(syncService, service, presentation))
 	root.AddCommand(newCompletion(root))
 	return root
 }
 
-func newLink(service link.Service) *cobra.Command {
+func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	var branch string
 	var trunk string
 	var apply bool
@@ -92,15 +95,15 @@ func newLink(service link.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			writePreview(cmd.OutOrStdout(), plan)
+			writePreview(cmd.OutOrStdout(), plan, presentation)
 			if !apply {
-				fmt.Fprintln(cmd.OutOrStdout(), "Preview only: rerun with --apply to invoke gh stack link.")
+				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link; copying the displayed command is your deliberate snapshot choice.")
 				return nil
 			}
 			if _, err := service.ApplyWithTrunk(ctx, branch, trunk, plan); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Applied: gh stack link completed after revalidation.")
+			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied:")+" gh stack link completed after revalidation.")
 			return nil
 		},
 	}
@@ -128,11 +131,18 @@ func newLink(service link.Service) *cobra.Command {
 	return cmd
 }
 
-func writePreview(writer io.Writer, plan link.Plan) {
-	fmt.Fprintf(writer, "Resolved target (%s): %s\n", plan.TargetSource, plan.Target)
-	fmt.Fprintf(writer, "Resolved Graphite trunk (%s): %s\n", plan.BaseSource, plan.Base)
-	fmt.Fprintf(writer, "Graphite path (bottom to top): %s\n", strings.Join(plan.Branches, " -> "))
-	fmt.Fprintf(writer, "Proposed command: gh stack link --base %s %s\n", plan.Base, strings.Join(plan.Branches, " "))
+func writePreview(writer io.Writer, plan link.Plan, presentation Presentation) {
+	fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", plan.TargetSource)), plan.Target)
+	fmt.Fprintln(writer, presentation.accent("Link stack (bottom to top):"))
+	fmt.Fprintf(writer, "  %s\n", presentation.trunk(plan.Base+" (trunk)"))
+	byHead := map[string]githubstack.PullRequest{}
+	for _, pr := range plan.PullRequests {
+		byHead[pr.Head] = pr
+	}
+	for i, branch := range plan.Branches {
+		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", i+1), presentation.accent(fmt.Sprintf("%s (#%d)", branch, byHead[branch].Number)))
+	}
+	fmt.Fprintf(writer, "%s: gh stack link --base %s %s\n", presentation.accent("Proposed command"), plan.Base, strings.Join(plan.Branches, " "))
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {

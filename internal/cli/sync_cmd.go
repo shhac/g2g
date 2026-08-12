@@ -12,7 +12,7 @@ import (
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
-func newSync(service syncer.Service, linkService link.Service) *cobra.Command {
+func newSync(service syncer.Service, linkService link.Service, presentation Presentation) *cobra.Command {
 	var branch string
 	var trunk string
 	var apply bool
@@ -27,15 +27,15 @@ func newSync(service syncer.Service, linkService link.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			writeSyncPreview(cmd.OutOrStdout(), plan)
+			writeSyncPreview(cmd.OutOrStdout(), plan, presentation)
 			if !apply {
-				fmt.Fprintln(cmd.OutOrStdout(), "Preview only: rerun with --apply to reconcile eligible GitHub stack relationships.")
+				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before reconciling.")
 				return nil
 			}
 			if _, err := service.ApplyWithTrunk(ctx, branch, trunk, plan); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Applied: GitHub native stack reconciliation completed after revalidation.")
+			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied:")+" GitHub native stack reconciliation completed after revalidation.")
 			return nil
 		},
 	}
@@ -63,8 +63,8 @@ func newSync(service syncer.Service, linkService link.Service) *cobra.Command {
 	return cmd
 }
 
-func writeSyncPreview(writer io.Writer, plan syncer.Plan) {
-	fmt.Fprintf(writer, "Resolved target (%s): %s\n", plan.Link.TargetSource, plan.Link.Target)
+func writeSyncPreview(writer io.Writer, plan syncer.Plan, presentation Presentation) {
+	fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", plan.Link.TargetSource)), plan.Link.Target)
 	fmt.Fprintf(writer, "Resolved Graphite trunk (%s): %s\n", plan.Link.BaseSource, plan.Link.Base)
 	fmt.Fprintf(writer, "Graphite path (bottom to top): %s\n", strings.Join(plan.Link.Branches, " -> "))
 	fmt.Fprintln(writer, "GitHub reconciliation:")

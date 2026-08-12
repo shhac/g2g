@@ -124,8 +124,9 @@ func TestPlanRejectsUnsafeOrDivergentGitHubState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := fakeService()
 			service.GitHub = &fakeGitHub{prs: test.prs}
-			if _, err := service.Plan(context.Background(), "beta"); err == nil {
-				t.Fatal("Plan() error = nil")
+			plan, err := service.Plan(context.Background(), "beta")
+			if err != nil || len(plan.Issues) == 0 {
+				t.Fatalf("Plan() = (%v, %v), want unresolved issue", plan, err)
 			}
 		})
 	}

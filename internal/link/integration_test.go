@@ -44,7 +44,7 @@ case "$1" in
 esac`,
 		"gh": `printf 'gh %s\n' "$*" >> "$CLI_ARGUMENTS"
 case "$1 $2" in
-  "pr list") printf '[]\n' ;;
+  "pr list") printf '%s\n' '[{"number":1,"headRefName":"alpha","baseRefName":"main","state":"OPEN"},{"number":2,"headRefName":"gamma","baseRefName":"alpha","state":"OPEN"},{"number":3,"headRefName":"gamma-deep","baseRefName":"gamma","state":"OPEN"}]' ;;
   "stack link") ;;
   *) exit 9 ;;
 esac`,

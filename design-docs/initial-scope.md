@@ -49,9 +49,11 @@ code must not use Graphite's internal metadata/configuration or `--debug`.
 only intended side effect. Existing matching PRs are displayed and their bases
 must already match the declared Graphite path (trunk for the bottom PR, then
 each preceding branch); this is the read-only native-stack relationship check
-available without checkout. Absent PRs are reported because `gh stack link` may
-create them on apply. Tests use fake `gt` and `gh` executables on `PATH`, so
-they never need credentials, network access, or real CLI installations.
+available without checkout. Every non-trunk selected-path branch must have
+exactly one open PR so the preview graph is fully labeled; absent, duplicate,
+non-open, or divergent mappings fail closed before preview or apply. Tests use
+fake `gt` and `gh` executables on `PATH`, so they never need credentials,
+network access, or real CLI installations.
 
 ## CLI shape
 

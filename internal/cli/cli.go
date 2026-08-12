@@ -139,10 +139,21 @@ func writePreview(writer io.Writer, plan link.Plan, presentation Presentation) {
 	for _, pr := range plan.PullRequests {
 		byHead[pr.Head] = pr
 	}
+	issues := map[string]string{}
+	for _, issue := range plan.Issues {
+		issues[issue.Branch] = issue.Reason
+	}
 	for i, branch := range plan.Branches {
-		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", i+1), presentation.accent(fmt.Sprintf("%s (#%d)", branch, byHead[branch].Number)))
+		label := fmt.Sprintf("%s (#%d)", branch, byHead[branch].Number)
+		if reason, unresolved := issues[branch]; unresolved {
+			label = fmt.Sprintf("%s (unresolved: %s)", branch, reason)
+		}
+		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", i+1), presentation.accent(label))
 	}
 	fmt.Fprintf(writer, "%s: gh stack link --base %s %s\n", presentation.accent("Proposed command"), plan.Base, strings.Join(plan.Branches, " "))
+	if len(plan.Issues) != 0 {
+		fmt.Fprintln(writer, "Apply blocked: resolve every unresolved GitHub PR mapping first.")
+	}
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {

@@ -46,7 +46,11 @@ type Plan struct {
 	BaseSource   string
 	Branches     []string
 	PullRequests []githubstack.PullRequest
+	Issues       []Issue
 }
+
+// Issue is a safe, actionable reason a displayed path node cannot be applied.
+type Issue struct{ Branch, Reason string }
 
 // Discover resolves a Graphite path and read-only GitHub PR facts without
 // deciding whether their current native-stack relationship is safe to link.
@@ -115,9 +119,7 @@ func (s Service) PlanWithTrunk(ctx context.Context, requestedBranch, requestedTr
 	if err != nil {
 		return Plan{}, err
 	}
-	if err := validatePRs(plan.PullRequests, plan.Base, plan.Branches); err != nil {
-		return Plan{}, err
-	}
+	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches)
 	return plan, nil
 }
 
@@ -219,6 +221,9 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 	if !plan.Equal(preview) {
 		return Plan{}, fmt.Errorf("link plan changed during revalidation; rerun without --apply to review the new plan")
 	}
+	if len(plan.Issues) != 0 {
+		return Plan{}, fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
+	}
 	if err := s.GitHub.Link(ctx, plan.Base, plan.Branches); err != nil {
 		return Plan{}, err
 	}
@@ -228,8 +233,13 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 // Equal compares every fact that can affect the command shown in a preview or
 // the GitHub action performed after revalidation.
 func (left Plan) Equal(right Plan) bool {
-	if left.Target != right.Target || left.TargetSource != right.TargetSource || left.Base != right.Base || left.BaseSource != right.BaseSource || !sameStrings(left.GraphitePath, right.GraphitePath) || !sameStrings(left.Branches, right.Branches) || len(left.PullRequests) != len(right.PullRequests) {
+	if left.Target != right.Target || left.TargetSource != right.TargetSource || left.Base != right.Base || left.BaseSource != right.BaseSource || !sameStrings(left.GraphitePath, right.GraphitePath) || !sameStrings(left.Branches, right.Branches) || len(left.PullRequests) != len(right.PullRequests) || len(left.Issues) != len(right.Issues) {
 		return false
+	}
+	for index := range left.Issues {
+		if left.Issues[index] != right.Issues[index] {
+			return false
+		}
 	}
 	for index := range left.PullRequests {
 		if left.PullRequests[index] != right.PullRequests[index] {
@@ -308,7 +318,7 @@ func (s Service) TrunkCompletions(ctx context.Context, prefix string) ([]string,
 	return matches, nil
 }
 
-func validatePRs(prs []githubstack.PullRequest, baseBranch string, branches []string) error {
+func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string) []Issue {
 	seen := make(map[string]bool, len(prs))
 	expectedBases := make(map[string]string, len(branches))
 	base := baseBranch
@@ -318,15 +328,21 @@ func validatePRs(prs []githubstack.PullRequest, baseBranch string, branches []st
 	}
 	for _, pr := range prs {
 		if seen[pr.Head] {
-			return fmt.Errorf("GitHub returned multiple pull requests for branch %q; refusing ambiguous link", pr.Head)
+			return []Issue{{Branch: pr.Head, Reason: "multiple pull requests"}}
 		}
 		seen[pr.Head] = true
 		if pr.State != "OPEN" {
-			return fmt.Errorf("branch %q has %s pull request #%d; refusing to relink it", pr.Head, strings.ToLower(pr.State), pr.Number)
+			return []Issue{{Branch: pr.Head, Reason: strings.ToLower(pr.State) + " pull request"}}
 		}
 		if expected := expectedBases[pr.Head]; pr.Base != expected {
-			return fmt.Errorf("branch %q has open pull request #%d based on %q, want %q; refusing divergent GitHub stack", pr.Head, pr.Number, pr.Base, expected)
+			return []Issue{{Branch: pr.Head, Reason: fmt.Sprintf("PR #%d base %s, want %s", pr.Number, pr.Base, expected)}}
 		}
 	}
-	return nil
+	var issues []Issue
+	for _, branch := range branches {
+		if !seen[branch] {
+			issues = append(issues, Issue{Branch: branch, Reason: "no open pull request"})
+		}
+	}
+	return issues
 }

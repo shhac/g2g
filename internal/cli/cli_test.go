@@ -140,6 +140,21 @@ func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
+	github := &cliGitHubMissing{}
+	output, err := executeWithService(t, cliServiceWithGitHub(github), "link")
+	if err != nil {
+		t.Fatalf("preview error = %v", err)
+	}
+	if !strings.Contains(output, "beta (unresolved: no open pull request)") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
+		t.Errorf("preview = %q links=%d", output, github.links)
+	}
+	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
+	if err == nil || github.links != 0 {
+		t.Errorf("apply error=%v links=%d", err, github.links)
+	}
+}
+
 func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 	github := &cliGitHub{}
 	output, err := executeWithService(t, cliService(github), "link", "--apply")
@@ -215,6 +230,9 @@ func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
 }
 
 func cliService(github *cliGitHub) link.Service {
+	return cliServiceWithGitHub(github)
+}
+func cliServiceWithGitHub(github link.GitHub) link.Service {
 	return link.Service{
 		Git:      cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
 		Graphite: cliGraphite{},
@@ -258,6 +276,13 @@ func (f *cliGitHub) Link(context.Context, string, []string) error {
 	f.links++
 	return nil
 }
+
+type cliGitHubMissing struct{ links int }
+
+func (*cliGitHubMissing) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
+	return []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}}, nil
+}
+func (f *cliGitHubMissing) Link(context.Context, string, []string) error { f.links++; return nil }
 
 type cliSyncDiscoverer struct{}
 

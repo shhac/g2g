@@ -60,6 +60,41 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+func TestDebugIsPersistentStderrOnlyAndDoesNotChangeLinkMutation(t *testing.T) {
+	for _, args := range [][]string{
+		{"--debug", "link", "--branch", "beta"},
+		{"link", "--debug", "--branch", "beta"},
+	} {
+		var stdout, stderr bytes.Buffer
+		github := &cliGitHub{}
+		command := NewWithService("v0.4.0", &stdout, &stderr, cliService(github))
+		command.SetArgs(args)
+		if err := command.Execute(); err != nil {
+			t.Fatalf("Execute(%v) error = %v", args, err)
+		}
+		if github.links != 0 || strings.Contains(stdout.String(), "debug event=") {
+			t.Errorf("args=%v stdout=%q links=%d", args, stdout.String(), github.links)
+		}
+		for _, expected := range []string{"event=operation.start", "operation=\"link\"", "target_source=\"--branch\"", "event=link.target", "event=link.trunk", "event=github.native_stack_membership", "event=link.plan", "decision=\"ready\""} {
+			if !strings.Contains(stderr.String(), expected) {
+				t.Errorf("args=%v debug missing %q: %q", args, expected, stderr.String())
+			}
+		}
+	}
+}
+
+func TestNormalLinkLeavesStderrQuiet(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := NewWithService("v0.4.0", &stdout, &stderr, cliService(&cliGitHub{}))
+	command.SetArgs([]string{"link"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("stderr = %q, want empty without --debug", got)
+	}
+}
+
 func TestCompletionScripts(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh", "fish"} {
 		t.Run(shell, func(t *testing.T) {
@@ -476,13 +511,72 @@ func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, expected := range []string{"Resolved target (current Git branch): beta", "beta: divergent (PR #2 base main, want alpha)", "No changes were made."} {
+	for _, expected := range []string{"Target: beta", "main (trunk)", "alpha (#1) (aligned)", "beta (#2) (divergent: base main, want alpha)", "Command to run\ngh stack link --base main alpha beta", "No changes were made."} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("preview missing %q:\n%s", expected, output)
 		}
 	}
 	if github.links != 0 {
 		t.Errorf("Link calls = %d, want 0", github.links)
+	}
+}
+
+func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
+	plan := syncer.Plan{
+		Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
+		Items: []syncer.Item{
+			{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}},
+			{Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}},
+		},
+	}
+	for _, test := range []struct {
+		name         string
+		presentation Presentation
+		want         string
+	}{
+		{
+			name: "plain",
+			want: "Target: synthetic-top\n\n  synthetic-main (trunk)\n  └─ synthetic-a (#10) (aligned)\n    └─ synthetic-b (#11) (divergent: base synthetic-main, want synthetic-a)\n\nCommand to run\ngh stack link --base synthetic-main synthetic-a synthetic-b\n",
+		},
+		{
+			name:         "color",
+			presentation: Presentation{Color: true},
+			want:         "\x1b[1;36mTarget\x1b[0m: \x1b[1;37msynthetic-top\x1b[0m\n\n  \x1b[1;33msynthetic-main (trunk)\x1b[0m\n  └─ \x1b[1;37msynthetic-a\x1b[0m (\x1b[35m#10\x1b[0m) \x1b[32m(aligned)\x1b[0m\n    └─ \x1b[1;37msynthetic-b\x1b[0m (\x1b[35m#11\x1b[0m) \x1b[1;38;5;214m(divergent: base synthetic-main, want synthetic-a)\x1b[0m\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgh stack link --base synthetic-main synthetic-a synthetic-b\x1b[0m\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := writeSyncPlan(&output, plan, test.presentation); err != nil {
+				t.Fatal(err)
+			}
+			if got := output.String(); got != test.want {
+				t.Errorf("snapshot = %q, want %q", got, test.want)
+			}
+			for _, redundant := range []string{"Resolved target", "Graphite path", "bottom to top", "Proposed command", "Reconciliation summary"} {
+				if strings.Contains(output.String(), redundant) {
+					t.Errorf("snapshot contains %q: %q", redundant, output.String())
+				}
+			}
+		})
+	}
+}
+
+func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *testing.T) {
+	plan := syncer.Plan{
+		Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
+		Items: []syncer.Item{
+			{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing},
+			{Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}},
+		},
+	}
+	var output bytes.Buffer
+	if err := writeSyncPlan(&output, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"synthetic-a (missing pull request)", "synthetic-b (#12) (non-open pull request)", "Apply blocked"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Errorf("preview missing %q: %q", expected, output.String())
+		}
 	}
 }
 
@@ -500,7 +594,20 @@ func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
 	if github.links != 1 {
 		t.Errorf("Link calls = %d, want 1", github.links)
 	}
-	if !strings.Contains(output, "Applied: GitHub native stack reconciliation completed after revalidation.") {
+	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") || !strings.Contains(output, "Changes were made.") {
+		t.Errorf("output = %q", output)
+	}
+}
+
+func TestSyncApplyFailureNeverReportsSuccess(t *testing.T) {
+	discoverer := &cliApplyDiscoverer{}
+	github := &cliSyncGitHub{err: errors.New("synthetic sync failure")}
+	service := syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}
+	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync", "--apply")
+	if err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Not applied\nsynthetic sync failure") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
 		t.Errorf("output = %q", output)
 	}
 }
@@ -681,9 +788,15 @@ type cliSyncGit struct{}
 
 func (cliSyncGit) Clean(context.Context) error { return nil }
 
-type cliSyncGitHub struct{ links int }
+type cliSyncGitHub struct {
+	links int
+	err   error
+}
 
 func (f *cliSyncGitHub) Link(context.Context, string, []string) error {
+	if f.err != nil {
+		return f.err
+	}
 	f.links++
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
@@ -57,12 +58,26 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 	if err != nil {
 		return nil, err
 	}
+	diagnostic.Event(ctx, "github.repository", diagnostic.Field{Key: "name", Value: repo})
 	query := graphqlQuery(repo, branches)
+	diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "batched_pull_requests"}, diagnostic.Field{Key: "branches", Value: strconv.Itoa(len(branches))}, diagnostic.Field{Key: "query", Value: "omitted"})
 	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-f", "query="+query)
 	if err != nil {
 		return nil, commandError("gh api graphql", err, output)
 	}
-	return parsePullRequests(output, branches)
+	prs, err := parsePullRequests(output, branches)
+	if err != nil {
+		return nil, err
+	}
+	for _, pr := range prs {
+		diagnostic.Event(ctx, "github.pull_request",
+			diagnostic.Field{Key: "head", Value: pr.Head},
+			diagnostic.Field{Key: "base", Value: pr.Base},
+			diagnostic.Field{Key: "number", Value: strconv.Itoa(pr.Number)},
+			diagnostic.Field{Key: "state", Value: pr.State},
+		)
+	}
+	return prs, nil
 }
 
 func parseRepositoryName(output []byte) (string, error) {
@@ -122,6 +137,7 @@ func (c Client) Link(ctx context.Context, trunk string, branches []string) error
 		return fmt.Errorf("GitHub runner is not configured")
 	}
 	args := append([]string{"stack", "link", "--base", trunk}, branches...)
+	diagnostic.Event(ctx, "github.stack_link", diagnostic.Field{Key: "decision", Value: "invoke"}, diagnostic.Field{Key: "base", Value: trunk}, diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")})
 	output, err := c.Runner.Run(ctx, "gh", args...)
 	if err != nil {
 		return commandError("gh "+strings.Join(args, " "), err, output)

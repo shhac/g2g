@@ -42,6 +42,9 @@ g2g link --branch feature/top --apply
 
 # Preview Graphite-authoritative reconciliation for existing GitHub PRs.
 g2g sync --branch feature/top
+
+# Opt-in local diagnostics go only to stderr; stdout keeps the normal preview.
+g2g --debug link --branch feature/top
 ```
 
 `--help`, `--version`, and `completion bash|zsh|fish` are available; bare
@@ -49,6 +52,13 @@ g2g sync --branch feature/top
 supported display grammar and a compatible `gh` with `stack link`. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
+
+`--debug` is a root flag and may appear before or after `link` or `sync`. It
+does not change discovery, timeouts, checkout behavior, or mutations. Its
+stderr-only records summarize supported Graphite discovery, the selected path,
+batched GitHub PR facts, plan/revalidation decisions, and bounded subprocess
+status. It never logs environment values, credentials, auth headers, cookies,
+or GraphQL query payloads.
 
 `gt2gh` never guesses a trunk from its name. It infers the only
 Graphite-declared trunk on the selected ancestry and shows it prominently. If
@@ -91,10 +101,11 @@ A source build or unrenamed release archive keeps the release-asset name:
 gt2gh link
 ```
 
-`g2g sync` is also preview-first. It compares the selected Graphite path to
-existing open GitHub PR bases, identifies aligned and divergent relationships,
-and can reconcile the native stack only with `--apply`. It deliberately refuses
-to create a PR for a Graphite-only branch or repair a closed/non-open PR.
+`g2g sync` is also preview-first. Its one graph labels each selected branch's
+PR and aligned, divergent, missing, or unsafe state, then shows an exact command
+only when applicable. It can reconcile the native stack only with `--apply` and
+deliberately refuses to create a PR for a Graphite-only branch or repair a
+closed/non-open PR.
 
 ## Structure
 

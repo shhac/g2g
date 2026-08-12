@@ -37,6 +37,9 @@ description: |
   invocation prints help. `sync` is preview-first and only applies when every
   selected-path branch already has an open GitHub PR; it must not create
   Graphite-only mappings or repair closed/non-open PRs.
+- `--debug` is a persistent, stderr-only diagnostic flag for `link` and `sync`.
+  It is safe to use for local investigation but must not alter command behavior
+  or cause agents to enable Graphite's own `gt --debug`.
 - Never guess a Graphite trunk from its name. The selected ancestry determines
   the inferred trunk; multiple valid declared trunks require `--trunk`, whose
   value must itself be declared and ancestral.

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 )
@@ -75,6 +76,7 @@ func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, request
 	if err != nil {
 		return Plan{}, err
 	}
+	diagnostic.Event(ctx, "link.target", diagnostic.Field{Key: "target", Value: target}, diagnostic.Field{Key: "source", Value: source})
 	localBranches, err := s.Git.LocalBranches(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -96,10 +98,12 @@ func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, request
 	if err != nil {
 		return Plan{}, err
 	}
+	diagnostic.Event(ctx, "link.trunk", diagnostic.Field{Key: "trunk", Value: base}, diagnostic.Field{Key: "source", Value: baseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(branches, ",")})
 	prs, err := s.GitHub.Inspect(ctx, branches)
 	if err != nil {
 		return Plan{}, err
 	}
+	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "not_observed"})
 	return Plan{
 		Target:       target,
 		TargetSource: source,
@@ -126,6 +130,13 @@ func (s Service) PlanWithTrunk(ctx context.Context, requestedBranch, requestedTr
 		return Plan{}, err
 	}
 	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches)
+	if len(plan.Issues) != 0 {
+		diagnostic.Event(ctx, "link.plan", diagnostic.Field{Key: "decision", Value: "blocked"}, diagnostic.Field{Key: "reasons", Value: issueSummary(plan.Issues)})
+	} else if plan.NothingToLink() {
+		diagnostic.Event(ctx, "link.plan", diagnostic.Field{Key: "decision", Value: "no_op"}, diagnostic.Field{Key: "reason", Value: "fewer_than_two_pr_branches"})
+	} else {
+		diagnostic.Event(ctx, "link.plan", diagnostic.Field{Key: "decision", Value: "ready"}, diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")})
+	}
 	return plan, nil
 }
 
@@ -238,8 +249,10 @@ func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, reque
 		return Plan{}, err
 	}
 	if !plan.Equal(preview) {
+		diagnostic.Event(ctx, "link.revalidation", diagnostic.Field{Key: "match", Value: "false"})
 		return Plan{}, fmt.Errorf("link plan changed during revalidation; rerun without --apply to review the new plan")
 	}
+	diagnostic.Event(ctx, "link.revalidation", diagnostic.Field{Key: "match", Value: "true"})
 	if len(plan.Issues) != 0 {
 		return Plan{}, fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
 	}
@@ -256,9 +269,19 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		return fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
 	}
 	if plan.NothingToLink() {
+		diagnostic.Event(ctx, "link.apply", diagnostic.Field{Key: "decision", Value: "skipped"}, diagnostic.Field{Key: "reason", Value: "fewer_than_two_pr_branches"})
 		return nil
 	}
+	diagnostic.Event(ctx, "link.apply", diagnostic.Field{Key: "decision", Value: "run"})
 	return s.GitHub.Link(ctx, plan.Base, plan.Branches)
+}
+
+func issueSummary(issues []Issue) string {
+	parts := make([]string, len(issues))
+	for index, issue := range issues {
+		parts[index] = issue.Branch + ": " + issue.Reason
+	}
+	return strings.Join(parts, "; ")
 }
 
 // Equal compares every fact that can affect the command shown in a preview or

@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
@@ -31,7 +33,7 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 // NewNamed creates the root command for the executable name used to invoke it.
 // This keeps generated shell completions correct for a package-manager alias.
 func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Command {
-	runner := subprocess.ExecRunner{}
+	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
 	linkService := link.Service{
 		Git:      localgit.Client{Runner: runner},
 		Graphite: graphite.Client{Runner: runner},
@@ -72,10 +74,34 @@ func newWithPresentation(version, commandName string, stdout, stderr io.Writer, 
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
+	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
 	root.AddCommand(newLink(service, presentation))
 	root.AddCommand(newSync(syncService, service, presentation))
 	root.AddCommand(newCompletion(root))
 	return root
+}
+
+func commandContext(cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
+	ctx := cmd.Context()
+	debug, _ := cmd.Flags().GetBool("debug")
+	if !debug {
+		return ctx
+	}
+	ctx = diagnostic.WithSink(ctx, diagnostic.Writer{Out: cmd.ErrOrStderr()})
+	targetSource := "current Git branch"
+	if branch != "" {
+		targetSource = "--branch"
+	}
+	fields := []diagnostic.Field{
+		{Key: "operation", Value: operation},
+		{Key: "mode", Value: mode},
+		{Key: "target_source", Value: targetSource},
+	}
+	if trunk != "" {
+		fields = append(fields, diagnostic.Field{Key: "trunk_override", Value: trunk})
+	}
+	diagnostic.Event(ctx, "operation.start", fields...)
+	return ctx
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {

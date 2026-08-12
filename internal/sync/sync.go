@@ -5,7 +5,9 @@ package sync
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
 )
@@ -75,7 +77,9 @@ func (s Service) PreviewWithTrunk(ctx context.Context, requestedBranch, requeste
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Link: plan, Items: items}, nil
+	result := Plan{Link: plan, Items: items}
+	diagnostic.Event(ctx, "sync.plan", diagnostic.Field{Key: "decision", Value: syncDecision(result)}, diagnostic.Field{Key: "summary", Value: result.Summary()}, diagnostic.Field{Key: "states", Value: syncStates(result.Items)})
+	return result, nil
 }
 
 // Apply revalidates the preview, then asks gh to update the native stack only
@@ -86,6 +90,19 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 }
 
 func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
+	plan, err := s.RevalidateWithTrunk(ctx, requestedBranch, requestedTrunk, preview)
+	if err != nil {
+		return Plan{}, err
+	}
+	if err := s.Execute(ctx, plan); err != nil {
+		return Plan{}, err
+	}
+	return plan, nil
+}
+
+// RevalidateWithTrunk confirms that the preview remains eligible immediately
+// before the caller renders its final plan and invokes the sole mutation.
+func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
@@ -97,15 +114,49 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 		return Plan{}, err
 	}
 	if !samePlan(plan, preview) {
+		diagnostic.Event(ctx, "sync.revalidation", diagnostic.Field{Key: "match", Value: "false"})
 		return Plan{}, fmt.Errorf("sync plan changed during revalidation; rerun without --apply to review the new plan")
 	}
+	diagnostic.Event(ctx, "sync.revalidation", diagnostic.Field{Key: "match", Value: "true"})
 	if err := plan.applyBlocker(); err != nil {
 		return Plan{}, err
 	}
-	if err := s.GitHub.Link(ctx, plan.Link.Base, plan.Link.Branches); err != nil {
-		return Plan{}, err
-	}
 	return plan, nil
+}
+
+// Execute invokes the one permitted reconciliation after a caller has
+// revalidated and presented the exact plan.
+func (s Service) Execute(ctx context.Context, plan Plan) error {
+	if s.GitHub == nil {
+		return fmt.Errorf("sync service is not fully configured")
+	}
+	if err := plan.applyBlocker(); err != nil {
+		return err
+	}
+	if plan.NothingToSync() {
+		diagnostic.Event(ctx, "sync.apply", diagnostic.Field{Key: "decision", Value: "skipped"}, diagnostic.Field{Key: "reason", Value: "fewer_than_two_pr_branches"})
+		return nil
+	}
+	diagnostic.Event(ctx, "sync.apply", diagnostic.Field{Key: "decision", Value: "run"}, diagnostic.Field{Key: "base", Value: plan.Link.Base}, diagnostic.Field{Key: "branches", Value: strings.Join(plan.Link.Branches, ",")})
+	return s.GitHub.Link(ctx, plan.Link.Base, plan.Link.Branches)
+}
+
+func syncDecision(plan Plan) string {
+	if !plan.CanApply() {
+		return "blocked"
+	}
+	if plan.NothingToSync() {
+		return "no_op"
+	}
+	return "ready"
+}
+
+func syncStates(items []Item) string {
+	parts := make([]string, len(items))
+	for index, item := range items {
+		parts[index] = item.Branch + ": " + string(item.State)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func classify(plan link.Plan) ([]Item, error) {
@@ -168,6 +219,12 @@ func (p Plan) Summary() string {
 // CanApply explains whether the conservative v0.2 scope permits apply.
 func (p Plan) CanApply() bool {
 	return p.applyBlocker() == nil
+}
+
+// NothingToSync reports an apply-eligible path too short for gh stack link.
+// It is a successful no-op, never an invitation to execute an invalid command.
+func (p Plan) NothingToSync() bool {
+	return p.CanApply() && p.Link.NothingToLink()
 }
 
 func (p Plan) applyBlocker() error {

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
@@ -62,6 +63,11 @@ func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
 	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
 		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
+	diagnostic.Event(ctx, "graphite.path",
+		diagnostic.Field{Key: "selected", Value: selected},
+		diagnostic.Field{Key: "path", Value: strings.Join(reversed, " -> ")},
+		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(graph.roots, ",")},
+	)
 	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil
 }
 
@@ -77,6 +83,7 @@ func (c Client) TrackedBranches(ctx context.Context) ([]string, error) {
 		branches = append(branches, branch)
 	}
 	sort.Strings(branches)
+	diagnostic.Event(ctx, "graphite.tracked_branches", diagnostic.Field{Key: "count", Value: fmt.Sprintf("%d", len(branches))})
 	return branches, nil
 }
 
@@ -91,12 +98,17 @@ func (c Client) read(ctx context.Context) (graph, error) {
 	if got := strings.TrimSpace(string(version)); got != SupportedVersion {
 		return graph{}, fmt.Errorf("unsupported Graphite CLI version %q; gt2gh supports display grammar from %s only", got, SupportedVersion)
 	}
+	diagnostic.Event(ctx, "graphite.version", diagnostic.Field{Key: "version", Value: SupportedVersion}, diagnostic.Field{Key: "supported", Value: "true"})
 
 	output, err := c.Runner.Run(ctx, "gt", "log", "short", "--all", "--reverse", "--no-interactive")
 	if err != nil {
 		return graph{}, commandError("gt log short --all --reverse --no-interactive", err, output)
 	}
-	return parseLog(string(output))
+	graph, err := parseLog(string(output))
+	if err == nil {
+		diagnostic.Event(ctx, "graphite.discovery", diagnostic.Field{Key: "command", Value: "gt log short --all --reverse --no-interactive"}, diagnostic.Field{Key: "roots", Value: fmt.Sprintf("%d", len(graph.roots))})
+	}
+	return graph, err
 }
 
 func commandError(command string, err error, output []byte) error {

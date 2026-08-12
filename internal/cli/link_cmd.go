@@ -24,6 +24,11 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
 			defer cancel()
+			mode := "preview"
+			if apply {
+				mode = "apply"
+			}
+			ctx = commandContext(cmd, "link", mode, branch, trunk)
 			plan, err := service.PlanWithTrunk(ctx, branch, trunk)
 			if err != nil {
 				return err

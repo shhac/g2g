@@ -56,6 +56,31 @@ func TestApplyReconcilesOnlyFullyMappedOpenPath(t *testing.T) {
 	}
 }
 
+func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
+	github := &fakeGitHub{}
+	service := Service{
+		Discoverer: fakeDiscoverer{plan: link.Plan{
+			Target: "synthetic-feature", Base: "synthetic-main", Branches: []string{"synthetic-feature"},
+			PullRequests: []githubstack.PullRequest{{Number: 1, Head: "synthetic-feature", Base: "synthetic-main", State: "OPEN"}},
+		}},
+		Git:    fakeGit{},
+		GitHub: github,
+	}
+	preview, err := service.Preview(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preview.NothingToSync() {
+		t.Fatal("NothingToSync() = false")
+	}
+	if _, err := service.Apply(context.Background(), "", preview); err != nil {
+		t.Fatal(err)
+	}
+	if github.links != 0 {
+		t.Errorf("Link calls = %d, want 0", github.links)
+	}
+}
+
 func TestApplyFailsClosedForMissingOrUnsafeMappings(t *testing.T) {
 	for _, name := range []string{"missing", "unsafe"} {
 		t.Run(name, func(t *testing.T) {

@@ -1,6 +1,7 @@
 package githubstack
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	"github.com/shhac/gt2gh/internal/testutil"
 )
@@ -37,6 +39,28 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"nu
 	}
 	if !strings.Contains(string(called), "repo view --json nameWithOwner\n") || !strings.Contains(string(called), "api graphql -f query=query { pr0: search(") || !strings.Contains(string(called), "stack link --base main alpha beta\n") {
 		t.Errorf("unexpected gh calls: %q", called)
+	}
+}
+
+func TestInspectDebugSummarizesGraphQLWithoutLoggingQuery(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gh": `if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/synthetic"}\n'; fi
+if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"number":7,"headRefName":"synthetic-head","baseRefName":"synthetic-base","state":"OPEN"}]}}}\n'; fi`,
+	})
+	var diagnostics bytes.Buffer
+	ctx := diagnostic.WithSink(context.Background(), diagnostic.Writer{Out: &diagnostics})
+	client := Client{Runner: subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}}
+	if _, err := client.Inspect(ctx, []string{"synthetic-head"}); err != nil {
+		t.Fatal(err)
+	}
+	got := diagnostics.String()
+	for _, expected := range []string{"event=github.query", "kind=\"batched_pull_requests\"", "query=\"omitted\"", "event=github.pull_request", "head=\"synthetic-head\"", "command=\"gh api graphql query=omitted\""} {
+		if !strings.Contains(got, expected) {
+			t.Errorf("diagnostics missing %q: %q", expected, got)
+		}
+	}
+	if strings.Contains(got, "query=query {") {
+		t.Errorf("diagnostics leaked GraphQL payload: %q", got)
 	}
 }
 

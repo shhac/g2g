@@ -48,6 +48,16 @@ copyable command before invoking `gh`; success output is emitted only after
 out. Graphite is read only: production code must not use Graphite's internal
 metadata/configuration or `--debug`.
 
+The root `--debug` flag is an opt-in local diagnostic mode, not a behavioral
+mode. It preserves normal stdout and writes stable, bounded events only to
+stderr: operation/target selection, supported Graphite discovery and
+path/trunk facts, batched GitHub PR facts, the explicit fact that native-stack
+membership is not observed, plan/revalidation decisions, and subprocess status.
+It does not change timeouts, checkout behavior, Graphite modes, external argv,
+or mutation decisions. Diagnostic output never includes environment values,
+authentication headers, tokens, cookies, credential-bearing arguments, or
+GraphQL query payloads.
+
 `gh stack link` can push branches and create/update pull requests, so it is the
 only intended side effect. Existing matching PRs are displayed and their bases
 must already match the declared Graphite path (trunk for the bottom PR, then
@@ -72,10 +82,12 @@ surface will use Cobra for parsing and native shell-completion support.
 The implemented surface is:
 
 ```text
-gt2gh link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
-gt2gh sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
+gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
+gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
 gt2gh completion bash|zsh|fish
 ```
+
+`--debug` is persistent and may also appear after `link` or `sync`.
 
 Completion is static for commands and flags and dynamic for `--branch` and
 `--trunk`. Candidates are deterministic, local Graphite branches/trunks; they
@@ -129,6 +141,14 @@ head/base/state/number/URL only for every selected branch. `--apply` repeats the
 same reads during revalidation before the sole mutation. The batch boundary
 remains `internal/githubstack.Inspect`, with PATH-backed fixtures and no secret
 handling in application code.
+
+`sync` uses the same restrained graph-first presentation as `link`: one
+blank-bounded trunk-to-target graph labels PR-backed branches and their
+aligned/divergent/missing/unsafe status, followed by the exact copyable command
+when applicable. A fully mapped one-PR path is a successful no-op because the
+GitHub command requires two stack branches. Preview states that no changes were made. Apply revalidates,
+renders and flushes `Ready to apply` before invoking `gh`, then reports either
+success or one bounded failure diagnostic; it never claims success early.
 
 ## Release roadmap and required quality gates
 

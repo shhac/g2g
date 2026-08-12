@@ -51,8 +51,12 @@ func newLinkPreview(plan link.Plan) linkPreview {
 }
 
 func (p linkPreview) commandText() string {
-	parts := make([]string, len(p.Command))
-	for index, argument := range p.Command {
+	return commandText(p.Command)
+}
+
+func commandText(command []string) string {
+	parts := make([]string, len(command))
+	for index, argument := range command {
 		parts[index] = shellQuote(argument)
 	}
 	return strings.Join(parts, " ")

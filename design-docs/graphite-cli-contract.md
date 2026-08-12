@@ -30,8 +30,11 @@ only fake executables on `PATH`.
 The parser accepts an ordered sequence of compact branch rows. Each row has a
 tree prefix made of `│ ` or `  ` groups, followed by `◯` or `◉`, an even run of
 at least two spaces, and a nonempty branch name with optional ` (current)` or
-` (needs restack)` markers. These known markers are not part of the branch name;
-other terminal status markers fail closed. The spaces are visual label padding.
+` (needs restack)` markers. A single opaque parenthetical annotation may follow
+only ` (needs restack)`; it is display metadata, not part of the branch name,
+because the exact known marker already bounds branch identity. Other terminal
+status markers, reordered markers, duplicate annotations, and nested
+parentheses fail closed. The spaces are visual label padding.
 A row may put a connector between the node glyph and its name padding: `─┐`
 opens one child lane, and `─┬─…┬─┐` opens exactly its number of visual child
 lanes. One empty separator line begins a separate configured-trunk component;

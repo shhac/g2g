@@ -148,34 +148,52 @@ func parseRecord(line string, lineNumber int) (record, bool) {
 }
 
 func parseBranchLabel(label string) (string, bool) {
-	seenCurrent := false
-	seenNeedsRestack := false
+	base, markers, ok := splitLabelMarkers(label)
+	if !ok {
+		return "", false
+	}
+	if base == "" || strings.TrimSpace(base) != base || strings.ContainsAny(base, "\t\r\n") {
+		return "", false
+	}
+	switch len(markers) {
+	case 0:
+		return base, true
+	case 1:
+		return base, markers[0] == "current" || markers[0] == "needs restack"
+	case 2:
+		if markers[0] == "current" && markers[1] == "needs restack" {
+			return base, true
+		}
+		return base, markers[0] == "needs restack" && isOpaqueRestackAnnotation(markers[1])
+	case 3:
+		return base, markers[0] == "current" && markers[1] == "needs restack" && isOpaqueRestackAnnotation(markers[2])
+	default:
+		return "", false
+	}
+}
+
+func splitLabelMarkers(label string) (string, []string, bool) {
+	var reversed []string
 	for strings.HasSuffix(label, ")") {
 		index := strings.LastIndex(label, " (")
 		if index < 0 {
-			break
+			return "", nil, false
 		}
-		marker := label[index:]
-		switch marker {
-		case " (current)":
-			if seenCurrent {
-				return "", false
-			}
-			seenCurrent = true
-		case " (needs restack)":
-			if seenNeedsRestack {
-				return "", false
-			}
-			seenNeedsRestack = true
-		default:
-			return "", false
+		marker := label[index+2 : len(label)-1]
+		if marker == "" || strings.ContainsAny(marker, "()\t\r\n") {
+			return "", nil, false
 		}
+		reversed = append(reversed, marker)
 		label = label[:index]
 	}
-	if label == "" || strings.TrimSpace(label) != label || strings.ContainsAny(label, "\t\r\n") {
-		return "", false
+	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
+		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
-	return label, true
+	return label, reversed, true
+}
+
+func isOpaqueRestackAnnotation(marker string) bool {
+	return marker != "current" && marker != "needs restack"
 }
 
 func trimGraphPrefix(line string) (string, int) {

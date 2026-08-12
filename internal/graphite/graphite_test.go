@@ -102,3 +102,23 @@ exit 9`,
 		t.Errorf("path = %q, want %q", got, want)
 	}
 }
+
+func TestClientDiscoversPathAlongsideAnnotatedRestackSibling(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "restack-annotation-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", string(fixture))
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+	})
+	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(context.Background(), "synthetic-selected")
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if got, want := strings.Join(stack.Path, ","), "trunk,foundation,synthetic-selected"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+}

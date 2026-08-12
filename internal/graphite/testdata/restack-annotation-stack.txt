@@ -1,0 +1,4 @@
+◯  trunk
+◯─┬─┐  foundation
+│ │ ◯    synthetic-sibling (needs restack) (synthetic annotation)
+│ ◉      synthetic-selected (needs restack)

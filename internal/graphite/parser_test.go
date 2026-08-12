@@ -56,10 +56,29 @@ func TestParseLogTracksNeedsRestackBranch(t *testing.T) {
 	}
 }
 
+func TestParseLogIgnoresSecondaryRestackAnnotationOutsideSelectedPath(t *testing.T) {
+	parsed := parseFixture(t, "restack-annotation-stack.txt")
+	if got, want := strings.Join(pathToRoot(t, parsed, "synthetic-selected"), ","), "trunk,foundation,synthetic-selected"; got != want {
+		t.Errorf("selected path = %q, want %q", got, want)
+	}
+	if _, exists := parsed.nodes["synthetic-sibling"]; !exists {
+		t.Error("missing sibling with restack annotation")
+	}
+}
+
 func TestParseLogRejectsUnknownBranchStatus(t *testing.T) {
-	_, err := parseLog("◯  trunk\n◯  synthetic-feature (synthetic status)\n")
-	if err == nil || !strings.Contains(err.Error(), "unsupported Graphite display grammar") {
-		t.Fatalf("parseLog() error = %v, want grammar drift", err)
+	for _, label := range []string{
+		"synthetic-feature (synthetic status)",
+		"synthetic-feature (synthetic annotation) (needs restack)",
+		"synthetic-feature (needs restack) (synthetic annotation) (another annotation)",
+		"synthetic-feature (needs restack) (current)",
+	} {
+		t.Run(label, func(t *testing.T) {
+			_, err := parseLog("◯  trunk\n◯  " + label + "\n")
+			if err == nil || !strings.Contains(err.Error(), "unsupported Graphite display grammar") {
+				t.Fatalf("parseLog() error = %v, want grammar drift", err)
+			}
+		})
 	}
 }
 

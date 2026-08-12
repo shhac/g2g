@@ -15,7 +15,7 @@ const (
 type Presentation struct{ Color bool }
 
 func detectPresentation(writer io.Writer) Presentation {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" || os.Getenv("CI") != "" {
 		return Presentation{}
 	}
 	file, ok := writer.(*os.File)

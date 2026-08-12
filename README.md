@@ -59,6 +59,11 @@ before it invokes that command. Manually copying the displayed command is a
 separate, deliberate snapshot action and does not cause `gt2gh` to re-resolve
 anything.
 
+Color is enabled only for an interactive terminal. It is disabled for redirected
+output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
+for scripts. The renderer keeps plan data separate from ANSI decoration, leaving
+room for a future structured format without scraping terminal text.
+
 ## Homebrew
 
 Homebrew keeps the formula name as `gt2gh` but installs the executable as

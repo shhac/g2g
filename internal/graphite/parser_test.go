@@ -38,6 +38,47 @@ func TestParseLogIrregularForkTree(t *testing.T) {
 	}
 }
 
+func TestParseLogAllowsSingleEmptyRecordSeparator(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "record-separator.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseLog(string(fixture))
+	if err != nil {
+		t.Fatalf("parseLog() error = %v", err)
+	}
+	if got, want := parsed.trunk, "trunk"; got != want {
+		t.Fatalf("trunk = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(pathToTrunk(t, parsed, "child"), ","), "child"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+}
+
+func TestParseLogRejectsInvalidRecordSeparators(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "record-separator.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	irregular, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		"leading":       "\n" + string(fixture),
+		"consecutive":   strings.Replace(string(fixture), "\n\n◯ child", "\n\n\n◯ child", 1),
+		"trailing":      strings.TrimSuffix(string(fixture), "\n") + "\n\n",
+		"fork-adjacent": strings.Replace(string(irregular), "├──┐\n", "├──┐\n\n", 1),
+	}
+	for name, input := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseLog(input); err == nil || !strings.Contains(err.Error(), "unsupported Graphite display grammar") {
+				t.Fatalf("parseLog() error = %v, want grammar drift", err)
+			}
+		})
+	}
+}
+
 func TestParseLogRejectsUnknownLine(t *testing.T) {
 	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
 	if err != nil {

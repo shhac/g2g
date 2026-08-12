@@ -36,6 +36,9 @@ The parser accepts an ordered sequence of branch records. Each record is:
 4. a graph-prefixed abbreviated lowercase commit hash, ` - `, and title;
 5. a graph-only connector line.
 
+One unprefixed empty separator line may appear between complete branch records.
+Leading, consecutive, terminal, or fork-adjacent separators are rejected.
+
 Between records, only `├──┐` or `└──┐` fork markers with the same graph prefix
 are accepted. An increased depth must immediately follow its marker. Traversal
 depth reconstructs a selected branch's parent chain; sibling and descendant

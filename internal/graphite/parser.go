@@ -39,8 +39,9 @@ type event struct {
 //	gt log --all --reverse --no-interactive
 //
 // The fixture grammar is intentionally small: each branch record is a graph
-// heading followed by time, blank, abbreviated-commit, and guide lines. Fork
-// markers must precede an increased graph depth. Any other syntax is drift.
+// heading followed by time, blank, abbreviated-commit, and guide lines. One
+// empty separator line may appear between complete records. Fork markers must
+// precede an increased graph depth. Any other syntax is drift.
 func parseLog(output string) (graph, error) {
 	var lines []string
 	scanner := bufio.NewScanner(strings.NewReader(output))
@@ -63,8 +64,20 @@ func parseLog(output string) (graph, error) {
 
 func parseEvents(lines []string) ([]event, error) {
 	var events []event
+	separator := false
 	for index := 0; index < len(lines); {
+		if lines[index] == "" {
+			if separator || len(events) == 0 || events[len(events)-1].record == nil || index == len(lines)-1 {
+				return nil, drift(index+1, lines[index])
+			}
+			separator = true
+			index++
+			continue
+		}
 		if depth, ok := parseForkMarker(lines[index]); ok {
+			if separator {
+				return nil, drift(index+1, lines[index])
+			}
 			fork := record{depth: depth, line: index + 1}
 			events = append(events, event{fork: &fork})
 			index++
@@ -75,6 +88,7 @@ func parseEvents(lines []string) ([]event, error) {
 			return nil, err
 		}
 		events = append(events, event{record: &record})
+		separator = false
 		index += 5
 	}
 	return events, nil

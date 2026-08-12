@@ -142,7 +142,9 @@ func fakeService(prs []githubstack.PullRequest) Service {
 		Discoverer: fakeDiscoverer{plan: link.Plan{
 			Target:       "delta",
 			TargetSource: "current Git branch",
-			Trunk:        "main",
+			Base:         "main",
+			BaseSource:   "Graphite-declared ancestry",
+			GraphitePath: []string{"main", "alpha", "beta", "gamma", "delta"},
 			Branches:     []string{"alpha", "beta", "gamma", "delta"},
 			PullRequests: prs,
 		}},
@@ -156,17 +158,19 @@ type fakeDiscoverer struct {
 	err  error
 }
 
-func (f fakeDiscoverer) Discover(context.Context, string) (link.Plan, error) { return f.plan, f.err }
+func (f fakeDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
+	return f.plan, f.err
+}
 
 type changingDiscoverer struct{ calls int }
 
-func (f *changingDiscoverer) Discover(context.Context, string) (link.Plan, error) {
+func (f *changingDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
 	f.calls++
 	trunk := "main"
 	if f.calls > 1 {
 		trunk = "other-main"
 	}
-	return link.Plan{Target: "delta", TargetSource: "current Git branch", Trunk: trunk, Branches: []string{"alpha", "beta", "gamma", "delta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}, nil
+	return link.Plan{Target: "delta", TargetSource: "current Git branch", Base: trunk, BaseSource: "Graphite-declared ancestry", GraphitePath: []string{trunk, "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}, nil
 }
 
 type fakeGit struct{ err error }

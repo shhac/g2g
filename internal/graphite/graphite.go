@@ -15,11 +15,13 @@ import (
 // guessed at.
 const SupportedVersion = "1.8.6"
 
-// Stack is one declared-trunk-to-selected Graphite path, ordered bottom to top.
-// Trunk is deliberately excluded from Branches.
+// Stack is one complete Graphite-declared ancestry, ordered from the display
+// root through the selected branch. The compact display does not identify one
+// universal link base when repositories configure multiple trunk-like branches,
+// so base selection is intentionally left to the link service.
 type Stack struct {
-	Trunk    string
-	Branches []string
+	Path   []string
+	Trunks []string
 }
 
 // Client discovers Graphite stacks through its supported CLI, never through
@@ -40,27 +42,27 @@ func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
 	if !ok {
 		return Stack{}, fmt.Errorf("Graphite does not track local branch %q", selected)
 	}
-	if selected == graph.trunk {
-		return Stack{}, fmt.Errorf("selected branch %q is the Graphite trunk; select a branch above %q", selected, graph.trunk)
-	}
-
 	var reversed []string
 	seen := make(map[string]bool)
-	for node.name != graph.trunk {
+	for {
 		if seen[node.name] {
 			return Stack{}, fmt.Errorf("Graphite display contains an ancestry cycle at %q", node.name)
 		}
 		seen[node.name] = true
 		reversed = append(reversed, node.name)
 		if node.parent == "" {
-			return Stack{}, fmt.Errorf("Graphite display has no path from %q to declared trunk %q", selected, graph.trunk)
+			break
 		}
-		node = graph.nodes[node.parent]
+		parent, ok := graph.nodes[node.parent]
+		if !ok {
+			return Stack{}, fmt.Errorf("Graphite display has missing parent %q for %q", node.parent, node.name)
+		}
+		node = parent
 	}
 	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
 		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
-	return Stack{Trunk: graph.trunk, Branches: reversed}, nil
+	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil
 }
 
 // TrackedBranches returns stable, local Graphite branch candidates for shell
@@ -70,11 +72,9 @@ func (c Client) TrackedBranches(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	branches := make([]string, 0, len(graph.nodes)-1)
+	branches := make([]string, 0, len(graph.nodes))
 	for branch := range graph.nodes {
-		if branch != graph.trunk {
-			branches = append(branches, branch)
-		}
+		branches = append(branches, branch)
 	}
 	sort.Strings(branches)
 	return branches, nil

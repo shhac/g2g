@@ -99,7 +99,7 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"Resolved target (--branch): beta",
-		"Declared Graphite trunk: main",
+		"Resolved Graphite trunk (Graphite-declared ancestry): main",
 		"Graphite path (bottom to top): alpha -> beta",
 		"Proposed command: gh stack link --base main alpha beta",
 		"Preview only",
@@ -147,6 +147,16 @@ func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	if !strings.Contains(output, "beta\n") || strings.Contains(output, "alpha\n") {
+		t.Errorf("completion = %q", output)
+	}
+}
+
+func TestTrunkCompletionUsesDeclaredLocalTrunks(t *testing.T) {
+	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--trunk", "m")
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(output, "main\n") {
 		t.Errorf("completion = %q", output)
 	}
 }
@@ -214,7 +224,7 @@ func (cliGraphite) Discover(_ context.Context, branch string) (graphite.Stack, e
 	if branch != "beta" {
 		return graphite.Stack{}, context.Canceled
 	}
-	return graphite.Stack{Trunk: "main", Branches: []string{"alpha", "beta"}}, nil
+	return graphite.Stack{Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}, nil
 }
 func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
@@ -222,8 +232,14 @@ func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 
 type cliGitHub struct{ links int }
 
-func (*cliGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
-	return nil, nil
+func (*cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+	prs := make([]githubstack.PullRequest, 0, len(branches))
+	base := "main"
+	for index, branch := range branches {
+		prs = append(prs, githubstack.PullRequest{Number: index + 1, Head: branch, Base: base, State: "OPEN"})
+		base = branch
+	}
+	return prs, nil
 }
 func (f *cliGitHub) Link(context.Context, string, []string) error {
 	f.links++
@@ -232,11 +248,13 @@ func (f *cliGitHub) Link(context.Context, string, []string) error {
 
 type cliSyncDiscoverer struct{}
 
-func (cliSyncDiscoverer) Discover(context.Context, string) (link.Plan, error) {
+func (cliSyncDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
 	return link.Plan{
 		Target:       "beta",
 		TargetSource: "current Git branch",
-		Trunk:        "main",
+		Base:         "main",
+		BaseSource:   "Graphite-declared ancestry",
+		GraphitePath: []string{"main", "alpha", "beta"},
 		Branches:     []string{"alpha", "beta"},
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}},
 	}, nil
@@ -244,10 +262,10 @@ func (cliSyncDiscoverer) Discover(context.Context, string) (link.Plan, error) {
 
 type cliApplyDiscoverer struct{ branch string }
 
-func (f *cliApplyDiscoverer) Discover(_ context.Context, branch string) (link.Plan, error) {
+func (f *cliApplyDiscoverer) DiscoverWithTrunk(_ context.Context, branch, trunk string) (link.Plan, error) {
 	f.branch = branch
 	return link.Plan{
-		Target: "beta", TargetSource: "--branch", Trunk: "main", Branches: []string{"alpha", "beta"},
+		Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"},
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}},
 	}, nil
 }

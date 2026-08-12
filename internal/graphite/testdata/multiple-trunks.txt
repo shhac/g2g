@@ -1,0 +1,7 @@
+◯  main
+◯  feature-one
+◉  feature-two
+
+◯  develop
+
+◯  staging

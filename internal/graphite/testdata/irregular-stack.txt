@@ -1,5 +1,4 @@
 ◯  main
-
 ◯─┬─┬─┬─┐  alpha
 │ │ │ │ ◯    beta
 │ │ │ │ ◯─┐    beta-top

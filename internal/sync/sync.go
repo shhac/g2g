@@ -12,7 +12,7 @@ import (
 
 // Discoverer supplies the common, read-only Graphite and GitHub facts.
 type Discoverer interface {
-	Discover(context.Context, string) (link.Plan, error)
+	DiscoverWithTrunk(context.Context, string, string) (link.Plan, error)
 }
 
 // Git supplies the local precondition needed before an explicit apply.
@@ -60,10 +60,14 @@ type Plan struct {
 // Preview discovers the selected path and classifies GitHub's existing PR
 // relationship. It is entirely read-only.
 func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, error) {
+	return s.PreviewWithTrunk(ctx, requestedBranch, "")
+}
+
+func (s Service) PreviewWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
-	plan, err := s.Discoverer.Discover(ctx, requestedBranch)
+	plan, err := s.Discoverer.DiscoverWithTrunk(ctx, requestedBranch, requestedTrunk)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -78,13 +82,17 @@ func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, err
 // when every Graphite branch is already represented by an open PR. This avoids
 // silently creating mappings or repairing closed/ambiguous state.
 func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
+	return s.ApplyWithTrunk(ctx, requestedBranch, "", preview)
+}
+
+func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.Preview(ctx, requestedBranch)
+	plan, err := s.PreviewWithTrunk(ctx, requestedBranch, requestedTrunk)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -94,7 +102,7 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 	if err := plan.applyBlocker(); err != nil {
 		return Plan{}, err
 	}
-	if err := s.GitHub.Link(ctx, plan.Link.Trunk, plan.Link.Branches); err != nil {
+	if err := s.GitHub.Link(ctx, plan.Link.Base, plan.Link.Branches); err != nil {
 		return Plan{}, err
 	}
 	return plan, nil
@@ -108,7 +116,7 @@ func classify(plan link.Plan) ([]Item, error) {
 		}
 		byBranch[pr.Head] = pr
 	}
-	base := plan.Trunk
+	base := plan.Base
 	items := make([]Item, 0, len(plan.Branches))
 	for _, branch := range plan.Branches {
 		item := Item{Branch: branch, ExpectedBase: base, State: Missing}

@@ -32,14 +32,18 @@ tree prefix made of `│ ` or `  ` groups, followed by `◯` or `◉`, an even r
 at least two spaces, and a nonempty branch name with optional ` (current)`. The
 spaces are visual label padding. A row may put a connector between the node glyph
 and its name padding: `─┐` opens one child lane, and `─┬─…┬─┐` opens exactly its
-number of visual child lanes. One empty separator line may appear only between
-rows that do not open a connector.
+number of visual child lanes. One empty separator line begins a separate
+configured-trunk component; it may appear only after a row that does not open a
+connector.
 
 The next deeper row must occupy the exact lane opened by its preceding
 connector. Equal-depth rows extend a branch; shallower rows attach to the node
 that opened that lane. Traversal reconstructs only the selected branch's
-declared-trunk-to-leaf ancestry, excluding siblings and descendants. The first
-depth-zero row is the declared Graphite trunk for this pinned display contract.
+declared-trunk-to-leaf ancestry, excluding siblings and descendants. Each
+separator-delimited component has its own root; components are never connected
+by inference. Link-base resolution considers only Graphite-declared trunk roots
+on the selected ancestry and fails closed when more than one is valid unless
+the user supplies a valid `--trunk` override.
 
 Any different version, unclassified line, duplicate branch, malformed record,
 or inconsistent fork/depth transition is an error. The parser tests mutate each

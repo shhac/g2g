@@ -40,8 +40,8 @@ exit 9`,
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if got, want := strings.Join(stack.Branches, ","), "alpha,beta,beta-top,beta-side"; got != want {
-		t.Errorf("branches = %q, want %q", got, want)
+	if got, want := strings.Join(stack.Path, ","), "main,alpha,beta,beta-top,beta-side"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
 	}
 	called, err := os.ReadFile(arguments)
 	if err != nil {
@@ -57,5 +57,28 @@ func TestClientRejectsDifferentGraphiteVersion(t *testing.T) {
 	_, err := (Client{Runner: subprocess.ExecRunner{}}).TrackedBranches(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "unsupported Graphite CLI version") {
 		t.Fatalf("TrackedBranches() error = %v", err)
+	}
+}
+
+func TestClientKeepsMultipleTrunkComponentsSeparate(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "multiple-trunks.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", string(fixture))
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+	})
+	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(context.Background(), "feature-two")
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if got, want := strings.Join(stack.Path, ","), "main,feature-one,feature-two"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(stack.Trunks, ","), "main,develop,staging"; got != want {
+		t.Errorf("trunks = %q, want %q", got, want)
 	}
 }

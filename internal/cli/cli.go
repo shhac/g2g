@@ -79,6 +79,7 @@ func newWithServices(version, commandName string, stdout, stderr io.Writer, serv
 
 func newLink(service link.Service) *cobra.Command {
 	var branch string
+	var trunk string
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "link",
@@ -87,7 +88,7 @@ func newLink(service link.Service) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
 			defer cancel()
-			plan, err := service.Plan(ctx, branch)
+			plan, err := service.PlanWithTrunk(ctx, branch, trunk)
 			if err != nil {
 				return err
 			}
@@ -96,7 +97,7 @@ func newLink(service link.Service) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "Preview only: rerun with --apply to invoke gh stack link.")
 				return nil
 			}
-			if _, err := service.Apply(ctx, branch, plan); err != nil {
+			if _, err := service.ApplyWithTrunk(ctx, branch, trunk, plan); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "Applied: gh stack link completed after revalidation.")
@@ -104,6 +105,7 @@ func newLink(service link.Service) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to link (defaults to current branch)")
+	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	_ = cmd.RegisterFlagCompletionFunc("branch", func(command *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
 		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
@@ -114,22 +116,23 @@ func newLink(service link.Service) *cobra.Command {
 		}
 		return branches, cobra.ShellCompDirectiveNoFileComp
 	})
+	_ = cmd.RegisterFlagCompletionFunc("trunk", func(command *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
+		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
+		defer cancel()
+		branches, err := service.TrunkCompletions(ctx, prefix)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
+		}
+		return branches, cobra.ShellCompDirectiveNoFileComp
+	})
 	return cmd
 }
 
 func writePreview(writer io.Writer, plan link.Plan) {
 	fmt.Fprintf(writer, "Resolved target (%s): %s\n", plan.TargetSource, plan.Target)
-	fmt.Fprintf(writer, "Declared Graphite trunk: %s\n", plan.Trunk)
+	fmt.Fprintf(writer, "Resolved Graphite trunk (%s): %s\n", plan.BaseSource, plan.Base)
 	fmt.Fprintf(writer, "Graphite path (bottom to top): %s\n", strings.Join(plan.Branches, " -> "))
-	if len(plan.PullRequests) == 0 {
-		fmt.Fprintln(writer, "GitHub PR inspection: no existing pull requests for this path; gh may create them on --apply.")
-	} else {
-		fmt.Fprintln(writer, "GitHub PR inspection:")
-		for _, pr := range plan.PullRequests {
-			fmt.Fprintf(writer, "  #%d %s (%s, base %s)\n", pr.Number, pr.Head, pr.State, pr.Base)
-		}
-	}
-	fmt.Fprintf(writer, "Proposed command: gh stack link --base %s %s\n", plan.Trunk, strings.Join(plan.Branches, " "))
+	fmt.Fprintf(writer, "Proposed command: gh stack link --base %s %s\n", plan.Base, strings.Join(plan.Branches, " "))
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {

@@ -9,28 +9,43 @@ import (
 
 func TestParseLogCompactMultiForkTree(t *testing.T) {
 	parsed := parseFixture(t, "irregular-stack.txt")
-	if got, want := parsed.trunk, "main"; got != want {
-		t.Fatalf("trunk = %q, want %q", got, want)
+	if got, want := strings.Join(parsed.roots, ","), "main"; got != want {
+		t.Fatalf("roots = %q, want %q", got, want)
 	}
 	cases := map[string][]string{
-		"alpha":        {"alpha"},
-		"beta":         {"alpha", "beta"},
-		"beta-top":     {"alpha", "beta", "beta-top"},
-		"beta-side":    {"alpha", "beta", "beta-top", "beta-side"},
-		"gamma":        {"alpha", "gamma"},
-		"gamma-deep":   {"alpha", "gamma", "gamma-deep"},
-		"delta":        {"alpha", "delta"},
-		"delta-deep":   {"alpha", "delta", "delta-deep"},
-		"epsilon":      {"alpha", "epsilon"},
-		"epsilon-deep": {"alpha", "epsilon", "epsilon-deep"},
+		"alpha":        {"main", "alpha"},
+		"beta":         {"main", "alpha", "beta"},
+		"beta-top":     {"main", "alpha", "beta", "beta-top"},
+		"beta-side":    {"main", "alpha", "beta", "beta-top", "beta-side"},
+		"gamma":        {"main", "alpha", "gamma"},
+		"gamma-deep":   {"main", "alpha", "gamma", "gamma-deep"},
+		"delta":        {"main", "alpha", "delta"},
+		"delta-deep":   {"main", "alpha", "delta", "delta-deep"},
+		"epsilon":      {"main", "alpha", "epsilon"},
+		"epsilon-deep": {"main", "alpha", "epsilon", "epsilon-deep"},
 	}
 	for selected, want := range cases {
 		t.Run(selected, func(t *testing.T) {
-			got := pathToTrunk(t, parsed, selected)
+			got := pathToRoot(t, parsed, selected)
 			if strings.Join(got, ",") != strings.Join(want, ",") {
 				t.Errorf("path = %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+func TestParseLogKeepsMultipleTrunksSeparate(t *testing.T) {
+	parsed := parseFixture(t, "multiple-trunks.txt")
+	if got, want := strings.Join(parsed.roots, ","), "main,develop,staging"; got != want {
+		t.Fatalf("roots = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(pathToRoot(t, parsed, "feature-two"), ","), "main,feature-one,feature-two"; got != want {
+		t.Errorf("feature path = %q, want %q", got, want)
+	}
+	for _, trunk := range []string{"main", "develop", "staging"} {
+		if got, want := strings.Join(pathToRoot(t, parsed, trunk), ","), trunk; got != want {
+			t.Errorf("%s path = %q, want %q", trunk, got, want)
+		}
 	}
 }
 
@@ -56,7 +71,7 @@ func TestParseLogRejectsCompactGrammarDrift(t *testing.T) {
 		},
 		"leading blank": func(text string) string { return "\n" + text },
 		"consecutive blank": func(text string) string {
-			return strings.Replace(text, "main\n\n", "main\n\n\n", 1)
+			return strings.Replace(text, "alpha\n│ │ │ │", "alpha\n\n\n│ │ │ │", 1)
 		},
 		"trailing blank": func(text string) string { return strings.TrimSuffix(text, "\n") + "\n\n" },
 		"after connector": func(text string) string {
@@ -103,12 +118,18 @@ func parseFixture(t *testing.T, name string) graph {
 	return parsed
 }
 
-func pathToTrunk(t *testing.T, parsed graph, selected string) []string {
+func pathToRoot(t *testing.T, parsed graph, selected string) []string {
 	t.Helper()
-	node := parsed.nodes[selected]
+	node, ok := parsed.nodes[selected]
+	if !ok {
+		t.Fatalf("missing node %q", selected)
+	}
 	var reversed []string
-	for node.name != parsed.trunk {
+	for {
 		reversed = append(reversed, node.name)
+		if node.parent == "" {
+			break
+		}
 		node = parsed.nodes[node.parent]
 	}
 	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {

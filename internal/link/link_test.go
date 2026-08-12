@@ -94,9 +94,9 @@ func TestApplyFailsClosedBeforeGitHubMutation(t *testing.T) {
 		{"current branch resolution", Service{Git: fakeGit{currentErr: context.Canceled}, Graphite: fakeGraphite{}, GitHub: &fakeGitHub{}}},
 		{"local branch listing", Service{Git: fakeGit{current: "beta", branchesErr: context.Canceled}, Graphite: fakeGraphite{}, GitHub: &fakeGitHub{}}},
 		{"Graphite discovery", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Graphite: fakeGraphite{discoverErr: context.Canceled}, GitHub: &fakeGitHub{}}},
-		{"missing local stack branch", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Trunk: "main", Branches: []string{"missing", "beta"}}}}, GitHub: &fakeGitHub{}}},
-		{"GitHub inspection", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Trunk: "main", Branches: []string{"alpha", "beta"}}}}, GitHub: &fakeGitHub{inspectErr: context.Canceled}}},
-		{"non-open pull request", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Trunk: "main", Branches: []string{"alpha", "beta"}}}}, GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 2, Head: "alpha", Base: "main", State: "MERGED"}}}}},
+		{"missing local stack branch", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "missing", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{}}},
+		{"GitHub inspection", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{inspectErr: context.Canceled}}},
+		{"non-open pull request", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 2, Head: "alpha", Base: "main", State: "MERGED"}}}}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -142,20 +142,92 @@ func TestBranchCompletionsAreLocalTrackedAndSorted(t *testing.T) {
 	}
 }
 
+func TestSelectBoundaryUsesOnlyDeclaredGraphiteTrunks(t *testing.T) {
+	path := []string{"main", "feature-one", "feature-two"}
+	base, source, branches, err := selectBoundary(path, []string{"main", "develop", "staging"}, "")
+	if err != nil {
+		t.Fatalf("selectBoundary() error = %v", err)
+	}
+	if base != "main" || source != "Graphite-declared ancestry" || strings.Join(branches, ",") != "feature-one,feature-two" {
+		t.Errorf("boundary = (%q, %q, %v)", base, source, branches)
+	}
+}
+
+func TestSelectBoundaryRequiresOrValidatesTrunkOverride(t *testing.T) {
+	path := []string{"develop", "main", "feature"}
+	trunks := []string{"develop", "main", "staging"}
+	if _, _, _, err := selectBoundary(path, trunks, ""); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
+		t.Fatalf("selectBoundary() error = %v, want ambiguity", err)
+	}
+	base, source, branches, err := selectBoundary(path, trunks, "main")
+	if err != nil {
+		t.Fatalf("selectBoundary() override error = %v", err)
+	}
+	if base != "main" || source != "--trunk" || strings.Join(branches, ",") != "feature" {
+		t.Errorf("override boundary = (%q, %q, %v)", base, source, branches)
+	}
+	for _, requested := range []string{"missing", "staging", "feature"} {
+		if _, _, _, err := selectBoundary(path, trunks, requested); err == nil {
+			t.Errorf("selectBoundary(%q) error = nil", requested)
+		}
+	}
+}
+
+func TestPlanWithTrunkUsesValidDeclaredAncestralOverride(t *testing.T) {
+	service := Service{
+		Git: fakeGit{current: "feature", branches: []string{"develop", "main", "feature"}},
+		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+			"feature": {Path: []string{"develop", "main", "feature"}, Trunks: []string{"develop", "main"}},
+		}},
+		GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 9, Head: "feature", Base: "main", State: "OPEN"}}},
+	}
+	if _, err := service.Plan(context.Background(), "feature"); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
+		t.Fatalf("Plan() error = %v, want ambiguity", err)
+	}
+	plan, err := service.PlanWithTrunk(context.Background(), "feature", "main")
+	if err != nil {
+		t.Fatalf("PlanWithTrunk() error = %v", err)
+	}
+	if plan.Base != "main" || strings.Join(plan.Branches, ",") != "feature" {
+		t.Errorf("plan = base %q branches %v", plan.Base, plan.Branches)
+	}
+}
+
+func TestTrunkCompletionsAreLocalAndSorted(t *testing.T) {
+	service := fakeService()
+	service.Git = fakeGit{current: "beta", branches: []string{"main", "develop", "staging", "alpha", "beta"}}
+	service.Graphite = fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"staging", "main", "develop"}}}}
+	branches, err := service.TrunkCompletions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("TrunkCompletions() error = %v", err)
+	}
+	if got, want := strings.Join(branches, ","), "develop,main,staging"; got != want {
+		t.Errorf("branches = %q, want %q", got, want)
+	}
+}
+
 func fakeService() Service {
 	branches := []string{"main", "alpha", "beta", "beta-one", "beta-two", "beta-two-deep", "gamma", "gamma-deep"}
 	return Service{
 		Git: fakeGit{current: "beta-two-deep", branches: branches},
 		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
-			"alpha":         {Trunk: "main", Branches: []string{"alpha"}},
-			"beta":          {Trunk: "main", Branches: []string{"alpha", "beta"}},
-			"beta-one":      {Trunk: "main", Branches: []string{"alpha", "beta", "beta-one"}},
-			"beta-two":      {Trunk: "main", Branches: []string{"alpha", "beta", "beta-two"}},
-			"beta-two-deep": {Trunk: "main", Branches: []string{"alpha", "beta", "beta-two", "beta-two-deep"}},
-			"gamma":         {Trunk: "main", Branches: []string{"alpha", "gamma"}},
-			"gamma-deep":    {Trunk: "main", Branches: []string{"alpha", "gamma", "gamma-deep"}},
+			"alpha":         {Path: []string{"main", "alpha"}, Trunks: []string{"main"}},
+			"beta":          {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}},
+			"beta-one":      {Path: []string{"main", "alpha", "beta", "beta-one"}, Trunks: []string{"main"}},
+			"beta-two":      {Path: []string{"main", "alpha", "beta", "beta-two"}, Trunks: []string{"main"}},
+			"beta-two-deep": {Path: []string{"main", "alpha", "beta", "beta-two", "beta-two-deep"}, Trunks: []string{"main"}},
+			"gamma":         {Path: []string{"main", "alpha", "gamma"}, Trunks: []string{"main"}},
+			"gamma-deep":    {Path: []string{"main", "alpha", "gamma", "gamma-deep"}, Trunks: []string{"main"}},
 		}, tracked: branches[1:]},
-		GitHub: &fakeGitHub{},
+		GitHub: &fakeGitHub{prs: []githubstack.PullRequest{
+			{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
+			{Number: 2, Head: "beta", Base: "alpha", State: "OPEN"},
+			{Number: 3, Head: "beta-one", Base: "beta", State: "OPEN"},
+			{Number: 4, Head: "beta-two", Base: "beta", State: "OPEN"},
+			{Number: 5, Head: "beta-two-deep", Base: "beta-two", State: "OPEN"},
+			{Number: 6, Head: "gamma", Base: "alpha", State: "OPEN"},
+			{Number: 7, Head: "gamma-deep", Base: "gamma", State: "OPEN"},
+		}},
 	}
 }
 
@@ -193,11 +265,11 @@ type changingGraphite struct{ discoveries int }
 
 func (f *changingGraphite) Discover(context.Context, string) (graphite.Stack, error) {
 	f.discoveries++
-	trunk := "main"
+	path := []string{"main", "alpha", "beta"}
 	if f.discoveries > 1 {
-		trunk = "other-main"
+		path = []string{"main", "beta"}
 	}
-	return graphite.Stack{Trunk: trunk, Branches: []string{"alpha", "beta"}}, nil
+	return graphite.Stack{Path: path, Trunks: []string{"main"}}, nil
 }
 func (*changingGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
@@ -211,8 +283,24 @@ type fakeGitHub struct {
 	inspectErr error
 }
 
-func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
-	return f.prs, f.inspectErr
+func (f *fakeGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+	if f.prs == nil {
+		prs := make([]githubstack.PullRequest, 0, len(branches))
+		base := "main"
+		for index, branch := range branches {
+			prs = append(prs, githubstack.PullRequest{Number: index + 1, Head: branch, Base: base, State: "OPEN"})
+			base = branch
+		}
+		return prs, f.inspectErr
+	}
+	wanted := branchSet(branches)
+	var matching []githubstack.PullRequest
+	for _, pr := range f.prs {
+		if wanted[pr.Head] {
+			matching = append(matching, pr)
+		}
+	}
+	return matching, f.inspectErr
 }
 func (f *fakeGitHub) Link(_ context.Context, trunk string, branches []string) error {
 	f.links++

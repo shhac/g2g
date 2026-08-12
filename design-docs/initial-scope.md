@@ -20,6 +20,13 @@ defaults to the checked-out Git branch and prominently prints that selection;
 checkout. A selected leaf may be in a forked tree: only its ancestry path is
 linked, never its siblings or descendants.
 
+Graphite may configure multiple trunks. `link` derives trunk candidates only
+from the selected Graphite ancestry, never from branch-name heuristics. One
+candidate is inferred and shown in preview. Multiple candidates fail closed
+until `--trunk <branch>` selects a declared, local, ancestral trunk; a valid
+override is also permitted when resolution was already unambiguous. Separate
+Graphite trunk components are never joined into an invented edge.
+
 ## Non-goals
 
 `gt2gh` will not create, reorder, rebase, submit, merge, or otherwise manage
@@ -56,14 +63,16 @@ surface will use Cobra for parsing and native shell-completion support.
 The implemented surface is:
 
 ```text
-gt2gh link [--branch <local-graphite-branch>] [--apply]
-gt2gh sync [--branch <local-graphite-branch>] [--apply]
+gt2gh link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
+gt2gh sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 
-Completion is static for commands and flags and dynamic only for `--branch`.
-Dynamic candidates are the deterministic intersection of Graphite-tracked and
-local branches; they do not trigger a checkout or mutation.
+Completion is static for commands and flags and dynamic for `--branch` and
+`--trunk`. Candidates are deterministic, local Graphite branches/trunks; they
+do not trigger a checkout or mutation. Preview output may use color on a
+terminal, but remains plain and legible for redirected output, `NO_COLOR`, or
+`TERM=dumb`.
 
 ## Future direction: `sync`
 

@@ -37,6 +37,9 @@ description: |
   invocation prints help. `sync` is preview-first and only applies when every
   selected-path branch already has an open GitHub PR; it must not create
   Graphite-only mappings or repair closed/non-open PRs.
+- Never guess a Graphite trunk from its name. The selected ancestry determines
+  the inferred trunk; multiple valid declared trunks require `--trunk`, whose
+  value must itself be declared and ancestral.
 - Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
   read Graphite internal metadata/configuration or use `gt --debug`: supported
   production discovery is strict, version-pinned noninteractive CLI parsing.

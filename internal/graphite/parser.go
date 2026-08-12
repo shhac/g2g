@@ -7,7 +7,7 @@ import (
 )
 
 type graph struct {
-	trunk string
+	roots []string
 	nodes map[string]node
 }
 
@@ -21,6 +21,7 @@ type record struct {
 	depth int
 	span  int
 	line  int
+	root  bool
 }
 
 // parseLog accepts exactly the compact Graphite 1.8.6 output emitted by:
@@ -56,6 +57,7 @@ func parseLog(output string) (graph, error) {
 		if !ok {
 			return graph{}, drift(index+1, line)
 		}
+		record.root = len(records) == 0 || separator
 		records = append(records, record)
 		separator = false
 	}
@@ -71,13 +73,16 @@ func buildGraph(records []record) (graph, error) {
 		if _, exists := result.nodes[current.name]; exists {
 			return graph{}, fmt.Errorf("Graphite display repeats branch %q", current.name)
 		}
-		if previous == nil {
-			if current.depth != 0 {
+		if current.root {
+			if current.depth != 0 || (previous != nil && previous.span != 0) {
 				return graph{}, drift(current.line, current.name)
 			}
-			result.trunk = current.name
 			result.nodes[current.name] = node{name: current.name}
+			result.roots = append(result.roots, current.name)
 		} else {
+			if previous == nil {
+				return graph{}, drift(current.line, current.name)
+			}
 			switch {
 			case current.depth > previous.depth:
 				if previous.span == 0 || current.depth != previous.depth+previous.span {

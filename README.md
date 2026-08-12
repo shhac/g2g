@@ -29,6 +29,10 @@ g2g link
 # Preview a Graphite-tracked local branch without checking it out.
 g2g link --branch feature/top
 
+# Use a particular Graphite-declared trunk when the selected ancestry is
+# genuinely multi-trunk or when intentionally choosing another valid ancestor.
+g2g link --branch feature/top --trunk main
+
 # Revalidate, then allow gh to create/update the native GitHub stack.
 g2g link --branch feature/top --apply
 
@@ -41,6 +45,18 @@ g2g sync --branch feature/top
 supported display grammar and a compatible `gh` with `stack link`. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
+
+`gt2gh` never guesses a trunk from its name. It infers the only
+Graphite-declared trunk on the selected ancestry and shows it prominently. If
+that ancestry has multiple declared trunks, it fails closed and requires
+`--trunk <branch>`; an override must be both declared by Graphite and an
+ancestor of the selected branch.
+
+Preview renders the selected stack graph once and always shows the exact
+`gh stack link` command it validated. `--apply` re-discovers and revalidates
+before it invokes that command. Manually copying the displayed command is a
+separate, deliberate snapshot action and does not cause `gt2gh` to re-resolve
+anything.
 
 ## Homebrew
 

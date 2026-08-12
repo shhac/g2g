@@ -37,8 +37,8 @@ only intended future side effect.
 
 `gt2gh link` is an explicit subcommand rather than a default action. This
 leaves room for future, separately designed workflows without making a bare
-invocation mutate state. Bare `gt2gh` shows help. Standard `--help` and
-`--version` behavior is kept in the small standard-library parser.
+invocation mutate state. Bare `gt2gh` shows help. The first implemented command
+surface will use Cobra for parsing and native shell-completion support.
 
 ## Future direction: `sync`
 
@@ -60,3 +60,44 @@ available in the supported `gh` versions, how branch and remote identities map
 between the tools, and how parent, order, and membership divergence should be
 represented. Initial `sync` scope, if adopted, is linear stacks only. Tree or
 forked-stack support needs a separate design with an explicit safety model.
+
+## Release roadmap and required quality gates
+
+The following sequence is mandatory. A release must not skip its final
+structure review or its release smoke checks, even when the feature work is
+small.
+
+### v0.1.0: linear linking
+
+1. Implement actual `gt2gh link` with Cobra, a read-only preview by default,
+   and an explicit apply opt-in for mutation. `--branch <branch>` is optional:
+   absent it resolves the current branch and prints that target prominently;
+   present it selects a Graphite-tracked branch without checking it out. The
+   command must discover and validate one unambiguous bottom-to-top linear
+   Graphite path, inspect the corresponding GitHub PR and native-stack state,
+   and keep Graphite authoritative.
+2. Add static and dynamic Cobra shell completion. `gt2gh completion
+   bash|zsh|fish` must emit release-compatible scripts. Completion for the
+   optional target-branch flag must list deterministically discoverable,
+   Graphite-tracked local branches without checkout or mutation.
+3. Add the required safety behavior, faked external-CLI tests, and release
+   readiness checks. In particular, preview must not mutate; apply must
+   revalidate before invoking GitHub; unsupported, ambiguous, or divergent
+   state must fail closed.
+4. Immediately before creating the v0.1.0 tag, run a fresh
+   `improve-code-structure` assessment requesting around sixteen concrete
+   recommendations. Independently judge every recommendation and implement
+   only those that are valid and worthwhile; do not treat the count as a quota.
+5. Run release smoke checks after the selected improvements, then cut v0.1.0.
+
+### v0.2.0: Graphite-authoritative reconciliation
+
+1. Implement `sync` as the design described above: one-way reconciliation from
+   Graphite to GitHub, with read-only discovery/dry-run first and explicit apply
+   for any GitHub change. `sync` remains design-only and post-v0.1.0 until this
+   milestone begins.
+2. Immediately before creating the v0.2.0 tag, run the same fresh
+   `improve-code-structure` assessment requesting around sixteen concrete
+   recommendations. Independently judge and implement only the valid,
+   worthwhile recommendations.
+3. Run release smoke checks after the selected improvements, then cut v0.2.0.

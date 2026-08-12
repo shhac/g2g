@@ -16,9 +16,8 @@ func TestClientUsesFakeGitHubCLIOnPATH(t *testing.T) {
 	t.Setenv("GH_ARGUMENTS", arguments)
 	testutil.WithFakeExecutables(t, map[string]string{
 		"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"
-if [ "$1 $2 $3" = "pr list --state" ]; then
-  printf '[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]\n'
-fi`,
+if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/fixture"}\n'; fi
+if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}\n'; fi`,
 	})
 	client := Client{Runner: subprocess.ExecRunner{}}
 	prs, err := client.Inspect(context.Background(), []string{"alpha"})
@@ -35,15 +34,15 @@ fi`,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(called), "pr list --state all --limit 1000 --json number,url,headRefName,baseRefName,state\nstack link --base main alpha beta\n"; got != want {
-		t.Errorf("gh calls = %q, want %q", got, want)
+	if !strings.Contains(string(called), "repo view --json nameWithOwner\n") || !strings.Contains(string(called), "api graphql -f query=query { pr0: search(") || !strings.Contains(string(called), "stack link --base main alpha beta\n") {
+		t.Errorf("unexpected gh calls: %q", called)
 	}
 }
 
 func TestInspectRejectsInvalidJSON(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{"gh": "printf 'not json\\n'"})
 	_, err := (Client{Runner: subprocess.ExecRunner{}}).Inspect(context.Background(), []string{"alpha"})
-	if err == nil || !strings.Contains(err.Error(), "parse gh pr list JSON") {
+	if err == nil || !strings.Contains(err.Error(), "parse gh repo view JSON") {
 		t.Fatalf("Inspect() error = %v", err)
 	}
 }

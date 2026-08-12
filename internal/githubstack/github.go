@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/subprocess"
@@ -30,26 +31,44 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 	if c.Runner == nil {
 		return nil, fmt.Errorf("GitHub runner is not configured")
 	}
-	output, err := c.Runner.Run(ctx, "gh", "pr", "list", "--state", "all", "--limit", "1000", "--json", "number,url,headRefName,baseRefName,state")
+	repoOutput, err := c.Runner.Run(ctx, "gh", "repo", "view", "--json", "nameWithOwner")
 	if err != nil {
-		return nil, commandError("gh pr list", err, output)
+		return nil, commandError("gh repo view", err, repoOutput)
 	}
-	var all []PullRequest
-	if err := json.Unmarshal(output, &all); err != nil {
-		return nil, fmt.Errorf("parse gh pr list JSON: %w", err)
+	var repo struct {
+		NameWithOwner string `json:"nameWithOwner"`
 	}
-	wanted := make(map[string]bool, len(branches))
-	for _, branch := range branches {
-		wanted[branch] = true
+	if err := json.Unmarshal(repoOutput, &repo); err != nil || !strings.Contains(repo.NameWithOwner, "/") {
+		return nil, fmt.Errorf("parse gh repo view JSON")
+	}
+	query := graphqlQuery(repo.NameWithOwner, branches)
+	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-f", "query="+query)
+	if err != nil {
+		return nil, commandError("gh api graphql", err, output)
+	}
+	var response struct {
+		Data map[string]struct {
+			Nodes []PullRequest `json:"nodes"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
 	}
 	var matching []PullRequest
-	for _, pr := range all {
-		if wanted[pr.Head] {
-			matching = append(matching, pr)
-		}
+	for index := range branches {
+		matching = append(matching, response.Data[fmt.Sprintf("pr%d", index)].Nodes...)
 	}
 	sort.Slice(matching, func(left, right int) bool { return matching[left].Head < matching[right].Head })
 	return matching, nil
+}
+
+func graphqlQuery(repo string, branches []string) string {
+	var fields []string
+	for index, branch := range branches {
+		search := "repo:" + repo + " is:pr head:" + branch
+		fields = append(fields, fmt.Sprintf("pr%d: search(query: %s, type: ISSUE, first: 10) { nodes { ... on PullRequest { number url headRefName baseRefName state } } }", index, strconv.Quote(search)))
+	}
+	return "query { " + strings.Join(fields, " ") + " }"
 }
 
 func (c Client) Link(ctx context.Context, trunk string, branches []string) error {

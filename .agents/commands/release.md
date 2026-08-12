@@ -1,42 +1,44 @@
 ---
-description: Prepare a guarded gt2gh release; publishing automation is not configured
+description: Release via tag push — CI builds, publishes, and bumps the Homebrew formula
 argument-hint: <patch|minor|major>
 ---
 
 # Release
 
-`gt2gh` is not release-configured yet: this repository has no `origin` remote,
-release workflow, formula, release tags, or documented artifact contract. Treat
-this command as a preflight and planning workflow. Do not create a tag, push,
-publish a GitHub release, or claim a version has shipped until those pieces
-exist and the user explicitly approves the release.
+Releasing `gt2gh` is automated. Pushing a `v*` tag triggers
+`.github/workflows/release.yml`, which calls the shared `go-release` workflow in
+`shhac/homebrew-tap` to cross-build every platform, publish the GitHub Release,
+and regenerate + push `Formula/gt2gh.rb` to the tap. The tag also triggers
+`.github/workflows/publish-skill.yml`, which publishes `skills/gt2gh` to
+`shhac/agent-skills`. **No manual build, and no manual formula bump.**
 
 ## Steps
 
-1. Require `$ARGUMENTS` to be `patch`, `minor`, or `major`; otherwise stop and
-   ask for a valid release level.
-2. Check the release state before deciding a version:
+1. `$ARGUMENTS` must be `patch`, `minor`, or `major` — else stop and ask.
+2. Pre-flight (CI re-runs tests on the tag, but check locally first):
+   - Clean tree (`git status --short`), on `main`, up to date with `origin/main`.
+   - Format, tests, and vet pass: `gofmt -d $(rg --files -g '*.go')`,
+     `go test ./...`, and `go vet ./...`. The version is injected from the tag
+     (`-ldflags -X main.version=…`) — there is no version file to edit
+     (`cmd/gt2gh/main.go::version` stays `"dev"`).
+3. Compute the new version by bumping the latest tag
+   (`git describe --tags --abbrev=0`): patch → x.y.(z+1), minor → x.(y+1).0,
+   major → (x+1).0.0.
+4. Tag and push — this is the whole release:
    ```bash
-   git status --short
-   git branch --show-current
-   git remote -v
-   git tag --list 'v*'
+   git tag "v${new_version}"
+   git push origin "v${new_version}"
    ```
-   Stop if the tree is not clean, the branch is not `main`, `origin` is absent,
-   or the latest SemVer tag / first-release version has not been agreed.
-3. Run the local release checks without leaving an artifact in the worktree:
+5. Verify CI and the outputs:
    ```bash
-   gofmt -d $(rg --files -g '*.go')
-   go test ./...
-   go vet ./...
-   go build -trimpath -ldflags "-X main.version=v<version>" \
-     -o "$(mktemp -d)/gt2gh" ./cmd/gt2gh
+   gh run watch --repo shhac/gt2gh
+   gh release view "v${new_version}" --repo shhac/gt2gh
    ```
-4. Report the blockers and proposed version. Before any tag is created, add
-   and verify a release contract: remote repository, tag-triggered CI or a
-   documented manual artifact process, supported build targets, and any
-   distribution destination. Re-run the checks after that configuration lands.
-5. Only after the user explicitly authorizes publication and the contract is
-   verified, create and push the agreed `v<version>` tag, then verify the
-   resulting CI run and release artifacts. Do not improvise a GitHub release or
-   Homebrew update for this initial repository state.
+   Install / upgrade: `brew install shhac/tap/gt2gh` · `brew upgrade shhac/tap/gt2gh`
+
+## Manual fallback (only if the workflow itself is broken)
+
+Re-run a failed release with `gh run rerun <id> --repo shhac/gt2gh`. To bypass
+the workflow entirely, build the `GOOS/GOARCH` binaries with
+`-ldflags "-s -w -X main.version=<v>"`, use `gh release create` for the
+tarballs, and edit `Formula/gt2gh.rb` by hand.

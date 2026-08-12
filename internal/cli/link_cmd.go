@@ -30,12 +30,23 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				if err := writeLinkPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
 					return err
 				}
+				if plan.NothingToLink() {
+					fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were needed or made."))
+					return nil
+				}
 				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link; copying the displayed command is your deliberate snapshot choice.")
 				return nil
 			}
 			validated, err := service.RevalidateWithTrunk(ctx, branch, trunk, plan)
 			if err != nil {
 				writeNotApplied(cmd.OutOrStdout(), presentation, err)
+				return err
+			}
+			if validated.NothingToLink() {
+				if err := writeLinkPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
+					return err
+				}
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were needed or made."))
 				return err
 			}
 			if err := writeReadyToApply(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -95,8 +106,14 @@ func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) 
 			return err
 		}
 	}
-	if err := writeCommand(writer, preview.commandText(), presentation); err != nil {
-		return err
+	if preview.NothingToLink {
+		if _, err := fmt.Fprintln(writer, "Nothing to link — this stack has one pull request."); err != nil {
+			return err
+		}
+	} else {
+		if err := writeCommand(writer, preview.commandText(), presentation); err != nil {
+			return err
+		}
 	}
 	if preview.ApplyBlocked {
 		if _, err := fmt.Fprintln(writer, "Apply blocked: resolve every unresolved GitHub PR mapping first."); err != nil {

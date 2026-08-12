@@ -54,6 +54,25 @@ func TestApplyRevalidatesBeforeGitHubMutation(t *testing.T) {
 	}
 }
 
+func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
+	github := &fakeGitHub{}
+	service := fakeService()
+	service.GitHub = github
+	preview, err := service.Plan(context.Background(), "alpha")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if !preview.NothingToLink() {
+		t.Fatal("NothingToLink() = false, want true")
+	}
+	if _, err := service.Apply(context.Background(), "alpha", preview); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if github.links != 0 {
+		t.Errorf("Link calls = %d, want 0", github.links)
+	}
+}
+
 func TestApplyStopsBeforeMutationWhenDirty(t *testing.T) {
 	github := &fakeGitHub{}
 	service := fakeService()

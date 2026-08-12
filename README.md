@@ -19,9 +19,11 @@ g2g link
 
 The `link` command is a safe preview by default. It resolves the checked-out Git
 branch as its target, reads the Graphite path from its declared trunk to that
-target, inspects matching GitHub pull requests, and prints the exact proposed
-bottom-to-top command. Preview clearly states that no changes were made;
-nothing changes unless `--apply` is present.
+target, and inspects matching GitHub pull requests. When at least two
+PR-backed branches need linking, it prints the exact proposed bottom-to-top
+command. A one-PR path is a successful no-op: it prints `Nothing to link` and
+never constructs an invalid `gh stack link` command. Preview clearly states
+that no changes were made; nothing changes unless `--apply` is present.
 
 ```sh
 # Preview the path ending at the current branch.

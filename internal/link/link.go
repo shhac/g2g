@@ -52,6 +52,12 @@ type Plan struct {
 // Issue is a safe, actionable reason a displayed path node cannot be applied.
 type Issue struct{ Branch, Reason string }
 
+// NothingToLink reports whether the fully validated path is shorter than the
+// minimum GitHub stack link accepts. Unresolved PR state is never a no-op.
+func (p Plan) NothingToLink() bool {
+	return len(p.Issues) == 0 && len(p.Branches) < 2
+}
+
 // Discover resolves a Graphite path and read-only GitHub PR facts without
 // deciding whether their current native-stack relationship is safe to link.
 // sync uses this to report divergence before choosing its own apply policy.
@@ -248,6 +254,9 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	}
 	if len(plan.Issues) != 0 {
 		return fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
+	}
+	if plan.NothingToLink() {
+		return nil
 	}
 	return s.GitHub.Link(ctx, plan.Base, plan.Branches)
 }

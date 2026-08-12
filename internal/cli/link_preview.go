@@ -10,11 +10,12 @@ import (
 // no ANSI or writer dependency so another output format can consume the same
 // validated plan without parsing terminal text.
 type linkPreview struct {
-	Target       string
-	TargetSource string
-	Nodes        []linkPreviewNode
-	Command      []string
-	ApplyBlocked bool
+	Target        string
+	TargetSource  string
+	Nodes         []linkPreviewNode
+	Command       []string
+	ApplyBlocked  bool
+	NothingToLink bool
 }
 
 type linkPreviewNode struct {
@@ -34,11 +35,14 @@ func newLinkPreview(plan link.Plan) linkPreview {
 		prs[pr.Head] = pr.Number
 	}
 	preview := linkPreview{
-		Target:       plan.Target,
-		TargetSource: plan.TargetSource,
-		Nodes:        []linkPreviewNode{{Branch: plan.Base, Trunk: true}},
-		Command:      append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...),
-		ApplyBlocked: len(plan.Issues) != 0,
+		Target:        plan.Target,
+		TargetSource:  plan.TargetSource,
+		Nodes:         []linkPreviewNode{{Branch: plan.Base, Trunk: true}},
+		ApplyBlocked:  len(plan.Issues) != 0,
+		NothingToLink: plan.NothingToLink(),
+	}
+	if !preview.NothingToLink {
+		preview.Command = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
 	for _, branch := range plan.Branches {
 		preview.Nodes = append(preview.Nodes, linkPreviewNode{Branch: branch, PRNumber: prs[branch], Unresolved: issues[branch]})

@@ -55,8 +55,12 @@ each preceding branch); this is the read-only native-stack relationship check
 available without checkout. Every non-trunk selected-path branch must have
 exactly one open PR so the preview graph is fully labeled; absent, duplicate,
 non-open, or divergent mappings render as actionable unresolved nodes and block
-apply. Tests use fake `gt` and `gh` executables on `PATH`, so they never need
-credentials, network access, or real CLI installations.
+apply. A fully mapped path with fewer than two branches above its trunk is a
+successful no-op because `gh stack link` requires at least two stack arguments:
+preview says `Nothing to link`, and `--apply` revalidates then reports that no
+changes were needed or made without invoking `gh`. Tests use fake `gt` and `gh`
+executables on `PATH`, so they never need credentials, network access, or real
+CLI installations.
 
 ## CLI shape
 

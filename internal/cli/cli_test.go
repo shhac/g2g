@@ -129,7 +129,7 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 }
 
 func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
-	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "beta"}}}
+	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}
 	for _, test := range []struct {
 		name  string
 		color bool
@@ -143,7 +143,7 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 			if err := writeLinkPlan(&output, plan, presentation); err != nil {
 				t.Fatal(err)
 			}
-			want := presentation.accent("Command to run") + "\n" + presentation.command("gh stack link --base main beta") + "\n"
+			want := presentation.accent("Command to run") + "\n" + presentation.command("gh stack link --base main alpha beta") + "\n"
 			if got := output.String(); !strings.Contains(got, want) || strings.Contains(got, "$ gh stack link") || strings.Contains(got, "│gh stack") {
 				t.Errorf("preview = %q", got)
 			}
@@ -152,13 +152,40 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 }
 
 func TestLinkPreviewCommandUsesShellSafeArguments(t *testing.T) {
-	plan := link.Plan{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"feature;synthetic"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "feature;synthetic"}}}
+	plan := link.Plan{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "feature;synthetic"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "feature;synthetic"}}}
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "gh stack link --base main 'feature;synthetic'") {
+	if !strings.Contains(output.String(), "gh stack link --base main alpha 'feature;synthetic'") {
 		t.Errorf("preview = %q", output.String())
+	}
+}
+
+func TestLinkPreviewReportsNothingToLinkForOnePullRequest(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "current branch", args: []string{"link"}, want: "Resolved target (current Git branch): alpha"},
+		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Resolved target (--branch): alpha"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := &cliGitHub{}
+			output, err := executeWithService(t, cliSingleBranchService(github), test.args...)
+			if err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			for _, expected := range []string{test.want, "Nothing to link — this stack has one pull request.", "No changes were needed or made."} {
+				if !strings.Contains(output, expected) {
+					t.Errorf("preview missing %q:\n%s", expected, output)
+				}
+			}
+			if strings.Contains(output, "gh stack link") || github.links != 0 {
+				t.Errorf("preview = %q links=%d", output, github.links)
+			}
+		})
 	}
 }
 
@@ -188,6 +215,32 @@ func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
 	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
 	if err == nil || github.links != 0 {
 		t.Errorf("apply error=%v links=%d", err, github.links)
+	}
+}
+
+func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		prs  []githubstack.PullRequest
+		want string
+	}{
+		{name: "missing", want: "alpha (unresolved: no open pull request)"},
+		{name: "non-open", prs: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"}}, want: "alpha (unresolved: closed pull request)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := &cliGitHubPRs{prs: test.prs}
+			service := cliSingleBranchService(github)
+			output, err := executeWithService(t, service, "link")
+			if err != nil {
+				t.Fatalf("preview error = %v", err)
+			}
+			if !strings.Contains(output, test.want) || !strings.Contains(output, "Apply blocked") || strings.Contains(output, "Nothing to link") {
+				t.Errorf("preview = %q", output)
+			}
+			if _, err := executeWithService(t, service, "link", "--apply"); err == nil || github.links != 0 {
+				t.Errorf("apply error=%v links=%d", err, github.links)
+			}
+		})
 	}
 }
 
@@ -221,6 +274,23 @@ func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 	}
 	if github.links != 1 {
 		t.Errorf("Link calls = %d, want 1", github.links)
+	}
+	if got, want := strings.Join(github.branches, ","), "alpha,beta"; github.base != "main" || got != want {
+		t.Errorf("Link = (--base %q %q), want (--base main alpha,beta)", github.base, got)
+	}
+}
+
+func TestLinkApplyRevalidatesOnePullRequestWithoutGitHubMutation(t *testing.T) {
+	github := &cliGitHub{}
+	output, err := executeWithService(t, cliSingleBranchService(github), "link", "--apply")
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if github.inspectCalls != 2 || github.links != 0 {
+		t.Errorf("inspections=%d links=%d, want 2 and 0", github.inspectCalls, github.links)
+	}
+	if !strings.Contains(output, "Nothing to link — this stack has one pull request.") || !strings.Contains(output, "No changes were needed or made.") || strings.Contains(output, "gh stack link") || strings.Contains(output, "Ready to apply") || strings.Contains(output, "Applied —") {
+		t.Errorf("output = %q", output)
 	}
 }
 
@@ -378,6 +448,14 @@ func cliServiceWithGitHub(github link.GitHub) link.Service {
 	}
 }
 
+func cliSingleBranchService(github link.GitHub) link.Service {
+	return link.Service{
+		Git:      cliGit{current: "alpha", branches: []string{"main", "alpha"}},
+		Graphite: cliSingleBranchGraphite{},
+		GitHub:   github,
+	}
+}
+
 type cliGit struct {
 	current  string
 	branches []string
@@ -399,8 +477,22 @@ func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
 }
 
+type cliSingleBranchGraphite struct{}
+
+func (cliSingleBranchGraphite) Discover(_ context.Context, branch string) (graphite.Stack, error) {
+	if branch != "alpha" {
+		return graphite.Stack{}, context.Canceled
+	}
+	return graphite.Stack{Path: []string{"main", "alpha"}, Trunks: []string{"main"}}, nil
+}
+func (cliSingleBranchGraphite) TrackedBranches(context.Context) ([]string, error) {
+	return []string{"alpha"}, nil
+}
+
 type cliGitHub struct {
 	links        int
+	base         string
+	branches     []string
 	events       *[]string
 	linkErr      error
 	inspectErrAt int
@@ -424,8 +516,10 @@ func (f *cliGitHub) Inspect(_ context.Context, branches []string) ([]githubstack
 	}
 	return prs, nil
 }
-func (f *cliGitHub) Link(context.Context, string, []string) error {
+func (f *cliGitHub) Link(_ context.Context, base string, branches []string) error {
 	f.links++
+	f.base = base
+	f.branches = append([]string(nil), branches...)
 	if f.events != nil {
 		*f.events = append(*f.events, "link")
 	}
@@ -480,6 +574,16 @@ func (*cliGitHubMissing) Inspect(context.Context, []string) ([]githubstack.PullR
 	return []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}}, nil
 }
 func (f *cliGitHubMissing) Link(context.Context, string, []string) error { f.links++; return nil }
+
+type cliGitHubPRs struct {
+	prs   []githubstack.PullRequest
+	links int
+}
+
+func (f *cliGitHubPRs) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
+	return f.prs, nil
+}
+func (f *cliGitHubPRs) Link(context.Context, string, []string) error { f.links++; return nil }
 
 type cliSyncDiscoverer struct{}
 

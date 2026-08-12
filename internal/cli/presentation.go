@@ -15,18 +15,16 @@ const (
 type Presentation struct{ Color bool }
 
 func detectPresentation(writer io.Writer) Presentation {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" || os.Getenv("CI") != "" {
-		return Presentation{}
-	}
 	file, ok := writer.(*os.File)
 	if !ok {
 		return Presentation{}
 	}
 	info, err := file.Stat()
-	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
-		return Presentation{}
-	}
-	return Presentation{Color: true}
+	return Presentation{Color: colorEnabled(os.Getenv("NO_COLOR") != "", os.Getenv("TERM"), os.Getenv("CI") != "", err == nil && info.Mode()&os.ModeCharDevice != 0)}
+}
+
+func colorEnabled(noColor bool, term string, ci bool, terminal bool) bool {
+	return !noColor && term != "dumb" && !ci && terminal
 }
 func (p Presentation) accent(text string) string { return p.style(ansiAccent, text) }
 func (p Presentation) notice(text string) string { return p.style(ansiNotice, text) }

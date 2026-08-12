@@ -132,6 +132,29 @@ func TestPlanRejectsUnsafeOrDivergentGitHubState(t *testing.T) {
 	}
 }
 
+func TestPlanAccumulatesEveryUnresolvedBranch(t *testing.T) {
+	service := fakeService()
+	service.GitHub = &fakeGitHub{prs: []githubstack.PullRequest{
+		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
+		{Number: 2, Head: "beta", Base: "alpha", State: "CLOSED"},
+	}}
+	plan, err := service.Plan(context.Background(), "beta-two")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if got, want := strings.Join(issueBranches(plan.Issues), ","), "beta,beta-two"; got != want {
+		t.Errorf("issues = %q, want %q", got, want)
+	}
+}
+
+func issueBranches(issues []Issue) []string {
+	result := make([]string, len(issues))
+	for i := range issues {
+		result[i] = issues[i].Branch
+	}
+	return result
+}
+
 func TestBranchCompletionsAreLocalTrackedAndSorted(t *testing.T) {
 	service := fakeService()
 	branches, err := service.BranchCompletions(context.Background(), "beta")
@@ -198,11 +221,28 @@ func TestTrunkCompletionsAreLocalAndSorted(t *testing.T) {
 	service := fakeService()
 	service.Git = fakeGit{current: "beta", branches: []string{"main", "develop", "staging", "alpha", "beta"}}
 	service.Graphite = fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"staging", "main", "develop"}}}}
-	branches, err := service.TrunkCompletions(context.Background(), "")
+	branches, err := service.TrunkCompletions(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("TrunkCompletions() error = %v", err)
 	}
 	if got, want := strings.Join(branches, ","), "develop,main,staging"; got != want {
+		t.Errorf("branches = %q, want %q", got, want)
+	}
+}
+
+func TestTrunkCompletionsUseExplicitTargetWithoutCheckout(t *testing.T) {
+	service := Service{
+		Git: fakeGit{current: "current", branches: []string{"main", "develop", "current", "chosen"}},
+		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+			"current": {Path: []string{"main", "current"}, Trunks: []string{"main"}},
+			"chosen":  {Path: []string{"develop", "chosen"}, Trunks: []string{"develop"}},
+		}},
+	}
+	branches, err := service.TrunkCompletions(context.Background(), "chosen", "d")
+	if err != nil {
+		t.Fatalf("TrunkCompletions() error = %v", err)
+	}
+	if got, want := strings.Join(branches, ","), "develop"; got != want {
 		t.Errorf("branches = %q, want %q", got, want)
 	}
 }

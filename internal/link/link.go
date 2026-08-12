@@ -291,7 +291,7 @@ func (s Service) BranchCompletions(ctx context.Context, prefix string) ([]string
 
 // TrunkCompletions derives deterministic, local Graphite trunk candidates
 // from a no-checkout discovery pass.
-func (s Service) TrunkCompletions(ctx context.Context, prefix string) ([]string, error) {
+func (s Service) TrunkCompletions(ctx context.Context, target, prefix string) ([]string, error) {
 	if s.Git == nil || s.Graphite == nil {
 		return nil, fmt.Errorf("link service is not fully configured")
 	}
@@ -299,9 +299,12 @@ func (s Service) TrunkCompletions(ctx context.Context, prefix string) ([]string,
 	if err != nil {
 		return nil, err
 	}
-	target, err := s.Git.CurrentBranch(ctx)
-	if err != nil {
-		return nil, err
+	if target == "" {
+		var err error
+		target, err = s.Git.CurrentBranch(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	stack, err := s.Graphite.Discover(ctx, target)
 	if err != nil {
@@ -319,29 +322,33 @@ func (s Service) TrunkCompletions(ctx context.Context, prefix string) ([]string,
 }
 
 func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string) []Issue {
-	seen := make(map[string]bool, len(prs))
 	expectedBases := make(map[string]string, len(branches))
 	base := baseBranch
 	for _, branch := range branches {
 		expectedBases[branch] = base
 		base = branch
 	}
+	byHead := make(map[string][]githubstack.PullRequest, len(prs))
 	for _, pr := range prs {
-		if seen[pr.Head] {
-			return []Issue{{Branch: pr.Head, Reason: "multiple pull requests"}}
-		}
-		seen[pr.Head] = true
-		if pr.State != "OPEN" {
-			return []Issue{{Branch: pr.Head, Reason: strings.ToLower(pr.State) + " pull request"}}
-		}
-		if expected := expectedBases[pr.Head]; pr.Base != expected {
-			return []Issue{{Branch: pr.Head, Reason: fmt.Sprintf("PR #%d base %s, want %s", pr.Number, pr.Base, expected)}}
-		}
+		byHead[pr.Head] = append(byHead[pr.Head], pr)
 	}
-	var issues []Issue
+	issues := make([]Issue, 0)
 	for _, branch := range branches {
-		if !seen[branch] {
+		matches := byHead[branch]
+		switch len(matches) {
+		case 0:
 			issues = append(issues, Issue{Branch: branch, Reason: "no open pull request"})
+		case 1:
+			pr := matches[0]
+			if pr.State != "OPEN" {
+				issues = append(issues, Issue{Branch: branch, Reason: strings.ToLower(pr.State) + " pull request"})
+				continue
+			}
+			if expected := expectedBases[branch]; pr.Base != expected {
+				issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("PR #%d base %s, want %s", pr.Number, pr.Base, expected)})
+			}
+		default:
+			issues = append(issues, Issue{Branch: branch, Reason: "multiple pull requests"})
 		}
 	}
 	return issues

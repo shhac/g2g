@@ -46,3 +46,28 @@ func TestInspectRejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("Inspect() error = %v", err)
 	}
 }
+
+func TestParsePullRequestsRejectsGraphQLFailures(t *testing.T) {
+	for _, output := range []string{
+		`{"errors":[{"message":"synthetic failure"}]}`,
+		`{"data":{}}`,
+		`{"data":{"pr0":{"nodes":[]}}}`,
+	} {
+		if _, err := parsePullRequests([]byte(output), []string{"alpha", "beta"}); err == nil {
+			t.Errorf("parsePullRequests(%s) error = nil", output)
+		}
+	}
+}
+
+func TestParsePullRequestsRejectsInvalidNode(t *testing.T) {
+	output := []byte(`{"data":{"pr0":{"nodes":[{"number":0,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}`)
+	if _, err := parsePullRequests(output, []string{"alpha"}); err == nil {
+		t.Fatal("parsePullRequests() error = nil")
+	}
+}
+
+func TestBoundedMessage(t *testing.T) {
+	if got := boundedMessage(strings.Repeat("x", 501)); !strings.HasSuffix(got, "…") || len(got) != 503 {
+		t.Errorf("boundedMessage() = %q", got)
+	}
+}

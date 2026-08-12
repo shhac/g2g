@@ -126,6 +126,15 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestLinkPreviewCommandUsesShellSafeArguments(t *testing.T) {
+	plan := link.Plan{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"feature;synthetic"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "feature;synthetic"}}}
+	var output bytes.Buffer
+	writePreview(&output, plan, Presentation{})
+	if !strings.Contains(output.String(), "gh stack link --base main 'feature;synthetic'") {
+		t.Errorf("preview = %q", output.String())
+	}
+}
+
 func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 	github := &cliGitHub{}
 	output, err := executeWithService(t, cliService(github), "link")
@@ -152,6 +161,23 @@ func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
 	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
 	if err == nil || github.links != 0 {
 		t.Errorf("apply error=%v links=%d", err, github.links)
+	}
+}
+
+func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
+	plan := link.Plan{
+		Target: "beta-two", TargetSource: "--branch", Base: "main",
+		Branches:     []string{"alpha", "beta", "beta-two"},
+		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}},
+		Issues: []link.Issue{
+			{Branch: "beta", Reason: "closed pull request"},
+			{Branch: "beta-two", Reason: "no open pull request"},
+		},
+	}
+	var output bytes.Buffer
+	writePreview(&output, plan, Presentation{})
+	if got := output.String(); !strings.Contains(got, "beta (unresolved: closed pull request)") || !strings.Contains(got, "beta-two (unresolved: no open pull request)") || strings.Contains(got, "(#0)") {
+		t.Errorf("preview = %q", got)
 	}
 }
 

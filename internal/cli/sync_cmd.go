@@ -42,24 +42,10 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to reconcile (defaults to current branch)")
 	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "reconcile eligible GitHub stack relationships after revalidation")
-	_ = cmd.RegisterFlagCompletionFunc("branch", func(_ *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
-		defer cancel()
-		branches, err := linkService.BranchCompletions(ctx, prefix)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
-		}
-		return branches, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("trunk", func(_ *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
-		defer cancel()
-		branches, err := linkService.TrunkCompletions(ctx, prefix)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
-		}
-		return branches, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(linkService.BranchCompletions))
+	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
+		return linkService.TrunkCompletions(ctx, branch, prefix)
+	}))
 	return cmd
 }
 

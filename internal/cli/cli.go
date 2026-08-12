@@ -110,48 +110,30 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to link (defaults to current branch)")
 	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
-	_ = cmd.RegisterFlagCompletionFunc("branch", func(command *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
-		defer cancel()
-		branches, err := service.BranchCompletions(ctx, prefix)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
-		}
-		return branches, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = cmd.RegisterFlagCompletionFunc("trunk", func(command *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		ctx, cancel := context.WithTimeout(context.Background(), completionTimeout)
-		defer cancel()
-		branches, err := service.TrunkCompletions(ctx, prefix)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
-		}
-		return branches, cobra.ShellCompDirectiveNoFileComp
-	})
+	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(service.BranchCompletions))
+	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
+		return service.TrunkCompletions(ctx, branch, prefix)
+	}))
 	return cmd
 }
 
 func writePreview(writer io.Writer, plan link.Plan, presentation Presentation) {
-	fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", plan.TargetSource)), plan.Target)
+	preview := newLinkPreview(plan)
+	fmt.Fprintf(writer, "%s: %s\n", presentation.accent(fmt.Sprintf("Resolved target (%s)", preview.TargetSource)), preview.Target)
 	fmt.Fprintln(writer, presentation.accent("Link stack (bottom to top):"))
-	fmt.Fprintf(writer, "  %s\n", presentation.trunk(plan.Base+" (trunk)"))
-	byHead := map[string]githubstack.PullRequest{}
-	for _, pr := range plan.PullRequests {
-		byHead[pr.Head] = pr
-	}
-	issues := map[string]string{}
-	for _, issue := range plan.Issues {
-		issues[issue.Branch] = issue.Reason
-	}
-	for i, branch := range plan.Branches {
-		label := fmt.Sprintf("%s (#%d)", branch, byHead[branch].Number)
-		if reason, unresolved := issues[branch]; unresolved {
-			label = fmt.Sprintf("%s (unresolved: %s)", branch, reason)
+	for index, node := range preview.Nodes {
+		if node.Trunk {
+			fmt.Fprintf(writer, "  %s\n", presentation.trunk(node.Branch+" (trunk)"))
+			continue
 		}
-		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", i+1), presentation.accent(label))
+		label := fmt.Sprintf("%s (#%d)", node.Branch, node.PRNumber)
+		if node.Unresolved != "" {
+			label = fmt.Sprintf("%s (unresolved: %s)", node.Branch, node.Unresolved)
+		}
+		fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), presentation.accent(label))
 	}
-	fmt.Fprintf(writer, "%s: gh stack link --base %s %s\n", presentation.accent("Proposed command"), plan.Base, strings.Join(plan.Branches, " "))
-	if len(plan.Issues) != 0 {
+	fmt.Fprintf(writer, "%s: %s\n", presentation.accent("Proposed command"), preview.commandText())
+	if preview.ApplyBlocked {
 		fmt.Fprintln(writer, "Apply blocked: resolve every unresolved GitHub PR mapping first.")
 	}
 }

@@ -12,7 +12,6 @@ import (
 type linkPreview struct {
 	Target       string
 	TargetSource string
-	Base         string
 	Nodes        []linkPreviewNode
 	Command      []string
 	ApplyBlocked bool
@@ -37,7 +36,6 @@ func newLinkPreview(plan link.Plan) linkPreview {
 	preview := linkPreview{
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
-		Base:         plan.Base,
 		Nodes:        []linkPreviewNode{{Branch: plan.Base, Trunk: true}},
 		Command:      append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...),
 		ApplyBlocked: len(plan.Issues) != 0,

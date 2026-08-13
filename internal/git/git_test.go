@@ -60,3 +60,21 @@ func TestRemoteRejectsUnsafeName(t *testing.T) {
 		t.Fatal("Remote() error = nil")
 	}
 }
+
+func TestPushAtomicRejectsEmptyBranchList(t *testing.T) {
+	arguments := filepath.Join(t.TempDir(), "git-arguments")
+	t.Setenv("GIT_ARGUMENTS", arguments)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"git": `printf '%s\n' "$*" >> "$GIT_ARGUMENTS"
+if [ "$1 $2" = "remote get-url" ]; then exit 0; fi
+exit 9`,
+	})
+	err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", nil)
+	if err == nil || !strings.Contains(err.Error(), "no branches") {
+		t.Fatalf("PushAtomic() error = %v", err)
+	}
+	called, readErr := os.ReadFile(arguments)
+	if readErr != nil || strings.Contains(string(called), "push ") {
+		t.Errorf("calls=%q readErr=%v", called, readErr)
+	}
+}

@@ -51,8 +51,9 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 	return NewWithServices(version, stdout, stderr, service, syncer.Service{Discoverer: service, Git: service.Git, GitHub: service.GitHub})
 }
 
-// NewWithServices creates the root command with injectable link and sync
-// dependencies. It keeps unit tests offline while New wires subprocesses.
+// NewWithServices creates the injectable link/sync command surface. It omits
+// push because its mutable Git dependency is deliberately not part of this
+// constructor's contract.
 func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
 	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{})
 }
@@ -79,7 +80,9 @@ func newWithPresentation(version, commandName string, stdout, stderr io.Writer, 
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
 	root.AddCommand(newLink(service, presentation))
 	root.AddCommand(newSync(syncService, service, presentation))
-	root.AddCommand(newPush(pushService, service, presentation))
+	if pushService.Git != nil && pushService.Graphite != nil {
+		root.AddCommand(newPush(pushService, service, presentation))
+	}
 	root.AddCommand(newCompletion(root))
 	return root
 }

@@ -89,6 +89,43 @@ func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
 	}
 }
 
+func TestPushApplyRendersAndFlushesBeforeMutation(t *testing.T) {
+	events := []string{}
+	writer := &recordingWriter{events: &events}
+	git := &cliPushGit{events: &events, current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
+	command := newWithPresentation("v", "gt2gh", writer, writer, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+	command.SetArgs([]string{"push", "--apply"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	write, flush, push := eventIndex(events, "write"), eventIndex(events, "flush"), eventIndex(events, "push")
+	if write < 0 || flush < 0 || push < 0 || write > flush || flush > push {
+		t.Errorf("events = %v, want write -> flush -> push", events)
+	}
+}
+
+func TestPushApplyDoesNotMutateWhenReadyOutputFails(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		writer *recordingWriter
+	}{
+		{"write", &recordingWriter{writeErr: context.Canceled}},
+		{"flush", &recordingWriter{flushErr: context.Canceled}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
+			command := newWithPresentation("v", "gt2gh", test.writer, test.writer, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+			command.SetArgs([]string{"push", "--apply"})
+			if err := command.Execute(); err == nil {
+				t.Fatal("Execute() error = nil")
+			}
+			if git.pushes != 0 {
+				t.Errorf("pushes=%d, want 0", git.pushes)
+			}
+		})
+	}
+}
+
 func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -154,6 +191,7 @@ type cliPushGit struct {
 	branches, pushed   []string
 	remoteErr, pushErr error
 	pushes             int
+	events             *[]string
 }
 
 func (f *cliPushGit) CurrentBranch(context.Context) (string, error)   { return f.current, nil }
@@ -161,6 +199,9 @@ func (f *cliPushGit) LocalBranches(context.Context) ([]string, error) { return f
 func (f *cliPushGit) Remote(context.Context, string) error            { return f.remoteErr }
 func (f *cliPushGit) PushAtomic(_ context.Context, _ string, branches []string) error {
 	f.pushes++
+	if f.events != nil {
+		*f.events = append(*f.events, "push")
+	}
 	f.pushed = append([]string(nil), branches...)
 	return f.pushErr
 }

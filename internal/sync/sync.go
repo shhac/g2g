@@ -14,7 +14,6 @@ import (
 
 // Discoverer supplies the common, read-only Graphite and GitHub facts.
 type Discoverer interface {
-	DiscoverWithTrunk(context.Context, string, string) (link.Plan, error)
 	DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error)
 }
 

@@ -127,6 +127,19 @@ func TestPlanRejectsEmptyRemote(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
+	git := &fakeGit{current: "tip", branches: []string{"main", "-synthetic-option", "tip"}}
+	service := Service{Git: git, Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+		"tip": {Path: []string{"main", "-synthetic-option", "tip"}, Trunks: []string{"main"}},
+	}}}
+	if _, err := service.Plan(context.Background(), link.Selection{NoStack: true}, "origin"); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if git.pushes != 0 {
+		t.Errorf("pushes=%d, want 0", git.pushes)
+	}
+}
+
 type fakeGit struct {
 	current, remote      string
 	branches, pushed     []string

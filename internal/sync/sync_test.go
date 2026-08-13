@@ -183,25 +183,19 @@ type fakeDiscoverer struct {
 	err  error
 }
 
-func (f fakeDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
-	return f.plan, f.err
-}
 func (f fakeDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
-	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
+	return f.plan, f.err
 }
 
 type changingDiscoverer struct{ calls int }
 
-func (f *changingDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
+func (f *changingDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
 	f.calls++
 	trunk := "main"
 	if f.calls > 1 {
 		trunk = "other-main"
 	}
 	return link.Plan{Target: "delta", TargetSource: "current Git branch", Base: trunk, BaseSource: "Graphite-declared ancestry", GraphitePath: []string{trunk, "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}, nil
-}
-func (f *changingDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
-	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
 }
 
 type fakeGit struct{ err error }

@@ -168,3 +168,53 @@ exit 9`,
 		t.Fatalf("DiscoverStack() error = %v", err)
 	}
 }
+
+func TestResolveStackRejectsInvalidGraphRelationships(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		graph    graph
+		selected string
+		want     string
+	}{
+		{
+			name:     "untracked",
+			graph:    graph{nodes: map[string]node{}},
+			selected: "synthetic-missing",
+			want:     "does not track",
+		},
+		{
+			name: "missing parent",
+			graph: graph{nodes: map[string]node{
+				"synthetic-tip": {name: "synthetic-tip", parent: "synthetic-missing"},
+			}},
+			selected: "synthetic-tip",
+			want:     "missing parent",
+		},
+		{
+			name: "cycle",
+			graph: graph{nodes: map[string]node{
+				"synthetic-a": {name: "synthetic-a", parent: "synthetic-b"},
+				"synthetic-b": {name: "synthetic-b", parent: "synthetic-a"},
+			}},
+			selected: "synthetic-a",
+			want:     "ancestry cycle",
+		},
+		{
+			name: "descendant fork",
+			graph: graph{nodes: map[string]node{
+				"synthetic-main": {name: "synthetic-main"},
+				"synthetic-a":    {name: "synthetic-a", parent: "synthetic-main"},
+				"synthetic-b":    {name: "synthetic-b", parent: "synthetic-main"},
+			}},
+			selected: "synthetic-main",
+			want:     "multiple descendants",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := resolveStack(test.graph, test.selected, true)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("resolveStack() error = %v", err)
+			}
+		})
+	}
+}

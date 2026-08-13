@@ -492,7 +492,11 @@ func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 }
 
 func TestPushBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
-	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "push", "--branch", "be")
+	var stdout, stderr bytes.Buffer
+	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, cliService(&cliGitHub{}), syncer.Service{}, push.Service{Git: &cliPushGit{}, Graphite: cliPushGraphite{}}, Presentation{})
+	command.SetArgs([]string{"__complete", "push", "--branch", "be"})
+	err := command.Execute()
+	output := stdout.String()
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -779,7 +783,7 @@ func (f *cliGitHubPRs) Link(context.Context, string, []string) error { f.links++
 
 type cliSyncDiscoverer struct{}
 
-func (cliSyncDiscoverer) DiscoverWithTrunk(context.Context, string, string) (link.Plan, error) {
+func (cliSyncDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
 	return link.Plan{
 		Target:       "beta",
 		TargetSource: "current Git branch",
@@ -790,21 +794,15 @@ func (cliSyncDiscoverer) DiscoverWithTrunk(context.Context, string, string) (lin
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}},
 	}, nil
 }
-func (f cliSyncDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
-	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
-}
 
 type cliApplyDiscoverer struct{ branch string }
 
-func (f *cliApplyDiscoverer) DiscoverWithTrunk(_ context.Context, branch, trunk string) (link.Plan, error) {
-	f.branch = branch
+func (f *cliApplyDiscoverer) DiscoverWithOptions(_ context.Context, selection link.Selection) (link.Plan, error) {
+	f.branch = selection.Branch
 	return link.Plan{
 		Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"},
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}},
 	}, nil
-}
-func (f *cliApplyDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
-	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
 }
 
 type cliSyncGit struct{}

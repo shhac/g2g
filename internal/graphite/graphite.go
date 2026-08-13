@@ -42,59 +42,79 @@ func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
 // true, extends through the only unambiguous downward child chain. It never
 // checks out, changes, or otherwise manages a Graphite branch.
 func (c Client) DiscoverStack(ctx context.Context, selected string, includeTip bool) (Stack, error) {
-	graph, err := c.read(ctx)
+	parsed, err := c.read(ctx)
 	if err != nil {
 		return Stack{}, err
 	}
+	stack, err := resolveStack(parsed, selected, includeTip)
+	if err != nil {
+		return Stack{}, err
+	}
+	diagnostic.Event(ctx, "graphite.path",
+		diagnostic.Field{Key: "selected", Value: selected},
+		diagnostic.Field{Key: "path", Value: strings.Join(stack.Path, " -> ")},
+		diagnostic.Field{Key: "full_stack", Value: strconv.FormatBool(includeTip)},
+		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(stack.Trunks, ",")},
+	)
+	return stack, nil
+}
 
-	node, ok := graph.nodes[selected]
+func resolveStack(parsed graph, selected string, includeTip bool) (Stack, error) {
+	node, ok := parsed.nodes[selected]
 	if !ok {
 		return Stack{}, fmt.Errorf("Graphite does not track local branch %q", selected)
 	}
+	path, err := ancestry(parsed, node)
+	if err != nil {
+		return Stack{}, err
+	}
+	if includeTip {
+		path, err = extendLinearDescendants(parsed, selected, path)
+		if err != nil {
+			return Stack{}, err
+		}
+	}
+	return Stack{Path: path, Trunks: append([]string(nil), parsed.roots...)}, nil
+}
+
+func ancestry(parsed graph, node node) ([]string, error) {
 	var reversed []string
 	seen := make(map[string]bool)
 	for {
 		if seen[node.name] {
-			return Stack{}, fmt.Errorf("Graphite display contains an ancestry cycle at %q", node.name)
+			return nil, fmt.Errorf("Graphite display contains an ancestry cycle at %q", node.name)
 		}
 		seen[node.name] = true
 		reversed = append(reversed, node.name)
 		if node.parent == "" {
 			break
 		}
-		parent, ok := graph.nodes[node.parent]
+		parent, ok := parsed.nodes[node.parent]
 		if !ok {
-			return Stack{}, fmt.Errorf("Graphite display has missing parent %q for %q", node.parent, node.name)
+			return nil, fmt.Errorf("Graphite display has missing parent %q for %q", node.parent, node.name)
 		}
 		node = parent
 	}
 	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
 		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
-	if includeTip {
-		children := graphChildren(graph)
-		for current := selected; ; {
-			next := children[current]
-			switch len(next) {
-			case 0:
-				goto expanded
-			case 1:
-				reversed = append(reversed, next[0])
-				current = next[0]
-			default:
-				return Stack{}, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); full-stack resolution requires one linear path (rerun with --no-stack to stop at the selected branch)", current, strings.Join(next, ", "))
-			}
+	return reversed, nil
+}
+
+func extendLinearDescendants(parsed graph, selected string, path []string) ([]string, error) {
+	children := graphChildren(parsed)
+	for current := selected; ; {
+		next := children[current]
+		switch len(next) {
+		case 0:
+			return path, nil
+		case 1:
+			path = append(path, next[0])
+			current = next[0]
+		default:
+			return nil, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); full-stack resolution requires one linear path (rerun with --no-stack to stop at the selected branch)", current, strings.Join(next, ", "))
 		}
 	}
-
-expanded:
-	diagnostic.Event(ctx, "graphite.path",
-		diagnostic.Field{Key: "selected", Value: selected},
-		diagnostic.Field{Key: "path", Value: strings.Join(reversed, " -> ")},
-		diagnostic.Field{Key: "full_stack", Value: strconv.FormatBool(includeTip)},
-		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(graph.roots, ",")},
-	)
-	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil
 }
 
 func graphChildren(g graph) map[string][]string {

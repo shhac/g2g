@@ -151,6 +151,23 @@ func TestPlanRejectsUnsafeOrDivergentGitHubState(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
+	github := &fakeGitHub{}
+	service := Service{
+		Git: fakeGit{current: "synthetic-tip", branches: []string{"main", "-synthetic-option", "synthetic-tip"}},
+		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+			"synthetic-tip": {Path: []string{"main", "-synthetic-option", "synthetic-tip"}, Trunks: []string{"main"}},
+		}},
+		GitHub: github,
+	}
+	if _, err := service.Plan(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to gh stack link") {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if github.links != 0 {
+		t.Errorf("links=%d, want 0", github.links)
+	}
+}
+
 func TestPlanAccumulatesEveryUnresolvedBranch(t *testing.T) {
 	service := fakeService()
 	service.GitHub = &fakeGitHub{prs: []githubstack.PullRequest{

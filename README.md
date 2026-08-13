@@ -18,9 +18,9 @@ g2g link
 ```
 
 The `link` command is a safe preview by default. It resolves the checked-out Git
-branch as its target, reads the Graphite path from its declared trunk to that
-target, and inspects matching GitHub pull requests. Its concise output shows a
-target, one self-describing graph, and a command only when valid. When at least two
+branch as its pivot, reads the Graphite-declared trunk-to-tip linear path, and
+inspects matching GitHub pull requests. Its concise output shows a target, one
+self-describing graph, and a command only when valid. When at least two
 PR-backed branches need linking, it prints the exact proposed bottom-to-top
 command. A one-PR path is a successful no-op: it prints `Nothing to link` and
 never constructs an invalid `gh stack link` command. Preview clearly states
@@ -47,11 +47,15 @@ g2g link --branch feature/middle --no-stack
 g2g sync --branch feature/top
 
 # Preview an atomic, lease-protected publication of Graphite-selected local
-# refs. This never invokes Graphite or GitHub. Full-stack expansion is default.
+# refs. It reads Graphite but never submits/restacks or invokes GitHub.
+# Full-stack expansion is default.
 g2g push --branch feature/top
 
 # Revalidate, then advance every selected ref together or none of them.
 g2g push --branch feature/top --apply
+
+# Use a configured remote other than origin.
+g2g push --remote staging --apply
 
 # Opt-in local diagnostics go only to stderr; stdout keeps the normal preview.
 g2g --debug link --branch feature/top
@@ -119,14 +123,22 @@ only when applicable. It can reconcile the native stack only with `--apply` and
 deliberately refuses to create a PR for a Graphite-only branch or repair a
 closed/non-open PR.
 
-`g2g push` is a deliberately narrow, Git-only publication escape hatch for a
-Graphite-managed linear path. It never calls `gt`, `gh`, submit, or restack.
-It previews `git push --atomic --force-with-lease origin <branches>` by default
-and requires `--apply` to run that exact one invocation. `--remote` defaults to
+`g2g push` is a deliberately narrow publication escape hatch for a
+Graphite-managed linear path. It reads Graphite to discover that path, but never
+submits, restacks, or otherwise changes Graphite and never invokes `gh`. It
+previews `git push --atomic --force-with-lease origin <branches>` by default and
+requires `--apply` to run that exact one invocation. `--remote` defaults to
 `origin` and must name a configured remote. Every selected non-trunk branch is
 pushed bottom-to-top; atomic push means they all advance together or none do.
-There is no non-atomic or unsafe-force fallback. This does not replace
-Graphite's ownership of tracking, restacking, or submission.
+Unsupported atomic pushes and rejected leases fail without a non-atomic or
+unsafe-force fallback. This does not replace Graphite's ownership of tracking,
+restacking, or submission.
+
+Use `push` only as a publication-only recovery path when Graphite remains the
+owner of a stack but its normal submission flow cannot publish already-prepared
+refs because GitHub native-stack restrictions intervene. After a successful
+atomic push, return to Graphite for stack management and submission; `g2g`
+does not retarget pull requests or repair Graphite state.
 
 All three commands resolve the full declared linear stack by default: they treat
 the selected branch as a pivot and extend through a unique downward child chain

@@ -11,6 +11,8 @@ Releasing `gt2gh` is automated. Pushing a `v*` tag triggers
 and regenerate + push `Formula/gt2gh.rb` to the tap. The tag also triggers
 `.github/workflows/publish-skill.yml`, which publishes `skills/gt2gh` to
 `shhac/agent-skills`. **No manual build, and no manual formula bump.**
+The formula remains `gt2gh` but installs the executable as `g2g`, including
+bash, zsh, and fish completions generated from that installed executable.
 
 ## Steps
 
@@ -35,6 +37,7 @@ and regenerate + push `Formula/gt2gh.rb` to the tap. The tag also triggers
    gh release view "v${new_version}" --repo shhac/gt2gh
    ```
    Install / upgrade: `brew install shhac/tap/gt2gh` · `brew upgrade shhac/tap/gt2gh`
+   (then use `g2g`, not the formula name, to run the installed command).
 
 ## Manual fallback (only if the workflow itself is broken)
 

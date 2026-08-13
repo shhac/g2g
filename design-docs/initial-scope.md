@@ -1,6 +1,6 @@
 # Initial scope
 
-**Status:** implemented through v0.4; later changes remain focused extensions.
+**Status:** implemented through v0.5; later changes remain focused extensions.
 **Graphite display contract:** pinned to Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
@@ -74,7 +74,7 @@ authentication headers, tokens, cookies, credential-bearing arguments, or
 GraphQL query payloads.
 
 `gh stack link` can push branches and create/update pull requests, so it is the
-only intended side effect. Existing matching PRs are displayed and their bases
+only mutation performed by `link` and `sync`. Existing matching PRs are displayed and their bases
 must already match the declared Graphite path (trunk for the bottom PR, then
 each preceding branch); this is the read-only native-stack relationship check
 available without checkout. Every non-trunk selected-path branch must have

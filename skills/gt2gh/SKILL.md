@@ -37,8 +37,10 @@ description: |
   invocation prints help. `sync` is preview-first and only applies when every
   selected-path branch already has an open GitHub PR; it must not create
   Graphite-only mappings or repair closed/non-open PRs.
-- `push` is a preview-first Git-only publication escape hatch. It must never
-  call `gt` or `gh`; only `--apply` may run exactly one
+- `push` is a preview-first publication escape hatch. It may use Graphite's
+  supported read-only discovery to select a path, but must never submit,
+  restack, or otherwise mutate Graphite, and must never call `gh`; only
+  `--apply` may run exactly one
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode. Graphite remains responsible for tracking, restacking, and

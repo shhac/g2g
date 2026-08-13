@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/stack"
 )
 
@@ -67,12 +66,6 @@ func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 func (*fakeGit) Clean(context.Context) error                          { return nil }
 func (*fakeGit) Remote(context.Context, string) error                 { return nil }
 func (f *fakeGit) PushAtomic(context.Context, string, []string) error { f.pushes++; return f.pushErr }
-
-type fakeGraphite struct{}
-
-func (fakeGraphite) DiscoverStack(context.Context, string, bool) (graphite.Stack, error) {
-	return graphite.Stack{}, nil
-}
 
 type fakeGitHub struct {
 	prs     []githubstack.PullRequest

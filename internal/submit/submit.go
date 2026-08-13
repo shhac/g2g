@@ -3,8 +3,6 @@ package submit
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -111,29 +109,45 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 		return fmt.Errorf("submission is blocked by existing pull request state: %s", issueText(plan.Issues))
 	}
 	diagnostic.Event(ctx, "submit.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Snapshot.Branches, ",")}, diagnostic.Field{Key: "draft", Value: fmt.Sprintf("%t", spec.Draft)})
+	if err := validateSpec(plan, spec); err != nil {
+		return err
+	}
 	if err := s.Git.PushAtomic(ctx, plan.Remote, plan.Snapshot.Branches); err != nil {
 		return err
 	}
-	existing := byHead(plan.Existing)
-	base := plan.Snapshot.Base
-	for _, pull := range spec.Pulls {
-		if _, exists := existing[pull.Branch]; !exists {
-			body, err := temporaryBody(pull.Body)
-			if err != nil {
-				return err
-			}
-			err = s.GitHub.Create(ctx, pull.Branch, base, pull.Title, body, spec.Draft, pull.Reviewers)
-			_ = os.Remove(body)
-			if err != nil {
-				return err
-			}
-		}
-		base = pull.Branch
+	if err := s.createMissingPulls(ctx, plan, spec); err != nil {
+		return err
 	}
 	if len(plan.Snapshot.Branches) < 2 {
 		return nil
 	}
 	return s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches)
+}
+
+func validateSpec(plan Plan, spec Spec) error {
+	if len(spec.Pulls) != len(plan.Snapshot.Branches) {
+		return fmt.Errorf("submission spec does not match selected stack")
+	}
+	for index, branch := range plan.Snapshot.Branches {
+		if spec.Pulls[index].Branch != branch || strings.TrimSpace(spec.Pulls[index].Title) == "" {
+			return fmt.Errorf("submission spec is not valid for branch %q", branch)
+		}
+	}
+	return nil
+}
+
+func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) error {
+	existing := byHead(plan.Existing)
+	base := plan.Snapshot.Base
+	for _, pull := range spec.Pulls {
+		if _, exists := existing[pull.Branch]; !exists {
+			if err := s.GitHub.Create(ctx, pull.Branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
+				return err
+			}
+		}
+		base = pull.Branch
+	}
+	return nil
 }
 
 func byHead(prs []githubstack.PullRequest) map[string]githubstack.PullRequest {
@@ -175,23 +189,6 @@ func issueText(issues map[string]string) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, "; ")
-}
-func temporaryBody(body string) (string, error) {
-	f, err := os.CreateTemp("", "g2g-submit-body-*.md")
-	if err != nil {
-		return "", err
-	}
-	path := f.Name()
-	if _, err := f.WriteString(body); err != nil {
-		f.Close()
-		os.Remove(path)
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(path)
-		return "", err
-	}
-	return filepath.Clean(path), nil
 }
 
 var _ Git = localgit.Client{}

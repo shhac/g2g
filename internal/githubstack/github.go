@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,16 +29,21 @@ type Client struct {
 	Runner subprocess.Runner
 }
 
-// Create creates one pull request without changing any existing PR. The body
-// is passed through a temporary file owned by the caller so Markdown is never
-// re-escaped through command-line arguments.
-func (c Client) Create(ctx context.Context, branch, base, title, bodyFile string, draft bool, reviewers []string) error {
+// Create creates one pull request without changing any existing PR. It owns
+// the temporary body file required by gh, keeping that transport detail out of
+// submission planning while preserving Markdown verbatim.
+func (c Client) Create(ctx context.Context, branch, base, title, body string, draft bool, reviewers []string) error {
 	if c.Runner == nil {
 		return fmt.Errorf("GitHub runner is not configured")
 	}
-	if branch == "" || base == "" || title == "" || bodyFile == "" {
-		return fmt.Errorf("pull request branch, base, title, and body file are required")
+	if branch == "" || base == "" || title == "" {
+		return fmt.Errorf("pull request branch, base, and title are required")
 	}
+	bodyFile, err := writeBody(body)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(bodyFile)
 	args := []string{"pr", "create", "--head", branch, "--base", base, "--title", title, "--body-file", bodyFile}
 	if draft {
 		args = append(args, "--draft")
@@ -51,6 +57,24 @@ func (c Client) Create(ctx context.Context, branch, base, title, bodyFile string
 		return commandError("gh "+strings.Join(args[:6], " ")+" …", err, output)
 	}
 	return nil
+}
+
+func writeBody(body string) (string, error) {
+	f, err := os.CreateTemp("", "g2g-submit-body-*.md")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	if _, err := f.WriteString(body); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 // CommandError separates a terse external-command summary from its bounded

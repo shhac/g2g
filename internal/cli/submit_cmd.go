@@ -76,11 +76,7 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 		if err != nil {
 			return actionableSpecError(err, specPath)
 		}
-		if ready {
-			spec.Draft = false
-		} else if draft {
-			spec.Draft = true
-		}
+		spec.Draft = resolveDraft(cmd, spec.Draft, draft, ready)
 		if !apply {
 			if err := writeSubmitPreview(cmd.OutOrStdout(), plan, presentation, templateName); err != nil {
 				return err
@@ -139,6 +135,16 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 		return linkService.TrunkCompletions(ctx, branch, prefix)
 	}))
 	return cmd
+}
+
+func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {
+	if ready {
+		return false
+	}
+	if cmd.Flags().Changed("draft") {
+		return draft
+	}
+	return specDraft
 }
 
 func editSpec(ctx context.Context, path string) error {

@@ -45,7 +45,7 @@ exit 9`,
 		Git:      localgit.Client{Runner: runner},
 		Graphite: graphite.Client{Runner: runner},
 	}
-	selection := link.Selection{Stack: true}
+	selection := link.Selection{}
 	preview, err := service.Plan(ctx, selection, "origin")
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ exit 9`,
 		t.Errorf("push = %q, want %q", got, want)
 	}
 	for _, expected := range []string{
-		"event=graphite.path", "stack=\"true\"", "event=push.plan",
+		"event=graphite.path", "full_stack=\"true\"", "event=push.plan",
 		"event=push.revalidation match=\"true\"", "event=push.apply",
 		"command=\"git push --atomic --force-with-lease origin alpha beta beta-top beta-side\"",
 		"event=subprocess.end command=\"git push --atomic --force-with-lease origin alpha beta beta-top beta-side\"",

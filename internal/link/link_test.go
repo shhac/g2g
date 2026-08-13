@@ -346,7 +346,7 @@ func (f *changingGraphite) DiscoverStack(ctx context.Context, branch string, _ b
 	return f.Discover(ctx, branch)
 }
 
-func TestPlanWithStackExpandsFromPivotWithoutCheckout(t *testing.T) {
+func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing.T) {
 	service := Service{
 		Git: fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}},
 		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
@@ -356,12 +356,19 @@ func TestPlanWithStackExpandsFromPivotWithoutCheckout(t *testing.T) {
 		}},
 		GitHub: &fakeGitHub{},
 	}
-	plan, err := service.PlanWithOptions(context.Background(), Selection{Stack: true})
+	plan, err := service.PlanWithOptions(context.Background(), Selection{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := strings.Join(plan.Branches, ","), "lower,middle,top"; got != want {
 		t.Errorf("branches = %q, want %q", got, want)
+	}
+	plan, err = service.PlanWithOptions(context.Background(), Selection{NoStack: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(plan.Branches, ","), "lower,middle"; got != want {
+		t.Errorf("no-stack branches = %q, want %q", got, want)
 	}
 }
 func (*changingGraphite) TrackedBranches(context.Context) ([]string, error) {

@@ -10,19 +10,19 @@ import (
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 // Git provides the read-only local repository facts needed for a plan.
 type Git interface {
-	CurrentBranch(context.Context) (string, error)
-	LocalBranches(context.Context) ([]string, error)
+	stack.Git
 	Clean(context.Context) error
 }
 
 // Graphite discovers Graphite's declared ancestry without a checkout.
 type Graphite interface {
+	stack.Graphite
 	Discover(context.Context, string) (graphite.Stack, error)
-	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
 	TrackedBranches(context.Context) ([]string, error)
 }
 
@@ -75,11 +75,7 @@ func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, request
 
 // Selection captures every no-checkout path selector shared by link, sync,
 // and the Git-only push escape hatch.
-type Selection struct {
-	Branch string
-	Trunk  string
-	Stack  bool
-}
+type Selection = stack.Selection
 
 // DiscoverWithOptions resolves an optional pivot and optional full linear
 // stack without checking out any branch.
@@ -87,45 +83,24 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
-	target, source, err := resolveTarget(ctx, s.Git, selection.Branch)
+	snapshot, err := stack.Resolve(ctx, s.Git, s.Graphite, selection, "gh stack link")
 	if err != nil {
 		return Plan{}, err
 	}
-	diagnostic.Event(ctx, "link.target", diagnostic.Field{Key: "target", Value: target}, diagnostic.Field{Key: "source", Value: source})
-	localBranches, err := s.Git.LocalBranches(ctx)
-	if err != nil {
-		return Plan{}, err
-	}
-	local := branchSet(localBranches)
-	if !local[target] {
-		return Plan{}, fmt.Errorf("selected branch %q is not a local branch", target)
-	}
-
-	stack, err := s.Graphite.DiscoverStack(ctx, target, selection.Stack)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := validatePathLocalAndSafe(local, stack.Path); err != nil {
-		return Plan{}, err
-	}
-
-	base, baseSource, branches, err := SelectBoundary(stack.Path, stack.Trunks, selection.Trunk)
-	if err != nil {
-		return Plan{}, err
-	}
-	diagnostic.Event(ctx, "link.trunk", diagnostic.Field{Key: "trunk", Value: base}, diagnostic.Field{Key: "source", Value: baseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(branches, ",")})
-	prs, err := s.GitHub.Inspect(ctx, branches)
+	diagnostic.Event(ctx, "link.target", diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "source", Value: snapshot.TargetSource})
+	diagnostic.Event(ctx, "link.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
+	prs, err := s.GitHub.Inspect(ctx, snapshot.Branches)
 	if err != nil {
 		return Plan{}, err
 	}
 	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "not_observed"})
 	return Plan{
-		Target:       target,
-		TargetSource: source,
-		GraphitePath: append([]string(nil), stack.Path...),
-		Base:         base,
-		BaseSource:   baseSource,
-		Branches:     branches,
+		Target:       snapshot.Target,
+		TargetSource: snapshot.TargetSource,
+		GraphitePath: snapshot.GraphitePath,
+		Base:         snapshot.Base,
+		BaseSource:   snapshot.BaseSource,
+		Branches:     snapshot.Branches,
 		PullRequests: prs,
 	}, nil
 }
@@ -159,38 +134,12 @@ func (s Service) PlanWithOptions(ctx context.Context, selection Selection) (Plan
 	return plan, nil
 }
 
-func resolveTarget(ctx context.Context, git Git, requestedBranch string) (string, string, error) {
-	if requestedBranch != "" {
-		return requestedBranch, "--branch", nil
-	}
-	target, err := git.CurrentBranch(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	return target, "current Git branch", nil
-}
-
 func branchSet(branches []string) map[string]bool {
 	set := make(map[string]bool, len(branches))
 	for _, branch := range branches {
 		set[branch] = true
 	}
 	return set
-}
-
-func validatePathLocalAndSafe(local map[string]bool, path []string) error {
-	if len(path) < 2 {
-		return fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
-	}
-	for _, branch := range path {
-		if !local[branch] {
-			return fmt.Errorf("Graphite ancestry branch %q is not a local branch", branch)
-		}
-		if strings.HasPrefix(branch, "-") {
-			return fmt.Errorf("Graphite ancestry branch %q cannot be passed safely to gh stack link", branch)
-		}
-	}
-	return nil
 }
 
 // selectBoundary chooses only among Graphite-declared trunk candidates on the
@@ -201,43 +150,7 @@ func validatePathLocalAndSafe(local map[string]bool, path []string) error {
 // It is shared with the Git-only push command to preserve the same Graphite
 // authority and multi-trunk safety rules.
 func SelectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
-	if len(path) < 2 {
-		return "", "", nil, fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
-	}
-	declared := make(map[string]bool, len(trunks))
-	for _, trunk := range trunks {
-		declared[trunk] = true
-	}
-	indices := make(map[string]int)
-	for index, branch := range path[:len(path)-1] {
-		if declared[branch] {
-			indices[branch] = index
-		}
-	}
-	if requestedTrunk != "" {
-		index, valid := indices[requestedTrunk]
-		if !valid {
-			if !declared[requestedTrunk] {
-				return "", "", nil, fmt.Errorf("requested trunk %q is not a Graphite-declared trunk", requestedTrunk)
-			}
-			return "", "", nil, fmt.Errorf("requested trunk %q is not an ancestor of selected branch %q", requestedTrunk, path[len(path)-1])
-		}
-		return requestedTrunk, "--trunk", append([]string(nil), path[index+1:]...), nil
-	}
-	if len(indices) == 1 {
-		for trunk, index := range indices {
-			return trunk, "Graphite-declared ancestry", append([]string(nil), path[index+1:]...), nil
-		}
-	}
-	if len(indices) == 0 {
-		return "", "", nil, fmt.Errorf("selected Graphite ancestry %q has no declared trunk; use supported Graphite configuration to resolve it", strings.Join(path, " -> "))
-	}
-	candidates := make([]string, 0, len(indices))
-	for trunk := range indices {
-		candidates = append(candidates, trunk)
-	}
-	sort.Strings(candidates)
-	return "", "", nil, fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
+	return stack.SelectBoundary(path, trunks, requestedTrunk)
 }
 
 func selectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {

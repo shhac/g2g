@@ -40,19 +40,18 @@ g2g link --branch feature/top --trunk main
 # Revalidate, then allow gh to create/update the native GitHub stack.
 g2g link --branch feature/top --apply
 
-# Treat the selected branch as a pivot and extend it through its one
-# unambiguous Graphite descendant chain.
-g2g link --branch feature/middle --stack
+# Stop at the selected branch instead of resolving its full linear stack.
+g2g link --branch feature/middle --no-stack
 
 # Preview Graphite-authoritative reconciliation for existing GitHub PRs.
 g2g sync --branch feature/top
 
 # Preview an atomic, lease-protected publication of Graphite-selected local
-# refs. This never invokes Graphite or GitHub.
-g2g push --branch feature/top --stack
+# refs. This never invokes Graphite or GitHub. Full-stack expansion is default.
+g2g push --branch feature/top
 
 # Revalidate, then advance every selected ref together or none of them.
-g2g push --branch feature/top --stack --apply
+g2g push --branch feature/top --apply
 
 # Opt-in local diagnostics go only to stderr; stdout keeps the normal preview.
 g2g --debug link --branch feature/top
@@ -129,11 +128,12 @@ pushed bottom-to-top; atomic push means they all advance together or none do.
 There is no non-atomic or unsafe-force fallback. This does not replace
 Graphite's ownership of tracking, restacking, or submission.
 
-All three commands normally use the declared-trunk-to-selected-branch path.
-`--stack` instead treats the selected branch as a pivot and extends through a
-unique downward child chain to its tip. It does not checkout a branch, includes
-no siblings, and fails rather than guessing when a descendant fork makes the
-extension ambiguous.
+All three commands resolve the full declared linear stack by default: they treat
+the selected branch as a pivot and extend through a unique downward child chain
+to its tip. They do not checkout a branch, include no siblings, and fail rather
+than guessing when a descendant fork makes the extension ambiguous. `--no-stack`
+is the explicit safe opt-out: it stops at the selected branch and uses only its
+declared trunk-to-selected path.
 
 ## Structure
 

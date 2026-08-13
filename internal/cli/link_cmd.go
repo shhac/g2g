@@ -16,7 +16,7 @@ import (
 func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	var branch string
 	var trunk string
-	var stack bool
+	var noStack bool
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "link",
@@ -30,7 +30,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				mode = "apply"
 			}
 			ctx = commandContext(cmd, "link", mode, branch, trunk)
-			selection := link.Selection{Branch: branch, Trunk: trunk, Stack: stack}
+			selection := link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack}
 			plan, err := service.PlanWithOptions(ctx, selection)
 			if err != nil {
 				return err
@@ -77,7 +77,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to link (defaults to current branch)")
 	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
-	cmd.Flags().BoolVar(&stack, "stack", false, "extend the selected branch through one unambiguous descendant chain")
+	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(service.BranchCompletions))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {

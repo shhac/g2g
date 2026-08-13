@@ -8,19 +8,17 @@ import (
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graphite"
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 type Git interface {
-	CurrentBranch(context.Context) (string, error)
-	LocalBranches(context.Context) ([]string, error)
+	stack.Git
 	Remote(context.Context, string) error
 	PushAtomic(context.Context, string, []string) error
 }
 
 type Graphite interface {
-	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
+	stack.Graphite
 }
 
 type Service struct {
@@ -37,62 +35,35 @@ type Plan struct {
 	Remote       string
 }
 
-func (s Service) Plan(ctx context.Context, selection link.Selection, remote string) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil {
 		return Plan{}, fmt.Errorf("push service is not fully configured")
 	}
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	target, source, err := target(ctx, s.Git, selection.Branch)
+	snapshot, err := stack.Resolve(ctx, s.Git, s.Graphite, selection, "git push")
 	if err != nil {
 		return Plan{}, err
 	}
-	localBranches, err := s.Git.LocalBranches(ctx)
-	if err != nil {
-		return Plan{}, err
-	}
-	local := make(map[string]bool, len(localBranches))
-	for _, branch := range localBranches {
-		local[branch] = true
-	}
-	if !local[target] {
-		return Plan{}, fmt.Errorf("selected branch %q is not a local branch", target)
-	}
-	stack, err := s.Graphite.DiscoverStack(ctx, target, selection.Stack)
-	if err != nil {
-		return Plan{}, err
-	}
-	for _, branch := range stack.Path {
-		if !local[branch] {
-			return Plan{}, fmt.Errorf("Graphite ancestry branch %q is not a local branch", branch)
-		}
-		if strings.HasPrefix(branch, "-") {
-			return Plan{}, fmt.Errorf("Graphite ancestry branch %q cannot be passed safely to git push", branch)
-		}
-	}
-	base, baseSource, branches, err := link.SelectBoundary(stack.Path, stack.Trunks, selection.Trunk)
-	if err != nil {
-		return Plan{}, err
-	}
-	if len(branches) == 0 {
+	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
-	plan := Plan{Target: target, TargetSource: source, Base: base, BaseSource: baseSource, Branches: branches, Remote: remote}
+	plan := Plan{Target: snapshot.Target, TargetSource: snapshot.TargetSource, Base: snapshot.Base, BaseSource: snapshot.BaseSource, Branches: snapshot.Branches, Remote: remote}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
-		diagnostic.Field{Key: "target", Value: target},
-		diagnostic.Field{Key: "target_source", Value: source},
-		diagnostic.Field{Key: "stack", Value: fmt.Sprintf("%t", selection.Stack)},
-		diagnostic.Field{Key: "base", Value: base},
+		diagnostic.Field{Key: "target", Value: snapshot.Target},
+		diagnostic.Field{Key: "target_source", Value: snapshot.TargetSource},
+		diagnostic.Field{Key: "full_stack", Value: fmt.Sprintf("%t", !selection.NoStack)},
+		diagnostic.Field{Key: "base", Value: snapshot.Base},
 		diagnostic.Field{Key: "remote", Value: remote},
-		diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")},
-		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", remote}, branches...))},
+		diagnostic.Field{Key: "branches", Value: strings.Join(snapshot.Branches, ",")},
+		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", remote}, snapshot.Branches...))},
 	)
 	return plan, nil
 }
 
-func (s Service) Revalidate(ctx context.Context, selection link.Selection, remote string, preview Plan) (Plan, error) {
+func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
 	plan, err := s.Plan(ctx, selection, remote)
 	if err != nil {
 		return Plan{}, err
@@ -120,17 +91,6 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 
 func (p Plan) Equal(other Plan) bool {
 	return p.Target == other.Target && p.TargetSource == other.TargetSource && p.Base == other.Base && p.BaseSource == other.BaseSource && p.Remote == other.Remote && sameBranches(p.Branches, other.Branches)
-}
-
-func target(ctx context.Context, git Git, requested string) (string, string, error) {
-	if requested != "" {
-		return requested, "--branch", nil
-	}
-	branch, err := git.CurrentBranch(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	return branch, "current Git branch", nil
 }
 
 func sameBranches(left, right []string) bool {

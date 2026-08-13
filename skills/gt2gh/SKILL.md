@@ -43,9 +43,10 @@ description: |
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode. Graphite remains responsible for tracking, restacking, and
   submission.
-- `--stack` treats the selected branch as a pivot and extends only through a
-  unique downward Graphite child chain. It remains no-checkout and excludes
-  siblings; reject a descendant fork rather than guessing.
+- By default, commands treat the selected branch as a pivot and extend through
+  a unique downward Graphite child chain. This remains no-checkout and excludes
+  siblings; reject a descendant fork rather than guessing. `--no-stack` is the
+  explicit opt-out for only the declared trunk-to-selected path.
 - `--debug` is a persistent, stderr-only diagnostic flag for `link`, `sync`,
   and `push`.
   It is safe to use for local investigation but must not alter command behavior

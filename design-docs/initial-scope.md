@@ -20,11 +20,13 @@ defaults to the checked-out Git branch and prominently prints that selection;
 checkout. A selected leaf may be in a forked tree: only its ancestry path is
 linked, never its siblings or descendants.
 
-All commands accept `--stack` as an explicit linear-stack expansion. It treats
-the selected/current branch as a pivot, then extends only through one unique
+All commands resolve the full linear stack by default. They treat the
+selected/current branch as a pivot, then extend only through one unique
 Graphite-declared child chain to its tip. An ancestor fork outside that lineage
 is harmless; a fork in the downward extension fails closed rather than choosing
-a child. This preserves no-checkout selection and never joins siblings.
+a child. `--no-stack` is an explicit opt-out that stops safely at the selected
+branch and uses only its trunk-to-selected path. This preserves no-checkout
+selection and never joins siblings.
 
 Graphite may configure multiple trunks. `link` derives trunk candidates only
 from the selected Graphite ancestry, never from branch-name heuristics. One
@@ -103,9 +105,9 @@ surface will use Cobra for parsing and native shell-completion support.
 The implemented surface is:
 
 ```text
-gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--apply]
-gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--apply]
-gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--remote <name>] [--apply]
+gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 

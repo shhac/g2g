@@ -82,7 +82,7 @@ func (c Client) DiscoverStack(ctx context.Context, selected string, includeTip b
 				reversed = append(reversed, next[0])
 				current = next[0]
 			default:
-				return Stack{}, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); --stack requires one full linear path", current, strings.Join(next, ", "))
+				return Stack{}, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); full-stack resolution requires one linear path (rerun with --no-stack to stop at the selected branch)", current, strings.Join(next, ", "))
 			}
 		}
 	}
@@ -91,7 +91,7 @@ expanded:
 	diagnostic.Event(ctx, "graphite.path",
 		diagnostic.Field{Key: "selected", Value: selected},
 		diagnostic.Field{Key: "path", Value: strings.Join(reversed, " -> ")},
-		diagnostic.Field{Key: "stack", Value: strconv.FormatBool(includeTip)},
+		diagnostic.Field{Key: "full_stack", Value: strconv.FormatBool(includeTip)},
 		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(graph.roots, ",")},
 	)
 	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil

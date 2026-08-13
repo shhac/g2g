@@ -21,8 +21,9 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"preview current", []string{"push"}, []string{"Target: synthetic-middle", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
-		{"preview explicit stack", []string{"push", "--branch", "synthetic-middle", "--stack"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
+		{"preview current", []string{"push"}, []string{"Target: synthetic-middle", "synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
+		{"preview default full stack", []string{"push", "--branch", "synthetic-middle"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
+		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--no-stack"}, []string{"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -48,7 +49,7 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if git.pushes != 1 || strings.Join(git.pushed, ",") != "synthetic-lower,synthetic-middle" || !strings.Contains(stdout.String(), "Ready to apply") || !strings.Contains(stdout.String(), "Applied — remote refs updated atomically") {
+	if git.pushes != 1 || strings.Join(git.pushed, ",") != "synthetic-lower,synthetic-middle,synthetic-top" || !strings.Contains(stdout.String(), "Ready to apply") || !strings.Contains(stdout.String(), "Applied — remote refs updated atomically") {
 		t.Errorf("pushes=%d branches=%v output=%q", git.pushes, git.pushed, stdout.String())
 	}
 }
@@ -96,9 +97,10 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 		args     []string
 		want     string
 	}{
-		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push", "--stack"}, "multiple descendants"},
+		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push"}, "multiple descendants"},
+		{"fork opt out", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push", "--no-stack"}, ""},
 		{"remote", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, remoteErr: errors.New("unknown remote")}, cliPushGraphite{}, []string{"push", "--remote", "synthetic"}, "unknown remote"},
-		{"atomic", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, pushErr: errors.New("atomic unsupported")}, cliPushGraphite{}, []string{"push", "--apply"}, "Not applied\natomic unsupported"},
+		{"atomic", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}, pushErr: errors.New("atomic unsupported")}, cliPushGraphite{}, []string{"push", "--apply"}, "Not applied\natomic unsupported"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -106,6 +108,12 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, service, Presentation{})
 			command.SetArgs(test.args)
 			err := command.Execute()
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("error = %v", err)
+				}
+				return
+			}
 			if err == nil || !strings.Contains(err.Error(), strings.TrimPrefix(test.want, "Not applied\n")) {
 				t.Fatalf("error = %v", err)
 			}
@@ -123,13 +131,13 @@ func TestPushDebugIsStderrOnly(t *testing.T) {
 	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
 	var stdout, stderr bytes.Buffer
 	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
-	command.SetArgs([]string{"push", "--debug", "--stack"})
+	command.SetArgs([]string{"push", "--debug"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
 		"operation=\"push\"", "event=push.plan", "target=\"synthetic-middle\"",
-		"stack=\"true\"", "remote=\"origin\"",
+		"full_stack=\"true\"", "remote=\"origin\"",
 		"command=\"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top\"",
 	} {
 		if !strings.Contains(stderr.String(), expected) {

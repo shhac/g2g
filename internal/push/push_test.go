@@ -38,12 +38,12 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	service := Service{Git: git, Graphite: fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}}}
-	plan, err := service.Plan(context.Background(), link.Selection{Stack: true}, "origin")
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil || strings.Join(plan.Branches, ",") != "lower,middle,top" {
 		t.Fatalf("Plan() = (%#v, %v)", plan, err)
 	}
 	service.Graphite = fakeGraphite{paths: paths(), stackErr: errors.New("multiple descendants")}
-	if _, err := service.Plan(context.Background(), link.Selection{Stack: true}, "origin"); err == nil || !strings.Contains(err.Error(), "multiple descendants") {
+	if _, err := service.Plan(context.Background(), link.Selection{}, "origin"); err == nil || !strings.Contains(err.Error(), "multiple descendants") {
 		t.Fatalf("Plan() fork error = %v", err)
 	}
 }
@@ -51,7 +51,7 @@ func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 func TestApplyRevalidatesThenMakesOneAtomicLeasePush(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	service := Service{Git: git, Graphite: fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}}}
-	selection := link.Selection{Stack: true}
+	selection := link.Selection{}
 	preview, err := service.Plan(context.Background(), selection, "origin")
 	if err != nil {
 		t.Fatal(err)

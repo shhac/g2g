@@ -13,7 +13,7 @@ import (
 func newSync(service syncer.Service, linkService link.Service, presentation Presentation) *cobra.Command {
 	var branch string
 	var trunk string
-	var stack bool
+	var noStack bool
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "sync",
@@ -27,7 +27,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				mode = "apply"
 			}
 			ctx = commandContext(cmd, "sync", mode, branch, trunk)
-			selection := link.Selection{Branch: branch, Trunk: trunk, Stack: stack}
+			selection := link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack}
 			plan, err := service.PreviewWithOptions(ctx, selection)
 			if err != nil {
 				return err
@@ -77,7 +77,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 	}
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to reconcile (defaults to current branch)")
 	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
-	cmd.Flags().BoolVar(&stack, "stack", false, "extend the selected branch through one unambiguous descendant chain")
+	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
 	cmd.Flags().BoolVar(&apply, "apply", false, "reconcile eligible GitHub stack relationships after revalidation")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(linkService.BranchCompletions))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {

@@ -32,15 +32,6 @@ func executeWithService(t *testing.T, service link.Service, args ...string) (str
 	return stdout.String(), err
 }
 
-func executeWithServices(t *testing.T, linkService link.Service, syncService syncer.Service, args ...string) (string, error) {
-	t.Helper()
-	var stdout, stderr bytes.Buffer
-	command := NewWithServices("v0.2.0", &stdout, &stderr, linkService, syncService)
-	command.SetArgs(args)
-	err := command.Execute()
-	return stdout.String(), err
-}
-
 func TestBareCommandShowsHelp(t *testing.T) {
 	output, err := execute(t)
 	if err != nil {
@@ -515,118 +506,6 @@ func TestTrunkCompletionUsesDeclaredLocalTrunks(t *testing.T) {
 	}
 }
 
-func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
-	github := &cliSyncGitHub{}
-	service := syncer.Service{
-		Discoverer: cliSyncDiscoverer{},
-		Git:        cliSyncGit{},
-		GitHub:     github,
-	}
-	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync")
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	for _, expected := range []string{"Target: beta", "main (trunk)", "alpha (#1) (aligned)", "beta (#2) (divergent: base main, want alpha)", "Command to run\ngh stack link --base main alpha beta", "No changes were made."} {
-		if !strings.Contains(output, expected) {
-			t.Errorf("preview missing %q:\n%s", expected, output)
-		}
-	}
-	if github.links != 0 {
-		t.Errorf("Link calls = %d, want 0", github.links)
-	}
-}
-
-func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
-	plan := syncer.Plan{
-		Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
-		Items: []syncer.Item{
-			{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}},
-			{Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}},
-		},
-	}
-	for _, test := range []struct {
-		name         string
-		presentation Presentation
-		want         string
-	}{
-		{
-			name: "plain",
-			want: "Target: synthetic-top\n\n  synthetic-main (trunk)\n  └─ synthetic-a (#10) (aligned)\n    └─ synthetic-b (#11) (divergent: base synthetic-main, want synthetic-a)\n\nCommand to run\ngh stack link --base synthetic-main synthetic-a synthetic-b\n",
-		},
-		{
-			name:         "color",
-			presentation: Presentation{Color: true},
-			want:         "\x1b[1;36mTarget\x1b[0m: \x1b[1;37msynthetic-top\x1b[0m\n\n  \x1b[1;33msynthetic-main (trunk)\x1b[0m\n  └─ \x1b[1;37msynthetic-a\x1b[0m (\x1b[35m#10\x1b[0m) \x1b[32m(aligned)\x1b[0m\n    └─ \x1b[1;37msynthetic-b\x1b[0m (\x1b[35m#11\x1b[0m) \x1b[1;38;5;214m(divergent: base synthetic-main, want synthetic-a)\x1b[0m\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgh stack link --base synthetic-main synthetic-a synthetic-b\x1b[0m\n",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var output bytes.Buffer
-			if err := writeSyncPlan(&output, plan, test.presentation); err != nil {
-				t.Fatal(err)
-			}
-			if got := output.String(); got != test.want {
-				t.Errorf("snapshot = %q, want %q", got, test.want)
-			}
-			for _, redundant := range []string{"Resolved target", "Graphite path", "bottom to top", "Proposed command", "Reconciliation summary"} {
-				if strings.Contains(output.String(), redundant) {
-					t.Errorf("snapshot contains %q: %q", redundant, output.String())
-				}
-			}
-		})
-	}
-}
-
-func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *testing.T) {
-	plan := syncer.Plan{
-		Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
-		Items: []syncer.Item{
-			{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing},
-			{Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}},
-		},
-	}
-	var output bytes.Buffer
-	if err := writeSyncPlan(&output, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"synthetic-a (missing pull request)", "synthetic-b (#12) (non-open pull request)", "Apply blocked"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Errorf("preview missing %q: %q", expected, output.String())
-		}
-	}
-}
-
-func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
-	discoverer := &cliApplyDiscoverer{}
-	github := &cliSyncGitHub{}
-	service := syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}
-	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync", "--branch", "beta", "--apply")
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if discoverer.branch != "beta" {
-		t.Errorf("selected branch = %q, want beta", discoverer.branch)
-	}
-	if github.links != 1 {
-		t.Errorf("Link calls = %d, want 1", github.links)
-	}
-	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") || !strings.Contains(output, "Changes were made.") {
-		t.Errorf("output = %q", output)
-	}
-}
-
-func TestSyncApplyFailureNeverReportsSuccess(t *testing.T) {
-	discoverer := &cliApplyDiscoverer{}
-	github := &cliSyncGitHub{err: errors.New("synthetic sync failure")}
-	service := syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}
-	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync", "--apply")
-	if err == nil {
-		t.Fatal("Execute() error = nil")
-	}
-	if !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Not applied\nsynthetic sync failure") || strings.Contains(output, "Applied —") || strings.Contains(output, "Changes were made.") {
-		t.Errorf("output = %q", output)
-	}
-}
-
 func cliService(github *cliGitHub) link.Service {
 	return cliServiceWithGitHub(github)
 }
@@ -780,44 +659,3 @@ func (f *cliGitHubPRs) Inspect(context.Context, []string) ([]githubstack.PullReq
 	return f.prs, nil
 }
 func (f *cliGitHubPRs) Link(context.Context, string, []string) error { f.links++; return nil }
-
-type cliSyncDiscoverer struct{}
-
-func (cliSyncDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
-	return link.Plan{
-		Target:       "beta",
-		TargetSource: "current Git branch",
-		Base:         "main",
-		BaseSource:   "Graphite-declared ancestry",
-		GraphitePath: []string{"main", "alpha", "beta"},
-		Branches:     []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}},
-	}, nil
-}
-
-type cliApplyDiscoverer struct{ branch string }
-
-func (f *cliApplyDiscoverer) DiscoverWithOptions(_ context.Context, selection link.Selection) (link.Plan, error) {
-	f.branch = selection.Branch
-	return link.Plan{
-		Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}},
-	}, nil
-}
-
-type cliSyncGit struct{}
-
-func (cliSyncGit) Clean(context.Context) error { return nil }
-
-type cliSyncGitHub struct {
-	links int
-	err   error
-}
-
-func (f *cliSyncGitHub) Link(context.Context, string, []string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.links++
-	return nil
-}

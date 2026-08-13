@@ -60,19 +60,6 @@ func (p Plan) NothingToLink() bool {
 	return len(p.Issues) == 0 && len(p.Branches) < 2
 }
 
-// Discover resolves a Graphite path and read-only GitHub PR facts without
-// deciding whether their current native-stack relationship is safe to link.
-// sync uses this to report divergence before choosing its own apply policy.
-func (s Service) Discover(ctx context.Context, requestedBranch string) (Plan, error) {
-	return s.DiscoverWithTrunk(ctx, requestedBranch, "")
-}
-
-// DiscoverWithTrunk resolves a target without checkout. requestedTrunk is an
-// optional explicit Graphite-trunk override for a valid ancestry candidate.
-func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
-	return s.DiscoverWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk})
-}
-
 // Selection captures every no-checkout path selector shared by link, sync,
 // and the Git-only push escape hatch.
 type Selection = stack.Selection
@@ -109,13 +96,7 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 // have the expected base relationship. sync deliberately has a separate,
 // explicit reconciliation policy for detected divergence.
 func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error) {
-	return s.PlanWithTrunk(ctx, requestedBranch, "")
-}
-
-// PlanWithTrunk applies link's PR-safety checks after resolving an optional
-// Graphite trunk override.
-func (s Service) PlanWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
-	return s.PlanWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk})
+	return s.PlanWithOptions(ctx, Selection{Branch: requestedBranch})
 }
 
 func (s Service) PlanWithOptions(ctx context.Context, selection Selection) (Plan, error) {
@@ -142,29 +123,10 @@ func branchSet(branches []string) map[string]bool {
 	return set
 }
 
-// selectBoundary chooses only among Graphite-declared trunk candidates on the
-// selected ancestry. It never guesses by branch name. An explicit override is
-// accepted only for one of those candidates; otherwise exactly one candidate
-// is required.
-// SelectBoundary chooses a declared trunk only from the selected ancestry.
-// It is shared with the Git-only push command to preserve the same Graphite
-// authority and multi-trunk safety rules.
-func SelectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
-	return stack.SelectBoundary(path, trunks, requestedTrunk)
-}
-
-func selectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
-	return SelectBoundary(path, trunks, requestedTrunk)
-}
-
 // Apply revalidates all discovery and local state immediately before invoking
 // gh, and refuses if the revalidated plan differs from the preview.
 func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
-	return s.ApplyWithTrunk(ctx, requestedBranch, "", preview)
-}
-
-func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
-	plan, err := s.RevalidateWithTrunk(ctx, requestedBranch, requestedTrunk, preview)
+	plan, err := s.RevalidateWithOptions(ctx, Selection{Branch: requestedBranch}, preview)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -172,12 +134,6 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 		return Plan{}, err
 	}
 	return plan, nil
-}
-
-// RevalidateWithTrunk checks the exact preview immediately before mutation.
-// Callers may render the returned plan only after this succeeds.
-func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
-	return s.RevalidateWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
 }
 
 func (s Service) RevalidateWithOptions(ctx context.Context, selection Selection, preview Plan) (Plan, error) {

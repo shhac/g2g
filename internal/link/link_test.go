@@ -202,38 +202,7 @@ func TestBranchCompletionsAreLocalTrackedAndSorted(t *testing.T) {
 	}
 }
 
-func TestSelectBoundaryUsesOnlyDeclaredGraphiteTrunks(t *testing.T) {
-	path := []string{"main", "feature-one", "feature-two"}
-	base, source, branches, err := selectBoundary(path, []string{"main", "develop", "staging"}, "")
-	if err != nil {
-		t.Fatalf("selectBoundary() error = %v", err)
-	}
-	if base != "main" || source != "Graphite-declared ancestry" || strings.Join(branches, ",") != "feature-one,feature-two" {
-		t.Errorf("boundary = (%q, %q, %v)", base, source, branches)
-	}
-}
-
-func TestSelectBoundaryRequiresOrValidatesTrunkOverride(t *testing.T) {
-	path := []string{"develop", "main", "feature"}
-	trunks := []string{"develop", "main", "staging"}
-	if _, _, _, err := selectBoundary(path, trunks, ""); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
-		t.Fatalf("selectBoundary() error = %v, want ambiguity", err)
-	}
-	base, source, branches, err := selectBoundary(path, trunks, "main")
-	if err != nil {
-		t.Fatalf("selectBoundary() override error = %v", err)
-	}
-	if base != "main" || source != "--trunk" || strings.Join(branches, ",") != "feature" {
-		t.Errorf("override boundary = (%q, %q, %v)", base, source, branches)
-	}
-	for _, requested := range []string{"missing", "staging", "feature"} {
-		if _, _, _, err := selectBoundary(path, trunks, requested); err == nil {
-			t.Errorf("selectBoundary(%q) error = nil", requested)
-		}
-	}
-}
-
-func TestPlanWithTrunkUsesValidDeclaredAncestralOverride(t *testing.T) {
+func TestPlanWithOptionsUsesValidDeclaredAncestralOverride(t *testing.T) {
 	service := Service{
 		Git: fakeGit{current: "feature", branches: []string{"develop", "main", "feature"}},
 		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
@@ -244,9 +213,9 @@ func TestPlanWithTrunkUsesValidDeclaredAncestralOverride(t *testing.T) {
 	if _, err := service.Plan(context.Background(), "feature"); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
 		t.Fatalf("Plan() error = %v, want ambiguity", err)
 	}
-	plan, err := service.PlanWithTrunk(context.Background(), "feature", "main")
+	plan, err := service.PlanWithOptions(context.Background(), Selection{Branch: "feature", Trunk: "main"})
 	if err != nil {
-		t.Fatalf("PlanWithTrunk() error = %v", err)
+		t.Fatalf("PlanWithOptions() error = %v", err)
 	}
 	if plan.Base != "main" || strings.Join(plan.Branches, ",") != "feature" {
 		t.Errorf("plan = base %q branches %v", plan.Base, plan.Branches)

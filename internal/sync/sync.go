@@ -62,11 +62,7 @@ type Plan struct {
 // Preview discovers the selected path and classifies GitHub's existing PR
 // relationship. It is entirely read-only.
 func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, error) {
-	return s.PreviewWithTrunk(ctx, requestedBranch, "")
-}
-
-func (s Service) PreviewWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
-	return s.PreviewWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk})
+	return s.PreviewWithOptions(ctx, link.Selection{Branch: requestedBranch})
 }
 
 func (s Service) PreviewWithOptions(ctx context.Context, selection link.Selection) (Plan, error) {
@@ -90,11 +86,7 @@ func (s Service) PreviewWithOptions(ctx context.Context, selection link.Selectio
 // when every Graphite branch is already represented by an open PR. This avoids
 // silently creating mappings or repairing closed/ambiguous state.
 func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
-	return s.ApplyWithTrunk(ctx, requestedBranch, "", preview)
-}
-
-func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
-	return s.ApplyWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
+	return s.ApplyWithOptions(ctx, link.Selection{Branch: requestedBranch}, preview)
 }
 
 func (s Service) ApplyWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
@@ -106,12 +98,6 @@ func (s Service) ApplyWithOptions(ctx context.Context, selection link.Selection,
 		return Plan{}, err
 	}
 	return plan, nil
-}
-
-// RevalidateWithTrunk confirms that the preview remains eligible immediately
-// before the caller renders its final plan and invokes the sole mutation.
-func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
-	return s.RevalidateWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
 }
 
 func (s Service) RevalidateWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {

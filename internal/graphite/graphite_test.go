@@ -122,3 +122,49 @@ exit 9`,
 		t.Errorf("path = %q, want %q", got, want)
 	}
 }
+
+func TestDiscoverStackExtendsOnlyOneLinearDescendantChain(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", string(fixture))
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+	})
+	client := Client{Runner: subprocess.ExecRunner{}}
+	for _, test := range []struct{ selected, want string }{
+		{"beta", "main,alpha,beta,beta-top,beta-side"},
+		{"beta-top", "main,alpha,beta,beta-top,beta-side"},
+		{"beta-side", "main,alpha,beta,beta-top,beta-side"},
+	} {
+		t.Run(test.selected, func(t *testing.T) {
+			stack, err := client.DiscoverStack(context.Background(), test.selected, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(stack.Path, ","); got != test.want {
+				t.Errorf("path = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDiscoverStackRejectsDescendantFork(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", string(fixture))
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+	})
+	_, err = (Client{Runner: subprocess.ExecRunner{}}).DiscoverStack(context.Background(), "alpha", true)
+	if err == nil || !strings.Contains(err.Error(), "multiple descendants") {
+		t.Fatalf("DiscoverStack() error = %v", err)
+	}
+}

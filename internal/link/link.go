@@ -22,6 +22,7 @@ type Git interface {
 // Graphite discovers Graphite's declared ancestry without a checkout.
 type Graphite interface {
 	Discover(context.Context, string) (graphite.Stack, error)
+	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
 	TrackedBranches(context.Context) ([]string, error)
 }
 
@@ -69,10 +70,24 @@ func (s Service) Discover(ctx context.Context, requestedBranch string) (Plan, er
 // DiscoverWithTrunk resolves a target without checkout. requestedTrunk is an
 // optional explicit Graphite-trunk override for a valid ancestry candidate.
 func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
+	return s.DiscoverWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk})
+}
+
+// Selection captures every no-checkout path selector shared by link, sync,
+// and the Git-only push escape hatch.
+type Selection struct {
+	Branch string
+	Trunk  string
+	Stack  bool
+}
+
+// DiscoverWithOptions resolves an optional pivot and optional full linear
+// stack without checking out any branch.
+func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
-	target, source, err := resolveTarget(ctx, s.Git, requestedBranch)
+	target, source, err := resolveTarget(ctx, s.Git, selection.Branch)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -86,7 +101,7 @@ func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, request
 		return Plan{}, fmt.Errorf("selected branch %q is not a local branch", target)
 	}
 
-	stack, err := s.Graphite.Discover(ctx, target)
+	stack, err := s.Graphite.DiscoverStack(ctx, target, selection.Stack)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -94,7 +109,7 @@ func (s Service) DiscoverWithTrunk(ctx context.Context, requestedBranch, request
 		return Plan{}, err
 	}
 
-	base, baseSource, branches, err := selectBoundary(stack.Path, stack.Trunks, requestedTrunk)
+	base, baseSource, branches, err := SelectBoundary(stack.Path, stack.Trunks, selection.Trunk)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -125,7 +140,11 @@ func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error)
 // PlanWithTrunk applies link's PR-safety checks after resolving an optional
 // Graphite trunk override.
 func (s Service) PlanWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
-	plan, err := s.DiscoverWithTrunk(ctx, requestedBranch, requestedTrunk)
+	return s.PlanWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk})
+}
+
+func (s Service) PlanWithOptions(ctx context.Context, selection Selection) (Plan, error) {
+	plan, err := s.DiscoverWithOptions(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -178,7 +197,10 @@ func validatePathLocalAndSafe(local map[string]bool, path []string) error {
 // selected ancestry. It never guesses by branch name. An explicit override is
 // accepted only for one of those candidates; otherwise exactly one candidate
 // is required.
-func selectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
+// SelectBoundary chooses a declared trunk only from the selected ancestry.
+// It is shared with the Git-only push command to preserve the same Graphite
+// authority and multi-trunk safety rules.
+func SelectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
 	if len(path) < 2 {
 		return "", "", nil, fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
 	}
@@ -218,6 +240,10 @@ func selectBoundary(path, trunks []string, requestedTrunk string) (string, strin
 	return "", "", nil, fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
 }
 
+func selectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
+	return SelectBoundary(path, trunks, requestedTrunk)
+}
+
 // Apply revalidates all discovery and local state immediately before invoking
 // gh, and refuses if the revalidated plan differs from the preview.
 func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
@@ -238,13 +264,17 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 // RevalidateWithTrunk checks the exact preview immediately before mutation.
 // Callers may render the returned plan only after this succeeds.
 func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
+	return s.RevalidateWithOptions(ctx, Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
+}
+
+func (s Service) RevalidateWithOptions(ctx context.Context, selection Selection, preview Plan) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.PlanWithTrunk(ctx, requestedBranch, requestedTrunk)
+	plan, err := s.PlanWithOptions(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}

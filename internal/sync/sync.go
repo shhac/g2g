@@ -15,6 +15,7 @@ import (
 // Discoverer supplies the common, read-only Graphite and GitHub facts.
 type Discoverer interface {
 	DiscoverWithTrunk(context.Context, string, string) (link.Plan, error)
+	DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error)
 }
 
 // Git supplies the local precondition needed before an explicit apply.
@@ -66,10 +67,14 @@ func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, err
 }
 
 func (s Service) PreviewWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string) (Plan, error) {
+	return s.PreviewWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk})
+}
+
+func (s Service) PreviewWithOptions(ctx context.Context, selection link.Selection) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
-	plan, err := s.Discoverer.DiscoverWithTrunk(ctx, requestedBranch, requestedTrunk)
+	plan, err := s.Discoverer.DiscoverWithOptions(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -90,7 +95,11 @@ func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan
 }
 
 func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
-	plan, err := s.RevalidateWithTrunk(ctx, requestedBranch, requestedTrunk, preview)
+	return s.ApplyWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
+}
+
+func (s Service) ApplyWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
+	plan, err := s.RevalidateWithOptions(ctx, selection, preview)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -103,13 +112,17 @@ func (s Service) ApplyWithTrunk(ctx context.Context, requestedBranch, requestedT
 // RevalidateWithTrunk confirms that the preview remains eligible immediately
 // before the caller renders its final plan and invokes the sole mutation.
 func (s Service) RevalidateWithTrunk(ctx context.Context, requestedBranch, requestedTrunk string, preview Plan) (Plan, error) {
+	return s.RevalidateWithOptions(ctx, link.Selection{Branch: requestedBranch, Trunk: requestedTrunk}, preview)
+}
+
+func (s Service) RevalidateWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.PreviewWithTrunk(ctx, requestedBranch, requestedTrunk)
+	plan, err := s.PreviewWithOptions(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}

@@ -305,6 +305,7 @@ func (f fakeGit) Clean(context.Context) error                     { return f.dir
 
 type fakeGraphite struct {
 	paths       map[string]graphite.Stack
+	stackPaths  map[string]graphite.Stack
 	tracked     []string
 	discoverErr error
 }
@@ -319,6 +320,16 @@ func (f fakeGraphite) Discover(_ context.Context, branch string) (graphite.Stack
 	}
 	return stack, nil
 }
+func (f fakeGraphite) DiscoverStack(ctx context.Context, branch string, includeTip bool) (graphite.Stack, error) {
+	if includeTip && f.stackPaths != nil {
+		stack, ok := f.stackPaths[branch]
+		if !ok {
+			return graphite.Stack{}, errors.New("untracked")
+		}
+		return stack, nil
+	}
+	return f.Discover(ctx, branch)
+}
 func (f fakeGraphite) TrackedBranches(context.Context) ([]string, error) { return f.tracked, nil }
 
 type changingGraphite struct{ discoveries int }
@@ -330,6 +341,28 @@ func (f *changingGraphite) Discover(context.Context, string) (graphite.Stack, er
 		path = []string{"main", "beta"}
 	}
 	return graphite.Stack{Path: path, Trunks: []string{"main"}}, nil
+}
+func (f *changingGraphite) DiscoverStack(ctx context.Context, branch string, _ bool) (graphite.Stack, error) {
+	return f.Discover(ctx, branch)
+}
+
+func TestPlanWithStackExpandsFromPivotWithoutCheckout(t *testing.T) {
+	service := Service{
+		Git: fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}},
+		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+			"middle": {Path: []string{"main", "lower", "middle"}, Trunks: []string{"main"}},
+		}, stackPaths: map[string]graphite.Stack{
+			"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}},
+		}},
+		GitHub: &fakeGitHub{},
+	}
+	plan, err := service.PlanWithOptions(context.Background(), Selection{Stack: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(plan.Branches, ","), "lower,middle,top"; got != want {
+		t.Errorf("branches = %q, want %q", got, want)
+	}
 }
 func (*changingGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil

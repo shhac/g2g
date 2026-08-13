@@ -16,6 +16,7 @@ import (
 func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	var branch string
 	var trunk string
+	var stack bool
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "link",
@@ -29,7 +30,8 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				mode = "apply"
 			}
 			ctx = commandContext(cmd, "link", mode, branch, trunk)
-			plan, err := service.PlanWithTrunk(ctx, branch, trunk)
+			selection := link.Selection{Branch: branch, Trunk: trunk, Stack: stack}
+			plan, err := service.PlanWithOptions(ctx, selection)
 			if err != nil {
 				return err
 			}
@@ -44,7 +46,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link; copying the displayed command is your deliberate snapshot choice.")
 				return nil
 			}
-			validated, err := service.RevalidateWithTrunk(ctx, branch, trunk, plan)
+			validated, err := service.RevalidateWithOptions(ctx, selection, plan)
 			if err != nil {
 				writeNotApplied(cmd.OutOrStdout(), presentation, err)
 				return err
@@ -75,6 +77,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to link (defaults to current branch)")
 	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the link base")
+	cmd.Flags().BoolVar(&stack, "stack", false, "extend the selected branch through one unambiguous descendant chain")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(service.BranchCompletions))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {

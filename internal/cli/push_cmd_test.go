@@ -1,0 +1,133 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/push"
+	syncer "github.com/shhac/gt2gh/internal/sync"
+)
+
+func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
+	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
+	pushService := push.Service{Git: git, Graphite: cliPushGraphite{}}
+	for _, test := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"preview current", []string{"push"}, []string{"Target: synthetic-middle", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
+		{"preview explicit stack", []string{"push", "--branch", "synthetic-middle", "--stack"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, pushService, Presentation{})
+			command.SetArgs(test.args)
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			for _, expected := range test.want {
+				if !strings.Contains(stdout.String(), expected) {
+					t.Errorf("output missing %q: %q", expected, stdout.String())
+				}
+			}
+			if git.pushes != 0 || stderr.Len() != 0 {
+				t.Errorf("pushes=%d stderr=%q", git.pushes, stderr.String())
+			}
+		})
+	}
+
+	var stdout, stderr bytes.Buffer
+	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, pushService, Presentation{})
+	command.SetArgs([]string{"push", "--apply"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if git.pushes != 1 || strings.Join(git.pushed, ",") != "synthetic-lower,synthetic-middle" || !strings.Contains(stdout.String(), "Ready to apply") || !strings.Contains(stdout.String(), "Applied — remote refs updated atomically") {
+		t.Errorf("pushes=%d branches=%v output=%q", git.pushes, git.pushed, stdout.String())
+	}
+}
+
+func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		git      *cliPushGit
+		graphite cliPushGraphite
+		args     []string
+		want     string
+	}{
+		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push", "--stack"}, "multiple descendants"},
+		{"remote", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, remoteErr: errors.New("unknown remote")}, cliPushGraphite{}, []string{"push", "--remote", "synthetic"}, "unknown remote"},
+		{"atomic", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, pushErr: errors.New("atomic unsupported")}, cliPushGraphite{}, []string{"push", "--apply"}, "Not applied\natomic unsupported"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			service := push.Service{Git: test.git, Graphite: test.graphite}
+			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, service, Presentation{})
+			command.SetArgs(test.args)
+			err := command.Execute()
+			if err == nil || !strings.Contains(err.Error(), strings.TrimPrefix(test.want, "Not applied\n")) {
+				t.Fatalf("error = %v", err)
+			}
+			if !strings.Contains(stdout.String(), test.want) && test.name == "atomic" {
+				t.Errorf("output=%q", stdout.String())
+			}
+			if test.git.pushes > 1 {
+				t.Errorf("pushes=%d, want one attempt and no fallback", test.git.pushes)
+			}
+		})
+	}
+}
+
+func TestPushDebugIsStderrOnly(t *testing.T) {
+	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}
+	var stdout, stderr bytes.Buffer
+	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+	command.SetArgs([]string{"push", "--debug"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "debug event=") || !strings.Contains(stderr.String(), "operation=\"push\"") || !strings.Contains(stderr.String(), "event=push.plan") {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+type cliPushGit struct {
+	current            string
+	branches, pushed   []string
+	remoteErr, pushErr error
+	pushes             int
+}
+
+func (f *cliPushGit) CurrentBranch(context.Context) (string, error)   { return f.current, nil }
+func (f *cliPushGit) LocalBranches(context.Context) ([]string, error) { return f.branches, nil }
+func (f *cliPushGit) Remote(context.Context, string) error            { return f.remoteErr }
+func (f *cliPushGit) PushAtomic(_ context.Context, _ string, branches []string) error {
+	f.pushes++
+	f.pushed = append([]string(nil), branches...)
+	return f.pushErr
+}
+
+type cliPushGraphite struct{ stackErr error }
+
+func (f cliPushGraphite) Discover(context.Context, string) (graphite.Stack, error) {
+	return f.DiscoverStack(context.Background(), "synthetic-middle", false)
+}
+func (f cliPushGraphite) DiscoverStack(_ context.Context, branch string, stack bool) (graphite.Stack, error) {
+	if stack && f.stackErr != nil {
+		return graphite.Stack{}, f.stackErr
+	}
+	path := []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}
+	if branch == "synthetic-top" || stack {
+		path = append(path, "synthetic-top")
+	}
+	return graphite.Stack{Path: path, Trunks: []string{"synthetic-main"}}, nil
+}
+func (cliPushGraphite) TrackedBranches(context.Context) ([]string, error) {
+	return []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, nil
+}

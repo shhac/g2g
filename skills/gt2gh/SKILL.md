@@ -6,7 +6,7 @@ description: |
   Graphite/GitHub stack discovery or linking, reconciliation, CLI tests, or
   release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
   link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
-  "g2g sync".
+  "g2g sync", "g2g push", "Graphite atomic stack push".
 ---
 
 # gt2gh
@@ -37,7 +37,17 @@ description: |
   invocation prints help. `sync` is preview-first and only applies when every
   selected-path branch already has an open GitHub PR; it must not create
   Graphite-only mappings or repair closed/non-open PRs.
-- `--debug` is a persistent, stderr-only diagnostic flag for `link` and `sync`.
+- `push` is a preview-first Git-only publication escape hatch. It must never
+  call `gt` or `gh`; only `--apply` may run exactly one
+  `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
+  remote default explicit (`origin`), validate it, and never fall back to a
+  weaker push mode. Graphite remains responsible for tracking, restacking, and
+  submission.
+- `--stack` treats the selected branch as a pivot and extends only through a
+  unique downward Graphite child chain. It remains no-checkout and excludes
+  siblings; reject a descendant fork rather than guessing.
+- `--debug` is a persistent, stderr-only diagnostic flag for `link`, `sync`,
+  and `push`.
   It is safe to use for local investigation but must not alter command behavior
   or cause agents to enable Graphite's own `gt --debug`.
 - Never guess a Graphite trunk from its name. The selected ancestry determines
@@ -53,8 +63,8 @@ description: |
   use fake `gt` and `gh` executables on `PATH`, including captured supported
   Graphite text fixtures; never require credentials, network access, or real
   CLI installations.
-- Preserve the `completion bash|zsh|fish` interface. Dynamic `--branch`
-  completion must remain deterministic, read-only, and checkout-free.
+- Preserve the `completion bash|zsh|fish` interface. Dynamic `--branch` and
+  `--trunk` completion must remain deterministic, read-only, and checkout-free.
 - Run `gofmt -w` on changed Go files and `go test ./...`. Use `go vet ./...`
   when changing Go code or preparing a release.
 - Use `git hunk` for any staging. Do not commit, tag, push, or invoke real

@@ -34,6 +34,13 @@ type Client struct {
 // Discover resolves selected without checking it out. It accepts a forked
 // Graphite tree and returns only the selected branch's deterministic ancestry.
 func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
+	return c.DiscoverStack(ctx, selected, false)
+}
+
+// DiscoverStack resolves selected's declared ancestry and, when includeTip is
+// true, extends through the only unambiguous downward child chain. It never
+// checks out, changes, or otherwise manages a Graphite branch.
+func (c Client) DiscoverStack(ctx context.Context, selected string, includeTip bool) (Stack, error) {
 	graph, err := c.read(ctx)
 	if err != nil {
 		return Stack{}, err
@@ -63,12 +70,42 @@ func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
 	for left, right := 0, len(reversed)-1; left < right; left, right = left+1, right-1 {
 		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
+	if includeTip {
+		children := graphChildren(graph)
+		for current := selected; ; {
+			next := children[current]
+			switch len(next) {
+			case 0:
+				goto expanded
+			case 1:
+				reversed = append(reversed, next[0])
+				current = next[0]
+			default:
+				return Stack{}, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); --stack requires one full linear path", current, strings.Join(next, ", "))
+			}
+		}
+	}
+
+expanded:
 	diagnostic.Event(ctx, "graphite.path",
 		diagnostic.Field{Key: "selected", Value: selected},
 		diagnostic.Field{Key: "path", Value: strings.Join(reversed, " -> ")},
 		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(graph.roots, ",")},
 	)
 	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil
+}
+
+func graphChildren(g graph) map[string][]string {
+	children := make(map[string][]string, len(g.nodes))
+	for _, candidate := range g.nodes {
+		if candidate.parent != "" {
+			children[candidate.parent] = append(children[candidate.parent], candidate.name)
+		}
+	}
+	for parent := range children {
+		sort.Strings(children[parent])
+	}
+	return children
 }
 
 // TrackedBranches returns stable, local Graphite branch candidates for shell

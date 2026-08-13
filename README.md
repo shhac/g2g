@@ -40,8 +40,19 @@ g2g link --branch feature/top --trunk main
 # Revalidate, then allow gh to create/update the native GitHub stack.
 g2g link --branch feature/top --apply
 
+# Treat the selected branch as a pivot and extend it through its one
+# unambiguous Graphite descendant chain.
+g2g link --branch feature/middle --stack
+
 # Preview Graphite-authoritative reconciliation for existing GitHub PRs.
 g2g sync --branch feature/top
+
+# Preview an atomic, lease-protected publication of Graphite-selected local
+# refs. This never invokes Graphite or GitHub.
+g2g push --branch feature/top --stack
+
+# Revalidate, then advance every selected ref together or none of them.
+g2g push --branch feature/top --stack --apply
 
 # Opt-in local diagnostics go only to stderr; stdout keeps the normal preview.
 g2g --debug link --branch feature/top
@@ -53,7 +64,8 @@ supported display grammar and a compatible `gh` with `stack link`. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
 
-`--debug` is a root flag and may appear before or after `link` or `sync`. It
+`--debug` is a root flag and may appear before or after `link`, `sync`, or
+`push`. It
 does not change discovery, timeouts, checkout behavior, or mutations. Its
 stderr-only records summarize supported Graphite discovery, the selected path,
 batched GitHub PR facts, plan/revalidation decisions, and bounded subprocess
@@ -107,13 +119,30 @@ only when applicable. It can reconcile the native stack only with `--apply` and
 deliberately refuses to create a PR for a Graphite-only branch or repair a
 closed/non-open PR.
 
+`g2g push` is a deliberately narrow, Git-only publication escape hatch for a
+Graphite-managed linear path. It never calls `gt`, `gh`, submit, or restack.
+It previews `git push --atomic --force-with-lease origin <branches>` by default
+and requires `--apply` to run that exact one invocation. `--remote` defaults to
+`origin` and must name a configured remote. Every selected non-trunk branch is
+pushed bottom-to-top; atomic push means they all advance together or none do.
+There is no non-atomic or unsafe-force fallback. This does not replace
+Graphite's ownership of tracking, restacking, or submission.
+
+All three commands normally use the declared-trunk-to-selected-branch path.
+`--stack` instead treats the selected branch as a pivot and extends through a
+unique downward child chain to its tip. It does not checkout a branch, includes
+no siblings, and fails rather than guessing when a descendant fork makes the
+extension ambiguous.
+
 ## Structure
 
 - `cmd/gt2gh`: executable entry point.
 - `internal/cli`: Cobra command parsing, preview output, and completion.
 - `internal/graphite`: strict, version-pinned read-only Graphite display parser.
-- `internal/git`, `internal/githubstack`: read-only repository and PR seams.
+- `internal/git`, `internal/githubstack`: narrow repository, publication, and
+  PR seams.
 - `internal/link`: Graphite-authoritative plan/apply orchestration.
+- `internal/push`: Git-only atomic stack-ref publication planning.
 - `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.
 - `internal/testutil`: fake executables installed on `PATH` during tests.
 - `design-docs`: concise scope and safety notes.

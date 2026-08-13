@@ -1,0 +1,63 @@
+package push
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	localgit "github.com/shhac/gt2gh/internal/git"
+	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/gt2gh/internal/testutil"
+)
+
+func TestProductionAdaptersUseOneAtomicLeasePush(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("..", "graphite", "testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePath := filepath.Join(t.TempDir(), "synthetic-stack.txt")
+	if err := os.WriteFile(fixturePath, fixture, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	arguments := filepath.Join(t.TempDir(), "git-arguments")
+	t.Setenv("GT_FIXTURE", fixturePath)
+	t.Setenv("GIT_ARGUMENTS", arguments)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then cat "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+		"git": `if [ "$1 $2" = "remote get-url" ]; then printf 'https://example.test/synthetic.git\n'; exit 0; fi
+if [ "$1 $2" = "branch --show-current" ]; then printf 'beta\n'; exit 0; fi
+if [ "$1" = "branch" ]; then printf 'main\nalpha\nbeta\nbeta-top\nbeta-side\ngamma\ngamma-deep\n'; exit 0; fi
+if [ "$1" = "push" ]; then printf '%s\n' "$*" >> "$GIT_ARGUMENTS"; exit 0; fi
+exit 9`,
+	})
+	runner := subprocess.ExecRunner{}
+	service := Service{
+		Git:      localgit.Client{Runner: runner},
+		Graphite: graphite.Client{Runner: runner},
+	}
+	selection := link.Selection{Stack: true}
+	preview, err := service.Plan(context.Background(), selection, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := service.Revalidate(context.Background(), selection, "origin", preview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Execute(context.Background(), validated); err != nil {
+		t.Fatal(err)
+	}
+	called, err := os.ReadFile(arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(called)), "push --atomic --force-with-lease origin alpha beta beta-top beta-side"; got != want {
+		t.Errorf("push = %q, want %q", got, want)
+	}
+}

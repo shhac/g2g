@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/push"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
@@ -45,7 +46,7 @@ func TestBareCommandShowsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") {
+	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") || !strings.Contains(output, "  push") {
 		t.Errorf("help = %q", output)
 	}
 }
@@ -375,7 +376,7 @@ func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -396,7 +397,7 @@ func TestLinkApplyDoesNotRenderReadyPlanWhenRevalidationIsCanceled(t *testing.T)
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, inspectErrAt: 2, inspectErr: context.Canceled}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
@@ -411,7 +412,7 @@ func TestLinkApplyReportsCancellationWithoutSuccess(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, linkErr: context.Canceled}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	err := command.Execute()
 	if err == nil {
@@ -456,7 +457,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events, flushErr: context.Canceled}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
@@ -470,7 +471,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events, writeErr: context.Canceled}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), syncer.Service{}, push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
@@ -482,6 +483,16 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
 
 func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--branch", "be")
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(output, "beta\n") || strings.Contains(output, "alpha\n") {
+		t.Errorf("completion = %q", output)
+	}
+}
+
+func TestPushBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
+	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "push", "--branch", "be")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -648,6 +659,9 @@ func (cliGraphite) Discover(_ context.Context, branch string) (graphite.Stack, e
 	}
 	return graphite.Stack{Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}, nil
 }
+func (f cliGraphite) DiscoverStack(ctx context.Context, branch string, _ bool) (graphite.Stack, error) {
+	return f.Discover(ctx, branch)
+}
 func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
 }
@@ -659,6 +673,9 @@ func (cliSingleBranchGraphite) Discover(_ context.Context, branch string) (graph
 		return graphite.Stack{}, context.Canceled
 	}
 	return graphite.Stack{Path: []string{"main", "alpha"}, Trunks: []string{"main"}}, nil
+}
+func (f cliSingleBranchGraphite) DiscoverStack(ctx context.Context, branch string, _ bool) (graphite.Stack, error) {
+	return f.Discover(ctx, branch)
 }
 func (cliSingleBranchGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha"}, nil
@@ -773,6 +790,9 @@ func (cliSyncDiscoverer) DiscoverWithTrunk(context.Context, string, string) (lin
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}},
 	}, nil
 }
+func (f cliSyncDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
+	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
+}
 
 type cliApplyDiscoverer struct{ branch string }
 
@@ -782,6 +802,9 @@ func (f *cliApplyDiscoverer) DiscoverWithTrunk(_ context.Context, branch, trunk 
 		Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"},
 		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}},
 	}, nil
+}
+func (f *cliApplyDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
+	return f.DiscoverWithTrunk(ctx, selection.Branch, selection.Trunk)
 }
 
 type cliSyncGit struct{}

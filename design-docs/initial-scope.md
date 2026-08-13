@@ -1,6 +1,6 @@
 # Initial scope
 
-**Status:** v0.2 implementation in progress; v0.1.0 released, August 2026.
+**Status:** implemented through v0.4; later changes remain focused extensions.
 **Graphite display contract:** pinned to Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
@@ -20,6 +20,12 @@ defaults to the checked-out Git branch and prominently prints that selection;
 checkout. A selected leaf may be in a forked tree: only its ancestry path is
 linked, never its siblings or descendants.
 
+All commands accept `--stack` as an explicit linear-stack expansion. It treats
+the selected/current branch as a pivot, then extends only through one unique
+Graphite-declared child chain to its tip. An ancestor fork outside that lineage
+is harmless; a fork in the downward extension fails closed rather than choosing
+a child. This preserves no-checkout selection and never joins siblings.
+
 Graphite may configure multiple trunks. `link` derives trunk candidates only
 from the selected Graphite ancestry, never from branch-name heuristics. One
 candidate is inferred and shown in preview. Multiple candidates fail closed
@@ -34,6 +40,11 @@ Graphite stacks. It will not replace Graphite as the source of truth, infer
 repository policy, or require a hosted service. It does not link an entire
 forked/tree stack: v0.1 selects one declared trunk-to-leaf path. Tree-wide
 linking remains out of scope.
+
+`push` is intentionally not a Graphite replacement: it does not invoke
+Graphite submit/restack or GitHub. It only publishes already selected local
+refs as one Git operation, leaving all Graphite tracking and branch-management
+decisions to Graphite.
 
 ## Safety
 
@@ -72,6 +83,14 @@ changes were needed or made without invoking `gh`. Tests use fake `gt` and `gh`
 executables on `PATH`, so they never need credentials, network access, or real
 CLI installations.
 
+`push` has a separate, narrow mutation boundary. It does not require a clean
+worktree because uncommitted files do not change refs. Preview validates the
+selected local Graphite path and configured remote, then shows one exact
+`git push --atomic --force-with-lease <remote> <branches>` invocation. Apply
+re-discovers and compares the complete plan before it invokes that one Git
+command. All selected refs advance together or none do; lack of atomic support
+or a rejected lease is an error with no weaker fallback.
+
 ## CLI shape
 
 `gt2gh link` is an explicit subcommand rather than a default action. This
@@ -82,12 +101,13 @@ surface will use Cobra for parsing and native shell-completion support.
 The implemented surface is:
 
 ```text
-gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
-gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--apply]
+gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--apply]
+gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--apply]
+gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--stack] [--remote <name>] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 
-`--debug` is persistent and may also appear after `link` or `sync`.
+`--debug` is persistent and may also appear after `link`, `sync`, or `push`.
 
 Completion is static for commands and flags and dynamic for `--branch` and
 `--trunk`. Candidates are deterministic, local Graphite branches/trunks; they

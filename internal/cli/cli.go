@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
@@ -42,7 +43,8 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	}
 	pushService := push.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}}
 	syncService := syncer.Service{Discoverer: linkService, Git: linkService.Git, GitHub: linkService.GitHub}
-	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService)
+	submitService := submit.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubstack.Client{Runner: runner}}
+	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService, submitService)
 }
 
 // NewWithService creates the root command with injectable link dependencies.
@@ -55,13 +57,16 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 // push because its mutable Git dependency is deliberately not part of this
 // constructor's contract.
 func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
-	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{})
+	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{}, submit.Service{})
 }
 
-func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service) *cobra.Command {
-	return newWithPresentation(version, commandName, stdout, stderr, service, syncService, pushService, detectPresentation(stdout))
+func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service) *cobra.Command {
+	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submitService, detectPresentation(stdout))
 }
 func newWithPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, presentation Presentation) *cobra.Command {
+	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submit.Service{}, presentation)
+}
+func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, presentation Presentation) *cobra.Command {
 	if commandName == "" {
 		commandName = "gt2gh"
 	}
@@ -82,6 +87,9 @@ func newWithPresentation(version, commandName string, stdout, stderr io.Writer, 
 	root.AddCommand(newSync(syncService, service, presentation))
 	if pushService.Git != nil && pushService.Graphite != nil {
 		root.AddCommand(newPush(pushService, service, presentation))
+	}
+	if submitService.Git != nil && submitService.Graphite != nil && submitService.GitHub != nil {
+		root.AddCommand(newSubmit(submitService, service, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

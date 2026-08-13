@@ -6,7 +6,7 @@ description: |
   Graphite/GitHub stack discovery or linking, reconciliation, CLI tests, or
   release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
   link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
-  "g2g sync", "g2g push", "Graphite atomic stack push".
+  "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push".
 ---
 
 # gt2gh
@@ -74,6 +74,23 @@ description: |
   `gt`/`gh` mutations unless the user explicitly asks.
 
 ## Use safely
+
+- For a person who wants an editor workflow, `g2g submit --edit` opens one
+  temporary JSON document, not a buffer per PR. It retains the document on all
+  failures and after preview; successful `--edit --apply` cleans it up unless
+  `--keep-spec` is present.
+
+## Submitting pull requests
+
+- `submit` is a preview-first PR creation recovery path. It must never invoke
+  `gt submit`, restack Graphite, or retarget an existing PR. Its `--apply`
+  boundary validates/revalidates first, atomically pushes refs, creates only
+  missing draft PRs, then links the eligible stack.
+- For non-interactive use, create a private temporary directory with
+  `g2g submit --write-spec <dir>`, complete `submission.json`, validate with
+  `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
+  on failure and state exact repair/validation/retry commands. Multiple PR
+  templates require `--template <name>` or `--no-template`; never guess.
 
 - After command discovery, use the resolved command's `--help` or `link --help`
   to inspect the current interface (for example, `g2g link --help` after a

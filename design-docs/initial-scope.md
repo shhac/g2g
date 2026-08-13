@@ -108,10 +108,12 @@ The implemented surface is:
 gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
 gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
 gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--apply]
+gt2gh [--debug] submit [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--spec <submission.json> | --write-spec <private-temp-dir>] [--template <name> | --no-template] [--draft | --ready] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 
-`--debug` is persistent and may also appear after `link`, `sync`, or `push`.
+`--debug` is persistent and may also appear after `link`, `sync`, `push`, or
+`submit`.
 
 Completion is static for commands and flags and dynamic for `--branch` and
 `--trunk`. Candidates are deterministic, local Graphite branches/trunks; they

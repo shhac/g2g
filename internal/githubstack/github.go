@@ -28,6 +28,31 @@ type Client struct {
 	Runner subprocess.Runner
 }
 
+// Create creates one pull request without changing any existing PR. The body
+// is passed through a temporary file owned by the caller so Markdown is never
+// re-escaped through command-line arguments.
+func (c Client) Create(ctx context.Context, branch, base, title, bodyFile string, draft bool, reviewers []string) error {
+	if c.Runner == nil {
+		return fmt.Errorf("GitHub runner is not configured")
+	}
+	if branch == "" || base == "" || title == "" || bodyFile == "" {
+		return fmt.Errorf("pull request branch, base, title, and body file are required")
+	}
+	args := []string{"pr", "create", "--head", branch, "--base", base, "--title", title, "--body-file", bodyFile}
+	if draft {
+		args = append(args, "--draft")
+	}
+	for _, reviewer := range reviewers {
+		args = append(args, "--reviewer", reviewer)
+	}
+	diagnostic.Event(ctx, "github.pr_create", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "base", Value: base}, diagnostic.Field{Key: "draft", Value: strconv.FormatBool(draft)})
+	output, err := c.Runner.Run(ctx, "gh", args...)
+	if err != nil {
+		return commandError("gh "+strings.Join(args[:6], " ")+" …", err, output)
+	}
+	return nil
+}
+
 // CommandError separates a terse external-command summary from its bounded
 // diagnostic output so callers can present each once in an appropriate place.
 type CommandError struct {

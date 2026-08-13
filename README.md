@@ -67,8 +67,8 @@ supported display grammar and a compatible `gh` with `stack link`. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
 
-`--debug` is a root flag and may appear before or after `link`, `sync`, or
-`push`. It
+`--debug` is a root flag and may appear before or after `link`, `sync`, `push`,
+or `submit`. It
 does not change discovery, timeouts, checkout behavior, or mutations. Its
 stderr-only records summarize supported Graphite discovery, the selected path,
 batched GitHub PR facts for `link`/`sync`, or the selected remote and atomic
@@ -100,6 +100,41 @@ without scraping terminal text.
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by
 the current `--apply` flow.
+
+## Submitting pull requests
+
+`g2g submit` is a preview-first recovery path when Graphite owns a local stack
+but its own submit flow cannot publish it. With `--apply`, it validates the
+complete spec, revalidates immediately before mutation, performs one atomic
+lease-protected push, creates only missing PRs bottom-to-top as drafts,
+preserves existing PRs, then links the complete stack. It never invokes
+`gt submit`, restacks Graphite, or retargets an existing PR.
+
+Generate a reusable spec outside the repository, fill in each title, validate,
+then apply it:
+
+```sh
+spec_dir="$(mktemp -d)"
+g2g submit --write-spec "$spec_dir"
+g2g submit --spec "$spec_dir/submission.json"
+g2g submit --spec "$spec_dir/submission.json" --apply
+```
+
+The spec is one JSON document with ordered branch/title/body/reviewer entries;
+complex Markdown bodies are preserved exactly. Missing PRs default to drafts;
+use `--ready` only deliberately. If apply fails, the spec remains in place and
+the error gives exact repair, validation, and retry commands.
+
+`g2g submit --edit` creates one temporary `submission.json` document and opens
+`$EDITOR`; it never opens a buffer per PR. Add `--apply` to continue after
+editing. The temporary spec is deleted only after successful `--edit --apply`;
+use `--keep-spec` to retain it. Validation, editor, interruption, and GitHub
+failures always retain it.
+
+Repository PR templates are detected from GitHub's conventional locations. One
+template pre-fills generated bodies. Multiple templates require an explicit
+`--template <name>` or `--no-template`; g2g never guesses. Explicit bodies in
+the spec win over templates.
 
 ## Homebrew
 

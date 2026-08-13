@@ -11,7 +11,7 @@ func TestBareCommandShowsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") || !strings.Contains(output, "  push") {
+	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") || !strings.Contains(output, "  push") || !strings.Contains(output, "  submit") {
 		t.Errorf("help = %q", output)
 	}
 }

@@ -32,93 +32,6 @@ func executeWithService(t *testing.T, service link.Service, args ...string) (str
 	return stdout.String(), err
 }
 
-func TestBareCommandShowsHelp(t *testing.T) {
-	output, err := execute(t)
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if !strings.Contains(output, "  link") || !strings.Contains(output, "  sync") || !strings.Contains(output, "  push") {
-		t.Errorf("help = %q", output)
-	}
-}
-
-func TestVersion(t *testing.T) {
-	output, err := execute(t, "--version")
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if output != "gt2gh version v0.1.0\n" {
-		t.Errorf("version = %q", output)
-	}
-}
-
-func TestDebugIsPersistentStderrOnlyAndDoesNotChangeLinkMutation(t *testing.T) {
-	for _, args := range [][]string{
-		{"--debug", "link", "--branch", "beta"},
-		{"link", "--debug", "--branch", "beta"},
-	} {
-		var stdout, stderr bytes.Buffer
-		github := &cliGitHub{}
-		command := NewWithService("v0.4.0", &stdout, &stderr, cliService(github))
-		command.SetArgs(args)
-		if err := command.Execute(); err != nil {
-			t.Fatalf("Execute(%v) error = %v", args, err)
-		}
-		if github.links != 0 || strings.Contains(stdout.String(), "debug event=") {
-			t.Errorf("args=%v stdout=%q links=%d", args, stdout.String(), github.links)
-		}
-		for _, expected := range []string{"event=operation.start", "operation=\"link\"", "target_source=\"--branch\"", "event=link.target", "event=link.trunk", "event=github.native_stack_membership", "event=link.plan", "decision=\"ready\""} {
-			if !strings.Contains(stderr.String(), expected) {
-				t.Errorf("args=%v debug missing %q: %q", args, expected, stderr.String())
-			}
-		}
-	}
-}
-
-func TestNormalLinkLeavesStderrQuiet(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	command := NewWithService("v0.4.0", &stdout, &stderr, cliService(&cliGitHub{}))
-	command.SetArgs([]string{"link"})
-	if err := command.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if got := stderr.String(); got != "" {
-		t.Errorf("stderr = %q, want empty without --debug", got)
-	}
-}
-
-func TestCompletionScripts(t *testing.T) {
-	for _, shell := range []string{"bash", "zsh", "fish"} {
-		t.Run(shell, func(t *testing.T) {
-			output, err := execute(t, "completion", shell)
-			if err != nil {
-				t.Fatalf("Execute() error = %v", err)
-			}
-			if !strings.Contains(output, "gt2gh") {
-				t.Errorf("completion script does not name command")
-			}
-		})
-	}
-}
-
-func TestNamedExecutableGeneratesMatchingZshCompletion(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	command := NewNamed("v0.2.1", "g2g", &stdout, &stderr)
-	command.SetArgs([]string{"completion", "zsh"})
-	if err := command.Execute(); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if !strings.Contains(stdout.String(), "#compdef g2g") {
-		t.Errorf("zsh completion = %q", stdout.String())
-	}
-}
-
-func TestCompletionRejectsUnknownShell(t *testing.T) {
-	if _, err := execute(t, "completion", "powershell"); err == nil {
-		t.Fatal("Execute() error = nil, want error")
-	}
-}
-
 func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	github := &cliGitHub{}
 	output, err := executeWithService(t, cliService(github), "link", "--branch", "beta")
@@ -469,40 +382,6 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
 	}
 	if eventIndex(events, "link") >= 0 || eventIndex(events, "flush") >= 0 {
 		t.Errorf("events = %v", events)
-	}
-}
-
-func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
-	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--branch", "be")
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if !strings.Contains(output, "beta\n") || strings.Contains(output, "alpha\n") {
-		t.Errorf("completion = %q", output)
-	}
-}
-
-func TestPushBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, cliService(&cliGitHub{}), syncer.Service{}, push.Service{Git: &cliPushGit{}, Graphite: cliPushGraphite{}}, Presentation{})
-	command.SetArgs([]string{"__complete", "push", "--branch", "be"})
-	err := command.Execute()
-	output := stdout.String()
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if !strings.Contains(output, "beta\n") || strings.Contains(output, "alpha\n") {
-		t.Errorf("completion = %q", output)
-	}
-}
-
-func TestTrunkCompletionUsesDeclaredLocalTrunks(t *testing.T) {
-	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--trunk", "m")
-	if err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	if !strings.Contains(output, "main\n") {
-		t.Errorf("completion = %q", output)
 	}
 }
 

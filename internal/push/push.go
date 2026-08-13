@@ -79,7 +79,16 @@ func (s Service) Plan(ctx context.Context, selection link.Selection, remote stri
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
 	plan := Plan{Target: target, TargetSource: source, Base: base, BaseSource: baseSource, Branches: branches, Remote: remote}
-	diagnostic.Event(ctx, "push.plan", diagnostic.Field{Key: "decision", Value: "ready"}, diagnostic.Field{Key: "remote", Value: remote}, diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")})
+	diagnostic.Event(ctx, "push.plan",
+		diagnostic.Field{Key: "decision", Value: "ready"},
+		diagnostic.Field{Key: "target", Value: target},
+		diagnostic.Field{Key: "target_source", Value: source},
+		diagnostic.Field{Key: "stack", Value: fmt.Sprintf("%t", selection.Stack)},
+		diagnostic.Field{Key: "base", Value: base},
+		diagnostic.Field{Key: "remote", Value: remote},
+		diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")},
+		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", remote}, branches...))},
+	)
 	return plan, nil
 }
 
@@ -100,7 +109,12 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if s.Git == nil {
 		return fmt.Errorf("push service is not fully configured")
 	}
-	diagnostic.Event(ctx, "push.apply", diagnostic.Field{Key: "decision", Value: "run"}, diagnostic.Field{Key: "remote", Value: plan.Remote}, diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")})
+	diagnostic.Event(ctx, "push.apply",
+		diagnostic.Field{Key: "decision", Value: "run"},
+		diagnostic.Field{Key: "remote", Value: plan.Remote},
+		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")},
+		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...))},
+	)
 	return s.Git.PushAtomic(ctx, plan.Remote, plan.Branches)
 }
 

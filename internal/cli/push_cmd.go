@@ -81,21 +81,25 @@ func writeReadyToPush(writer io.Writer, plan push.Plan, presentation Presentatio
 }
 
 func writePushPlan(writer io.Writer, plan push.Plan, presentation Presentation) error {
-	if _, err := fmt.Fprintf(writer, "%s: %s\n\n", presentation.accent("Target"), presentation.branch(plan.Target)); err != nil {
+	preview := newPushPreview(plan)
+	if _, err := fmt.Fprintf(writer, "%s: %s\n\n", presentation.accent("Target"), presentation.branch(preview.Target)); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(writer, "  %s\n", presentation.trunk(plan.Base+" (trunk)")); err != nil {
-		return err
-	}
-	for index, branch := range plan.Branches {
-		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index+1), presentation.branch(branch)); err != nil {
+	for index, node := range preview.Nodes {
+		if node.Trunk {
+			if _, err := fmt.Fprintf(writer, "  %s\n", presentation.trunk(node.Branch+" (trunk)")); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), presentation.branch(node.Branch)); err != nil {
 			return err
 		}
 	}
 	if _, err := fmt.Fprintln(writer); err != nil {
 		return err
 	}
-	if err := writeCommand(writer, commandText(append([]string{"git", "push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...)), presentation); err != nil {
+	if err := writeCommand(writer, preview.commandText(), presentation); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(writer, presentation.subdued("Atomic push: all selected refs advance together or none do."))

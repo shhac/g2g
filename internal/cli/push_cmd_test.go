@@ -53,6 +53,41 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	}
 }
 
+func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
+	plan := push.Plan{
+		Target: "synthetic-top", Base: "synthetic-main", Remote: "origin",
+		Branches: []string{"synthetic-lower", "synthetic-top"},
+	}
+	for _, test := range []struct {
+		name         string
+		presentation Presentation
+		want         string
+	}{
+		{
+			name: "plain",
+			want: "Target: synthetic-top\n\n  synthetic-main (trunk)\n  └─ synthetic-lower\n    └─ synthetic-top\n\nCommand to run\ngit push --atomic --force-with-lease origin synthetic-lower synthetic-top\nAtomic push: all selected refs advance together or none do.\n",
+		},
+		{
+			name:         "color",
+			presentation: Presentation{Color: true},
+			want:         "\x1b[1;36mTarget\x1b[0m: \x1b[1;37msynthetic-top\x1b[0m\n\n  \x1b[1;33msynthetic-main (trunk)\x1b[0m\n  └─ \x1b[1;37msynthetic-lower\x1b[0m\n    └─ \x1b[1;37msynthetic-top\x1b[0m\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgit push --atomic --force-with-lease origin synthetic-lower synthetic-top\x1b[0m\n\x1b[2mAtomic push: all selected refs advance together or none do.\x1b[0m\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := writePushPlan(&output, plan, test.presentation); err != nil {
+				t.Fatal(err)
+			}
+			if got := output.String(); got != test.want {
+				t.Errorf("snapshot = %q, want %q", got, test.want)
+			}
+			if strings.Contains(output.String(), "$ ") || strings.Contains(output.String(), "bottom to top") {
+				t.Errorf("command card contains decoration: %q", output.String())
+			}
+		})
+	}
+}
+
 func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -85,14 +120,23 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 }
 
 func TestPushDebugIsStderrOnly(t *testing.T) {
-	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}
+	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
 	var stdout, stderr bytes.Buffer
 	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
-	command.SetArgs([]string{"push", "--debug"})
+	command.SetArgs([]string{"push", "--debug", "--stack"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(stdout.String(), "debug event=") || !strings.Contains(stderr.String(), "operation=\"push\"") || !strings.Contains(stderr.String(), "event=push.plan") {
+	for _, expected := range []string{
+		"operation=\"push\"", "event=push.plan", "target=\"synthetic-middle\"",
+		"stack=\"true\"", "remote=\"origin\"",
+		"command=\"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top\"",
+	} {
+		if !strings.Contains(stderr.String(), expected) {
+			t.Errorf("debug missing %q: %q", expected, stderr.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "debug event=") {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

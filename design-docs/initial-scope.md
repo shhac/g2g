@@ -62,8 +62,10 @@ metadata/configuration or `--debug`.
 The root `--debug` flag is an opt-in local diagnostic mode, not a behavioral
 mode. It preserves normal stdout and writes stable, bounded events only to
 stderr: operation/target selection, supported Graphite discovery and
-path/trunk facts, batched GitHub PR facts, the explicit fact that native-stack
-membership is not observed, plan/revalidation decisions, and subprocess status.
+path/trunk facts, batched GitHub PR facts for `link`/`sync`, or the selected
+remote and computed atomic leased Git argv for `push`, the explicit fact that
+native-stack membership is not observed, plan/revalidation decisions, and
+subprocess status.
 It does not change timeouts, checkout behavior, Graphite modes, external argv,
 or mutation decisions. Diagnostic output never includes environment values,
 authentication headers, tokens, cookies, credential-bearing arguments, or

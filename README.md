@@ -68,9 +68,10 @@ network connection.
 `push`. It
 does not change discovery, timeouts, checkout behavior, or mutations. Its
 stderr-only records summarize supported Graphite discovery, the selected path,
-batched GitHub PR facts, plan/revalidation decisions, and bounded subprocess
-status. It never logs environment values, credentials, auth headers, cookies,
-or GraphQL query payloads.
+batched GitHub PR facts for `link`/`sync`, or the selected remote and atomic
+leased Git argv for `push`, plus plan/revalidation decisions and bounded
+subprocess status. It never logs environment values, credentials, auth headers,
+cookies, or GraphQL query payloads.
 
 `gt2gh` never guesses a trunk from its name. It infers the only
 Graphite-declared trunk on the selected ancestry and shows it prominently. If

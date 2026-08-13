@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
@@ -90,6 +91,7 @@ expanded:
 	diagnostic.Event(ctx, "graphite.path",
 		diagnostic.Field{Key: "selected", Value: selected},
 		diagnostic.Field{Key: "path", Value: strings.Join(reversed, " -> ")},
+		diagnostic.Field{Key: "stack", Value: strconv.FormatBool(includeTip)},
 		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(graph.roots, ",")},
 	)
 	return Stack{Path: reversed, Trunks: append([]string(nil), graph.roots...)}, nil

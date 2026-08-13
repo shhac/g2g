@@ -1,12 +1,14 @@
 package push
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
@@ -36,21 +38,23 @@ if [ "$1" = "branch" ]; then printf 'main\nalpha\nbeta\nbeta-top\nbeta-side\ngam
 if [ "$1" = "push" ]; then printf '%s\n' "$*" >> "$GIT_ARGUMENTS"; exit 0; fi
 exit 9`,
 	})
-	runner := subprocess.ExecRunner{}
+	var debug bytes.Buffer
+	ctx := diagnostic.WithSink(context.Background(), diagnostic.Writer{Out: &debug})
+	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
 	service := Service{
 		Git:      localgit.Client{Runner: runner},
 		Graphite: graphite.Client{Runner: runner},
 	}
 	selection := link.Selection{Stack: true}
-	preview, err := service.Plan(context.Background(), selection, "origin")
+	preview, err := service.Plan(ctx, selection, "origin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := service.Revalidate(context.Background(), selection, "origin", preview)
+	validated, err := service.Revalidate(ctx, selection, "origin", preview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Execute(context.Background(), validated); err != nil {
+	if err := service.Execute(ctx, validated); err != nil {
 		t.Fatal(err)
 	}
 	called, err := os.ReadFile(arguments)
@@ -59,5 +63,16 @@ exit 9`,
 	}
 	if got, want := strings.TrimSpace(string(called)), "push --atomic --force-with-lease origin alpha beta beta-top beta-side"; got != want {
 		t.Errorf("push = %q, want %q", got, want)
+	}
+	for _, expected := range []string{
+		"event=graphite.path", "stack=\"true\"", "event=push.plan",
+		"event=push.revalidation match=\"true\"", "event=push.apply",
+		"command=\"git push --atomic --force-with-lease origin alpha beta beta-top beta-side\"",
+		"event=subprocess.end command=\"git push --atomic --force-with-lease origin alpha beta beta-top beta-side\"",
+		"status=\"ok\"",
+	} {
+		if !strings.Contains(debug.String(), expected) {
+			t.Errorf("debug missing %q: %q", expected, debug.String())
+		}
 	}
 }

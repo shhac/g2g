@@ -73,37 +73,13 @@ func buildGraph(records []record) (graph, error) {
 		if _, exists := result.nodes[current.name]; exists {
 			return graph{}, fmt.Errorf("Graphite display repeats branch %q", current.name)
 		}
-		if current.root {
-			if current.depth != 0 || (previous != nil && previous.span != 0) {
-				return graph{}, drift(current.line, current.name)
-			}
-			result.nodes[current.name] = node{name: current.name}
+		parent, root, err := resolveParent(current, previous, lastAtDepth)
+		if err != nil {
+			return graph{}, err
+		}
+		result.nodes[current.name] = node{name: current.name, parent: parent}
+		if root {
 			result.roots = append(result.roots, current.name)
-		} else {
-			if previous == nil {
-				return graph{}, drift(current.line, current.name)
-			}
-			switch {
-			case current.depth > previous.depth:
-				if previous.span == 0 || current.depth != previous.depth+previous.span {
-					return graph{}, drift(current.line, current.name)
-				}
-				result.nodes[current.name] = node{name: current.name, parent: previous.name}
-			case current.depth == previous.depth:
-				if previous.span != 0 {
-					return graph{}, drift(current.line, current.name)
-				}
-				result.nodes[current.name] = node{name: current.name, parent: previous.name}
-			case current.depth < previous.depth:
-				if previous.span != 0 {
-					return graph{}, drift(current.line, current.name)
-				}
-				parent, exists := lastAtDepth[current.depth]
-				if !exists {
-					return graph{}, drift(current.line, current.name)
-				}
-				result.nodes[current.name] = node{name: current.name, parent: parent}
-			}
 		}
 		lastAtDepth[current.depth] = current.name
 		for depth := current.depth + 1; depth <= current.depth+current.span; depth++ {
@@ -115,6 +91,42 @@ func buildGraph(records []record) (graph, error) {
 		return graph{}, fmt.Errorf("Graphite display ends after a fork connector")
 	}
 	return result, nil
+}
+
+// resolveParent turns one compact display record into the graph relationship
+// it declares. Keeping this pure makes unsupported lane transitions fail at a
+// single, independently testable boundary.
+func resolveParent(current record, previous *record, lastAtDepth map[int]string) (string, bool, error) {
+	if current.root {
+		if current.depth != 0 || (previous != nil && previous.span != 0) {
+			return "", false, drift(current.line, current.name)
+		}
+		return "", true, nil
+	}
+	if previous == nil {
+		return "", false, drift(current.line, current.name)
+	}
+	switch {
+	case current.depth > previous.depth:
+		if previous.span == 0 || current.depth != previous.depth+previous.span {
+			return "", false, drift(current.line, current.name)
+		}
+		return previous.name, false, nil
+	case current.depth == previous.depth:
+		if previous.span != 0 {
+			return "", false, drift(current.line, current.name)
+		}
+		return previous.name, false, nil
+	default:
+		if previous.span != 0 {
+			return "", false, drift(current.line, current.name)
+		}
+		parent, exists := lastAtDepth[current.depth]
+		if !exists {
+			return "", false, drift(current.line, current.name)
+		}
+		return parent, false, nil
+	}
 }
 
 func parseRecord(line string, lineNumber int) (record, bool) {

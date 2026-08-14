@@ -15,8 +15,8 @@ type Unstacker interface {
 }
 
 func newUnlink(service link.Service, unstacker Unstacker, presentation Presentation) *cobra.Command {
-	var branch, trunk string
-	var noStack, apply bool
+	var selection stackOptions
+	var apply bool
 	var number int
 	cmd := &cobra.Command{Use: "unlink", Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -29,8 +29,8 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		if apply {
 			mode = "apply"
 		}
-		ctx = commandContext(cmd, "unlink", mode, branch, trunk)
-		plan, err := service.PlanWithOptions(ctx, link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack})
+		ctx = commandContext(cmd, "unlink", mode, selection.branch, selection.trunk)
+		plan, err := service.PlanWithOptions(ctx, selection.Selection())
 		if err != nil {
 			return err
 		}
@@ -44,7 +44,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made."))
 			return err
 		}
-		validated, err := service.RevalidateWithOptions(ctx, link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack}, plan)
+		validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
 		if err != nil {
 			writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			return err
@@ -70,14 +70,8 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		return nil
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink")
-	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to inspect (defaults to current branch)")
-	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the base")
-	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
+	selection.register(cmd, service, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack unstack after revalidation")
-	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(service.BranchCompletions))
-	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
-		return service.TrunkCompletions(ctx, branch, prefix)
-	}))
 	return cmd
 }
 func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, p Presentation) error {

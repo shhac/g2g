@@ -11,26 +11,19 @@ import (
 )
 
 func newStatus(service link.Service, presentation Presentation) *cobra.Command {
-	var branch, trunk string
-	var noStack bool
+	var selection stackOptions
 	cmd := &cobra.Command{Use: "status", Short: "Inspect a Graphite stack, its pull requests, and native GitHub membership", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
 		defer cancel()
-		ctx = commandContext(cmd, "status", "read_only", branch, trunk)
-		plan, err := service.PlanWithOptions(ctx, link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack})
+		ctx = commandContext(cmd, "status", "read_only", selection.branch, selection.trunk)
+		plan, err := service.PlanWithOptions(ctx, selection.Selection())
 		if err != nil {
 			return err
 		}
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
 	}
-	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to inspect (defaults to current branch)")
-	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the base")
-	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
-	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(service.BranchCompletions))
-	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
-		return service.TrunkCompletions(ctx, branch, prefix)
-	}))
+	selection.register(cmd, service, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
 	return cmd
 }
 

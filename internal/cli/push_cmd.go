@@ -13,8 +13,9 @@ import (
 )
 
 func newPush(service push.Service, linkService link.Service, presentation Presentation) *cobra.Command {
-	var branch, trunk, remote string
-	var noStack, apply bool
+	var remote string
+	var selection stackOptions
+	var apply bool
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Atomically push a Graphite stack's local refs (preview by default)",
@@ -26,9 +27,8 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			if apply {
 				mode = "apply"
 			}
-			ctx = commandContext(cmd, "push", mode, branch, trunk)
-			selection := link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack}
-			plan, err := service.Plan(ctx, selection, remote)
+			ctx = commandContext(cmd, "push", mode, selection.branch, selection.trunk)
+			plan, err := service.Plan(ctx, selection.Selection(), remote)
 			if err != nil {
 				return err
 			}
@@ -39,7 +39,7 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before one atomic push.")
 				return err
 			}
-			validated, err := service.Revalidate(ctx, selection, remote, plan)
+			validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
 			if err != nil {
 				writeNotApplied(cmd.OutOrStdout(), presentation, err)
 				return err
@@ -61,15 +61,9 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to push (defaults to current branch)")
-	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the push base")
+	selection.register(cmd, linkService, "Graphite-tracked local branch to push (defaults to current branch)", "Graphite-declared trunk to use as the push base")
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
-	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
-	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(linkService.BranchCompletions))
-	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
-		return linkService.TrunkCompletions(ctx, branch, prefix)
-	}))
 	return cmd
 }
 

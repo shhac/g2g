@@ -16,8 +16,9 @@ import (
 )
 
 func newSubmit(service submit.Service, linkService link.Service, presentation Presentation) *cobra.Command {
-	var branch, trunk, remote, specPath, writeSpec, template string
-	var noStack, apply, draft, ready, noTemplate, edit, keepSpec bool
+	var remote, specPath, writeSpec, template string
+	var selection stackOptions
+	var apply, draft, ready, noTemplate, edit, keepSpec bool
 	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
@@ -26,9 +27,8 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 		if apply {
 			mode = "apply"
 		}
-		ctx = commandContext(cmd, "submit", mode, branch, trunk)
-		selection := link.Selection{Branch: branch, Trunk: trunk, NoStack: noStack}
-		plan, err := service.Plan(ctx, selection, remote)
+		ctx = commandContext(cmd, "submit", mode, selection.branch, selection.trunk)
+		plan, err := service.Plan(ctx, selection.Selection(), remote)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made. Re-run with --apply to atomically push, create missing PRs, and link the stack."))
 			return nil
 		}
-		validated, err := service.Revalidate(ctx, selection, remote, plan)
+		validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
 		if err != nil {
 			writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			return err
@@ -113,10 +113,8 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 		fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
 		return nil
 	}
-	cmd.Flags().StringVar(&branch, "branch", "", "Graphite-tracked local branch to submit (defaults to current branch)")
-	cmd.Flags().StringVar(&trunk, "trunk", "", "Graphite-declared trunk to use as the submit base")
+	selection.register(cmd, linkService, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
-	cmd.Flags().BoolVar(&noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
 	cmd.Flags().StringVar(&specPath, "spec", "", "submission JSON spec to validate or apply")
 	cmd.Flags().StringVar(&writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")
 	cmd.Flags().BoolVar(&edit, "edit", false, "create and edit one temporary submission spec document")
@@ -129,10 +127,6 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 	cmd.MarkFlagsMutuallyExclusive("edit", "spec")
 	cmd.MarkFlagsMutuallyExclusive("edit", "write-spec")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
-	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(linkService.BranchCompletions))
-	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
-		return linkService.TrunkCompletions(ctx, branch, prefix)
-	}))
 	return cmd
 }
 

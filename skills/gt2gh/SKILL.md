@@ -91,6 +91,10 @@ description: |
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
   on failure and state exact repair/validation/retry commands. Multiple PR
   templates require `--template <name>` or `--no-template`; never guess.
+- `status` is the read-only triage entry point. `unlink` is the deliberate
+  inverse of `link`: it requires an explicit GitHub `--stack-number`, previews
+  first, and only `--apply` invokes `gh stack unstack`. It must never alter
+  Graphite, branches, PR content, reviewers, or PR lifecycle.
 
 - After command discovery, use the resolved command's `--help` or `link --help`
   to inspect the current interface (for example, `g2g link --help` after a

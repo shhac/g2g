@@ -101,6 +101,19 @@ Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by
 the current `--apply` flow.
 
+## Status and recovery
+
+`g2g status` is the read-only first step for triage. It renders the selected
+Graphite path with its open PR mappings and highlights blocked relationships.
+It never changes GitHub or Graphite. Native GitHub-stack membership is not yet
+available through a safe no-checkout data surface, so it says that plainly.
+
+`g2g unlink --stack-number <number>` previews removal of a GitHub-native stack
+relationship. `--apply` invokes the supported `gh stack unstack <number>` after
+the selected Graphite/PR path is revalidated. It never changes Graphite,
+branches, pull-request metadata, review state, or PR lifecycle. The stack
+number remains explicit until status can safely discover native membership.
+
 ## Submitting pull requests
 
 `g2g submit` is a preview-first recovery path when Graphite owns a local stack

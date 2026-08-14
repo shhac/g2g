@@ -194,6 +194,24 @@ func (c Client) Link(ctx context.Context, trunk string, branches []string) error
 	return nil
 }
 
+// Unstack removes only the GitHub-native stack relationship identified by its
+// GitHub stack number. It does not change branches, PR contents, or Graphite.
+func (c Client) Unstack(ctx context.Context, number int) error {
+	if c.Runner == nil {
+		return fmt.Errorf("GitHub runner is not configured")
+	}
+	if number <= 0 {
+		return fmt.Errorf("GitHub stack number must be positive")
+	}
+	args := []string{"stack", "unstack", strconv.Itoa(number)}
+	diagnostic.Event(ctx, "github.stack_unstack", diagnostic.Field{Key: "stack_number", Value: strconv.Itoa(number)})
+	output, err := c.Runner.Run(ctx, "gh", args...)
+	if err != nil {
+		return commandError("gh "+strings.Join(args, " "), err, output)
+	}
+	return nil
+}
+
 func commandError(command string, err error, output []byte) error {
 	return &CommandError{Command: command, Cause: err, Output: string(output)}
 }

@@ -84,6 +84,8 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 	root.SetErr(stderr)
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
 	root.AddCommand(newLink(service, presentation))
+	root.AddCommand(newStatus(service, presentation))
+	root.AddCommand(newUnlink(service, githubstack.Client{Runner: subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}}, presentation))
 	root.AddCommand(newSync(syncService, service, presentation))
 	if pushService.Git != nil && pushService.Graphite != nil {
 		root.AddCommand(newPush(pushService, service, presentation))

@@ -281,10 +281,7 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		expectedBases[branch] = base
 		base = branch
 	}
-	byHead := make(map[string][]githubstack.PullRequest, len(prs))
-	for _, pr := range prs {
-		byHead[pr.Head] = append(byHead[pr.Head], pr)
-	}
+	byHead := githubstack.GroupByHead(prs)
 	issues := make([]Issue, 0)
 	for _, branch := range branches {
 		matches := byHead[branch]

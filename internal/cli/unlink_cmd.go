@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/spf13/cobra"
 )
 
-func newUnlink(service link.Service, github githubstack.Client, presentation Presentation) *cobra.Command {
+// Unstacker is the explicit GitHub mutation dependency for unlink.
+type Unstacker interface {
+	Unstack(context.Context, int) error
+}
+
+func newUnlink(service link.Service, unstacker Unstacker, presentation Presentation) *cobra.Command {
 	var branch, trunk string
 	var noStack, apply bool
 	var number int
@@ -54,7 +58,10 @@ func newUnlink(service link.Service, github githubstack.Client, presentation Pre
 		if err := flushOutput(cmd.OutOrStdout()); err != nil {
 			return err
 		}
-		if err := github.Unstack(ctx, number); err != nil {
+		if unstacker == nil {
+			return fmt.Errorf("GitHub stack unstack is not configured")
+		}
+		if err := unstacker.Unstack(ctx, number); err != nil {
 			writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			return err
 		}

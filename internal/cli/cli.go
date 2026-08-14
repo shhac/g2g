@@ -36,15 +36,16 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 // This keeps generated shell completions correct for a package-manager alias.
 func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Command {
 	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
+	githubClient := githubstack.Client{Runner: runner}
 	linkService := link.Service{
 		Git:      localgit.Client{Runner: runner},
 		Graphite: graphite.Client{Runner: runner},
-		GitHub:   githubstack.Client{Runner: runner},
+		GitHub:   githubClient,
 	}
 	pushService := push.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}}
 	syncService := syncer.Service{Discoverer: linkService, Git: linkService.Git, GitHub: linkService.GitHub}
-	submitService := submit.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubstack.Client{Runner: runner}}
-	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService, submitService)
+	submitService := submit.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubClient}
+	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService, submitService, githubClient)
 }
 
 // NewWithService creates the root command with injectable link dependencies.
@@ -57,16 +58,24 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 // push because its mutable Git dependency is deliberately not part of this
 // constructor's contract.
 func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
-	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{}, submit.Service{})
+	var unstacker Unstacker
+	if configured, ok := service.GitHub.(Unstacker); ok {
+		unstacker = configured
+	}
+	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{}, submit.Service{}, unstacker)
 }
 
-func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service) *cobra.Command {
-	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submitService, detectPresentation(stdout))
+func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, unstacker Unstacker) *cobra.Command {
+	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submitService, unstacker, detectPresentation(stdout))
 }
 func newWithPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, presentation Presentation) *cobra.Command {
-	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submit.Service{}, presentation)
+	var unstacker Unstacker
+	if configured, ok := service.GitHub.(Unstacker); ok {
+		unstacker = configured
+	}
+	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submit.Service{}, unstacker, presentation)
 }
-func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, presentation Presentation) *cobra.Command {
+func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, unstacker Unstacker, presentation Presentation) *cobra.Command {
 	if commandName == "" {
 		commandName = "gt2gh"
 	}
@@ -85,7 +94,7 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
 	root.AddCommand(newLink(service, presentation))
 	root.AddCommand(newStatus(service, presentation))
-	root.AddCommand(newUnlink(service, githubstack.Client{Runner: subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}}, presentation))
+	root.AddCommand(newUnlink(service, unstacker, presentation))
 	root.AddCommand(newSync(syncService, service, presentation))
 	if pushService.Git != nil && pushService.Graphite != nil {
 		root.AddCommand(newPush(pushService, service, presentation))

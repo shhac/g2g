@@ -137,7 +137,7 @@ func validateSpec(plan Plan, spec Spec) error {
 }
 
 func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) error {
-	existing := byHead(plan.Existing)
+	existing := githubstack.ByHead(plan.Existing)
 	base := plan.Snapshot.Base
 	for _, pull := range spec.Pulls {
 		if _, exists := existing[pull.Branch]; !exists {
@@ -150,19 +150,8 @@ func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) e
 	return nil
 }
 
-func byHead(prs []githubstack.PullRequest) map[string]githubstack.PullRequest {
-	out := make(map[string]githubstack.PullRequest, len(prs))
-	for _, pr := range prs {
-		out[pr.Head] = pr
-	}
-	return out
-}
-
 func assessExisting(prs []githubstack.PullRequest, base string, branches []string) map[string]string {
-	byHead := make(map[string][]githubstack.PullRequest)
-	for _, pr := range prs {
-		byHead[pr.Head] = append(byHead[pr.Head], pr)
-	}
+	byHead := githubstack.GroupByHead(prs)
 	issues := map[string]string{}
 	for _, branch := range branches {
 		matches := byHead[branch]

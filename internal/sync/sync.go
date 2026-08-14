@@ -159,11 +159,11 @@ func syncStates(items []Item) string {
 
 func classify(plan link.Plan) ([]Item, error) {
 	byBranch := make(map[string]githubstack.PullRequest, len(plan.PullRequests))
-	for _, pr := range plan.PullRequests {
-		if _, exists := byBranch[pr.Head]; exists {
-			return nil, fmt.Errorf("GitHub returned multiple pull requests for branch %q; refusing ambiguous sync", pr.Head)
+	for branch, matches := range githubstack.GroupByHead(plan.PullRequests) {
+		if len(matches) != 1 {
+			return nil, fmt.Errorf("GitHub returned multiple pull requests for branch %q; refusing ambiguous sync", branch)
 		}
-		byBranch[pr.Head] = pr
+		byBranch[branch] = matches[0]
 	}
 	base := plan.Base
 	items := make([]Item, 0, len(plan.Branches))

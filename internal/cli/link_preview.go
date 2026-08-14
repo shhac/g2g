@@ -3,6 +3,7 @@ package cli
 import (
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
 )
 
@@ -30,10 +31,7 @@ func newLinkPreview(plan link.Plan) linkPreview {
 	for _, issue := range plan.Issues {
 		issues[issue.Branch] = issue.Reason
 	}
-	prs := make(map[string]int, len(plan.PullRequests))
-	for _, pr := range plan.PullRequests {
-		prs[pr.Head] = pr.Number
-	}
+	prs := githubstack.ByHead(plan.PullRequests)
 	preview := linkPreview{
 		Target:        plan.Target,
 		TargetSource:  plan.TargetSource,
@@ -45,7 +43,7 @@ func newLinkPreview(plan link.Plan) linkPreview {
 		preview.Command = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
 	for _, branch := range plan.Branches {
-		preview.Nodes = append(preview.Nodes, linkPreviewNode{Branch: branch, PRNumber: prs[branch], Unresolved: issues[branch]})
+		preview.Nodes = append(preview.Nodes, linkPreviewNode{Branch: branch, PRNumber: prs[branch].Number, Unresolved: issues[branch]})
 	}
 	return preview
 }

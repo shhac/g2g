@@ -139,3 +139,49 @@ exit 1`,
 		t.Errorf("diagnostic = %q, want %q", got, want)
 	}
 }
+
+func TestClientCreatePassesDraftReviewersAndRemovesBodyFile(t *testing.T) {
+	arguments := filepath.Join(t.TempDir(), "gh-arguments")
+	bodyPath := filepath.Join(t.TempDir(), "body-path")
+	t.Setenv("GH_ARGUMENTS", arguments)
+	t.Setenv("GH_BODY_PATH", bodyPath)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gh": `printf '%s\n' "$*" > "$GH_ARGUMENTS"
+for arg in "$@"; do
+  case "$arg" in *g2g-submit-body-*.md) printf '%s' "$arg" > "$GH_BODY_PATH";; esac
+done`,
+	})
+	client := Client{Runner: subprocess.ExecRunner{}}
+	if err := client.Create(context.Background(), "synthetic/head", "synthetic/base", "Synthetic title", "# synthetic body", true, []string{"reviewer-one", "reviewer-two"}); err != nil {
+		t.Fatal(err)
+	}
+	argumentsBytes, err := os.ReadFile(arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"pr create", "--head synthetic/head", "--base synthetic/base", "--title Synthetic title", "--body-file", "--draft", "--reviewer reviewer-one", "--reviewer reviewer-two"} {
+		if !strings.Contains(string(argumentsBytes), want) {
+			t.Errorf("arguments missing %q: %q", want, argumentsBytes)
+		}
+	}
+	path, err := os.ReadFile(bodyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(string(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("body file %q still exists or could not be checked: %v", path, err)
+	}
+}
+
+func TestClientCreateRejectsIncompleteRequestBeforeGh(t *testing.T) {
+	called := filepath.Join(t.TempDir(), "called")
+	t.Setenv("GH_CALLED", called)
+	testutil.WithFakeExecutables(t, map[string]string{"gh": `touch "$GH_CALLED"`})
+	err := (Client{Runner: subprocess.ExecRunner{}}).Create(context.Background(), "", "synthetic/base", "Synthetic title", "", false, nil)
+	if err == nil || !strings.Contains(err.Error(), "required") {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := os.Stat(called); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("gh was called for an invalid request")
+	}
+}

@@ -18,7 +18,7 @@ func TestDebugIsPersistentStderrOnlyAndDoesNotChangeLinkMutation(t *testing.T) {
 		if github.links != 0 || strings.Contains(stdout.String(), "debug event=") {
 			t.Errorf("args=%v stdout=%q links=%d", args, stdout.String(), github.links)
 		}
-		for _, expected := range []string{"event=operation.start", "operation=\"link\"", "target_source=\"--branch\"", "event=link.target", "event=link.trunk", "event=github.native_stack_membership", "event=link.plan", "decision=\"ready\""} {
+		for _, expected := range []string{"event=operation.start", "operation=\"link\"", "target_source=\"--branch\"", "event=link.target", "event=link.trunk", "event=github.native_stack_membership", "observation=\"per_pull_request\"", "event=link.plan", "decision=\"ready\""} {
 			if !strings.Contains(stderr.String(), expected) {
 				t.Errorf("args=%v debug missing %q: %q", args, expected, stderr.String())
 			}

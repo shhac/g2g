@@ -17,11 +17,14 @@ import (
 
 // PullRequest is the GitHub information relevant to a planned stack link.
 type PullRequest struct {
-	Number int    `json:"number"`
-	URL    string `json:"url"`
-	Head   string `json:"headRefName"`
-	Base   string `json:"baseRefName"`
-	State  string `json:"state"`
+	Number        int    `json:"number"`
+	URL           string `json:"url"`
+	Head          string `json:"headRefName"`
+	Base          string `json:"baseRefName"`
+	State         string `json:"state"`
+	StackNumber   int
+	StackSize     int
+	StackPosition int
 }
 
 // Client invokes gh. Inspect is read-only; Link is only called by --apply.
@@ -124,6 +127,8 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 			diagnostic.Field{Key: "base", Value: pr.Base},
 			diagnostic.Field{Key: "number", Value: strconv.Itoa(pr.Number)},
 			diagnostic.Field{Key: "state", Value: pr.State},
+			diagnostic.Field{Key: "stack_number", Value: strconv.Itoa(pr.StackNumber)},
+			diagnostic.Field{Key: "stack_position", Value: strconv.Itoa(pr.StackPosition)},
 		)
 	}
 	return prs, nil
@@ -142,7 +147,20 @@ func parseRepositoryName(output []byte) (string, error) {
 func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) {
 	var response struct {
 		Data map[string]struct {
-			Nodes []PullRequest `json:"nodes"`
+			Nodes []struct {
+				Number int    `json:"number"`
+				URL    string `json:"url"`
+				Head   string `json:"headRefName"`
+				Base   string `json:"baseRefName"`
+				State  string `json:"state"`
+				Stack  *struct {
+					Number int `json:"number"`
+					Size   int `json:"size"`
+				} `json:"stack"`
+				StackEntry *struct {
+					Position int `json:"position"`
+				} `json:"stackEntry"`
+			} `json:"nodes"`
 		} `json:"data"`
 		Errors []struct {
 			Message string `json:"message"`
@@ -161,12 +179,24 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 		if !exists {
 			return nil, fmt.Errorf("gh api graphql response is missing %s", alias)
 		}
-		for _, pr := range result.Nodes {
-			if pr.Number <= 0 || pr.Head != branch || pr.Base == "" || pr.State == "" {
+		for _, node := range result.Nodes {
+			if node.Number <= 0 || node.Head != branch || node.Base == "" || node.State == "" {
 				return nil, fmt.Errorf("gh api graphql response has invalid %s pull request", alias)
 			}
+			if (node.Stack == nil) != (node.StackEntry == nil) {
+				return nil, fmt.Errorf("gh api graphql response has incomplete native stack data for %s", alias)
+			}
+			pr := PullRequest{Number: node.Number, URL: node.URL, Head: node.Head, Base: node.Base, State: node.State}
+			if node.Stack != nil {
+				if node.Stack.Number <= 0 || node.Stack.Size <= 0 || node.StackEntry.Position <= 0 || node.StackEntry.Position > node.Stack.Size {
+					return nil, fmt.Errorf("gh api graphql response has invalid native stack data for %s", alias)
+				}
+				pr.StackNumber = node.Stack.Number
+				pr.StackSize = node.Stack.Size
+				pr.StackPosition = node.StackEntry.Position
+			}
+			matching = append(matching, pr)
 		}
-		matching = append(matching, result.Nodes...)
 	}
 	sort.Slice(matching, func(left, right int) bool { return matching[left].Head < matching[right].Head })
 	return matching, nil
@@ -176,7 +206,7 @@ func graphqlQuery(repo string, branches []string) string {
 	var fields []string
 	for index, branch := range branches {
 		search := "repo:" + repo + " is:pr head:" + branch
-		fields = append(fields, fmt.Sprintf("pr%d: search(query: %s, type: ISSUE, first: 10) { nodes { ... on PullRequest { number url headRefName baseRefName state } } }", index, strconv.Quote(search)))
+		fields = append(fields, fmt.Sprintf("pr%d: search(query: %s, type: ISSUE, first: 10) { nodes { ... on PullRequest { number url headRefName baseRefName state stack { number size } stackEntry { position } } } }", index, strconv.Quote(search)))
 	}
 	return "query { " + strings.Join(fields, " ") + " }"
 }

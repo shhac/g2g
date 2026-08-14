@@ -37,7 +37,7 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"nu
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(called), "repo view --json nameWithOwner\n") || !strings.Contains(string(called), "api graphql -f query=query { pr0: search(") || !strings.Contains(string(called), "stack link --base main alpha beta\n") {
+	if !strings.Contains(string(called), "repo view --json nameWithOwner\n") || !strings.Contains(string(called), "api graphql -f query=query { pr0: search(") || !strings.Contains(string(called), "stack { number size } stackEntry { position }") || !strings.Contains(string(called), "stack link --base main alpha beta\n") {
 		t.Errorf("unexpected gh calls: %q", called)
 	}
 }
@@ -87,6 +87,30 @@ func TestParsePullRequestsRejectsGraphQLFailures(t *testing.T) {
 func TestParsePullRequestsRejectsInvalidNode(t *testing.T) {
 	output := []byte(`{"data":{"pr0":{"nodes":[{"number":0,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}`)
 	if _, err := parsePullRequests(output, []string{"alpha"}); err == nil {
+		t.Fatal("parsePullRequests() error = nil")
+	}
+}
+
+func TestParsePullRequestsPreservesNativeStackMembership(t *testing.T) {
+	output := []byte(`{"data":{"pr0":{"nodes":[{"number":17,"url":"https://example.test/17","headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":{"position":2}}]}}}`)
+	prs, err := parsePullRequests(output, []string{"synthetic/top"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := prs[0].StackNumber, 8; got != want {
+		t.Errorf("StackNumber = %d, want %d", got, want)
+	}
+	if got, want := prs[0].StackSize, 3; got != want {
+		t.Errorf("StackSize = %d, want %d", got, want)
+	}
+	if got, want := prs[0].StackPosition, 2; got != want {
+		t.Errorf("StackPosition = %d, want %d", got, want)
+	}
+}
+
+func TestParsePullRequestsRejectsIncompleteNativeStackMembership(t *testing.T) {
+	output := []byte(`{"data":{"pr0":{"nodes":[{"number":17,"headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":null}]}}}`)
+	if _, err := parsePullRequests(output, []string{"synthetic/top"}); err == nil {
 		t.Fatal("parsePullRequests() error = nil")
 	}
 }

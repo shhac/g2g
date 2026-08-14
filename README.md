@@ -71,8 +71,9 @@ network connection.
 or `submit`. It
 does not change discovery, timeouts, checkout behavior, or mutations. Its
 stderr-only records summarize supported Graphite discovery, the selected path,
-batched GitHub PR facts for `link`/`sync`, or the selected remote and atomic
-leased Git argv for `push`, plus plan/revalidation decisions and bounded
+batched GitHub PR facts for `link`/`sync`, including native stack number and
+position, or the selected remote and atomic leased Git argv for `push`, plus
+plan/revalidation decisions and bounded
 subprocess status. It never logs environment values, credentials, auth headers,
 cookies, or GraphQL query payloads.
 
@@ -103,10 +104,13 @@ the current `--apply` flow.
 
 ## Status and recovery
 
-`g2g status` is the read-only first step for triage. It renders the selected
+`g2g status` is the read-only first step for triage. It renders one selected
 Graphite path with its open PR mappings and highlights blocked relationships.
-It never changes GitHub or Graphite. Native GitHub-stack membership is not yet
-available through a safe no-checkout data surface, so it says that plainly.
+The same bounded GitHub PR read reports native stack number, size, and position
+for each selected PR, without checkout or a second graph. A healthy selected
+path ends with one compact `GitHub stack #… · selected path … · aligned` line;
+only missing or conflicting membership is annotated on individual nodes. It
+never changes GitHub or Graphite.
 
 `g2g unlink --stack-number <number>` previews removal of a GitHub-native stack
 relationship. `--apply` invokes the supported `gh stack unstack <number>` after

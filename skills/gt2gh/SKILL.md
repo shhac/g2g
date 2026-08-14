@@ -91,7 +91,10 @@ description: |
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
   on failure and state exact repair/validation/retry commands. Multiple PR
   templates require `--template <name>` or `--no-template`; never guess.
-- `status` is the read-only triage entry point. `unlink` is the deliberate
+- `status` is the read-only triage entry point. It renders one selected
+  Graphite path and reports each selected PR's native GitHub stack membership
+  from the same batched PR query; keep the healthy case to one compact summary
+  line and annotate only missing/conflicting nodes. `unlink` is the deliberate
   inverse of `link`: it requires an explicit GitHub `--stack-number`, previews
   first, and only `--apply` invokes `gh stack unstack`. It must never alter
   Graphite, branches, PR content, reviewers, or PR lifecycle.

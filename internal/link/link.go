@@ -80,7 +80,7 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 	if err != nil {
 		return Plan{}, err
 	}
-	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "not_observed"})
+	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "per_pull_request"})
 	return Plan{
 		Target:       snapshot.Target,
 		TargetSource: snapshot.TargetSource,

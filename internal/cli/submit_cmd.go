@@ -16,118 +16,155 @@ import (
 )
 
 func newSubmit(service submit.Service, linkService link.Service, presentation Presentation) *cobra.Command {
-	var remote, specPath, writeSpec, template string
-	var selection stackOptions
-	var apply, draft, ready, noTemplate, edit, keepSpec bool
+	var options submitOptions
 	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-		defer cancel()
-		mode := "preview"
-		if apply {
-			mode = "apply"
-		}
-		ctx = commandContext(cmd, "submit", mode, selection.branch, selection.trunk)
-		plan, err := service.Plan(ctx, selection.Selection(), remote)
-		if err != nil {
-			return err
-		}
-		chosenTemplate, templateName, err := resolveTemplate(template, noTemplate)
-		if err != nil {
-			return err
-		}
-		if writeSpec != "" {
-			path, err := submit.Write(writeSpec, submit.NewSpec(plan.Snapshot.Branches, chosenTemplate))
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Wrote draft submission spec: %s\n", path)
-			fmt.Fprintln(cmd.OutOrStdout(), "Next: add a title for every PR, then run g2g submit --spec "+path+" to validate it.")
-			return nil
-		}
-		if edit {
-			if specPath != "" {
-				return fmt.Errorf("--edit and --spec cannot be used together; use one editable submission document")
-			}
-			dir, err := os.MkdirTemp("", "g2g-submit-")
-			if err != nil {
-				return err
-			}
-			specPath, err = submit.Write(dir, submit.NewSpec(plan.Snapshot.Branches, chosenTemplate))
-			if err != nil {
-				return err
-			}
-			if err := editSpec(ctx, specPath); err != nil {
-				return fmt.Errorf("submission spec retained at %s: %w", specPath, err)
-			}
-			if !apply {
-				fmt.Fprintln(cmd.OutOrStdout(), "Edited submission spec: "+specPath)
-			}
-		}
-		if specPath == "" {
-			if err := writeSubmitPreview(cmd.OutOrStdout(), plan, presentation, templateName); err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made. Create a spec with: g2g submit --write-spec <private-temp-dir>"))
-			return nil
-		}
-		spec, err := submit.Read(specPath, plan.Snapshot.Branches)
-		if err != nil {
-			return actionableSpecError(err, specPath)
-		}
-		spec.Draft = resolveDraft(cmd, spec.Draft, draft, ready)
-		if !apply {
-			if err := writeSubmitPreview(cmd.OutOrStdout(), plan, presentation, templateName); err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made. Re-run with --apply to atomically push, create missing PRs, and link the stack."))
-			return nil
-		}
-		validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
-		if err != nil {
-			writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			return err
-		}
-		if len(validated.Issues) != 0 {
-			err := fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
-			writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			return err
-		}
-		if _, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.accent("Ready to apply")); err != nil {
-			return err
-		}
-		if err := writeSubmitPreview(cmd.OutOrStdout(), validated, presentation, templateName); err != nil {
-			return err
-		}
-		if err := flushOutput(cmd.OutOrStdout()); err != nil {
-			return err
-		}
-		if err := service.Apply(ctx, validated, spec); err != nil {
-			writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			return fmt.Errorf("submission spec retained at %s: %w", specPath, err)
-		}
-		if edit && !keepSpec {
-			_ = os.RemoveAll(filepath.Dir(specPath))
-		}
-		fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — stack published and missing pull requests created"))
-		fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
-		return nil
+		return options.run(cmd, service, presentation)
 	}
-	selection.register(cmd, linkService, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
-	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
-	cmd.Flags().StringVar(&specPath, "spec", "", "submission JSON spec to validate or apply")
-	cmd.Flags().StringVar(&writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")
-	cmd.Flags().BoolVar(&edit, "edit", false, "create and edit one temporary submission spec document")
-	cmd.Flags().BoolVar(&keepSpec, "keep-spec", false, "keep the temporary --edit spec after a successful apply")
-	cmd.Flags().StringVar(&template, "template", "", "repository pull request template name to prefill generated specs")
-	cmd.Flags().BoolVar(&noTemplate, "no-template", false, "do not prefill bodies from a repository template")
-	cmd.Flags().BoolVar(&draft, "draft", true, "create missing pull requests as drafts")
-	cmd.Flags().BoolVar(&ready, "ready", false, "create missing pull requests ready for review")
+	options.selection.register(cmd, linkService, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
+	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to push to")
+	cmd.Flags().StringVar(&options.specPath, "spec", "", "submission JSON spec to validate or apply")
+	cmd.Flags().StringVar(&options.writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")
+	cmd.Flags().BoolVar(&options.edit, "edit", false, "create and edit one temporary submission spec document")
+	cmd.Flags().BoolVar(&options.keepSpec, "keep-spec", false, "keep the temporary --edit spec after a successful apply")
+	cmd.Flags().StringVar(&options.template, "template", "", "repository pull request template name to prefill generated specs")
+	cmd.Flags().BoolVar(&options.noTemplate, "no-template", false, "do not prefill bodies from a repository template")
+	cmd.Flags().BoolVar(&options.draft, "draft", true, "create missing pull requests as drafts")
+	cmd.Flags().BoolVar(&options.ready, "ready", false, "create missing pull requests ready for review")
 	cmd.MarkFlagsMutuallyExclusive("draft", "ready")
 	cmd.MarkFlagsMutuallyExclusive("edit", "spec")
 	cmd.MarkFlagsMutuallyExclusive("edit", "write-spec")
-	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
+	cmd.Flags().BoolVar(&options.apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
 	return cmd
+}
+
+type submitOptions struct {
+	selection  stackOptions
+	remote     string
+	specPath   string
+	writeSpec  string
+	template   string
+	apply      bool
+	draft      bool
+	ready      bool
+	noTemplate bool
+	edit       bool
+	keepSpec   bool
+}
+
+func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {
+	ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
+	defer cancel()
+	mode := "preview"
+	if o.apply {
+		mode = "apply"
+	}
+	ctx = commandContext(cmd, "submit", mode, o.selection.branch, o.selection.trunk)
+	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote)
+	if err != nil {
+		return err
+	}
+	chosenTemplate, templateName, err := resolveTemplate(o.template, o.noTemplate)
+	if err != nil {
+		return err
+	}
+	if o.writeSpec != "" {
+		return o.writeDraft(cmd, plan, chosenTemplate)
+	}
+	if err := o.prepareSpec(ctx, cmd, plan, chosenTemplate); err != nil {
+		return err
+	}
+	if o.specPath == "" {
+		return o.previewWithoutSpec(cmd, plan, presentation, templateName)
+	}
+	spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
+	if err != nil {
+		return actionableSpecError(err, o.specPath)
+	}
+	spec.Draft = resolveDraft(cmd, spec.Draft, o.draft, o.ready)
+	if !o.apply {
+		return o.previewWithSpec(cmd, plan, presentation, templateName)
+	}
+	return o.applyPlan(ctx, cmd, service, plan, spec, presentation, templateName)
+}
+
+func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string) error {
+	path, err := submit.Write(o.writeSpec, submit.NewSpec(plan.Snapshot.Branches, body))
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote draft submission spec: %s\n", path)
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Next: add a title for every PR, then run g2g submit --spec "+path+" to validate it.")
+	return err
+}
+
+func (o *submitOptions) prepareSpec(ctx context.Context, cmd *cobra.Command, plan submit.Plan, body string) error {
+	if !o.edit {
+		return nil
+	}
+	dir, err := os.MkdirTemp("", "g2g-submit-")
+	if err != nil {
+		return err
+	}
+	o.specPath, err = submit.Write(dir, submit.NewSpec(plan.Snapshot.Branches, body))
+	if err != nil {
+		return err
+	}
+	if err := editSpec(ctx, o.specPath); err != nil {
+		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
+	}
+	if !o.apply {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Edited submission spec: "+o.specPath)
+	}
+	return nil
+}
+
+func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), p.notice("No changes were made. Create a spec with: g2g submit --write-spec <private-temp-dir>"))
+	return err
+}
+
+func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), p.notice("No changes were made. Re-run with --apply to atomically push, create missing PRs, and link the stack."))
+	return err
+}
+
+func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
+	validated, err := service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
+	if err != nil {
+		writeNotApplied(cmd.OutOrStdout(), p, err)
+		return err
+	}
+	if len(validated.Issues) != 0 {
+		err := fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
+		writeNotApplied(cmd.OutOrStdout(), p, err)
+		return err
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), p.accent("Ready to apply")); err != nil {
+		return err
+	}
+	if err := writeSubmitPreview(cmd.OutOrStdout(), validated, p, template); err != nil {
+		return err
+	}
+	if err := flushOutput(cmd.OutOrStdout()); err != nil {
+		return err
+	}
+	if err := service.Apply(ctx, validated, spec); err != nil {
+		writeNotApplied(cmd.OutOrStdout(), p, err)
+		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
+	}
+	if o.edit && !o.keepSpec {
+		_ = os.RemoveAll(filepath.Dir(o.specPath))
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), p.notice("Applied — stack published and missing pull requests created"))
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), p.subdued("Changes were made."))
+	return err
 }
 
 func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {

@@ -185,3 +185,49 @@ func TestClientCreateRejectsIncompleteRequestBeforeGh(t *testing.T) {
 		t.Errorf("gh was called for an invalid request")
 	}
 }
+
+func TestClientUnstackValidatesAndInvokesExpectedCommand(t *testing.T) {
+	arguments := filepath.Join(t.TempDir(), "gh-arguments")
+	t.Setenv("GH_ARGUMENTS", arguments)
+	testutil.WithFakeExecutables(t, map[string]string{"gh": `printf '%s' "$*" > "$GH_ARGUMENTS"`})
+	client := Client{Runner: subprocess.ExecRunner{}}
+	if err := client.Unstack(context.Background(), 0); err == nil || !strings.Contains(err.Error(), "positive") {
+		t.Fatalf("Unstack(0) error = %v", err)
+	}
+	if _, err := os.Stat(arguments); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("gh was called for an invalid stack number")
+	}
+	if err := client.Unstack(context.Background(), 23); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "stack unstack 23" {
+		t.Errorf("arguments = %q", got)
+	}
+}
+
+func TestClientCreateRemovesBodyFileAfterFailure(t *testing.T) {
+	bodyPath := filepath.Join(t.TempDir(), "body-path")
+	t.Setenv("GH_BODY_PATH", bodyPath)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gh": `for arg in "$@"; do
+  case "$arg" in *g2g-submit-body-*.md) printf '%s' "$arg" > "$GH_BODY_PATH";; esac
+done
+printf '%s\n' 'synthetic create rejected' >&2
+exit 1`,
+	})
+	err := (Client{Runner: subprocess.ExecRunner{}}).Create(context.Background(), "synthetic/head", "synthetic/base", "Synthetic title", "body", false, nil)
+	if err == nil {
+		t.Fatal("Create() error = nil")
+	}
+	path, readErr := os.ReadFile(bodyPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if _, statErr := os.Stat(string(path)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("body file %q still exists or could not be checked: %v", path, statErr)
+	}
+}

@@ -20,7 +20,7 @@ func TestClientUsesFakeGitHubCLIOnPATH(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{
 		"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"
 if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/fixture"}\n'; fi
-if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}\n'; fi`,
+if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}\n'; fi`,
 	})
 	client := Client{Runner: subprocess.ExecRunner{}}
 	prs, err := client.Inspect(context.Background(), []string{"alpha"})
@@ -37,15 +37,28 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"nu
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(called), "repo view --json nameWithOwner\n") || !strings.Contains(string(called), "api graphql -f query=query { pr0: search(") || !strings.Contains(string(called), "stack { number size } stackEntry { position }") || !strings.Contains(string(called), "stack link --base main alpha beta\n") {
-		t.Errorf("unexpected gh calls: %q", called)
+	for _, want := range []string{
+		"repo view --json nameWithOwner\n",
+		`api graphql -f query=query { repository(owner: "example", name: "fixture")`,
+		`pr0: pullRequests(headRefName: "alpha", first: 10`,
+		"stack { number size } stackEntry { position }",
+		"stack link --base main alpha beta\n",
+	} {
+		if !strings.Contains(string(called), want) {
+			t.Errorf("gh calls missing %q: %q", want, called)
+		}
+	}
+	// The search index lags behind newly created pull requests and matches
+	// heads loosely, so head-ref lookups must never fall back to it.
+	if strings.Contains(string(called), "search(") {
+		t.Errorf("pull request lookup used the search index: %q", called)
 	}
 }
 
 func TestInspectDebugSummarizesGraphQLWithoutLoggingQuery(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{
 		"gh": `if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/synthetic"}\n'; fi
-if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"pr0":{"nodes":[{"number":7,"headRefName":"synthetic-head","baseRefName":"synthetic-base","state":"OPEN"}]}}}\n'; fi`,
+if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":{"nodes":[{"number":7,"headRefName":"synthetic-head","baseRefName":"synthetic-base","state":"OPEN"}]}}}}\n'; fi`,
 	})
 	var diagnostics bytes.Buffer
 	ctx := diagnostic.WithSink(context.Background(), diagnostic.Writer{Out: &diagnostics})
@@ -76,7 +89,7 @@ func TestParsePullRequestsRejectsGraphQLFailures(t *testing.T) {
 	for _, output := range []string{
 		`{"errors":[{"message":"synthetic failure"}]}`,
 		`{"data":{}}`,
-		`{"data":{"pr0":{"nodes":[]}}}`,
+		`{"data":{"repository":{"pr0":{"nodes":[]}}}}`,
 	} {
 		if _, err := parsePullRequests([]byte(output), []string{"alpha", "beta"}); err == nil {
 			t.Errorf("parsePullRequests(%s) error = nil", output)
@@ -85,14 +98,14 @@ func TestParsePullRequestsRejectsGraphQLFailures(t *testing.T) {
 }
 
 func TestParsePullRequestsRejectsInvalidNode(t *testing.T) {
-	output := []byte(`{"data":{"pr0":{"nodes":[{"number":0,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}`)
+	output := []byte(`{"data":{"repository":{"pr0":{"nodes":[{"number":0,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}`)
 	if _, err := parsePullRequests(output, []string{"alpha"}); err == nil {
 		t.Fatal("parsePullRequests() error = nil")
 	}
 }
 
 func TestParsePullRequestsPreservesNativeStackMembership(t *testing.T) {
-	output := []byte(`{"data":{"pr0":{"nodes":[{"number":17,"url":"https://example.test/17","headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":{"position":2}}]}}}`)
+	output := []byte(`{"data":{"repository":{"pr0":{"nodes":[{"number":17,"url":"https://example.test/17","headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":{"position":2}}]}}}}`)
 	prs, err := parsePullRequests(output, []string{"synthetic/top"})
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +122,7 @@ func TestParsePullRequestsPreservesNativeStackMembership(t *testing.T) {
 }
 
 func TestParsePullRequestsRejectsIncompleteNativeStackMembership(t *testing.T) {
-	output := []byte(`{"data":{"pr0":{"nodes":[{"number":17,"headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":null}]}}}`)
+	output := []byte(`{"data":{"repository":{"pr0":{"nodes":[{"number":17,"headRefName":"synthetic/top","baseRefName":"synthetic/lower","state":"OPEN","stack":{"number":8,"size":3},"stackEntry":null}]}}}}`)
 	if _, err := parsePullRequests(output, []string{"synthetic/top"}); err == nil {
 		t.Fatal("parsePullRequests() error = nil")
 	}

@@ -210,6 +210,8 @@ func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template 
 			marker = p.problem("[blocked: " + reason + "]")
 		} else if number := existingNumber(plan, branch); number != 0 {
 			marker = p.notice("[existing #" + fmt.Sprint(number) + "]")
+		} else if previous, replaced := plan.Superseded[branch]; replaced {
+			marker = p.subdued(fmt.Sprintf("[create draft · #%d %s]", previous.Number, strings.ToLower(previous.State)))
 		}
 		if _, err := fmt.Fprintf(w, "%s└─ %s %s\n", strings.Repeat("  ", i+1), p.branch(branch), marker); err != nil {
 			return err

@@ -146,21 +146,23 @@ func parseRepositoryName(output []byte) (string, error) {
 
 func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) {
 	var response struct {
-		Data map[string]struct {
-			Nodes []struct {
-				Number int    `json:"number"`
-				URL    string `json:"url"`
-				Head   string `json:"headRefName"`
-				Base   string `json:"baseRefName"`
-				State  string `json:"state"`
-				Stack  *struct {
-					Number int `json:"number"`
-					Size   int `json:"size"`
-				} `json:"stack"`
-				StackEntry *struct {
-					Position int `json:"position"`
-				} `json:"stackEntry"`
-			} `json:"nodes"`
+		Data struct {
+			Repository map[string]struct {
+				Nodes []struct {
+					Number int    `json:"number"`
+					URL    string `json:"url"`
+					Head   string `json:"headRefName"`
+					Base   string `json:"baseRefName"`
+					State  string `json:"state"`
+					Stack  *struct {
+						Number int `json:"number"`
+						Size   int `json:"size"`
+					} `json:"stack"`
+					StackEntry *struct {
+						Position int `json:"position"`
+					} `json:"stackEntry"`
+				} `json:"nodes"`
+			} `json:"repository"`
 		} `json:"data"`
 		Errors []struct {
 			Message string `json:"message"`
@@ -172,15 +174,24 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 	if len(response.Errors) != 0 {
 		return nil, fmt.Errorf("gh api graphql returned errors: %s", boundedMessage(response.Errors[0].Message))
 	}
+	if response.Data.Repository == nil {
+		return nil, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
+	}
 	matching := make([]PullRequest, 0)
 	for index, branch := range branches {
 		alias := fmt.Sprintf("pr%d", index)
-		result, exists := response.Data[alias]
+		result, exists := response.Data.Repository[alias]
 		if !exists {
 			return nil, fmt.Errorf("gh api graphql response is missing %s", alias)
 		}
 		for _, node := range result.Nodes {
-			if node.Number <= 0 || node.Head != branch || node.Base == "" || node.State == "" {
+			// headRefName filters server-side, so a mismatch is a stray node
+			// rather than a malformed response: skip it instead of failing the
+			// whole command, including read-only status.
+			if node.Head != branch {
+				continue
+			}
+			if node.Number <= 0 || node.Base == "" || node.State == "" {
 				return nil, fmt.Errorf("gh api graphql response has invalid %s pull request", alias)
 			}
 			if (node.Stack == nil) != (node.StackEntry == nil) {
@@ -198,17 +209,31 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 			matching = append(matching, pr)
 		}
 	}
-	sort.Slice(matching, func(left, right int) bool { return matching[left].Head < matching[right].Head })
+	sort.Slice(matching, func(left, right int) bool {
+		if matching[left].Head != matching[right].Head {
+			return matching[left].Head < matching[right].Head
+		}
+		return matching[left].Number < matching[right].Number
+	})
 	return matching, nil
 }
 
+// graphqlQuery batches one aliased head-ref lookup per selected branch.
+//
+// headRefName filters the connection server-side, so neither the age of the
+// stack nor the repository's pull-request volume affects what comes back. The
+// earlier search() form went through GitHub's search index, which lags behind
+// newly created pull requests — enough for a branch to look unmapped moments
+// after submit created its pull request, and to change between a preview and
+// its revalidation — besides matching heads loosely and drawing on the much
+// tighter search rate limit.
 func graphqlQuery(repo string, branches []string) string {
-	var fields []string
+	owner, name, _ := strings.Cut(repo, "/")
+	fields := make([]string, 0, len(branches))
 	for index, branch := range branches {
-		search := "repo:" + repo + " is:pr head:" + branch
-		fields = append(fields, fmt.Sprintf("pr%d: search(query: %s, type: ISSUE, first: 10) { nodes { ... on PullRequest { number url headRefName baseRefName state stack { number size } stackEntry { position } } } }", index, strconv.Quote(search)))
+		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: %s, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName baseRefName state stack { number size } stackEntry { position } } }", index, strconv.Quote(branch)))
 	}
-	return "query { " + strings.Join(fields, " ") + " }"
+	return fmt.Sprintf("query { repository(owner: %s, name: %s) { %s } }", strconv.Quote(owner), strconv.Quote(name), strings.Join(fields, " "))
 }
 
 func (c Client) Link(ctx context.Context, trunk string, branches []string) error {

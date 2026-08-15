@@ -92,6 +92,12 @@ plan/revalidation decisions and bounded
 subprocess status. It never logs environment values, credentials, auth headers,
 cookies, or GraphQL query payloads.
 
+A branch is identified by its single open pull request. Closed and merged pull
+requests left on a reused branch name are treated as history: they never block
+`link`, `sync`, or `status`, and `submit` creates a replacement rather than
+skipping the branch. Two or more open pull requests for one branch is the only
+ambiguity, and it fails closed.
+
 `gt2gh` never guesses a trunk from its name. It infers the only
 Graphite-declared trunk on the selected ancestry and shows it prominently. If
 that ancestry has multiple declared trunks, it fails closed and requires

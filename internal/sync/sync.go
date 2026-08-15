@@ -158,27 +158,30 @@ func syncStates(items []Item) string {
 }
 
 func classify(plan link.Plan) ([]Item, error) {
-	byBranch := make(map[string]githubstack.PullRequest, len(plan.PullRequests))
-	for branch, matches := range githubstack.GroupByHead(plan.PullRequests) {
-		if len(matches) != 1 {
-			return nil, fmt.Errorf("GitHub returned multiple pull requests for branch %q; refusing ambiguous sync", branch)
+	resolutions := githubstack.ResolveHeads(plan.PullRequests)
+	for _, branch := range plan.Branches {
+		if resolutions[branch].Ambiguous() {
+			return nil, fmt.Errorf("GitHub has %d open pull requests for branch %q; refusing ambiguous sync", resolutions[branch].OpenCount, branch)
 		}
-		byBranch[branch] = matches[0]
 	}
 	base := plan.Base
 	items := make([]Item, 0, len(plan.Branches))
 	for _, branch := range plan.Branches {
+		resolution := resolutions[branch]
 		item := Item{Branch: branch, ExpectedBase: base, State: Missing}
-		if pr, exists := byBranch[branch]; exists {
-			item.PullRequest = &pr
-			switch {
-			case pr.State != "OPEN":
-				item.State = Unsafe
-			case pr.Base == base:
+		switch {
+		case resolution.Open != nil:
+			item.PullRequest = resolution.Open
+			if resolution.Open.Base == base {
 				item.State = Aligned
-			default:
+			} else {
 				item.State = Divergent
 			}
+		case resolution.Superseded():
+			// The branch's pull requests are all closed or merged. Reconciling
+			// one is out of scope, so this stays an explicit refusal.
+			item.PullRequest = resolution.Latest
+			item.State = Unsafe
 		}
 		items = append(items, item)
 		base = branch

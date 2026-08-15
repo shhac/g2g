@@ -155,10 +155,30 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 	}
 }
 
-func TestPreviewRejectsDuplicatePullRequests(t *testing.T) {
+func TestPreviewRejectsDuplicateOpenPullRequests(t *testing.T) {
 	service := fakeService([]githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "alpha", Base: "main", State: "OPEN"}})
-	if _, err := service.Preview(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "multiple pull requests") {
+	if _, err := service.Preview(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "2 open pull requests") {
 		t.Fatalf("Preview() error = %v", err)
+	}
+}
+
+// A branch reused after an earlier pull request was closed is history, not
+// ambiguity. Treating the second match as a duplicate blocked stacks whose
+// only fault was having been submitted before.
+func TestPreviewResolvesReusedBranchWithClosedHistory(t *testing.T) {
+	service := fakeService([]githubstack.PullRequest{
+		{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"},
+		{Number: 9, Head: "alpha", Base: "main", State: "OPEN"},
+	})
+	plan, err := service.Preview(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Preview() error = %v", err)
+	}
+	if plan.Items[0].State != Aligned {
+		t.Fatalf("state = %q, want %q", plan.Items[0].State, Aligned)
+	}
+	if plan.Items[0].PullRequest.Number != 9 {
+		t.Fatalf("resolved PR = #%d, want the open #9", plan.Items[0].PullRequest.Number)
 	}
 }
 

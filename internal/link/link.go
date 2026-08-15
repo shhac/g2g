@@ -212,24 +212,21 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		expectedBases[branch] = base
 		base = branch
 	}
-	byHead := githubstack.GroupByHead(prs)
+	resolutions := githubstack.ResolveHeads(prs)
 	issues := make([]Issue, 0)
 	for _, branch := range branches {
-		matches := byHead[branch]
-		switch len(matches) {
-		case 0:
-			issues = append(issues, Issue{Branch: branch, Reason: "no open pull request"})
-		case 1:
-			pr := matches[0]
-			if pr.State != "OPEN" {
-				issues = append(issues, Issue{Branch: branch, Reason: strings.ToLower(pr.State) + " pull request"})
-				continue
+		resolution := resolutions[branch]
+		switch {
+		case resolution.Ambiguous():
+			issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("%d open pull requests", resolution.OpenCount)})
+		case resolution.Open != nil:
+			if expected := expectedBases[branch]; resolution.Open.Base != expected {
+				issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("PR #%d base %s, want %s", resolution.Open.Number, resolution.Open.Base, expected)})
 			}
-			if expected := expectedBases[branch]; pr.Base != expected {
-				issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("PR #%d base %s, want %s", pr.Number, pr.Base, expected)})
-			}
+		case resolution.Superseded():
+			issues = append(issues, Issue{Branch: branch, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
 		default:
-			issues = append(issues, Issue{Branch: branch, Reason: "multiple pull requests"})
+			issues = append(issues, Issue{Branch: branch, Reason: "no open pull request"})
 		}
 	}
 	return issues

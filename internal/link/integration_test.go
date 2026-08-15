@@ -45,7 +45,7 @@ esac`,
 		"gh": `printf 'gh %s\n' "$*" >> "$CLI_ARGUMENTS"
 case "$1 $2" in
   "repo view") printf '{"nameWithOwner":"example/fixture"}\n' ;;
-  "api graphql") printf '%s\n' '{"data":{"pr0":{"nodes":[{"number":1,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[{"number":3,"headRefName":"gamma-deep","baseRefName":"gamma","state":"OPEN"}]}}}' ;;
+  "api graphql") printf '%s\n' '{"data":{"repository":{"pr0":{"nodes":[{"number":1,"headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[{"number":3,"headRefName":"gamma-deep","baseRefName":"gamma","state":"OPEN"}]}}}}' ;;
   "stack link") ;;
   *) exit 9 ;;
 esac`,

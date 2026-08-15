@@ -170,6 +170,21 @@ same reads during revalidation before the sole mutation. The batch boundary
 remains `internal/githubstack.Inspect`, with PATH-backed fixtures and no secret
 handling in application code.
 
+Each alias is a `pullRequests(headRefName:)` connection on the repository, not
+a `search()` query. The filter is applied server-side, so neither the age of a
+stack nor the repository's pull-request volume changes what is returned, and
+the result does not depend on GitHub's search index — which lags behind newly
+created pull requests, matches head refs loosely, and draws on a much tighter
+rate limit. A head that does not match its alias is skipped rather than
+failing the command.
+
+A branch's identity is its one open pull request. Long-lived stacks accumulate
+closed and merged pull requests for reused branch names; that history never
+blocks, so a branch whose earlier pull request was closed resolves cleanly and
+`submit` creates a replacement instead of skipping it. Only two or more
+simultaneously open pull requests for one head are ambiguous, and that remains
+a fail-closed refusal.
+
 `sync` uses the same restrained graph-first presentation as `link`: one
 blank-bounded trunk-to-target graph labels PR-backed branches and their
 aligned/divergent/missing/unsafe status, followed by the exact copyable command

@@ -53,13 +53,18 @@ func AssessMembership(branches []string, prs []PullRequest) Membership {
 	return membership
 }
 
-// ByHead returns the last observed PR for each head branch. Callers that need
-// duplicate detection should use GroupByHead before selecting a value.
+// ByHead returns the pull request representing each head branch: its single
+// open one, or the newest otherwise. Callers that must distinguish "none open"
+// from "several open" should use ResolveHeads.
 func ByHead(prs []PullRequest) map[string]PullRequest {
-	groups := GroupByHead(prs)
-	indexed := make(map[string]PullRequest, len(groups))
-	for branch, matches := range groups {
-		indexed[branch] = matches[len(matches)-1]
+	indexed := make(map[string]PullRequest)
+	for branch, resolution := range ResolveHeads(prs) {
+		switch {
+		case resolution.Open != nil:
+			indexed[branch] = *resolution.Open
+		case resolution.Latest != nil:
+			indexed[branch] = *resolution.Latest
+		}
 	}
 	return indexed
 }

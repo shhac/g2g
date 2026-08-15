@@ -29,7 +29,7 @@ func TestProductionAdaptersPreviewAndApplyWithPathFakes(t *testing.T) {
 	}
 	t.Setenv("GT_FIXTURE", fixturePath)
 	t.Setenv("CLI_ARGUMENTS", argumentsPath)
-	t.Setenv("GH_PRS", `{"data":{"pr0":{"nodes":[{"number":1,"url":"https://example.test/1","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"url":"https://example.test/2","headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[{"number":3,"url":"https://example.test/3","headRefName":"gamma-deep","baseRefName":"gamma","state":"OPEN"}]}}}`)
+	t.Setenv("GH_PRS", `{"data":{"repository":{"pr0":{"nodes":[{"number":1,"url":"https://example.test/1","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"url":"https://example.test/2","headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[{"number":3,"url":"https://example.test/3","headRefName":"gamma-deep","baseRefName":"gamma","state":"OPEN"}]}}}}`)
 	testutil.WithFakeExecutables(t, map[string]string{
 		"git": `printf 'git %s\n' "$*" >> "$CLI_ARGUMENTS"
 case "$1 $2" in
@@ -81,7 +81,7 @@ esac`,
 		t.Fatalf("sync link calls = %d, want %d:\n%s", got, want, arguments)
 	}
 
-	t.Setenv("GH_PRS", `{"data":{"pr0":{"nodes":[{"number":1,"url":"https://example.test/1","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"url":"https://example.test/2","headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[]}}}`)
+	t.Setenv("GH_PRS", `{"data":{"repository":{"pr0":{"nodes":[{"number":1,"url":"https://example.test/1","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"url":"https://example.test/2","headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[]}}}}`)
 	blocked, err := service.Preview(context.Background(), "gamma-deep")
 	if err != nil {
 		t.Fatalf("blocked Preview() error = %v", err)

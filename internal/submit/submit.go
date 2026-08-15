@@ -38,6 +38,10 @@ type Plan struct {
 	Remote   string
 	Existing []githubstack.PullRequest
 	Issues   map[string]string
+	// Superseded records branches whose only pull requests are closed or
+	// merged, so a preview can show that a new one will be created rather than
+	// silently reusing a branch name that has history.
+	Superseded map[string]githubstack.PullRequest
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
@@ -55,7 +59,8 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: prs, Issues: assessExisting(prs, snapshot.Base, snapshot.Branches)}
+	issues, superseded := assessExisting(prs, snapshot.Base, snapshot.Branches)
+	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: prs, Issues: issues, Superseded: superseded}
 	decision := "ready"
 	if len(plan.Issues) != 0 {
 		decision = "blocked"
@@ -80,6 +85,14 @@ func (p Plan) Equal(other Plan) bool {
 	}
 	for branch, issue := range p.Issues {
 		if other.Issues[branch] != issue {
+			return false
+		}
+	}
+	if len(p.Superseded) != len(other.Superseded) {
+		return false
+	}
+	for branch, pr := range p.Superseded {
+		if other.Superseded[branch] != pr {
 			return false
 		}
 	}
@@ -136,11 +149,15 @@ func validateSpec(plan Plan, spec Spec) error {
 	return nil
 }
 
+// createMissingPulls creates one pull request per branch that has no open one.
+// Keying off open pull requests rather than any match is what lets a branch
+// with a closed predecessor be re-submitted instead of silently skipped and
+// then failing at the link step.
 func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) error {
-	existing := githubstack.ByHead(plan.Existing)
+	resolutions := githubstack.ResolveHeads(plan.Existing)
 	base := plan.Snapshot.Base
 	for _, pull := range spec.Pulls {
-		if _, exists := existing[pull.Branch]; !exists {
+		if resolutions[pull.Branch].Open == nil {
 			if err := s.GitHub.Create(ctx, pull.Branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
 				return err
 			}
@@ -150,26 +167,29 @@ func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) e
 	return nil
 }
 
-func assessExisting(prs []githubstack.PullRequest, base string, branches []string) map[string]string {
-	byHead := githubstack.GroupByHead(prs)
+// assessExisting reports only what blocks submission. A branch whose pull
+// requests are all closed or merged is not blocked: re-submitting a stack
+// whose branch names were used before is the recovery this command exists for,
+// so that history is recorded as superseded and a new pull request is created.
+func assessExisting(prs []githubstack.PullRequest, base string, branches []string) (map[string]string, map[string]githubstack.PullRequest) {
+	resolutions := githubstack.ResolveHeads(prs)
 	issues := map[string]string{}
+	superseded := map[string]githubstack.PullRequest{}
 	for _, branch := range branches {
-		matches := byHead[branch]
-		if len(matches) > 1 {
-			issues[branch] = "multiple pull requests"
-			continue
-		}
-		if len(matches) == 1 {
-			pr := matches[0]
-			if pr.State != "OPEN" {
-				issues[branch] = strings.ToLower(pr.State) + " pull request"
-			} else if pr.Base != base {
-				issues[branch] = "PR base " + pr.Base + ", want " + base
+		resolution := resolutions[branch]
+		switch {
+		case resolution.Ambiguous():
+			issues[branch] = fmt.Sprintf("%d open pull requests", resolution.OpenCount)
+		case resolution.Open != nil:
+			if resolution.Open.Base != base {
+				issues[branch] = "PR base " + resolution.Open.Base + ", want " + base
 			}
+		case resolution.Superseded():
+			superseded[branch] = *resolution.Latest
 		}
 		base = branch
 	}
-	return issues
+	return issues, superseded
 }
 func issueText(issues map[string]string) string {
 	parts := make([]string, 0, len(issues))

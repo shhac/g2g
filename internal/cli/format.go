@@ -31,7 +31,11 @@ type jsonDocument struct {
 	Trunk         string       `json:"trunk"`
 	Branches      []jsonBranch `json:"branches"`
 	Command       []string     `json:"command,omitempty"`
-	Notes         []jsonNote   `json:"notes,omitempty"`
+	// Blocked is the reason apply would refuse. It is reported alongside
+	// Command rather than instead of it, so a consumer can see the plan's
+	// destination and decide for itself; check this before acting on Command.
+	Blocked string     `json:"blocked,omitempty"`
+	Notes   []jsonNote `json:"notes,omitempty"`
 }
 
 type jsonBranch struct {
@@ -55,6 +59,7 @@ func (v stackView) document() jsonDocument {
 		Target:        v.Target,
 		TargetSource:  v.TargetSource,
 		Command:       v.Action,
+		Blocked:       v.Blocked,
 		Branches:      []jsonBranch{},
 	}
 	for _, node := range v.Nodes {
@@ -92,6 +97,9 @@ func writePorcelain(writer io.Writer, view stackView) error {
 		records = append(records, []string{
 			"branch", branch.Branch, porcelainNumber(branch.PullRequest), branch.State, branch.Severity, branch.URL, porcelainBool(branch.Target),
 		})
+	}
+	if doc.Blocked != "" {
+		records = append(records, []string{"blocked", doc.Blocked})
 	}
 	if len(doc.Command) != 0 {
 		records = append(records, append([]string{"command"}, doc.Command...))

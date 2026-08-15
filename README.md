@@ -23,7 +23,8 @@ inspects matching GitHub pull requests. Its concise output shows a target, one
 self-describing graph, and a command only when valid. When at least two
 PR-backed branches need linking, it prints the exact proposed bottom-to-top
 command. A one-PR path is a successful no-op: it prints `Nothing to link` and
-never constructs an invalid `gh stack link` command. Preview clearly states
+never constructs an invalid `gh stack link` command, whether or not that path
+is also blocked. Preview clearly states
 that no changes were made; nothing changes unless `--apply` is present.
 
 ```sh
@@ -104,9 +105,15 @@ that ancestry has multiple declared trunks, it fails closed and requires
 `--trunk <branch>`; an override must be both declared by Graphite and an
 ancestor of the selected branch.
 
-Preview renders the selected stack graph once and shows the exact `gh stack
-link` command only when apply would accept it, so a copyable command is never
-one that would be refused. Every stack gt2gh handles is linear, so the graph is
+Preview renders the selected stack graph once and always shows the exact
+`gh stack link` command it validated, including when apply is blocked: the
+command is the plan's destination, and running it by hand is a legitimate way
+to get gh's own, often more specific, error while triaging. A blocked preview
+states the reason above the command and heads it `Command to run once
+unblocked` rather than presenting it as the next step. The only command never
+shown is one that cannot be constructed — `gh stack link` needs at least two
+branches, so a single-branch path prints `Nothing to link` instead.
+Every stack gt2gh handles is linear, so the graph is
 a fixed-indent column rather than an escalating tree: the trunk is marked, the
 branches stacked on it follow bottom-to-top, and pull-request numbers and state
 line up in their own column. Blank lines bound the graph and each block below
@@ -150,8 +157,10 @@ g2g status --json
 g2g link --porcelain
 ```
 
-`schemaVersion` is bumped when a field changes meaning or disappears; adding a
-field is not a breaking change.
+`blocked` is reported alongside `command`, not instead of it, so a consumer can
+see the destination and decide for itself; check `blocked` before acting on
+`command`. `schemaVersion` is bumped when a field changes meaning or
+disappears; adding a field is not a breaking change.
 
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by

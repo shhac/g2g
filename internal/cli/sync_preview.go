@@ -27,14 +27,17 @@ func syncView(plan syncer.Plan) stackView {
 		view.Nodes = append(view.Nodes, node)
 	}
 
-	// As in link, the copyable command appears only when apply would accept it.
-	if !plan.CanApply() {
-		return view.note("Apply blocked: resolve every missing or non-open GitHub pull request first.", severityBad)
+	// As in link, only an unconstructible command is withheld; a blocked one is
+	// shown and labelled.
+	if len(plan.Link.Branches) >= 2 {
+		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Link.Base}, plan.Link.Branches...)
 	}
-	if plan.NothingToSync() {
+	if !plan.CanApply() {
+		return view.block("Apply blocked: resolve every missing or non-open GitHub pull request first.")
+	}
+	if len(view.Action) == 0 {
 		return view.note("Nothing to sync — this stack has one pull request.", severityNeutral)
 	}
-	view.Action = append([]string{"gh", "stack", "link", "--base", plan.Link.Base}, plan.Link.Branches...)
 	return view
 }
 

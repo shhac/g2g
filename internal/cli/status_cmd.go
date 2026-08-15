@@ -56,7 +56,7 @@ func statusView(plan link.Plan) stackView {
 	}
 
 	if len(plan.Issues) != 0 {
-		return view.note("Safe next action: repair the marked PR mappings.", severityNeutral)
+		return view.block("Safe next action: repair the marked PR mappings.")
 	}
 	return view.note(nativeMessage(native), nativeNoteSeverity(native.State))
 }

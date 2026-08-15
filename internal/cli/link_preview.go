@@ -30,15 +30,24 @@ func linkView(plan link.Plan) stackView {
 		view.Nodes = append(view.Nodes, node)
 	}
 
-	// A command is shown only when it would be accepted. Offering a copyable
-	// gh invocation that apply would refuse invites running it by hand.
-	if len(plan.Issues) != 0 {
-		return view.note("Apply blocked: resolve every unresolved GitHub PR mapping first.", severityBad)
+	// A command is withheld only when none can be constructed: gh stack link
+	// needs at least two branches. Being blocked is not that case — the command
+	// is well formed, and showing it keeps the plan's destination visible for
+	// triage, including running it by hand to see gh's own error.
+	//
+	// The count is checked directly rather than through NothingToLink, which
+	// also folds in the issue check: a single-branch path that was blocked
+	// therefore used to render a one-branch gh stack link that could never be
+	// valid.
+	if len(plan.Branches) >= 2 {
+		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
-	if plan.NothingToLink() {
+	if len(plan.Issues) != 0 {
+		return view.block("Apply blocked: resolve every unresolved GitHub PR mapping first.")
+	}
+	if len(view.Action) == 0 {
 		return view.note("Nothing to link — this stack has one pull request.", severityNeutral)
 	}
-	view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	return view
 }
 

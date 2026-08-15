@@ -72,7 +72,9 @@ func TestJSONSeparatesTrunkFromStackedBranches(t *testing.T) {
 	}
 }
 
-func TestJSONReportsBlockedStateAndOmitsTheCommand(t *testing.T) {
+// A blocked plan still reports its command. The command is the plan's known
+// destination, and a consumer decides for itself after checking blocked.
+func TestJSONReportsBlockedStateAlongsideTheCommand(t *testing.T) {
 	plan := formatPlan()
 	plan.Issues = []link.Issue{{Branch: "beta", Reason: "no open pull request"}}
 
@@ -85,11 +87,43 @@ func TestJSONReportsBlockedStateAndOmitsTheCommand(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Command) != 0 {
-		t.Errorf("blocked document offered a command: %v", doc.Command)
+	if doc.Blocked == "" {
+		t.Errorf("blocked document did not report a reason: %#v", doc)
+	}
+	if got, want := strings.Join(doc.Command, " "), "gh stack link --base main alpha beta"; got != want {
+		t.Errorf("command = %q, want %q", got, want)
 	}
 	if doc.Branches[1].Severity != string(severityBad) || !strings.Contains(doc.Branches[1].State, "no open pull request") {
 		t.Errorf("blocked branch = %#v", doc.Branches[1])
+	}
+}
+
+// The only command that is withheld is one that cannot be constructed:
+// gh stack link needs two branches. This used to be decided via NothingToLink,
+// which also folds in the issue check, so a blocked single-branch path
+// rendered a one-branch command that could never be valid.
+func TestSingleBranchPathNeverRendersAnUnusableCommand(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		issues []link.Issue
+	}{
+		{name: "clean"},
+		{name: "blocked", issues: []link.Issue{{Branch: "alpha", Reason: "no open pull request"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{
+				Target: "alpha", Base: "main", Branches: []string{"alpha"},
+				PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", State: "OPEN"}},
+				Issues:       test.issues,
+			}
+			var output bytes.Buffer
+			if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(output.String(), "gh stack link") {
+				t.Errorf("single-branch path rendered a command:\n%s", output.String())
+			}
+		})
 	}
 }
 

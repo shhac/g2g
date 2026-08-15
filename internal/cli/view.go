@@ -17,8 +17,14 @@ type stackView struct {
 	TargetSource string
 	Nodes        []stackNode
 	Action       []string
-	Heading      string
-	Notes        []stackNote
+	// Blocked is the reason apply would refuse this plan. It never suppresses
+	// Action: the command remains the plan's known destination, and running it
+	// by hand is a legitimate way to get the external tool's own, often more
+	// specific, error while triaging. It only changes how the command is
+	// labelled, and it is rendered above the command so the reason is read
+	// first.
+	Blocked string
+	Notes   []stackNote
 }
 
 // severity names the meaning of a piece of output. The renderer maps it to a
@@ -52,6 +58,21 @@ func (v stackView) note(text string, level severity) stackView {
 	return v
 }
 
+func (v stackView) block(reason string) stackView {
+	v.Blocked = reason
+	return v
+}
+
+// commandHeading labels the command for what it currently is. The command is
+// still shown when apply would refuse it, so the heading has to say so rather
+// than inviting a copy that will not work yet.
+func (v stackView) commandHeading() string {
+	if v.Blocked != "" {
+		return "Command to run once unblocked"
+	}
+	return "Command to run"
+}
+
 // glyphs distinguish the trunk from the branches stacked on it. Every stack
 // gt2gh handles is linear — it fails closed rather than resolve a fork — so
 // the vertical order is the stacking, and a fixed indent reads more easily
@@ -80,12 +101,11 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 	lines = append(lines, "")
 	lines = append(lines, graphLines(view, p)...)
 
+	if view.Blocked != "" {
+		lines = append(lines, "", p.problem(view.Blocked))
+	}
 	if len(view.Action) != 0 {
-		heading := view.Heading
-		if heading == "" {
-			heading = "Command to run"
-		}
-		lines = append(lines, "", p.accent(heading), commandLine(commandText(view.Action), p))
+		lines = append(lines, "", p.accent(view.commandHeading()), commandLine(commandText(view.Action), p))
 	}
 	if len(view.Notes) != 0 {
 		lines = append(lines, "")

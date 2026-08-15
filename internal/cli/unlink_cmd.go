@@ -30,52 +30,48 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		if apply {
 			mode = "apply"
 		}
-		budgets := newBudgets(cmd)
 		root := commandContext(cmd.Context(), cmd, "unlink", mode, selection.branch, selection.trunk)
-		ctx, cancel := budgets.discovery(root)
-		defer cancel()
-		plan, err := service.Plan(ctx, selection.Selection())
-		if err != nil {
-			return err
-		}
-		if len(plan.Issues) != 0 {
-			return fmt.Errorf("unlink preview has unresolved PR mappings; repair them before applying")
-		}
-		number, source, err := resolveStackNumber(number, plan)
-		if err != nil {
-			return err
-		}
-		if !apply {
-			if err := writeUnlinkPlan(cmd.OutOrStdout(), plan, number, source, presentation); err != nil {
-				return err
+
+		// Resolving the stack number is part of planning: it reads the same
+		// discovery, and an unresolvable one must stop the command before
+		// anything is rendered.
+		resolved, source := 0, ""
+		plan := func(ctx context.Context) (link.Plan, error) {
+			plan, err := service.Plan(ctx, selection.Selection())
+			if err != nil {
+				return link.Plan{}, err
 			}
-			err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made."))
-			return err
+			if len(plan.Issues) != 0 {
+				return link.Plan{}, fmt.Errorf("unlink preview has unresolved PR mappings; repair them before applying")
+			}
+			if resolved, source, err = resolveStackNumber(number, plan); err != nil {
+				return link.Plan{}, err
+			}
+			return plan, nil
 		}
-		validated, err := service.Revalidate(ctx, selection.Selection(), plan)
-		if err != nil {
-			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
+		flow := applyFlow[link.Plan]{
+			plan: plan,
+			revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {
+				return service.Revalidate(ctx, selection.Selection(), preview)
+			},
+			render: func(w io.Writer, p link.Plan, presentation Presentation) error {
+				return writeUnlinkPlan(w, p, resolved, source, presentation)
+			},
+			execute: func(ctx context.Context, _ link.Plan) error {
+				if unstacker == nil {
+					return fmt.Errorf("GitHub stack unstack is not configured")
+				}
+				return unstacker.Unstack(ctx, resolved)
+			},
+			branches: func(plan link.Plan) int { return len(plan.Branches) },
+			notices: flowNotices{
+				preview:  "Re-run with --apply to unlink.",
+				applied:  "Unlinked — GitHub stack relationship removed",
+				changed:  "Branches and pull requests were unchanged.",
+				recovery: "Run g2g status to see whether the relationship was removed.",
+			},
 		}
-		if err := writeReadyBanner(cmd.OutOrStdout(), presentation); err != nil {
-			return err
-		}
-		if err := writeUnlinkPlan(cmd.OutOrStdout(), validated, number, source, presentation); err != nil {
-			return err
-		}
-		if err := flushOutput(cmd.OutOrStdout()); err != nil {
-			return err
-		}
-		if unstacker == nil {
-			return fmt.Errorf("GitHub stack unstack is not configured")
-		}
-		mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
-		defer cancelMutation()
-		if err := unstacker.Unstack(mutateCtx, number); err != nil {
-			return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether the relationship was removed."))
-		}
-		prose(cmd.OutOrStdout(), presentation, presentation.notice("Unlinked — GitHub stack relationship removed"))
-		prose(cmd.OutOrStdout(), presentation, presentation.subdued("Branches and pull requests were unchanged."))
-		return nil
+		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink (defaults to the one discovered on the selected path)")
 	selection.register(cmd, completions, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")

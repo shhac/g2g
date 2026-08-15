@@ -89,7 +89,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	if !o.apply {
 		return o.previewWithSpec(cmd, plan, presentation, templateName)
 	}
-	return o.applyPlan(ctx, cmd, service, plan, spec, presentation, templateName)
+	return o.applyPlan(cmd, service, plan, spec, presentation, templateName)
 }
 
 func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string) error {
@@ -137,38 +137,45 @@ func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p P
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply to push, create missing PRs, and link.")
 }
 
-func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
-	validated, err := service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
-	if err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
+func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
+	flow := applyFlow[submit.Plan]{
+		// The preview is already in hand, so planning is a pass-through; the
+		// sequence still re-discovers through revalidate before mutating.
+		plan: func(context.Context) (submit.Plan, error) { return preview, nil },
+		revalidate: func(ctx context.Context, preview submit.Plan) (submit.Plan, error) {
+			validated, err := service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
+			if err != nil {
+				return submit.Plan{}, err
+			}
+			if len(validated.Issues) != 0 {
+				return submit.Plan{}, fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
+			}
+			return validated, nil
+		},
+		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
+			return writeSubmitPreview(w, plan, presentation, template)
+		},
+		execute: func(ctx context.Context, plan submit.Plan) error {
+			if err := service.Apply(ctx, plan, spec); err != nil {
+				return err
+			}
+			if o.edit && !o.keepSpec {
+				_ = os.RemoveAll(filepath.Dir(o.specPath))
+			}
+			return nil
+		},
+		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },
+		wrapMutationError: func(err error) error {
+			return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
+		},
+		notices: flowNotices{
+			preview:  "Re-run with --apply to push, create missing PRs, and link.",
+			applied:  "Applied — stack published and missing pull requests created",
+			changed:  "Changes were made.",
+			recovery: fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
+		},
 	}
-	if len(validated.Issues) != 0 {
-		err := fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-	if err := writeReadyBanner(cmd.OutOrStdout(), p); err != nil {
-		return err
-	}
-	if err := writeSubmitPreview(cmd.OutOrStdout(), validated, p, template); err != nil {
-		return err
-	}
-	if err := flushOutput(cmd.OutOrStdout()); err != nil {
-		return err
-	}
-	// The mutation phase gets a fresh budget: it pushes, then creates one pull
-	// request per missing branch, and expiring partway through would leave the
-	// partial state the preview/revalidate sequence exists to avoid.
-	mutateCtx, cancelMutation := o.budgets.mutation(o.root, len(validated.Snapshot.Branches))
-	defer cancelMutation()
-	if err := service.Apply(mutateCtx, validated, spec); err != nil {
-		err = mutationTimeout(err, fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath))
-		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, writeNotApplied(cmd.OutOrStdout(), p, err))
-	}
-	if o.edit && !o.keepSpec {
-		_ = os.RemoveAll(filepath.Dir(o.specPath))
-	}
-	_ = prose(cmd.OutOrStdout(), p, p.notice("Applied — stack published and missing pull requests created"))
-	return prose(cmd.OutOrStdout(), p, p.subdued("Changes were made."))
+	return flow.run(cmd, o.root, o.budgets, p, true)
 }
 
 func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {

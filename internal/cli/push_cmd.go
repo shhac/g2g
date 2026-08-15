@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/spf13/cobra"
 
@@ -23,39 +23,23 @@ func newPush(service push.Service, completions stack.Completions, presentation P
 			if apply {
 				mode = "apply"
 			}
-			budgets := newBudgets(cmd)
 			root := commandContext(cmd.Context(), cmd, "push", mode, selection.branch, selection.trunk)
-			ctx, cancel := budgets.discovery(root)
-			defer cancel()
-			plan, err := service.Plan(ctx, selection.Selection(), remote)
-			if err != nil {
-				return err
+			flow := applyFlow[push.Plan]{
+				plan: func(ctx context.Context) (push.Plan, error) { return service.Plan(ctx, selection.Selection(), remote) },
+				revalidate: func(ctx context.Context, preview push.Plan) (push.Plan, error) {
+					return service.Revalidate(ctx, selection.Selection(), remote, preview)
+				},
+				render:   writePushPlan,
+				execute:  service.Execute,
+				branches: func(plan push.Plan) int { return len(plan.Branches) },
+				notices: flowNotices{
+					preview:  "Re-run with --apply to push.",
+					applied:  "Applied — remote refs updated atomically",
+					changed:  "Changes were made.",
+					recovery: "The push is atomic, so every selected ref advanced or none did; re-run g2g push to see which.",
+				},
 			}
-			if !apply {
-				if err := writePushPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
-					return err
-				}
-				err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to push.")
-				return err
-			}
-			validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
-			if err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			}
-			if err := writeReadyToPush(cmd.OutOrStdout(), validated, presentation); err != nil {
-				return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), presentation, err))
-			}
-			if err := flushOutput(cmd.OutOrStdout()); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			}
-			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
-			defer cancelMutation()
-			if err := service.Execute(mutateCtx, validated); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "The push is atomic, so every selected ref advanced or none did; re-run g2g push to see which."))
-			}
-			prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("Applied — remote refs updated atomically"))
-			prose(cmd.OutOrStdout(), presentation, presentation.subdued("Changes were made."))
-			return nil
+			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 		},
 	}
 	selection.register(cmd, completions, "Graphite-tracked local branch to push (defaults to current branch)", "Graphite-declared trunk to use as the push base")

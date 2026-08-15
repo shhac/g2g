@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -26,50 +27,25 @@ func newLink(service link.Service, completions stack.Completions, presentation P
 			if apply {
 				mode = "apply"
 			}
-			budgets := newBudgets(cmd)
 			root := commandContext(cmd.Context(), cmd, "link", mode, selection.branch, selection.trunk)
-			ctx, cancel := budgets.discovery(root)
-			defer cancel()
-			plan, err := service.Plan(ctx, selection.Selection())
-			if err != nil {
-				return err
+			flow := applyFlow[link.Plan]{
+				plan: func(ctx context.Context) (link.Plan, error) { return service.Plan(ctx, selection.Selection()) },
+				revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {
+					return service.Revalidate(ctx, selection.Selection(), preview)
+				},
+				render:   writeLinkPlan,
+				execute:  service.Execute,
+				branches: func(plan link.Plan) int { return len(plan.Branches) },
+				noOp:     link.Plan.NothingToLink,
+				notices: flowNotices{
+					preview:  "Re-run with --apply to link.",
+					noOp:     "No changes were needed or made.",
+					applied:  "Applied — GitHub stack updated",
+					changed:  "Changes were made.",
+					recovery: "Run g2g status to see whether GitHub recorded the link.",
+				},
 			}
-			if !apply {
-				if err := writeLinkPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
-					return err
-				}
-				if plan.NothingToLink() {
-					prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were needed or made."))
-					return nil
-				}
-				prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to link.")
-				return nil
-			}
-			validated, err := service.Revalidate(ctx, selection.Selection(), plan)
-			if err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			}
-			if validated.NothingToLink() {
-				if err := writeLinkPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
-					return err
-				}
-				err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were needed or made."))
-				return err
-			}
-			if err := writeReadyToApply(cmd.OutOrStdout(), validated, presentation); err != nil {
-				return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), presentation, err))
-			}
-			if err := flushOutput(cmd.OutOrStdout()); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			}
-			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
-			defer cancelMutation()
-			if err := service.Execute(mutateCtx, validated); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))
-			}
-			prose(cmd.OutOrStdout(), presentation, presentation.notice("Applied — GitHub stack updated"))
-			prose(cmd.OutOrStdout(), presentation, presentation.subdued("Changes were made."))
-			return nil
+			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 		},
 	}
 	selection.register(cmd, completions, "Graphite-tracked local branch to link (defaults to current branch)", "Graphite-declared trunk to use as the link base")

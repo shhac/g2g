@@ -373,7 +373,7 @@ func TestAssessedIssuesCarryTheirKind(t *testing.T) {
 
 	for branch, want := range map[string]IssueKind{
 		"wrong-base":  IssueBase,
-		"closed-only": IssueNonOpen,
+		"closed-only": IssueClosed,
 		"ambiguous":   IssueAmbiguous,
 		"missing":     IssueMissing,
 	} {

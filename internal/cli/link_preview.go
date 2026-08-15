@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
@@ -51,16 +52,70 @@ func linkView(plan link.Plan) stackView {
 	return view
 }
 
-// blockedReason names the command that actually repairs the state. link's
-// policy requires every pull request to already sit on its Graphite
-// predecessor, but reconciling exactly that is what sync is for, so a path
-// blocked solely on bases would otherwise send the reader looking for a fix
-// the tool already has.
+// blockedReason names the command that actually repairs the state. A blocked
+// preview that only says "resolve the mappings" leaves the reader to work out
+// which of five commands — or which Graphite command — applies, and the plan
+// already knows.
 func blockedReason(plan link.Plan) string {
+	// Merged branches come first: they are the only case no gt2gh command
+	// fixes. The stack itself is stale, and Graphite has to restack around
+	// them before anything here can help.
+	if merged := plan.MergedBranches(); len(merged) != 0 {
+		return fmt.Sprintf("Apply blocked: %s already merged. Run gt sync in Graphite to restack, then re-run.", branchList(merged))
+	}
 	if plan.SyncRepairable() {
 		return "Apply blocked: every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
 	}
+	if plan.SubmitRepairable() {
+		return "Apply blocked: " + submitAdvice(plan) + " Run g2g submit to create " + object(len(plan.Issues)) + "."
+	}
 	return "Apply blocked: resolve every unresolved GitHub PR mapping first."
+}
+
+func submitAdvice(plan link.Plan) string {
+	var missing, closed []string
+	for _, issue := range plan.Issues {
+		if issue.Kind == link.IssueClosed {
+			closed = append(closed, issue.Branch)
+			continue
+		}
+		missing = append(missing, issue.Branch)
+	}
+	switch {
+	case len(closed) == 0:
+		return branchList(missing) + has(missing) + " no pull request."
+	case len(missing) == 0:
+		return branchList(closed) + " had its pull request closed."
+	default:
+		return branchList(missing) + has(missing) + " no pull request, and " + branchList(closed) + " had one closed."
+	}
+}
+
+// object keeps the closing sentence agreeing with the subject before it.
+func object(count int) string {
+	if count == 1 {
+		return "it"
+	}
+	return "them"
+}
+
+func has(branches []string) string {
+	if len(branches) == 1 {
+		return " has"
+	}
+	return " have"
+}
+
+// branchList renders one or more branch names as a readable subject.
+func branchList(branches []string) string {
+	switch len(branches) {
+	case 1:
+		return branches[0]
+	case 2:
+		return branches[0] + " and " + branches[1]
+	default:
+		return strings.Join(branches[:len(branches)-1], ", ") + " and " + branches[len(branches)-1]
+	}
 }
 
 func commandText(command []string) string {

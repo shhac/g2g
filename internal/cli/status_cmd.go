@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
@@ -62,10 +63,16 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	return view, native
 }
 
+// statusAdvice reuses the blocked-reason logic so triage and the command that
+// fixes it never disagree, phrased for a read-only report.
+func statusAdvice(plan link.Plan) string {
+	return strings.Replace(blockedReason(plan), "Apply blocked: ", "Safe next action: ", 1)
+}
+
 func statusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "status")
 	if len(plan.Issues) != 0 {
-		return view.block("Safe next action: repair the marked PR mappings.")
+		return view.block(statusAdvice(plan))
 	}
 	return view.note(nativeMessage(native), membershipNoteSeverity(native.State))
 }

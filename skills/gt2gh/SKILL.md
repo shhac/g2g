@@ -96,6 +96,10 @@ description: |
   renderers over the same validated view, they suppress colour and every
   human-facing line, and `schemaVersion` signals breaking changes. Never scrape
   the pretty graph.
+- A blocked preview names the repairing command: merged pull requests point at
+  `gt sync` (Graphite owns restacking; no gt2gh command helps), missing or
+  closed ones at `g2g submit`, a wrong base at `g2g sync`. Two open pull
+  requests for one branch is deliberately unadvised — a person must choose.
 - `status` is the read-only triage entry point. It renders one selected
   Graphite path and reports each selected PR's native GitHub stack membership
   from the same batched PR query; keep the healthy case to one compact summary

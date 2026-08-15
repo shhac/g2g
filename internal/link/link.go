@@ -58,8 +58,13 @@ const (
 	IssueBase IssueKind = "base"
 	// IssueMissing is a branch with no open pull request.
 	IssueMissing IssueKind = "missing"
-	// IssueNonOpen is a branch whose pull requests are all closed or merged.
-	IssueNonOpen IssueKind = "non-open"
+	// IssueClosed is a branch whose pull requests were closed without merging.
+	// A replacement can be created, so submit resolves it.
+	IssueClosed IssueKind = "closed"
+	// IssueMerged is a branch whose work has landed. Nothing gt2gh does fixes
+	// this: the branch no longer belongs in the stack, and only Graphite can
+	// restack around it.
+	IssueMerged IssueKind = "merged"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
 )
@@ -71,15 +76,35 @@ type Issue struct {
 	Kind   IssueKind
 }
 
+// MergedBranches lists branches whose pull requests have landed. They are
+// reported first, because no gt2gh command resolves them — the stack itself is
+// stale and Graphite has to restack around them.
+func (p Plan) MergedBranches() []string {
+	var merged []string
+	for _, issue := range p.Issues {
+		if issue.Kind == IssueMerged {
+			merged = append(merged, issue.Branch)
+		}
+	}
+	return merged
+}
+
 // SyncRepairable reports whether every blocker is a base that sync is designed
 // to reconcile, so a caller can name the command that actually fixes this
 // instead of leaving the user to work it out.
-func (p Plan) SyncRepairable() bool {
+func (p Plan) SyncRepairable() bool { return p.allIssuesAre(IssueBase) }
+
+// SubmitRepairable reports whether every blocker is a branch submit can
+// resolve: one with no pull request, or one whose pull request was closed
+// without merging, for which submit creates a replacement.
+func (p Plan) SubmitRepairable() bool { return p.allIssuesAre(IssueMissing, IssueClosed) }
+
+func (p Plan) allIssuesAre(kinds ...IssueKind) bool {
 	if len(p.Issues) == 0 {
 		return false
 	}
 	for _, issue := range p.Issues {
-		if issue.Kind != IssueBase {
+		if !slices.Contains(kinds, issue.Kind) {
 			return false
 		}
 	}
@@ -198,7 +223,11 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 				issues = append(issues, Issue{Branch: step.Branch, Kind: IssueBase, Reason: fmt.Sprintf("PR #%d base %s, want %s", resolution.Open.Number, resolution.Open.Base, step.ExpectedBase)})
 			}
 		case resolution.Superseded():
-			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueNonOpen, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
+			kind := IssueClosed
+			if resolution.Latest.State == "MERGED" {
+				kind = IssueMerged
+			}
+			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
 		default:
 			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueMissing, Reason: "no open pull request"})
 		}

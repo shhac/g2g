@@ -123,6 +123,14 @@ failure it never claims that changes were made. Manually copying the displayed
 command is a separate, deliberate snapshot action and does not cause `gt2gh`
 to re-resolve anything.
 
+A blocked preview names the command that repairs the state rather than leaving
+the reader to work it out. A branch whose pull request has merged points at
+`gt sync`, because the stack itself is stale and only Graphite can restack
+around it; a branch with no pull request, or one closed without merging, points
+at `g2g submit`; a pull request open on the wrong branch points at `g2g sync`.
+Two open pull requests for one branch is the only state with no command to
+offer, and it says so. `status` gives the same advice, phrased as a next step.
+
 Color is enabled only for an interactive terminal. It is disabled for redirected
 output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
 for scripts. In color output, headers, trunks, branches, PR numbers, unresolved

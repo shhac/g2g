@@ -33,7 +33,7 @@ func TestLinkBlockedOnlyOnBasesPointsAtSync(t *testing.T) {
 func TestLinkBlockedOnAnythingElseDoesNotPointAtSync(t *testing.T) {
 	for _, issue := range []link.Issue{
 		{Branch: "beta", Kind: link.IssueMissing, Reason: "no open pull request"},
-		{Branch: "beta", Kind: link.IssueNonOpen, Reason: "closed pull request"},
+		{Branch: "beta", Kind: link.IssueMerged, Reason: "merged pull request"},
 		{Branch: "beta", Kind: link.IssueAmbiguous, Reason: "2 open pull requests"},
 	} {
 		t.Run(string(issue.Kind), func(t *testing.T) {
@@ -62,5 +62,70 @@ func TestLinkBlockedOnMixedCausesDoesNotPointAtSync(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "g2g sync") {
 		t.Errorf("mixed blockers wrongly pointed at sync:\n%s", output.String())
+	}
+}
+
+// A blocked preview must name the command that fixes it. Which command depends
+// on why it is blocked, and getting that wrong sends the reader to a second
+// command that also refuses.
+func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		issues []link.Issue
+		want   string
+	}{
+		{
+			name:   "merged branch needs Graphite, not gt2gh",
+			issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"}},
+			want:   "feat-a already merged. Run gt sync in Graphite to restack",
+		},
+		{
+			// Merged wins over everything: nothing here helps until the stack
+			// itself is restacked.
+			name: "merged alongside other blockers still points at Graphite",
+			issues: []link.Issue{
+				{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"},
+				{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"},
+			},
+			want: "feat-a already merged. Run gt sync in Graphite to restack",
+		},
+		{
+			name:   "missing pull request needs submit",
+			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"}},
+			want:   "feat-c has no pull request. Run g2g submit",
+		},
+		{
+			// submit creates a replacement for a closed pull request, so it is
+			// the right command here too.
+			name:   "closed pull request also needs submit",
+			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueClosed, Reason: "closed pull request"}},
+			want:   "feat-c had its pull request closed. Run g2g submit",
+		},
+		{
+			name: "several missing branches read as a list",
+			issues: []link.Issue{
+				{Branch: "feat-b", Kind: link.IssueMissing, Reason: "no open pull request"},
+				{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"},
+			},
+			want: "feat-b and feat-c have no pull request. Run g2g submit",
+		},
+		{
+			name:   "wrong base needs sync",
+			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueBase, Reason: "PR #3 base main, want feat-b"}},
+			want:   "Run g2g sync",
+		},
+		{
+			// Ambiguity is the one case a person has to resolve by hand.
+			name:   "ambiguity has no command to offer",
+			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueAmbiguous, Reason: "2 open pull requests"}},
+			want:   "resolve every unresolved GitHub PR mapping first",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "feat-c", Base: "main", Branches: []string{"feat-a", "feat-b", "feat-c"}}}, Issues: test.issues}
+			if got := blockedReason(plan); !strings.Contains(got, test.want) {
+				t.Errorf("blockedReason() = %q, want it to contain %q", got, test.want)
+			}
+		})
 	}
 }

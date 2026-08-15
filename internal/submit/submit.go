@@ -3,6 +3,8 @@ package submit
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -22,7 +24,7 @@ type Git interface {
 type Graphite interface{ stack.Graphite }
 
 type GitHub interface {
-	Inspect(context.Context, []string) ([]githubstack.PullRequest, error)
+	stack.GitHub
 	Create(context.Context, string, string, string, string, bool, []string) error
 	Link(context.Context, string, []string) error
 }
@@ -51,16 +53,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	snapshot, err := stack.Resolve(ctx, s.Git, s.Graphite, selection, "g2g submit")
+	discovery, err := stack.Discover(ctx, s.Git, s.Graphite, s.GitHub, selection, "g2g submit")
 	if err != nil {
 		return Plan{}, err
 	}
-	prs, err := s.GitHub.Inspect(ctx, snapshot.Branches)
-	if err != nil {
-		return Plan{}, err
-	}
-	issues, superseded := assessExisting(prs, snapshot.Base, snapshot.Branches)
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: prs, Issues: issues, Superseded: superseded}
+	snapshot := discovery.Snapshot
+	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
+	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded}
 	decision := "ready"
 	if len(plan.Issues) != 0 {
 		decision = "blocked"
@@ -69,34 +68,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	return plan, nil
 }
 
+// Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
-	if p.Remote != other.Remote || p.Snapshot.Target != other.Snapshot.Target || p.Snapshot.Base != other.Snapshot.Base || len(p.Snapshot.Branches) != len(other.Snapshot.Branches) || len(p.Existing) != len(other.Existing) || len(p.Issues) != len(other.Issues) {
-		return false
-	}
-	for i := range p.Snapshot.Branches {
-		if p.Snapshot.Branches[i] != other.Snapshot.Branches[i] {
-			return false
-		}
-	}
-	for i := range p.Existing {
-		if p.Existing[i] != other.Existing[i] {
-			return false
-		}
-	}
-	for branch, issue := range p.Issues {
-		if other.Issues[branch] != issue {
-			return false
-		}
-	}
-	if len(p.Superseded) != len(other.Superseded) {
-		return false
-	}
-	for branch, pr := range p.Superseded {
-		if other.Superseded[branch] != pr {
-			return false
-		}
-	}
-	return true
+	return p.Remote == other.Remote &&
+		p.Snapshot.Equal(other.Snapshot) &&
+		slices.Equal(p.Existing, other.Existing) &&
+		maps.Equal(p.Issues, other.Issues) &&
+		maps.Equal(p.Superseded, other.Superseded)
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {

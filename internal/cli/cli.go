@@ -38,7 +38,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		GitHub:   githubClient,
 	}
 	pushService := push.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}}
-	syncService := syncer.Service{Discoverer: linkService, Git: linkService.Git, GitHub: linkService.GitHub}
+	syncService := syncer.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubClient}
 	submitService := submit.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubClient}
 	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService, submitService, githubClient)
 }
@@ -46,7 +46,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 // NewWithService creates the root command with injectable link dependencies.
 // It keeps unit tests offline while New wires the production subprocesses.
 func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
-	return NewWithServices(version, stdout, stderr, service, syncer.Service{Discoverer: service, Git: service.Git, GitHub: service.GitHub})
+	return NewWithServices(version, stdout, stderr, service, syncer.Service{Git: service.Git, Graphite: service.Graphite, GitHub: service.GitHub})
 }
 
 // NewWithServices creates the injectable link/sync command surface. It omits

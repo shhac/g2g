@@ -5,34 +5,32 @@ package sync
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
-// Discoverer supplies the common, read-only Graphite and GitHub facts.
-type Discoverer interface {
-	DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error)
-}
-
-// Git supplies the local precondition needed before an explicit apply.
+// Git supplies local repository facts and the clean-worktree precondition.
 type Git interface {
+	stack.Git
 	Clean(context.Context) error
 }
 
-// GitHub provides the one deliberate reconciliation mutation.
+// GitHub reads pull requests and performs the one reconciliation mutation.
 type GitHub interface {
+	stack.GitHub
 	Link(context.Context, string, []string) error
 }
 
 // Service reconciles only a fully mapped, open GitHub PR path. It never
 // creates mappings for Graphite-only branches or repairs closed PRs.
 type Service struct {
-	Discoverer Discoverer
-	Git        Git
-	GitHub     GitHub
+	Git      Git
+	Graphite stack.Graphite
+	GitHub   GitHub
 }
 
 // State describes a single Graphite branch's existing GitHub relationship.
@@ -55,25 +53,25 @@ type Item struct {
 
 // Plan is a Graphite-authoritative reconciliation preview.
 type Plan struct {
-	Link  link.Plan
-	Items []Item
+	Discovery stack.Discovery
+	Items     []Item
 }
 
 // Preview discovers the selected path and classifies GitHub's existing PR
 // relationship. It is entirely read-only.
-func (s Service) Preview(ctx context.Context, selection link.Selection) (Plan, error) {
-	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
+func (s Service) Preview(ctx context.Context, selection stack.Selection) (Plan, error) {
+	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
-	plan, err := s.Discoverer.DiscoverWithOptions(ctx, selection)
+	discovery, err := stack.Discover(ctx, s.Git, s.Graphite, s.GitHub, selection, "gh stack link")
 	if err != nil {
 		return Plan{}, err
 	}
-	items, err := classify(plan)
+	items, err := classify(discovery)
 	if err != nil {
 		return Plan{}, err
 	}
-	result := Plan{Link: plan, Items: items}
+	result := Plan{Discovery: discovery, Items: items}
 	diagnostic.Event(ctx, "sync.plan", diagnostic.Field{Key: "decision", Value: syncDecision(result)}, diagnostic.Field{Key: "summary", Value: result.Summary()}, diagnostic.Field{Key: "states", Value: syncStates(result.Items)})
 	return result, nil
 }
@@ -81,8 +79,8 @@ func (s Service) Preview(ctx context.Context, selection link.Selection) (Plan, e
 // Revalidate repeats discovery immediately before a mutation and refuses if
 // the result differs from the rendered preview. Callers run Execute
 // themselves, matching the CLI's render-and-flush-between sequence.
-func (s Service) Revalidate(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
-	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
+func (s Service) Revalidate(ctx context.Context, selection stack.Selection, preview Plan) (Plan, error) {
+	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
@@ -116,8 +114,8 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		diagnostic.Event(ctx, "sync.apply", diagnostic.Field{Key: "decision", Value: "skipped"}, diagnostic.Field{Key: "reason", Value: "fewer_than_two_pr_branches"})
 		return nil
 	}
-	diagnostic.Event(ctx, "sync.apply", diagnostic.Field{Key: "decision", Value: "run"}, diagnostic.Field{Key: "base", Value: plan.Link.Base}, diagnostic.Field{Key: "branches", Value: strings.Join(plan.Link.Branches, ",")})
-	return s.GitHub.Link(ctx, plan.Link.Base, plan.Link.Branches)
+	diagnostic.Event(ctx, "sync.apply", diagnostic.Field{Key: "decision", Value: "run"}, diagnostic.Field{Key: "base", Value: plan.Discovery.Base}, diagnostic.Field{Key: "branches", Value: strings.Join(plan.Discovery.Branches, ",")})
+	return s.GitHub.Link(ctx, plan.Discovery.Base, plan.Discovery.Branches)
 }
 
 func syncDecision(plan Plan) string {
@@ -138,16 +136,16 @@ func syncStates(items []Item) string {
 	return strings.Join(parts, "; ")
 }
 
-func classify(plan link.Plan) ([]Item, error) {
-	resolutions := githubstack.ResolveHeads(plan.PullRequests)
-	for _, branch := range plan.Branches {
+func classify(discovery stack.Discovery) ([]Item, error) {
+	resolutions := githubstack.ResolveHeads(discovery.PullRequests)
+	for _, branch := range discovery.Branches {
 		if resolutions[branch].Ambiguous() {
 			return nil, fmt.Errorf("GitHub has %d open pull requests for branch %q; refusing ambiguous sync", resolutions[branch].OpenCount, branch)
 		}
 	}
-	base := plan.Base
-	items := make([]Item, 0, len(plan.Branches))
-	for _, branch := range plan.Branches {
+	base := discovery.Base
+	items := make([]Item, 0, len(discovery.Branches))
+	for _, branch := range discovery.Branches {
 		resolution := resolutions[branch]
 		item := Item{Branch: branch, ExpectedBase: base, State: Missing}
 		switch {
@@ -171,22 +169,17 @@ func classify(plan link.Plan) ([]Item, error) {
 }
 
 func samePlan(left, right Plan) bool {
-	if !left.Link.Equal(right.Link) || len(left.Items) != len(right.Items) {
-		return false
-	}
-	for index := range left.Items {
-		if left.Items[index].Branch != right.Items[index].Branch || left.Items[index].ExpectedBase != right.Items[index].ExpectedBase || left.Items[index].State != right.Items[index].State || !samePullRequest(left.Items[index].PullRequest, right.Items[index].PullRequest) {
-			return false
-		}
-	}
-	return true
+	return left.Discovery.Equal(right.Discovery) && slices.EqualFunc(left.Items, right.Items, sameItem)
 }
 
-func samePullRequest(left, right *githubstack.PullRequest) bool {
-	if left == nil || right == nil {
-		return left == right
+func sameItem(left, right Item) bool {
+	if left.Branch != right.Branch || left.ExpectedBase != right.ExpectedBase || left.State != right.State {
+		return false
 	}
-	return *left == *right
+	if left.PullRequest == nil || right.PullRequest == nil {
+		return left.PullRequest == right.PullRequest
+	}
+	return *left.PullRequest == *right.PullRequest
 }
 
 // Summary returns concise state counts for a preview.
@@ -206,7 +199,7 @@ func (p Plan) CanApply() bool {
 // NothingToSync reports an apply-eligible path too short for gh stack link.
 // It is a successful no-op, never an invitation to execute an invalid command.
 func (p Plan) NothingToSync() bool {
-	return p.CanApply() && p.Link.NothingToLink()
+	return p.CanApply() && len(p.Discovery.Branches) < 2
 }
 
 func (p Plan) applyBlocker() error {

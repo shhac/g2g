@@ -54,7 +54,7 @@ func newSync(service syncer.Service, completions stack.Completions, presentation
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
-			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Link.Branches))
+			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Discovery.Branches))
 			defer cancelMutation()
 			if err := service.Execute(mutateCtx, validated); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))

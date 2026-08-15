@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/stack"
 	syncer "github.com/shhac/gt2gh/internal/sync"
@@ -24,7 +26,7 @@ func executeWithServices(t *testing.T, linkService link.Service, syncService syn
 
 func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 	github := &cliSyncGitHub{}
-	service := syncer.Service{Discoverer: cliSyncDiscoverer{}, Git: cliSyncGit{}, GitHub: github}
+	service := syncer.Service{Git: cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: cliGraphite{}, GitHub: github}
 	output, err := executeWithServices(t, cliService(&cliGitHub{}), service, "sync")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -40,7 +42,7 @@ func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 }
 
 func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
-	plan := syncer.Plan{Link: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}}}}
+	plan := syncer.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}}}}
 	for _, test := range []struct {
 		name         string
 		presentation Presentation
@@ -59,7 +61,7 @@ func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
 }
 
 func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *testing.T) {
-	plan := syncer.Plan{Link: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}}}}
+	plan := syncer.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}}}}
 	var output bytes.Buffer
 	if err := writeSyncPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -72,14 +74,14 @@ func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *tes
 }
 
 func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
-	discoverer := &cliApplyDiscoverer{}
+	var selected string
 	github := &cliSyncGitHub{}
-	output, err := executeWithServices(t, cliService(&cliGitHub{}), syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}, "sync", "--branch", "beta", "--apply")
+	output, err := executeWithServices(t, cliService(&cliGitHub{}), syncer.Service{Git: cliGit{current: "other", branches: []string{"main", "alpha", "beta"}}, Graphite: recordingGraphite{selected: &selected}, GitHub: github}, "sync", "--branch", "beta", "--apply")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if discoverer.branch != "beta" {
-		t.Errorf("selected branch = %q, want beta", discoverer.branch)
+	if selected != "beta" {
+		t.Errorf("selected branch = %q, want beta", selected)
 	}
 	if github.links != 1 {
 		t.Errorf("Link calls = %d, want 1", github.links)
@@ -90,9 +92,8 @@ func TestSyncApplyPassesExplicitBranchAndMutatesOnce(t *testing.T) {
 }
 
 func TestSyncApplyFailureNeverReportsSuccess(t *testing.T) {
-	discoverer := &cliApplyDiscoverer{}
 	github := &cliSyncGitHub{err: errors.New("synthetic sync failure")}
-	output, err := executeWithServices(t, cliService(&cliGitHub{}), syncer.Service{Discoverer: discoverer, Git: cliSyncGit{}, GitHub: github}, "sync", "--apply")
+	output, err := executeWithServices(t, cliService(&cliGitHub{}), syncer.Service{Git: cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: cliGraphite{}, GitHub: github}, "sync", "--apply")
 	if err == nil {
 		t.Fatal("Execute() error = nil")
 	}
@@ -101,26 +102,25 @@ func TestSyncApplyFailureNeverReportsSuccess(t *testing.T) {
 	}
 }
 
-type cliSyncDiscoverer struct{}
-
-func (cliSyncDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
-	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "current Git branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}}}}, nil
-}
-
-type cliApplyDiscoverer struct{ branch string }
-
-func (f *cliApplyDiscoverer) DiscoverWithOptions(_ context.Context, selection link.Selection) (link.Plan, error) {
-	f.branch = selection.Branch
-	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}}}}, nil
-}
-
-type cliSyncGit struct{}
-
-func (cliSyncGit) Clean(context.Context) error { return nil }
-
+// cliSyncGitHub reuses the link fakes' pull requests and records the one
+// reconciliation mutation sync is allowed to perform.
 type cliSyncGitHub struct {
 	links int
 	err   error
+}
+
+func (f *cliSyncGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+	prs := []githubstack.PullRequest{
+		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
+		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
+	}
+	var matching []githubstack.PullRequest
+	for _, pr := range prs {
+		if slices.Contains(branches, pr.Head) {
+			matching = append(matching, pr)
+		}
+	}
+	return matching, nil
 }
 
 func (f *cliSyncGitHub) Link(context.Context, string, []string) error {
@@ -129,4 +129,13 @@ func (f *cliSyncGitHub) Link(context.Context, string, []string) error {
 	}
 	f.links++
 	return nil
+}
+
+// recordingGraphite proves --branch reaches discovery without a checkout, now
+// that the sync service resolves the path itself.
+type recordingGraphite struct{ selected *string }
+
+func (g recordingGraphite) DiscoverStack(ctx context.Context, branch string, full bool) (graphite.Stack, error) {
+	*g.selected = branch
+	return cliGraphite{}.DiscoverStack(ctx, branch, full)
 }

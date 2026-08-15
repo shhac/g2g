@@ -8,6 +8,7 @@ package stack
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -38,6 +39,24 @@ type GitHub interface {
 type Discovery struct {
 	Snapshot
 	PullRequests []githubstack.PullRequest
+}
+
+// Equal reports whether two snapshots describe the same Graphite path.
+// Revalidation compares this immediately before a mutation, so every fact that
+// could change what the command does belongs here — including the declared
+// ancestry above the base, which can move without altering Branches.
+func (s Snapshot) Equal(other Snapshot) bool {
+	return s.Target == other.Target &&
+		s.TargetSource == other.TargetSource &&
+		s.Base == other.Base &&
+		s.BaseSource == other.BaseSource &&
+		slices.Equal(s.GraphitePath, other.GraphitePath) &&
+		slices.Equal(s.Branches, other.Branches)
+}
+
+// Equal reports whether two discoveries describe the same world.
+func (d Discovery) Equal(other Discovery) bool {
+	return d.Snapshot.Equal(other.Snapshot) && slices.Equal(d.PullRequests, other.PullRequests)
 }
 
 // Discover resolves the selected path and reads its pull requests, without

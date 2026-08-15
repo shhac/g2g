@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/stack"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
@@ -56,8 +57,8 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 
 func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
 	plan := push.Plan{
-		Target: "synthetic-top", Base: "synthetic-main", Remote: "origin",
-		Branches: []string{"synthetic-lower", "synthetic-top"},
+		Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-lower", "synthetic-top"}},
+		Remote:   "origin",
 	}
 	for _, test := range []struct {
 		name         string

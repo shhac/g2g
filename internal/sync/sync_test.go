@@ -3,11 +3,12 @@ package sync
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/stack"
 )
 
@@ -17,7 +18,7 @@ func TestPreviewClassifiesGraphiteAuthoritativeDifferences(t *testing.T) {
 		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
 		{Number: 3, Head: "gamma", Base: "beta", State: "MERGED"},
 	})
-	plan, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+	plan, err := service.Preview(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -31,15 +32,14 @@ func TestPreviewClassifiesGraphiteAuthoritativeDifferences(t *testing.T) {
 }
 
 func TestApplyReconcilesOnlyFullyMappedOpenPath(t *testing.T) {
-	github := &fakeGitHub{}
 	service := fakeService([]githubstack.PullRequest{
 		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
-		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
+		{Number: 2, Head: "beta", Base: "alpha", State: "OPEN"},
 		{Number: 3, Head: "gamma", Base: "beta", State: "OPEN"},
-		{Number: 4, Head: "delta", Base: "main", State: "OPEN"},
+		{Number: 4, Head: "delta", Base: "gamma", State: "OPEN"},
 	})
-	service.GitHub = github
-	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+	github := service.GitHub.(*fakeGitHub)
+	preview, err := service.Preview(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -59,12 +59,9 @@ func TestApplyReconcilesOnlyFullyMappedOpenPath(t *testing.T) {
 
 func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 	github := &fakeGitHub{}
-	service := Service{
-		Discoverer: fakeDiscoverer{plan: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-feature", Base: "synthetic-main", Branches: []string{"synthetic-feature"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "synthetic-feature", Base: "synthetic-main", State: "OPEN"}}}}},
-		Git:        fakeGit{},
-		GitHub:     github,
-	}
-	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+	github.prs = []githubstack.PullRequest{{Number: 1, Head: "synthetic-feature", Base: "synthetic-main", State: "OPEN"}}
+	service := Service{Git: singleBranchGit{}, Graphite: singleBranchGraphite{}, GitHub: github}
+	preview, err := service.Preview(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +86,7 @@ func TestApplyFailsClosedForMissingOrUnsafeMappings(t *testing.T) {
 			github := &fakeGitHub{}
 			service := fakeService(prs)
 			service.GitHub = github
-			preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+			preview, err := service.Preview(context.Background(), stack.Selection{})
 			if err != nil {
 				t.Fatalf("Preview() error = %v", err)
 			}
@@ -104,10 +101,15 @@ func TestApplyFailsClosedForMissingOrUnsafeMappings(t *testing.T) {
 }
 
 func TestApplyRejectsChangedPlan(t *testing.T) {
-	discoverer := &changingDiscoverer{}
-	github := &fakeGitHub{}
-	service := Service{Discoverer: discoverer, Git: fakeGit{}, GitHub: github}
-	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+	calls := 0
+	github := &fakeGitHub{prs: []githubstack.PullRequest{
+		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
+		{Number: 2, Head: "beta", Base: "alpha", State: "OPEN"},
+		{Number: 3, Head: "gamma", Base: "beta", State: "OPEN"},
+		{Number: 4, Head: "delta", Base: "gamma", State: "OPEN"},
+	}}
+	service := Service{Git: fakeGit{}, Graphite: fakeGraphite{shiftTrunk: &calls}, GitHub: github}
+	preview, err := service.Preview(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -123,11 +125,11 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		gitErr  error
-		github  *fakeGitHub
-		wantErr error
+		linkErr error
+		wantErr string
 	}{
-		{"dirty worktree", errors.New("dirty"), &fakeGitHub{}, errors.New("dirty")},
-		{"GitHub link", nil, &fakeGitHub{err: errors.New("link failed")}, errors.New("link failed")},
+		{name: "dirty worktree", gitErr: errors.New("dirty"), wantErr: "dirty"},
+		{name: "GitHub link", linkErr: errors.New("link failed"), wantErr: "link failed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service := fakeService([]githubstack.PullRequest{
@@ -137,17 +139,18 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 				{Number: 4, Head: "delta", Base: "gamma", State: "OPEN"},
 			})
 			service.Git = fakeGit{err: test.gitErr}
-			service.GitHub = test.github
-			preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+			github := service.GitHub.(*fakeGitHub)
+			github.err = test.linkErr
+
+			preview, err := service.Preview(context.Background(), stack.Selection{})
 			if err != nil {
 				t.Fatalf("Preview() error = %v", err)
 			}
-			err = applyPlan(t, service, preview)
-			if err == nil || err.Error() != test.wantErr.Error() {
-				t.Fatalf("Apply() error = %v, want %v", err, test.wantErr)
+			if err := applyPlan(t, service, preview); err == nil || err.Error() != test.wantErr {
+				t.Fatalf("apply error = %v, want %q", err, test.wantErr)
 			}
-			if test.github.links != 0 {
-				t.Errorf("successful links = %d, want 0", test.github.links)
+			if github.links != 0 {
+				t.Errorf("successful links = %d, want 0", github.links)
 			}
 		})
 	}
@@ -155,7 +158,7 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 
 func TestPreviewRejectsDuplicateOpenPullRequests(t *testing.T) {
 	service := fakeService([]githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "alpha", Base: "main", State: "OPEN"}})
-	if _, err := service.Preview(context.Background(), link.Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "2 open pull requests") {
+	if _, err := service.Preview(context.Background(), stack.Selection{}); err == nil || !strings.Contains(err.Error(), "2 open pull requests") {
 		t.Fatalf("Preview() error = %v", err)
 	}
 }
@@ -168,7 +171,7 @@ func TestPreviewResolvesReusedBranchWithClosedHistory(t *testing.T) {
 		{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"},
 		{Number: 9, Head: "alpha", Base: "main", State: "OPEN"},
 	})
-	plan, err := service.Preview(context.Background(), link.Selection{Branch: ""})
+	plan, err := service.Preview(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -182,41 +185,57 @@ func TestPreviewResolvesReusedBranchWithClosedHistory(t *testing.T) {
 
 func fakeService(prs []githubstack.PullRequest) Service {
 	return Service{
-		Discoverer: fakeDiscoverer{plan: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "delta", TargetSource: "current Git branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}}, PullRequests: prs}}},
-		Git:        fakeGit{},
-		GitHub:     &fakeGitHub{},
+		Git:      fakeGit{},
+		Graphite: fakeGraphite{},
+		GitHub:   &fakeGitHub{prs: prs},
 	}
-}
-
-type fakeDiscoverer struct {
-	plan link.Plan
-	err  error
-}
-
-func (f fakeDiscoverer) DiscoverWithOptions(ctx context.Context, selection link.Selection) (link.Plan, error) {
-	return f.plan, f.err
-}
-
-type changingDiscoverer struct{ calls int }
-
-func (f *changingDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
-	f.calls++
-	trunk := "main"
-	if f.calls > 1 {
-		trunk = "other-main"
-	}
-	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "delta", TargetSource: "current Git branch", Base: trunk, BaseSource: "Graphite-declared ancestry", GraphitePath: []string{trunk, "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}}, nil
 }
 
 type fakeGit struct{ err error }
 
 func (f fakeGit) Clean(context.Context) error { return f.err }
+func (fakeGit) CurrentBranch(context.Context) (string, error) {
+	return "delta", nil
+}
+func (fakeGit) LocalBranches(context.Context) ([]string, error) {
+	return []string{"main", "other-main", "alpha", "beta", "gamma", "delta"}, nil
+}
+
+// fakeGraphite declares the trunk-to-delta path every case in this file works
+// from. shiftTrunk moves the declared base on the second call, which is how a
+// revalidation observes Graphite changing under a rendered preview.
+type fakeGraphite struct{ shiftTrunk *int }
+
+func (f fakeGraphite) DiscoverStack(context.Context, string, bool) (graphite.Stack, error) {
+	trunk := "main"
+	if f.shiftTrunk != nil {
+		*f.shiftTrunk++
+		if *f.shiftTrunk > 1 {
+			trunk = "other-main"
+		}
+	}
+	return graphite.Stack{
+		Path:   []string{trunk, "alpha", "beta", "gamma", "delta"},
+		Trunks: []string{trunk},
+	}, nil
+}
 
 type fakeGitHub struct {
+	prs      []githubstack.PullRequest
 	links    int
 	trunk    string
 	branches []string
 	err      error
+}
+
+func (f *fakeGitHub) Inspect(_ context.Context, branches []string) ([]githubstack.PullRequest, error) {
+	var matching []githubstack.PullRequest
+	for _, pr := range f.prs {
+		if slices.Contains(branches, pr.Head) {
+			matching = append(matching, pr)
+		}
+	}
+	return matching, nil
 }
 
 func (f *fakeGitHub) Link(_ context.Context, trunk string, branches []string) error {
@@ -242,9 +261,27 @@ func statesToStrings(states []State) []string {
 // the ready-to-apply render and its flush between them.
 func applyPlan(t *testing.T, service Service, preview Plan) error {
 	t.Helper()
-	validated, err := service.Revalidate(context.Background(), link.Selection{}, preview)
+	validated, err := service.Revalidate(context.Background(), stack.Selection{}, preview)
 	if err != nil {
 		return err
 	}
 	return service.Execute(context.Background(), validated)
+}
+
+// singleBranch* model a stack with nothing above its trunk, which is the
+// successful no-op gh stack link cannot express.
+type singleBranchGit struct{}
+
+func (singleBranchGit) Clean(context.Context) error { return nil }
+func (singleBranchGit) CurrentBranch(context.Context) (string, error) {
+	return "synthetic-feature", nil
+}
+func (singleBranchGit) LocalBranches(context.Context) ([]string, error) {
+	return []string{"synthetic-main", "synthetic-feature"}, nil
+}
+
+type singleBranchGraphite struct{}
+
+func (singleBranchGraphite) DiscoverStack(context.Context, string, bool) (graphite.Stack, error) {
+	return graphite.Stack{Path: []string{"synthetic-main", "synthetic-feature"}, Trunks: []string{"synthetic-main"}}, nil
 }

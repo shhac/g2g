@@ -10,14 +10,14 @@ import (
 func syncView(plan syncer.Plan) stackView {
 	view := stackView{
 		Operation:    "sync",
-		Target:       plan.Link.Target,
-		TargetSource: plan.Link.TargetSource,
-		Nodes:        []stackNode{{Branch: plan.Link.Base, Trunk: true}},
+		Target:       plan.Discovery.Target,
+		TargetSource: plan.Discovery.TargetSource,
+		Nodes:        []stackNode{{Branch: plan.Discovery.Base, Trunk: true}},
 	}
 	for _, item := range plan.Items {
 		node := stackNode{
 			Branch:   item.Branch,
-			Target:   item.Branch == plan.Link.Target,
+			Target:   item.Branch == plan.Discovery.Target,
 			State:    syncDetail(item),
 			Severity: syncSeverity(item.State),
 		}
@@ -29,8 +29,8 @@ func syncView(plan syncer.Plan) stackView {
 
 	// As in link, only an unconstructible command is withheld; a blocked one is
 	// shown and labelled.
-	if len(plan.Link.Branches) >= 2 {
-		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Link.Base}, plan.Link.Branches...)
+	if len(plan.Discovery.Branches) >= 2 {
+		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Discovery.Base}, plan.Discovery.Branches...)
 	}
 	if !plan.CanApply() {
 		return view.block("Apply blocked: resolve every missing or non-open GitHub pull request first.")

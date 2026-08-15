@@ -4,6 +4,7 @@ package link
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
@@ -182,32 +183,7 @@ func issueSummary(issues []Issue) string {
 // Equal compares every fact that can affect the command shown in a preview or
 // the GitHub action performed after revalidation.
 func (left Plan) Equal(right Plan) bool {
-	if left.Target != right.Target || left.TargetSource != right.TargetSource || left.Base != right.Base || left.BaseSource != right.BaseSource || !sameStrings(left.GraphitePath, right.GraphitePath) || !sameStrings(left.Branches, right.Branches) || len(left.PullRequests) != len(right.PullRequests) || len(left.Issues) != len(right.Issues) {
-		return false
-	}
-	for index := range left.Issues {
-		if left.Issues[index] != right.Issues[index] {
-			return false
-		}
-	}
-	for index := range left.PullRequests {
-		if left.PullRequests[index] != right.PullRequests[index] {
-			return false
-		}
-	}
-	return true
-}
-
-func sameStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
+	return left.Discovery.Equal(right.Discovery) && slices.Equal(left.Issues, right.Issues)
 }
 
 func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string) []Issue {

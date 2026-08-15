@@ -27,12 +27,8 @@ type Service struct {
 }
 
 type Plan struct {
-	Target       string
-	TargetSource string
-	Base         string
-	BaseSource   string
-	Branches     []string
-	Remote       string
+	stack.Snapshot
+	Remote string
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
@@ -49,7 +45,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
-	plan := Plan{Target: snapshot.Target, TargetSource: snapshot.TargetSource, Base: snapshot.Base, BaseSource: snapshot.BaseSource, Branches: snapshot.Branches, Remote: remote}
+	plan := Plan{Snapshot: snapshot, Remote: remote}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -89,20 +85,9 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	return s.Git.PushAtomic(ctx, plan.Remote, plan.Branches)
 }
 
+// Equal compares every fact that can change which refs are pushed where.
 func (p Plan) Equal(other Plan) bool {
-	return p.Target == other.Target && p.TargetSource == other.TargetSource && p.Base == other.Base && p.BaseSource == other.BaseSource && p.Remote == other.Remote && sameBranches(p.Branches, other.Branches)
-}
-
-func sameBranches(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
+	return p.Snapshot.Equal(other.Snapshot) && p.Remote == other.Remote
 }
 
 var _ Git = localgit.Client{}

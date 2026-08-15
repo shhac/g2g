@@ -7,10 +7,11 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
-	plan := link.Plan{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN"}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}, Issues: []link.Issue{{Branch: "synthetic/top", Reason: "no open pull request"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN"}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}, Issues: []link.Issue{{Branch: "synthetic/top", Reason: "no open pull request"}}}
 	var out bytes.Buffer
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -23,7 +24,7 @@ func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
 }
 
 func TestStatusRendersOneNativeStackSummaryWithoutRepeatedBadges(t *testing.T) {
-	plan := link.Plan{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}}}}
 	var out bytes.Buffer
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -38,7 +39,7 @@ func TestStatusRendersOneNativeStackSummaryWithoutRepeatedBadges(t *testing.T) {
 }
 
 func TestStatusMarksOnlyNativeStackExceptions(t *testing.T) {
-	plan := link.Plan{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}}
 	var out bytes.Buffer
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -52,7 +53,7 @@ func TestStatusMarksOnlyNativeStackExceptions(t *testing.T) {
 }
 
 func TestStatusMarksConflictingNativeStackMembership(t *testing.T) {
-	plan := link.Plan{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}}}}
 	var out bytes.Buffer
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)

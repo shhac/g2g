@@ -38,16 +38,11 @@ type Service struct {
 	GitHub   GitHub
 }
 
-// Plan is the validated, printable bottom-to-top linking action.
+// Plan is the validated, printable bottom-to-top linking action: the shared
+// discovery every command performs, plus link's own policy verdict on it.
 type Plan struct {
-	Target       string
-	TargetSource string
-	GraphitePath []string
-	Base         string
-	BaseSource   string
-	Branches     []string
-	PullRequests []githubstack.PullRequest
-	Issues       []Issue
+	stack.Discovery
+	Issues []Issue
 }
 
 // IssueKind classifies why a node blocks apply. link's policy is stricter than
@@ -106,26 +101,11 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
-	snapshot, err := stack.Resolve(ctx, s.Git, s.Graphite, selection, "gh stack link")
+	discovery, err := stack.Discover(ctx, s.Git, s.Graphite, s.GitHub, selection, "gh stack link")
 	if err != nil {
 		return Plan{}, err
 	}
-	diagnostic.Event(ctx, "link.target", diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "source", Value: snapshot.TargetSource})
-	diagnostic.Event(ctx, "link.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
-	prs, err := s.GitHub.Inspect(ctx, snapshot.Branches)
-	if err != nil {
-		return Plan{}, err
-	}
-	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "per_pull_request"})
-	return Plan{
-		Target:       snapshot.Target,
-		TargetSource: snapshot.TargetSource,
-		GraphitePath: snapshot.GraphitePath,
-		Base:         snapshot.Base,
-		BaseSource:   snapshot.BaseSource,
-		Branches:     snapshot.Branches,
-		PullRequests: prs,
-	}, nil
+	return Plan{Discovery: discovery}, nil
 }
 
 // Plan applies link's stricter policy: existing pull requests must already

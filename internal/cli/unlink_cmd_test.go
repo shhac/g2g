@@ -6,14 +6,11 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 func membershipPlan(prs ...githubstack.PullRequest) link.Plan {
-	return link.Plan{
-		Target: "synthetic-top", Base: "synthetic-main",
-		Branches:     []string{"synthetic-lower", "synthetic-top"},
-		PullRequests: prs,
-	}
+	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-lower", "synthetic-top"}}, PullRequests: prs}}
 }
 
 func linkedPair() []githubstack.PullRequest {

@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/stack"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
@@ -54,7 +55,7 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 }
 
 func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
-	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}}
 	for _, test := range []struct {
 		color bool
 		want  string
@@ -75,10 +76,7 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 }
 
 func TestLinkPlanSnapshots(t *testing.T) {
-	resolved := link.Plan{
-		Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}},
-	}
+	resolved := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}}
 	unresolved := resolved
 	unresolved.Issues = []link.Issue{{Branch: "beta", Reason: "no open pull request"}}
 	for _, test := range []struct {
@@ -104,7 +102,7 @@ func TestLinkPlanSnapshots(t *testing.T) {
 }
 
 func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
-	plan := link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "beta"}}}}
 	for _, test := range []struct {
 		name  string
 		color bool
@@ -127,7 +125,7 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 }
 
 func TestLinkPreviewCommandUsesShellSafeArguments(t *testing.T) {
-	plan := link.Plan{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "feature;synthetic"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "feature;synthetic"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "feature;synthetic", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "feature;synthetic"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}, {Number: 2, Head: "feature;synthetic"}}}}
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -220,15 +218,10 @@ func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
 }
 
 func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
-	plan := link.Plan{
-		Target: "beta-two", TargetSource: "--branch", Base: "main",
-		Branches:     []string{"alpha", "beta", "beta-two"},
-		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}},
-		Issues: []link.Issue{
-			{Branch: "beta", Reason: "closed pull request"},
-			{Branch: "beta-two", Reason: "no open pull request"},
-		},
-	}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta-two", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta", "beta-two"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}}}, Issues: []link.Issue{
+		{Branch: "beta", Reason: "closed pull request"},
+		{Branch: "beta-two", Reason: "no open pull request"},
+	}}
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)

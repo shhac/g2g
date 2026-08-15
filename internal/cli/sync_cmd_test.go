@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
@@ -39,7 +40,7 @@ func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 }
 
 func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
-	plan := syncer.Plan{Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}}}}
+	plan := syncer.Plan{Link: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Aligned, PullRequest: &githubstack.PullRequest{Number: 10}}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Divergent, PullRequest: &githubstack.PullRequest{Number: 11, Base: "synthetic-main"}}}}
 	for _, test := range []struct {
 		name         string
 		presentation Presentation
@@ -58,7 +59,7 @@ func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
 }
 
 func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *testing.T) {
-	plan := syncer.Plan{Link: link.Plan{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}}}}
+	plan := syncer.Plan{Link: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}}}}, Items: []syncer.Item{{Branch: "synthetic-a", ExpectedBase: "synthetic-main", State: syncer.Missing}, {Branch: "synthetic-b", ExpectedBase: "synthetic-a", State: syncer.Unsafe, PullRequest: &githubstack.PullRequest{Number: 12, State: "CLOSED"}}}}
 	var output bytes.Buffer
 	if err := writeSyncPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
@@ -103,14 +104,14 @@ func TestSyncApplyFailureNeverReportsSuccess(t *testing.T) {
 type cliSyncDiscoverer struct{}
 
 func (cliSyncDiscoverer) DiscoverWithOptions(context.Context, link.Selection) (link.Plan, error) {
-	return link.Plan{Target: "beta", TargetSource: "current Git branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}}}, nil
+	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "current Git branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "main", State: "OPEN"}}}}, nil
 }
 
 type cliApplyDiscoverer struct{ branch string }
 
 func (f *cliApplyDiscoverer) DiscoverWithOptions(_ context.Context, selection link.Selection) (link.Plan, error) {
 	f.branch = selection.Branch
-	return link.Plan{Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}}}, nil
+	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta"}, Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}}}}, nil
 }
 
 type cliSyncGit struct{}

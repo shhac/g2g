@@ -7,20 +7,17 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 // link refuses a wrong base but sync reconciles exactly that, so a path
 // blocked solely on bases must name sync rather than leave the reader to
 // discover it.
 func TestLinkBlockedOnlyOnBasesPointsAtSync(t *testing.T) {
-	plan := link.Plan{
-		Target: "beta", Base: "main", Branches: []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{
-			{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
-			{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
-		},
-		Issues: []link.Issue{{Branch: "beta", Kind: link.IssueBase, Reason: "PR #2 base main, want alpha"}},
-	}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{
+		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
+		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
+	}}, Issues: []link.Issue{{Branch: "beta", Kind: link.IssueBase, Reason: "PR #2 base main, want alpha"}}}
 
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
@@ -40,11 +37,7 @@ func TestLinkBlockedOnAnythingElseDoesNotPointAtSync(t *testing.T) {
 		{Branch: "beta", Kind: link.IssueAmbiguous, Reason: "2 open pull requests"},
 	} {
 		t.Run(string(issue.Kind), func(t *testing.T) {
-			plan := link.Plan{
-				Target: "beta", Base: "main", Branches: []string{"alpha", "beta"},
-				PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}},
-				Issues:       []link.Issue{issue},
-			}
+			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}}}, Issues: []link.Issue{issue}}
 			var output bytes.Buffer
 			if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 				t.Fatal(err)
@@ -59,14 +52,10 @@ func TestLinkBlockedOnAnythingElseDoesNotPointAtSync(t *testing.T) {
 // A mixed set is not sync-repairable: sync refuses the whole path if any
 // branch lacks an open pull request.
 func TestLinkBlockedOnMixedCausesDoesNotPointAtSync(t *testing.T) {
-	plan := link.Plan{
-		Target: "beta", Base: "main", Branches: []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "synthetic-other", State: "OPEN"}},
-		Issues: []link.Issue{
-			{Branch: "alpha", Kind: link.IssueBase, Reason: "PR #1 base synthetic-other, want main"},
-			{Branch: "beta", Kind: link.IssueMissing, Reason: "no open pull request"},
-		},
-	}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "synthetic-other", State: "OPEN"}}}, Issues: []link.Issue{
+		{Branch: "alpha", Kind: link.IssueBase, Reason: "PR #1 base synthetic-other, want main"},
+		{Branch: "beta", Kind: link.IssueMissing, Reason: "no open pull request"},
+	}}
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)

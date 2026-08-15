@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 func TestPreviewClassifiesGraphiteAuthoritativeDifferences(t *testing.T) {
@@ -59,12 +60,9 @@ func TestApplyReconcilesOnlyFullyMappedOpenPath(t *testing.T) {
 func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 	github := &fakeGitHub{}
 	service := Service{
-		Discoverer: fakeDiscoverer{plan: link.Plan{
-			Target: "synthetic-feature", Base: "synthetic-main", Branches: []string{"synthetic-feature"},
-			PullRequests: []githubstack.PullRequest{{Number: 1, Head: "synthetic-feature", Base: "synthetic-main", State: "OPEN"}},
-		}},
-		Git:    fakeGit{},
-		GitHub: github,
+		Discoverer: fakeDiscoverer{plan: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-feature", Base: "synthetic-main", Branches: []string{"synthetic-feature"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "synthetic-feature", Base: "synthetic-main", State: "OPEN"}}}}},
+		Git:        fakeGit{},
+		GitHub:     github,
 	}
 	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
@@ -184,17 +182,9 @@ func TestPreviewResolvesReusedBranchWithClosedHistory(t *testing.T) {
 
 func fakeService(prs []githubstack.PullRequest) Service {
 	return Service{
-		Discoverer: fakeDiscoverer{plan: link.Plan{
-			Target:       "delta",
-			TargetSource: "current Git branch",
-			Base:         "main",
-			BaseSource:   "Graphite-declared ancestry",
-			GraphitePath: []string{"main", "alpha", "beta", "gamma", "delta"},
-			Branches:     []string{"alpha", "beta", "gamma", "delta"},
-			PullRequests: prs,
-		}},
-		Git:    fakeGit{},
-		GitHub: &fakeGitHub{},
+		Discoverer: fakeDiscoverer{plan: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "delta", TargetSource: "current Git branch", Base: "main", BaseSource: "Graphite-declared ancestry", GraphitePath: []string{"main", "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}}, PullRequests: prs}}},
+		Git:        fakeGit{},
+		GitHub:     &fakeGitHub{},
 	}
 }
 
@@ -215,7 +205,7 @@ func (f *changingDiscoverer) DiscoverWithOptions(context.Context, link.Selection
 	if f.calls > 1 {
 		trunk = "other-main"
 	}
-	return link.Plan{Target: "delta", TargetSource: "current Git branch", Base: trunk, BaseSource: "Graphite-declared ancestry", GraphitePath: []string{trunk, "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}, nil
+	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "delta", TargetSource: "current Git branch", Base: trunk, BaseSource: "Graphite-declared ancestry", GraphitePath: []string{trunk, "alpha", "beta", "gamma", "delta"}, Branches: []string{"alpha", "beta", "gamma", "delta"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: trunk, State: "OPEN"}, {Number: 2, Head: "beta", Base: "alpha", State: "OPEN"}, {Number: 3, Head: "gamma", Base: "beta", State: "OPEN"}, {Number: 4, Head: "delta", Base: "gamma", State: "OPEN"}}}}, nil
 }
 
 type fakeGit struct{ err error }

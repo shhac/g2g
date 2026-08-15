@@ -8,16 +8,14 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 func formatPlan() link.Plan {
-	return link.Plan{
-		Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"},
-		PullRequests: []githubstack.PullRequest{
-			{Number: 1, Head: "alpha", URL: "https://example.test/1", State: "OPEN"},
-			{Number: 2, Head: "beta", URL: "https://example.test/2", State: "OPEN"},
-		},
-	}
+	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{
+		{Number: 1, Head: "alpha", URL: "https://example.test/1", State: "OPEN"},
+		{Number: 2, Head: "beta", URL: "https://example.test/2", State: "OPEN"},
+	}}}
 }
 
 // The machine formats exist so callers stop parsing decorated terminal text.
@@ -111,11 +109,7 @@ func TestSingleBranchPathNeverRendersAnUnusableCommand(t *testing.T) {
 		{name: "blocked", issues: []link.Issue{{Branch: "alpha", Reason: "no open pull request"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{
-				Target: "alpha", Base: "main", Branches: []string{"alpha"},
-				PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", State: "OPEN"}},
-				Issues:       test.issues,
-			}
+			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "alpha", Base: "main", Branches: []string{"alpha"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha", State: "OPEN"}}}, Issues: test.issues}
 			var output bytes.Buffer
 			if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 				t.Fatal(err)

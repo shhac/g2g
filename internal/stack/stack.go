@@ -1,4 +1,8 @@
-// Package stack resolves a safe, local Graphite path for stack-oriented commands.
+// Package stack resolves the read-only picture every stack-oriented command
+// starts from: a safe, local Graphite path and the GitHub pull requests on it.
+//
+// This lives here rather than in any one command's package so that link, sync,
+// status, unlink and submit can share it without depending on each other.
 package stack
 
 import (
@@ -7,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 )
 
@@ -19,6 +25,39 @@ type Git interface {
 // Graphite discovers a declared path without checking out a branch.
 type Graphite interface {
 	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
+}
+
+// GitHub reads the pull requests on a discovered path. Inspect is read-only.
+type GitHub interface {
+	Inspect(context.Context, []string) ([]githubstack.PullRequest, error)
+}
+
+// Discovery is the complete read-only picture: the Graphite-declared path plus
+// the GitHub pull requests on it. Commands add their own policy on top; none
+// of them need to re-derive these facts.
+type Discovery struct {
+	Snapshot
+	PullRequests []githubstack.PullRequest
+}
+
+// Discover resolves the selected path and reads its pull requests, without
+// checking out a branch or mutating anything.
+func Discover(ctx context.Context, git Git, graphiteClient Graphite, github GitHub, selection Selection, command string) (Discovery, error) {
+	if github == nil {
+		return Discovery{}, fmt.Errorf("stack discovery is not fully configured")
+	}
+	snapshot, err := Resolve(ctx, git, graphiteClient, selection, command)
+	if err != nil {
+		return Discovery{}, err
+	}
+	diagnostic.Event(ctx, "discovery.target", diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "source", Value: snapshot.TargetSource})
+	diagnostic.Event(ctx, "discovery.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
+	prs, err := github.Inspect(ctx, snapshot.Branches)
+	if err != nil {
+		return Discovery{}, err
+	}
+	diagnostic.Event(ctx, "github.native_stack_membership", diagnostic.Field{Key: "observation", Value: "per_pull_request"})
+	return Discovery{Snapshot: snapshot, PullRequests: prs}, nil
 }
 
 // Selection captures every no-checkout path selector shared by stack commands.

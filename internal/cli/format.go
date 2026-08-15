@@ -1,0 +1,134 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+)
+
+// outputFormat selects which renderer consumes a stackView. Pretty output is
+// the default; the machine formats exist so callers stop scraping decorated
+// terminal text, which is why the renderer has always kept plan data separate
+// from its ANSI decoration.
+type outputFormat string
+
+const (
+	formatPretty    outputFormat = ""
+	formatJSON      outputFormat = "json"
+	formatPorcelain outputFormat = "porcelain"
+)
+
+// schemaVersion is bumped when a field changes meaning or disappears. Adding a
+// field is not a breaking change and does not bump it.
+const schemaVersion = 1
+
+type jsonDocument struct {
+	SchemaVersion int          `json:"schemaVersion"`
+	Operation     string       `json:"operation"`
+	Target        string       `json:"target"`
+	TargetSource  string       `json:"targetSource,omitempty"`
+	Trunk         string       `json:"trunk"`
+	Branches      []jsonBranch `json:"branches"`
+	Command       []string     `json:"command,omitempty"`
+	Notes         []jsonNote   `json:"notes,omitempty"`
+}
+
+type jsonBranch struct {
+	Branch      string `json:"branch"`
+	Target      bool   `json:"target,omitempty"`
+	PullRequest int    `json:"pullRequest,omitempty"`
+	URL         string `json:"url,omitempty"`
+	State       string `json:"state,omitempty"`
+	Severity    string `json:"severity,omitempty"`
+}
+
+type jsonNote struct {
+	Text     string `json:"text"`
+	Severity string `json:"severity"`
+}
+
+func (v stackView) document() jsonDocument {
+	doc := jsonDocument{
+		SchemaVersion: schemaVersion,
+		Operation:     v.Operation,
+		Target:        v.Target,
+		TargetSource:  v.TargetSource,
+		Command:       v.Action,
+		Branches:      []jsonBranch{},
+	}
+	for _, node := range v.Nodes {
+		if node.Trunk {
+			doc.Trunk = node.Branch
+			continue
+		}
+		doc.Branches = append(doc.Branches, jsonBranch{
+			Branch:      node.Branch,
+			Target:      node.Target,
+			PullRequest: node.PRNumber,
+			URL:         node.PRURL,
+			State:       node.State,
+			Severity:    string(node.Severity),
+		})
+	}
+	for _, note := range v.Notes {
+		doc.Notes = append(doc.Notes, jsonNote{Text: note.Text, Severity: string(note.Severity)})
+	}
+	return doc
+}
+
+func writeJSON(writer io.Writer, view stackView) error {
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(view.document())
+}
+
+// writePorcelain emits one tab-separated record per line, leading with a
+// record type so a reader can switch on it and ignore fields added later.
+func writePorcelain(writer io.Writer, view stackView) error {
+	doc := view.document()
+	records := [][]string{{"target", doc.Target, doc.TargetSource}, {"trunk", doc.Trunk}}
+	for _, branch := range doc.Branches {
+		records = append(records, []string{
+			"branch", branch.Branch, porcelainNumber(branch.PullRequest), branch.State, branch.Severity, branch.URL, porcelainBool(branch.Target),
+		})
+	}
+	if len(doc.Command) != 0 {
+		records = append(records, append([]string{"command"}, doc.Command...))
+	}
+	for _, note := range doc.Notes {
+		records = append(records, []string{"note", note.Severity, note.Text})
+	}
+
+	var out strings.Builder
+	for _, record := range records {
+		out.WriteString(strings.Join(record, "\t"))
+		out.WriteString("\n")
+	}
+	_, err := io.WriteString(writer, out.String())
+	return err
+}
+
+func porcelainNumber(number int) string {
+	if number == 0 {
+		return ""
+	}
+	return fmt.Sprint(number)
+}
+
+func porcelainBool(value bool) string {
+	if value {
+		return "target"
+	}
+	return ""
+}
+
+// prose writes a human-facing line. Machine formats emit the document and
+// nothing else, so their output can be piped without post-processing.
+func prose(writer io.Writer, p Presentation, line string) error {
+	if p.machine() {
+		return nil
+	}
+	_, err := fmt.Fprintln(writer, line)
+	return err
+}

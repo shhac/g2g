@@ -20,6 +20,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 		Short: "Link a linear Graphite stack to GitHub (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			presentation := presentation.resolve(cmd)
 			mode := "preview"
 			if apply {
 				mode = "apply"
@@ -37,10 +38,10 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 					return err
 				}
 				if plan.NothingToLink() {
-					fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
+					prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were needed or made."))
 					return nil
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to link.")
+				prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to link.")
 				return nil
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
@@ -51,7 +52,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				if err := writeLinkPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
 					return err
 				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
+				err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were needed or made."))
 				return err
 			}
 			if err := writeReadyToApply(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -65,8 +66,8 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 			if err := service.Execute(mutateCtx, validated); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
+			prose(cmd.OutOrStdout(), presentation, presentation.notice("Applied — GitHub stack updated"))
+			prose(cmd.OutOrStdout(), presentation, presentation.subdued("Changes were made."))
 			return nil
 		},
 	}
@@ -90,6 +91,9 @@ func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) 
 // error marked as presented, so the top-level printer reports it without
 // repeating the diagnostic block.
 func writeNotApplied(writer io.Writer, presentation Presentation, err error) error {
+	if presentation.machine() {
+		return err
+	}
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, presentation.problem("Not applied"))
 

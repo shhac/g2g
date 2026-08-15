@@ -19,7 +19,7 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 	var options submitOptions
 	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		return options.run(cmd, service, presentation)
+		return options.run(cmd, service, presentation.resolve(cmd))
 	}
 	options.selection.register(cmd, linkService, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
 	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to push to")
@@ -126,16 +126,14 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>")
-	return err
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>")
 }
 
 func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+p.notice("No changes were made.")+" Re-run with --apply to push, create missing PRs, and link.")
-	return err
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply to push, create missing PRs, and link.")
 }
 
 func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
@@ -147,7 +145,7 @@ func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, servic
 		err := fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
-	if _, err := fmt.Fprintln(cmd.OutOrStdout(), p.accent("Ready to apply")); err != nil {
+	if err := writeReadyBanner(cmd.OutOrStdout(), p); err != nil {
 		return err
 	}
 	if err := writeSubmitPreview(cmd.OutOrStdout(), validated, p, template); err != nil {
@@ -168,9 +166,8 @@ func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, servic
 	if o.edit && !o.keepSpec {
 		_ = os.RemoveAll(filepath.Dir(o.specPath))
 	}
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), p.notice("Applied — stack published and missing pull requests created"))
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), p.subdued("Changes were made."))
-	return err
+	_ = prose(cmd.OutOrStdout(), p, p.notice("Applied — stack published and missing pull requests created"))
+	return prose(cmd.OutOrStdout(), p, p.subdued("Changes were made."))
 }
 
 func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {

@@ -17,6 +17,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 		Short: "Reconcile GitHub's native stack to Graphite (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			presentation := presentation.resolve(cmd)
 			mode := "preview"
 			if apply {
 				mode = "apply"
@@ -33,7 +34,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				if err := writeSyncPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
 					return err
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to reconcile.")
+				prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to reconcile.")
 				return nil
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
@@ -44,10 +45,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				if err := writeSyncPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
 					return err
 				}
-				if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
-					return err
-				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
+				err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were needed or made."))
 				return err
 			}
 			if err := writeReadyToSync(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -61,9 +59,8 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 			if err := service.Execute(mutateCtx, validated); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))
 			}
-			fmt.Fprintln(cmd.OutOrStdout())
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
+			prose(cmd.OutOrStdout(), presentation, presentation.notice("Applied — GitHub stack updated"))
+			prose(cmd.OutOrStdout(), presentation, presentation.subdued("Changes were made."))
 			return nil
 		},
 	}

@@ -65,6 +65,12 @@ const (
 )
 
 func writeStackView(writer io.Writer, view stackView, p Presentation) error {
+	switch p.Format {
+	case formatJSON:
+		return writeJSON(writer, view)
+	case formatPorcelain:
+		return writePorcelain(writer, view)
+	}
 	lines := []string{fmt.Sprintf("%s  %s", p.accent("Target"), p.branch(view.Target))}
 	if view.TargetSource != "" {
 		lines[0] += "  " + p.subdued("· "+view.TargetSource)
@@ -158,6 +164,5 @@ func styleBySeverity(p Presentation, level severity, text string) string {
 }
 
 func writeReadyBanner(writer io.Writer, p Presentation) error {
-	_, err := fmt.Fprintln(writer, p.accent("Ready to apply"))
-	return err
+	return prose(writer, p, p.accent("Ready to apply"))
 }

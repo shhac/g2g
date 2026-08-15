@@ -3,6 +3,8 @@ package cli
 import (
 	"io"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -21,7 +23,27 @@ const (
 	ansiSubdued   = "\x1b[2m"
 )
 
-type Presentation struct{ Color bool }
+// Presentation carries the two output decisions: whether to decorate with
+// ANSI, and which renderer consumes the view. A machine format never colours.
+type Presentation struct {
+	Color  bool
+	Format outputFormat
+}
+
+func (p Presentation) machine() bool { return p.Format != formatPretty }
+
+// resolve applies the run-time output flags. Presentation is built when the
+// command tree is constructed, before flags are parsed, so the format has to
+// be picked up here rather than at construction.
+func (p Presentation) resolve(cmd *cobra.Command) Presentation {
+	if useJSON, _ := cmd.Flags().GetBool("json"); useJSON {
+		return Presentation{Format: formatJSON}
+	}
+	if usePorcelain, _ := cmd.Flags().GetBool("porcelain"); usePorcelain {
+		return Presentation{Format: formatPorcelain}
+	}
+	return p
+}
 
 func detectPresentation(writer io.Writer) Presentation {
 	file, ok := writer.(*os.File)

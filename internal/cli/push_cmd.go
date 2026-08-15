@@ -18,6 +18,7 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 		Short: "Atomically push a Graphite stack's local refs (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			presentation := presentation.resolve(cmd)
 			mode := "preview"
 			if apply {
 				mode = "apply"
@@ -34,7 +35,7 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 				if err := writePushPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
 					return err
 				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to push.")
+				err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to push.")
 				return err
 			}
 			validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
@@ -52,8 +53,8 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			if err := service.Execute(mutateCtx, validated); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "The push is atomic, so every selected ref advanced or none did; re-run g2g push to see which."))
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("Applied — remote refs updated atomically"))
-			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
+			prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("Applied — remote refs updated atomically"))
+			prose(cmd.OutOrStdout(), presentation, presentation.subdued("Changes were made."))
 			return nil
 		},
 	}

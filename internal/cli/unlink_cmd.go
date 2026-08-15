@@ -20,6 +20,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 	var number int
 	cmd := &cobra.Command{Use: "unlink", Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		presentation := presentation.resolve(cmd)
 		if number <= 0 {
 			return fmt.Errorf("--stack-number is required; run g2g status to inspect the selected PR path, then supply the GitHub stack number")
 		}
@@ -42,14 +43,14 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 			if err := writeUnlinkPlan(cmd.OutOrStdout(), plan, number, presentation); err != nil {
 				return err
 			}
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made."))
+			err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made."))
 			return err
 		}
 		validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
 		if err != nil {
 			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 		}
-		if _, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.accent("Ready to apply")); err != nil {
+		if err := writeReadyBanner(cmd.OutOrStdout(), presentation); err != nil {
 			return err
 		}
 		if err := writeUnlinkPlan(cmd.OutOrStdout(), validated, number, presentation); err != nil {
@@ -66,8 +67,8 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		if err := unstacker.Unstack(mutateCtx, number); err != nil {
 			return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether the relationship was removed."))
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Unlinked — GitHub stack relationship removed"))
-		fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Branches and pull requests were unchanged."))
+		prose(cmd.OutOrStdout(), presentation, presentation.notice("Unlinked — GitHub stack relationship removed"))
+		prose(cmd.OutOrStdout(), presentation, presentation.subdued("Branches and pull requests were unchanged."))
 		return nil
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink")

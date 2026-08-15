@@ -128,6 +128,31 @@ selection can only pick up spaces, which a shell ignores. In color output the
 highlight is padded a few columns past the command purely to widen the click
 target.
 
+## Machine-readable output
+
+Every command renders one semantic view, and `--json` and `--porcelain` are
+alternative renderers over exactly the facts the graph shows, so nothing has to
+parse decorated terminal text. Both suppress colour and every human-facing
+line, emitting only the document. They are mutually exclusive; the default
+stays the human-readable preview.
+
+```sh
+# One JSON object with a schemaVersion, the trunk, each branch's pull request
+# and state, and the validated command when one applies.
+g2g status --json
+
+# Stable tab-separated records, each led by its type:
+#   target <branch> <source>
+#   trunk  <branch>
+#   branch <name> <pr> <state> <severity> <url> <target?>
+#   command <argv>...
+#   note   <severity> <text>
+g2g link --porcelain
+```
+
+`schemaVersion` is bumped when a field changes meaning or disappears; adding a
+field is not a breaking change.
+
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by
 the current `--apply` flow.

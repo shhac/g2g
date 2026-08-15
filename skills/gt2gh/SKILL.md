@@ -92,6 +92,10 @@ description: |
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
   on failure and state exact repair/validation/retry commands. Multiple PR
   templates require `--template <name>` or `--no-template`; never guess.
+- Prefer `--json` (or `--porcelain`) over parsing the human preview. Both are
+  renderers over the same validated view, they suppress colour and every
+  human-facing line, and `schemaVersion` signals breaking changes. Never scrape
+  the pretty graph.
 - `status` is the read-only triage entry point. It renders one selected
   Graphite path and reports each selected PR's native GitHub stack membership
   from the same batched PR query; keep the healthy case to one compact summary

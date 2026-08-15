@@ -144,30 +144,58 @@ func parseRepositoryName(output []byte) (string, error) {
 	return repo.NameWithOwner, nil
 }
 
-func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) {
-	var response struct {
-		Data struct {
-			Repository map[string]struct {
-				Nodes []struct {
-					Number int    `json:"number"`
-					URL    string `json:"url"`
-					Head   string `json:"headRefName"`
-					Base   string `json:"baseRefName"`
-					State  string `json:"state"`
-					Stack  *struct {
-						Number int `json:"number"`
-						Size   int `json:"size"`
-					} `json:"stack"`
-					StackEntry *struct {
-						Position int `json:"position"`
-					} `json:"stackEntry"`
-				} `json:"nodes"`
-			} `json:"repository"`
-		} `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
+// graphqlResponse is the shape of one batched head-ref lookup. Naming it keeps
+// parsePullRequests readable and lets node validation be tested directly,
+// rather than only through a whole GraphQL envelope.
+type graphqlResponse struct {
+	Data struct {
+		Repository map[string]struct {
+			Nodes []pullRequestNode `json:"nodes"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+type pullRequestNode struct {
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+	Head   string `json:"headRefName"`
+	Base   string `json:"baseRefName"`
+	State  string `json:"state"`
+	Stack  *struct {
+		Number int `json:"number"`
+		Size   int `json:"size"`
+	} `json:"stack"`
+	StackEntry *struct {
+		Position int `json:"position"`
+	} `json:"stackEntry"`
+}
+
+// pullRequest validates one node and converts it. Native stack membership is
+// all-or-nothing: a pull request either carries both the stack and its entry
+// or neither, and a position must fall inside the stack it claims to be in.
+func (n pullRequestNode) pullRequest(alias string) (PullRequest, error) {
+	if n.Number <= 0 || n.Base == "" || n.State == "" {
+		return PullRequest{}, fmt.Errorf("gh api graphql response has invalid %s pull request", alias)
 	}
+	if (n.Stack == nil) != (n.StackEntry == nil) {
+		return PullRequest{}, fmt.Errorf("gh api graphql response has incomplete native stack data for %s", alias)
+	}
+	pr := PullRequest{Number: n.Number, URL: n.URL, Head: n.Head, Base: n.Base, State: n.State}
+	if n.Stack == nil {
+		return pr, nil
+	}
+	if n.Stack.Number <= 0 || n.Stack.Size <= 0 || n.StackEntry.Position <= 0 || n.StackEntry.Position > n.Stack.Size {
+		return PullRequest{}, fmt.Errorf("gh api graphql response has invalid native stack data for %s", alias)
+	}
+	pr.StackNumber, pr.StackSize, pr.StackPosition = n.Stack.Number, n.Stack.Size, n.StackEntry.Position
+	return pr, nil
+}
+
+func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) {
+	var response graphqlResponse
 	if err := json.Unmarshal(output, &response); err != nil {
 		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
 	}
@@ -177,6 +205,7 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 	if response.Data.Repository == nil {
 		return nil, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
 	}
+
 	matching := make([]PullRequest, 0)
 	for index, branch := range branches {
 		alias := fmt.Sprintf("pr%d", index)
@@ -191,20 +220,9 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 			if node.Head != branch {
 				continue
 			}
-			if node.Number <= 0 || node.Base == "" || node.State == "" {
-				return nil, fmt.Errorf("gh api graphql response has invalid %s pull request", alias)
-			}
-			if (node.Stack == nil) != (node.StackEntry == nil) {
-				return nil, fmt.Errorf("gh api graphql response has incomplete native stack data for %s", alias)
-			}
-			pr := PullRequest{Number: node.Number, URL: node.URL, Head: node.Head, Base: node.Base, State: node.State}
-			if node.Stack != nil {
-				if node.Stack.Number <= 0 || node.Stack.Size <= 0 || node.StackEntry.Position <= 0 || node.StackEntry.Position > node.Stack.Size {
-					return nil, fmt.Errorf("gh api graphql response has invalid native stack data for %s", alias)
-				}
-				pr.StackNumber = node.Stack.Number
-				pr.StackSize = node.Stack.Size
-				pr.StackPosition = node.StackEntry.Position
+			pr, err := node.pullRequest(alias)
+			if err != nil {
+				return nil, err
 			}
 			matching = append(matching, pr)
 		}

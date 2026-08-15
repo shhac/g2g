@@ -1,6 +1,9 @@
 package githubstack
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolveHeadsAppliesOpenIsIdentity(t *testing.T) {
 	tests := []struct {
@@ -129,5 +132,56 @@ func TestParsePullRequestsReportsUnreadableRepository(t *testing.T) {
 	_, err := parsePullRequests([]byte(`{"data":{"repository":null}}`), []string{"synthetic-a"})
 	if err == nil {
 		t.Fatal("parsePullRequests() error = nil, want an unreadable-repository error")
+	}
+}
+
+// Node validation is now reachable without building a whole GraphQL envelope,
+// which is the point of extracting it.
+func TestPullRequestNodeValidation(t *testing.T) {
+	valid := pullRequestNode{Number: 7, Head: "synthetic-a", Base: "main", State: "OPEN"}
+	stacked := valid
+	stacked.Stack = &struct {
+		Number int `json:"number"`
+		Size   int `json:"size"`
+	}{Number: 3, Size: 2}
+	stacked.StackEntry = &struct {
+		Position int `json:"position"`
+	}{Position: 1}
+
+	orphanEntry := valid
+	orphanEntry.StackEntry = stacked.StackEntry
+
+	outOfRange := stacked
+	outOfRange.StackEntry = &struct {
+		Position int `json:"position"`
+	}{Position: 3}
+
+	for name, test := range map[string]struct {
+		node    pullRequestNode
+		wantErr string
+	}{
+		"valid":                 {node: valid},
+		"valid with membership": {node: stacked},
+		"zero number":           {node: pullRequestNode{Head: "a", Base: "main", State: "OPEN"}, wantErr: "invalid"},
+		"missing base":          {node: pullRequestNode{Number: 1, Head: "a", State: "OPEN"}, wantErr: "invalid"},
+		"missing state":         {node: pullRequestNode{Number: 1, Head: "a", Base: "main"}, wantErr: "invalid"},
+		"entry without stack":   {node: orphanEntry, wantErr: "incomplete"},
+		"position beyond size":  {node: outOfRange, wantErr: "invalid native stack"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pr, err := test.node.pullRequest("pr0")
+			if test.wantErr == "" {
+				if err != nil {
+					t.Fatalf("pullRequest() error = %v", err)
+				}
+				if pr.Number != test.node.Number {
+					t.Errorf("Number = %d, want %d", pr.Number, test.node.Number)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("pullRequest() error = %v, want it to mention %q", err, test.wantErr)
+			}
+		})
 	}
 }

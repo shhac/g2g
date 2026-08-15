@@ -12,10 +12,12 @@ import (
 	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
-// SupportedVersion is the Graphite CLI version whose display grammar is
-// accepted by this package. A different version fails closed rather than being
-// guessed at.
-const SupportedVersion = "1.8.6"
+// KnownVersion is the Graphite CLI version whose compact display grammar has
+// direct fixture coverage. Compatible patch and minor versions warn, then rely
+// on the strict parser to reject any grammar drift.
+const KnownVersion = "1.8.6"
+
+const supportedMajor = 1
 
 // Stack is one complete Graphite-declared ancestry, ordered from the display
 // root through the selected branch. The compact display does not identify one
@@ -154,10 +156,14 @@ func (c Client) read(ctx context.Context) (graph, error) {
 	if err != nil {
 		return graph{}, commandError("gt --version", err, version)
 	}
-	if got := strings.TrimSpace(string(version)); got != SupportedVersion {
-		return graph{}, fmt.Errorf("unsupported Graphite CLI version %q; gt2gh supports display grammar from %s only", got, SupportedVersion)
+	got, known, err := checkVersion(version)
+	if err != nil {
+		return graph{}, err
 	}
-	diagnostic.Event(ctx, "graphite.version", diagnostic.Field{Key: "version", Value: SupportedVersion}, diagnostic.Field{Key: "supported", Value: "true"})
+	if !known {
+		diagnostic.Warn(ctx, "graphite-version", fmt.Sprintf("Graphite CLI version %s is not a known supported version; attempting compact display parsing and it will fail safely if the output changed", got))
+	}
+	diagnostic.Event(ctx, "graphite.version", diagnostic.Field{Key: "version", Value: got}, diagnostic.Field{Key: "known", Value: strconv.FormatBool(known)}, diagnostic.Field{Key: "compatible_major", Value: "true"})
 
 	output, err := c.Runner.Run(ctx, "gt", "log", "short", "--all", "--reverse", "--no-interactive")
 	if err != nil {
@@ -168,6 +174,26 @@ func (c Client) read(ctx context.Context) (graph, error) {
 		diagnostic.Event(ctx, "graphite.discovery", diagnostic.Field{Key: "command", Value: "gt log short --all --reverse --no-interactive"}, diagnostic.Field{Key: "roots", Value: fmt.Sprintf("%d", len(graph.roots))})
 	}
 	return graph, err
+}
+
+func checkVersion(output []byte) (string, bool, error) {
+	version := strings.TrimSpace(string(output))
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return "", false, fmt.Errorf("unrecognized Graphite CLI version output %q; expected major.minor.patch", version)
+	}
+	values := make([]int, len(parts))
+	for index, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 0 || strconv.Itoa(value) != part {
+			return "", false, fmt.Errorf("unrecognized Graphite CLI version output %q; expected major.minor.patch", version)
+		}
+		values[index] = value
+	}
+	if values[0] != supportedMajor {
+		return "", false, fmt.Errorf("unsupported Graphite CLI major version %d; gt2gh supports major version %d", values[0], supportedMajor)
+	}
+	return version, version == KnownVersion, nil
 }
 
 func commandError(command string, err error, output []byte) error {

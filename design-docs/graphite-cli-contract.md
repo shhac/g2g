@@ -4,14 +4,20 @@
 read-only CLI surface. It never reads Graphite's private metadata database or
 configuration and never enables `--debug`.
 
-## Pinned command
+## Command contract
 
-The production adapter first requires this exact output:
+The production adapter first calls:
 
 ```text
 gt --version
-1.8.6
 ```
+
+It requires a conventional `major.minor.patch` response and supports major
+version 1. Version 1.8.6 is the fixture-tested baseline. A different compatible
+patch or minor version writes one stderr warning, then continues to the strict
+display parser; an unsupported major or unrecognizable version response fails
+before discovery. This preserves forward compatibility without treating a
+version string as proof that the display grammar is safe.
 
 It then runs exactly:
 
@@ -52,8 +58,9 @@ by inference. Link-base resolution considers only Graphite-declared trunk roots
 on the selected ancestry and fails closed when more than one is valid unless
 the user supplies a valid `--trunk` override.
 
-Any different version, unclassified line, duplicate branch, malformed record,
-or inconsistent fork/depth transition is an error. The parser tests mutate each
-record component and graph marker in the captured fixture to guard that
-fail-closed boundary. A future Graphite CLI with supported structured
-target-stack output should replace this version-pinned text parser.
+An unrecognized version response, unsupported major, unclassified line,
+duplicate branch, malformed record, or inconsistent fork/depth transition is
+an error. The parser tests mutate each record component and graph marker in the
+captured fixture to guard that fail-closed boundary. A future Graphite CLI with
+supported structured target-stack output should replace this compact text
+parser.

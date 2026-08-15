@@ -62,8 +62,11 @@ g2g --debug link --branch feature/top
 ```
 
 `--help`, `--version`, and `completion bash|zsh|fish` are available; bare
-`g2g` shows help when installed through Homebrew. The command requires Graphite CLI 1.8.6 exactly for its
-supported display grammar and a compatible `gh` with `stack link`. Its tests
+`g2g` shows help when installed through Homebrew. The command uses Graphite CLI
+1.8.6 as its tested compact-display baseline and requires a compatible `gh`
+with `stack link`.
+Compatible Graphite patch/minor versions continue with a stderr warning; an
+unsupported major version or changed display grammar fails safely. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
 
@@ -203,7 +206,7 @@ declared trunk-to-selected path.
 
 - `cmd/gt2gh`: executable entry point.
 - `internal/cli`: Cobra command parsing, preview output, and completion.
-- `internal/graphite`: strict, version-pinned read-only Graphite display parser.
+- `internal/graphite`: strict, compatibility-gated read-only Graphite display parser.
 - `internal/git`, `internal/githubstack`: narrow repository, publication, and
   PR seams.
 - `internal/link`: Graphite-authoritative plan/apply orchestration.

@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/shhac/gt2gh/internal/diagnostic"
 )
 
 func TestBareCommandShowsHelp(t *testing.T) {
@@ -55,5 +58,15 @@ func TestNamedExecutableGeneratesMatchingZshCompletion(t *testing.T) {
 func TestCompletionRejectsUnknownShell(t *testing.T) {
 	if _, err := execute(t, "completion", "powershell"); err == nil {
 		t.Fatal("Execute() error = nil, want error")
+	}
+}
+
+func TestCommandContextWritesCompatibilityWarningsToStderrWithoutDebug(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := New("v", &stdout, &stderr)
+	command.SetContext(context.Background())
+	diagnostic.Warn(commandContext(command, "link", "preview", "", ""), "synthetic", "synthetic compatibility warning")
+	if got, want := stderr.String(), "warning: synthetic compatibility warning\n"; got != want {
+		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }

@@ -1,7 +1,7 @@
 # Initial scope
 
 **Status:** implemented through v0.5; later changes remain focused extensions.
-**Graphite display contract:** pinned to Graphite CLI 1.8.6; see
+**Graphite display contract:** baseline-tested with Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
 ## Problem
@@ -50,7 +50,7 @@ decisions to Graphite.
 
 ## Safety
 
-Before mutation, the command validates Graphite version and display grammar,
+Before mutation, the command validates Graphite version syntax/major and display grammar,
 the local branch set, and existing PR states/base relationships; it shows the resolved
 bottom-to-top order and fails before calling `gh` when discovery is incomplete,
 ambiguous, unsupported, or stale. `--apply` requires a clean worktree and

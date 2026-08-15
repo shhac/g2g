@@ -58,7 +58,8 @@ description: |
   value must itself be declared and ancestral.
 - Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
   read Graphite internal metadata/configuration or use `gt --debug`: supported
-  production discovery is strict, version-pinned noninteractive CLI parsing.
+  production discovery is strict, compatibility-gated noninteractive CLI
+  parsing.
 
 ## Develop and test
 

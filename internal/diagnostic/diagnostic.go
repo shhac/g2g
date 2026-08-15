@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 )
 
-type contextKey struct{}
+type (
+	contextKey        struct{}
+	warningContextKey struct{}
+)
 
 // Field is one stable, safe diagnostic attribute.
 type Field struct {
@@ -31,6 +35,36 @@ func Event(ctx context.Context, name string, fields ...Field) {
 	if sink, ok := ctx.Value(contextKey{}).(Sink); ok && sink != nil {
 		sink.Event(name, fields...)
 	}
+}
+
+type warningSink struct {
+	out  io.Writer
+	mu   sync.Mutex
+	seen map[string]bool
+}
+
+// WithWarningWriter makes non-debug compatibility warnings available to
+// adapters. Each key is printed at most once for a command context.
+func WithWarningWriter(ctx context.Context, out io.Writer) context.Context {
+	if out == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, warningContextKey{}, &warningSink{out: out, seen: make(map[string]bool)})
+}
+
+// Warn writes one concise, non-debug warning when configured by the CLI.
+func Warn(ctx context.Context, key, message string) {
+	sink, ok := ctx.Value(warningContextKey{}).(*warningSink)
+	if !ok || sink == nil {
+		return
+	}
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if sink.seen[key] {
+		return
+	}
+	sink.seen[key] = true
+	fmt.Fprintf(sink.out, "warning: %s\n", message)
 }
 
 // Writer emits one stable, newline-delimited record per event.

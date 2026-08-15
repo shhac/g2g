@@ -1,12 +1,14 @@
 package graphite
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	"github.com/shhac/gt2gh/internal/testutil"
 )
@@ -36,7 +38,9 @@ fi
 exit 9`,
 	})
 
-	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(context.Background(), "beta-side")
+	var warnings bytes.Buffer
+	ctx := diagnostic.WithWarningWriter(context.Background(), &warnings)
+	stack, err := (Client{Runner: subprocess.ExecRunner{}}).Discover(ctx, "beta-side")
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
@@ -50,13 +54,77 @@ exit 9`,
 	if got, want := string(called), "log short --all --reverse --no-interactive\n"; got != want {
 		t.Errorf("gt calls = %q, want %q", got, want)
 	}
+	if got := warnings.String(); got != "" {
+		t.Errorf("warnings = %q, want none for known version", got)
+	}
 }
 
-func TestClientRejectsDifferentGraphiteVersion(t *testing.T) {
-	testutil.WithFakeExecutables(t, map[string]string{"gt": "printf '1.9.0\\n'"})
+func TestClientWarnsForCompatibleUnknownGraphiteVersion(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GT_FIXTURE", string(fixture))
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.7\n'; exit 0; fi
+if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
+exit 9`,
+	})
+	var warnings bytes.Buffer
+	ctx := diagnostic.WithWarningWriter(context.Background(), &warnings)
+	client := Client{Runner: subprocess.ExecRunner{}}
+	for range 2 {
+		if _, err := client.Discover(ctx, "beta-side"); err != nil {
+			t.Fatalf("Discover() error = %v", err)
+		}
+	}
+	if got := warnings.String(); !strings.Contains(got, "warning: Graphite CLI version 1.8.7 is not a known supported version") || strings.Count(got, "warning:") != 1 {
+		t.Errorf("warnings = %q", got)
+	}
+}
+
+func TestClientRejectsDifferentGraphiteMajorVersion(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{"gt": "printf '2.0.0\\n'"})
 	_, err := (Client{Runner: subprocess.ExecRunner{}}).TrackedBranches(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "unsupported Graphite CLI version") {
+	if err == nil || !strings.Contains(err.Error(), "unsupported Graphite CLI major version") {
 		t.Fatalf("TrackedBranches() error = %v", err)
+	}
+}
+
+func TestClientRejectsUnrecognizedGraphiteVersionOutput(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{"gt": "printf 'graphite 1.8.7\\n'"})
+	_, err := (Client{Runner: subprocess.ExecRunner{}}).TrackedBranches(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unrecognized Graphite CLI version output") {
+		t.Fatalf("TrackedBranches() error = %v", err)
+	}
+}
+
+func TestCheckVersion(t *testing.T) {
+	for _, test := range []struct {
+		version string
+		known   bool
+		wantErr string
+	}{
+		{version: "1.8.6", known: true},
+		{version: "1.8.7"},
+		{version: "1.9.0"},
+		{version: "2.0.0", wantErr: "major version"},
+		{version: "graphite 1.8.7", wantErr: "unrecognized"},
+		{version: "1.8", wantErr: "unrecognized"},
+		{version: "01.8.7", wantErr: "unrecognized"},
+	} {
+		t.Run(test.version, func(t *testing.T) {
+			got, known, err := checkVersion([]byte(test.version + "\n"))
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("checkVersion() error = %v", err)
+				}
+				return
+			}
+			if err != nil || got != test.version || known != test.known {
+				t.Errorf("checkVersion() = (%q, %t, %v)", got, known, err)
+			}
+		})
 	}
 }
 

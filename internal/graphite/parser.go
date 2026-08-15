@@ -24,7 +24,8 @@ type record struct {
 	root  bool
 }
 
-// parseLog accepts exactly the compact Graphite 1.8.6 output emitted by:
+// parseLog accepts the compact Graphite display grammar covered by the 1.8.6
+// baseline fixture and rejects any unrecognized drift emitted by:
 //
 //	gt log short --all --reverse --no-interactive
 //

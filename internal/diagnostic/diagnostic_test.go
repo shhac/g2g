@@ -1,9 +1,21 @@
 package diagnostic
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
+
+func TestWarnWritesOnceWithoutDebugSink(t *testing.T) {
+	var output bytes.Buffer
+	ctx := WithWarningWriter(context.Background(), &output)
+	Warn(ctx, "graphite-version", "synthetic compatibility warning")
+	Warn(ctx, "graphite-version", "synthetic compatibility warning")
+	if got, want := output.String(), "warning: synthetic compatibility warning\n"; got != want {
+		t.Errorf("warning = %q, want %q", got, want)
+	}
+}
 
 func TestSafeCommandRedactsCredentialsAndGraphQL(t *testing.T) {
 	for _, test := range []struct {

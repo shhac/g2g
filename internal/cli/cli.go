@@ -107,7 +107,7 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 }
 
 func commandContext(cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
-	ctx := cmd.Context()
+	ctx := diagnostic.WithWarningWriter(cmd.Context(), cmd.ErrOrStderr())
 	debug, _ := cmd.Flags().GetBool("debug")
 	if !debug {
 		return ctx

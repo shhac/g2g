@@ -6,10 +6,8 @@ only process knowledge that is easy to miss.
 
 ## Discovery and external CLIs
 
-- Graphite parsing accepts the exact version recorded in
-  `design-docs/graphite-cli-contract.md`; a Graphite patch or minor upgrade is
-  expected to fail closed until its supported output is checked. Before changing
-  that compatibility boundary, read the contract and parser/fixture tests in
+- Graphite parsing is a narrow compatibility boundary. Before changing it, read
+  `design-docs/graphite-cli-contract.md` and the parser/fixture tests in
   `internal/graphite`, capture only synthetic regression coverage, and do not
   "improve" discovery by reading Graphite metadata or enabling Graphite debug
   output.

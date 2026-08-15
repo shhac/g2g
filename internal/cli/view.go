@@ -46,6 +46,11 @@ type stackNode struct {
 	PRURL    string
 	State    string
 	Severity severity
+	// Parent and Depth describe a forked graph. The linear commands leave both
+	// zero, so their rendering is unchanged: a stack whose every node has one
+	// child is a tree that happens to look like a list.
+	Parent string
+	Depth  int
 }
 
 type stackNote struct {
@@ -73,15 +78,21 @@ func (v stackView) commandHeading() string {
 	return "Command to run"
 }
 
-// glyphs distinguish the trunk from the branches stacked on it. Every stack
-// gt2gh handles is linear — it fails closed rather than resolve a fork — so
-// the vertical order is the stacking, and a fixed indent reads more easily
-// than an escalating one that pushed a deep stack off to the right and never
-// aligned its connectors with the names above them.
+// glyphs distinguish the trunk from the branches stacked on it. A projection
+// onto a GitHub native stack is linear, so its vertical order is the stacking
+// and a fixed indent reads more easily than an escalating one that pushed a
+// deep stack off to the right and never aligned its connectors with the names
+// above them.
+//
+// A g2g-owned graph is a tree, and a tree needs its connectors, so the fork
+// glyphs below are used only when a view carries depth. A linear view renders
+// exactly as it always has.
 const (
 	trunkGlyph  = "○"
 	branchGlyph = "●"
 	railGlyph   = "│"
+	forkGlyph   = "├─"
+	lastGlyph   = "└─"
 	indent      = "  "
 )
 
@@ -119,26 +130,83 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 }
 
 func graphLines(view stackView, p Presentation) []string {
+	prefixes := treePrefixes(view.Nodes)
 	width := 0
-	for _, node := range view.Nodes {
-		if size := utf8.RuneCountInString(node.Branch); size > width {
+	for index, node := range view.Nodes {
+		if size := utf8.RuneCountInString(prefixes[index] + node.Branch); size > width {
 			width = size
 		}
 	}
 
 	lines := make([]string, 0, len(view.Nodes)+1)
 	for index, node := range view.Nodes {
-		if index > 0 && view.Nodes[index-1].Trunk {
+		// The rail under a linear trunk is what separates the base from the
+		// stack. A tree draws its own connectors, so it never needs one.
+		if index > 0 && view.Nodes[index-1].Trunk && prefixes[index] == "" {
 			lines = append(lines, indent+p.subdued(railGlyph))
 		}
 		glyph, name := p.trunk(trunkGlyph), p.trunk(node.Branch)
 		if !node.Trunk {
 			glyph, name = p.subdued(branchGlyph), p.branch(node.Branch)
 		}
-		line := indent + glyph + " " + name + strings.Repeat(" ", width-utf8.RuneCountInString(node.Branch))
+		padding := strings.Repeat(" ", width-utf8.RuneCountInString(prefixes[index]+node.Branch))
+		// Styling an empty prefix would wrap nothing in escape codes, which is
+		// invisible on a terminal and a diff in a golden file.
+		prefix := prefixes[index]
+		if prefix != "" {
+			prefix = p.subdued(prefix)
+		}
+		line := indent + prefix + glyph + " " + name + padding
 		lines = append(lines, strings.TrimRight(line+"  "+annotation(node, p), " "))
 	}
 	return lines
+}
+
+// treePrefixes derives each node's connector from the pre-order depths alone,
+// so the graph walk does not have to hand layout down to the renderer. A view
+// with no depth gets empty prefixes and renders exactly as it always has.
+func treePrefixes(nodes []stackNode) []string {
+	prefixes := make([]string, len(nodes))
+	for index, node := range nodes {
+		if node.Depth == 0 {
+			continue
+		}
+		connector := lastGlyph
+		if continues(nodes, index, node.Depth) {
+			connector = forkGlyph
+		}
+		prefixes[index] = rails(nodes, index) + connector
+	}
+	return prefixes
+}
+
+// rails draws the ancestor lines a node hangs under. A level continues only
+// while a later node still sits at it; once that subtree closes the rail stops
+// and the space keeps the names aligned.
+func rails(nodes []stackNode, index int) string {
+	var prefix strings.Builder
+	for level := 1; level < nodes[index].Depth; level++ {
+		if continues(nodes, index, level) {
+			prefix.WriteString(railGlyph + " ")
+			continue
+		}
+		prefix.WriteString("  ")
+	}
+	return prefix.String()
+}
+
+// continues reports whether a later sibling exists at depth before the
+// enclosing subtree ends.
+func continues(nodes []stackNode, from, depth int) bool {
+	for index := from + 1; index < len(nodes); index++ {
+		if nodes[index].Depth < depth {
+			return false
+		}
+		if nodes[index].Depth == depth {
+			return true
+		}
+	}
+	return false
 }
 
 func annotation(node stackNode, p Presentation) string {

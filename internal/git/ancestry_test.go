@@ -196,3 +196,54 @@ func TestAncestryRejectsUnsafeRefNames(t *testing.T) {
 		t.Error("IsAncestor() error = nil for an option-like name")
 	}
 }
+
+// Divergence is what finds a parent once the trunk has moved past being an
+// ancestor: the fork point is still there, and behind counts the commits the
+// target added since it.
+func TestDivergenceMeasuresBothDirectionsFromTheForkPoint(t *testing.T) {
+	_, client := syntheticRepo(t)
+	ctx := context.Background()
+
+	ahead, behind, err := client.Divergence(ctx, "synthetic-main", "synthetic-auth")
+	if err != nil {
+		t.Fatalf("Divergence() error = %v", err)
+	}
+	if ahead != 1 || behind != 1 {
+		t.Errorf("Divergence(main, auth) = %d, %d; want 1, 1 across the fork point", ahead, behind)
+	}
+}
+
+func TestDivergenceReportsAnAncestorWithNothingAhead(t *testing.T) {
+	_, client := syntheticRepo(t)
+
+	ahead, behind, err := client.Divergence(context.Background(), "synthetic-auth", "synthetic-login")
+	if err != nil {
+		t.Fatalf("Divergence() error = %v", err)
+	}
+	if ahead != 0 {
+		t.Errorf("ahead = %d, want 0 for an ancestor", ahead)
+	}
+	if behind != 1 {
+		t.Errorf("behind = %d, want 1", behind)
+	}
+}
+
+// A descendant contains everything the target has, so behind is zero — which
+// is how it is excluded from being offered as a parent.
+func TestDivergenceReportsADescendantWithNothingBehind(t *testing.T) {
+	_, client := syntheticRepo(t)
+
+	_, behind, err := client.Divergence(context.Background(), "synthetic-login", "synthetic-auth")
+	if err != nil {
+		t.Fatalf("Divergence() error = %v", err)
+	}
+	if behind != 0 {
+		t.Errorf("behind = %d, want 0 for a descendant", behind)
+	}
+}
+
+func TestDivergenceRejectsUnsafeRefNames(t *testing.T) {
+	if _, _, err := (Client{Runner: subprocess.ExecRunner{}}).Divergence(context.Background(), "-synthetic", "synthetic-a"); err == nil {
+		t.Error("Divergence() error = nil for an option-like name")
+	}
+}

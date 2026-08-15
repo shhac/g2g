@@ -92,6 +92,41 @@ func (c Client) CommitDistance(ctx context.Context, base, head string) (int, err
 	return count, nil
 }
 
+// Divergence counts the commits each of two branches has that the other does
+// not, measured from their merge base.
+//
+// This is what finds a parent once the obvious answer has gone. A branch that
+// forked from a trunk stops being reachable from it the moment the trunk moves
+// on, so ancestry alone reports nothing at all — but the fork point is still
+// there, and behind counts exactly the commits the target added since it.
+//
+// One invocation answers both directions: ahead of zero means other is an
+// ancestor, behind of zero means it is a descendant and therefore never a
+// candidate parent.
+func (c Client) Divergence(ctx context.Context, other, target string) (ahead, behind int, err error) {
+	if err := safeRef(other); err != nil {
+		return 0, 0, err
+	}
+	if err := safeRef(target); err != nil {
+		return 0, 0, err
+	}
+	output, err := c.run(ctx, "rev-list", "--left-right", "--count", other+"..."+target)
+	if err != nil {
+		return 0, 0, err
+	}
+	fields := strings.Fields(string(output))
+	if len(fields) != 2 {
+		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+	}
+	if ahead, err = strconv.Atoi(fields[0]); err != nil {
+		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+	}
+	if behind, err = strconv.Atoi(fields[1]); err != nil {
+		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+	}
+	return ahead, behind, nil
+}
+
 // IsAncestor reports whether ancestor's tip is reachable from descendant.
 //
 // git signals the negative answer with exit status 1, which the runner

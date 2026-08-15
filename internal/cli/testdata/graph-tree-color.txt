@@ -1,0 +1,9 @@
+[1;36mTarget[0m  [1;37msynthetic-login[0m  [2m· --branch[0m
+
+  [1;33m○[0m [1;33msynthetic-main[0m         [2mtrunk[0m
+  [2m├─[0m[2m●[0m [1;37msynthetic-auth[0m
+  [2m│ ├─[0m[2m●[0m [1;37msynthetic-login[0m    [2m← target[0m
+  [2m│ └─[0m[2m●[0m [1;37msynthetic-session[0m
+  [2m└─[0m[2m●[0m [1;37msynthetic-billing[0m
+
+[2mScope graph · 5 branches · /synthetic/repo/.git/g2g/graph.json[0m

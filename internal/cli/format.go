@@ -39,7 +39,10 @@ type jsonDocument struct {
 }
 
 type jsonBranch struct {
-	Branch      string `json:"branch"`
+	Branch string `json:"branch"`
+	// Parent carries the structure that order alone cannot express once a
+	// graph forks. A linear plan leaves it empty and its order still holds.
+	Parent      string `json:"parent,omitempty"`
 	Target      bool   `json:"target,omitempty"`
 	PullRequest int    `json:"pullRequest,omitempty"`
 	URL         string `json:"url,omitempty"`
@@ -69,6 +72,7 @@ func (v stackView) document() jsonDocument {
 		}
 		doc.Branches = append(doc.Branches, jsonBranch{
 			Branch:      node.Branch,
+			Parent:      node.Parent,
 			Target:      node.Target,
 			PullRequest: node.PRNumber,
 			URL:         node.PRURL,
@@ -95,7 +99,9 @@ func writePorcelain(writer io.Writer, view stackView) error {
 	records := [][]string{{"target", doc.Target, doc.TargetSource}, {"trunk", doc.Trunk}}
 	for _, branch := range doc.Branches {
 		records = append(records, []string{
-			"branch", branch.Branch, porcelainNumber(branch.PullRequest), branch.State, branch.Severity, branch.URL, porcelainBool(branch.Target),
+			// parent is appended rather than inserted: a reader switches on
+			// the record type and ignores fields added after the ones it knows.
+			"branch", branch.Branch, porcelainNumber(branch.PullRequest), branch.State, branch.Severity, branch.URL, porcelainBool(branch.Target), branch.Parent,
 		})
 	}
 	if doc.Blocked != "" {

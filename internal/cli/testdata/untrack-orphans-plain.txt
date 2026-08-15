@@ -1,0 +1,9 @@
+Target  synthetic-auth  · --branch
+
+  ● synthetic-auth  ← target
+
+Removes the recorded parent of synthetic-auth.
+Leaves synthetic-login and synthetic-session without a tracked parent · they are not reparented.
+Scope branch · 1 branch · /synthetic/repo/.git/g2g/graph.json
+
+No changes were made. Rerun with --apply to remove these edges.

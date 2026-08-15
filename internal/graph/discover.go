@@ -14,6 +14,7 @@ type Ancestry interface {
 	LocalBranches(context.Context) ([]string, error)
 	AncestorBranches(context.Context, string) ([]string, error)
 	CommitDistance(context.Context, string, string) (int, error)
+	Divergence(context.Context, string, string) (ahead, behind int, err error)
 	IsAncestor(context.Context, string, string) (bool, error)
 }
 
@@ -68,6 +69,43 @@ func Candidates(ctx context.Context, git Ancestry, target string, trunks []strin
 	for _, trunk := range detached {
 		candidates = append(candidates, Candidate{Branch: trunk, Trunk: true})
 	}
+	if len(candidates) != 0 {
+		return candidates, nil
+	}
+	return forkCandidates(ctx, git, target)
+}
+
+// forkCandidates finds parents by fork point rather than by ancestry.
+//
+// It exists for the first branch adopted into an empty graph. Ancestry finds
+// nothing there, because the trunk has almost always moved on since the branch
+// left it, and the graph does not yet record a root to offer instead. Without
+// this, adopting the very first branch of a stack would be a dead end.
+//
+// It costs one Git call per local branch, so it runs only when the cheap paths
+// found nothing — which is once per repository, not once per command.
+func forkCandidates(ctx context.Context, git Ancestry, target string) ([]Candidate, error) {
+	local, err := git.LocalBranches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]Candidate, 0, len(local))
+	for _, branch := range local {
+		if branch == target {
+			continue
+		}
+		ahead, behind, err := git.Divergence(ctx, branch, target)
+		if err != nil {
+			return nil, err
+		}
+		// Nothing of the target is missing from the branch, so the branch
+		// already contains it: a descendant, never a parent.
+		if behind == 0 {
+			continue
+		}
+		candidates = append(candidates, Candidate{Branch: branch, Distance: behind, Ancestor: ahead == 0})
+	}
+	sortCandidates(candidates)
 	return candidates, nil
 }
 

@@ -1,0 +1,9 @@
+Target  synthetic-login  · --branch
+
+  ○ synthetic-main         trunk
+  ├─● synthetic-auth
+  │ ├─● synthetic-login    ← target
+  │ └─● synthetic-session
+  └─● synthetic-billing
+
+Scope graph · 5 branches · /synthetic/repo/.git/g2g/graph.json

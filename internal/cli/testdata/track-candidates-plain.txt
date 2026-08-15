@@ -1,0 +1,10 @@
+Target  synthetic-login  · --branch
+
+  ● synthetic-login  untracked  ← target
+
+Apply blocked: no parent chosen
+
+Candidate parents, nearest first: synthetic-auth (1 commit behind), synthetic-main (1 commit behind) · rerun with --parent <branch>.
+Scope branch · 1 branch · /synthetic/repo/.git/g2g/graph.json
+
+No changes were made. Rerun with --apply to record this edge.

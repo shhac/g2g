@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/gt2gh/internal/graph"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
@@ -37,6 +38,9 @@ type Options struct {
 	Sync   syncer.Service
 	Push   push.Service
 	Submit submit.Service
+	// Graph owns the branch forest gt2gh keeps itself. It needs neither
+	// Graphite nor GitHub, which is the whole point of it.
+	Graph graph.Service
 
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
@@ -67,6 +71,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Sync:        syncer.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
 		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
 		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
+		Graph:       graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}},
 		Unstacker:   githubClient,
 	})
 }
@@ -116,6 +121,11 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Submit.Git != nil && options.Submit.Graphite != nil && options.Submit.GitHub != nil {
 		root.AddCommand(newSubmit(options.Submit, completions, presentation))
+	}
+	if options.Graph.Git != nil && options.Graph.Store != nil {
+		root.AddCommand(newGraph(options.Graph, presentation))
+		root.AddCommand(newTrack(options.Graph, presentation))
+		root.AddCommand(newUntrack(options.Graph, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

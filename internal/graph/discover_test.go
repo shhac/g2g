@@ -14,7 +14,9 @@ type fakeAncestry struct {
 	local     []string
 	ancestors map[string][]string
 	distances map[string]int
-	err       error
+	// divergence maps "other...target" to the ahead/behind pair Git reports.
+	divergence map[string][2]int
+	err        error
 }
 
 func (f fakeAncestry) CurrentBranch(context.Context) (string, error) { return f.current, f.err }
@@ -27,6 +29,13 @@ func (f fakeAncestry) AncestorBranches(_ context.Context, target string) ([]stri
 
 func (f fakeAncestry) CommitDistance(_ context.Context, base, head string) (int, error) {
 	return f.distances[base+".."+head], f.err
+}
+
+func (f fakeAncestry) Divergence(_ context.Context, other, target string) (int, int, error) {
+	if f.err != nil {
+		return 0, 0, f.err
+	}
+	return f.divergence[other+"..."+target][0], f.divergence[other+"..."+target][1], nil
 }
 
 func (f fakeAncestry) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {

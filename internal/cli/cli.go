@@ -21,6 +21,30 @@ import (
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
+// Options are the dependencies a root command is built from.
+//
+// A zero service means its command is not registered. That replaces four
+// overlapping constructors that threaded ten positional parameters — four of
+// them same-shaped service structs — through each other purely to supply
+// defaults, where a transposed argument would still have compiled.
+type Options struct {
+	Version     string
+	CommandName string
+	Stdout      io.Writer
+	Stderr      io.Writer
+
+	Link   link.Service
+	Sync   syncer.Service
+	Push   push.Service
+	Submit submit.Service
+
+	// Unstacker performs unlink's mutation. When nil it is taken from Link's
+	// GitHub client if that client provides it.
+	Unstacker Unstacker
+	// Presentation overrides what Stdout would otherwise imply.
+	Presentation *Presentation
+}
+
 // New creates the canonical gt2gh root command. version is injected by main at
 // build time.
 func New(version string, stdout, stderr io.Writer) *cobra.Command {
@@ -32,85 +56,71 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Command {
 	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
 	githubClient := githubstack.Client{Runner: runner}
-	linkService := link.Service{
-		Git:      localgit.Client{Runner: runner},
-		Graphite: graphite.Client{Runner: runner},
-		GitHub:   githubClient,
-	}
-	pushService := push.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}}
-	syncService := syncer.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubClient}
-	submitService := submit.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubClient}
-	return newWithServices(version, commandName, stdout, stderr, linkService, syncService, pushService, submitService, githubClient)
+	gitClient := localgit.Client{Runner: runner}
+	graphiteClient := graphite.Client{Runner: runner}
+	return NewWithOptions(Options{
+		Version:     version,
+		CommandName: commandName,
+		Stdout:      stdout,
+		Stderr:      stderr,
+		Link:        link.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
+		Sync:        syncer.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
+		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
+		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
+		Unstacker:   githubClient,
+	})
 }
 
-// NewWithService creates the root command with injectable link dependencies.
-// It keeps unit tests offline while New wires the production subprocesses.
-func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
-	return NewWithServices(version, stdout, stderr, service, syncer.Service{Git: service.Git, Graphite: service.Graphite, GitHub: service.GitHub})
-}
+// NewWithOptions builds the root command from an explicit set of dependencies.
+func NewWithOptions(options Options) *cobra.Command {
+	if options.CommandName == "" {
+		options.CommandName = "gt2gh"
+	}
+	if options.Unstacker == nil {
+		if configured, ok := options.Link.GitHub.(Unstacker); ok {
+			options.Unstacker = configured
+		}
+	}
+	presentation := detectPresentation(options.Stdout)
+	if options.Presentation != nil {
+		presentation = *options.Presentation
+	}
 
-// NewWithServices creates the injectable link/sync command surface. It omits
-// push because its mutable Git dependency is deliberately not part of this
-// constructor's contract.
-func NewWithServices(version string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service) *cobra.Command {
-	var unstacker Unstacker
-	if configured, ok := service.GitHub.(Unstacker); ok {
-		unstacker = configured
-	}
-	return newWithServices(version, "gt2gh", stdout, stderr, service, syncService, push.Service{}, submit.Service{}, unstacker)
-}
-
-func newWithServices(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, unstacker Unstacker) *cobra.Command {
-	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submitService, unstacker, detectPresentation(stdout))
-}
-func newWithPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, presentation Presentation) *cobra.Command {
-	var unstacker Unstacker
-	if configured, ok := service.GitHub.(Unstacker); ok {
-		unstacker = configured
-	}
-	return newWithSubmitPresentation(version, commandName, stdout, stderr, service, syncService, pushService, submit.Service{}, unstacker, presentation)
-}
-func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, syncService syncer.Service, pushService push.Service, submitService submit.Service, unstacker Unstacker, presentation Presentation) *cobra.Command {
-	if commandName == "" {
-		commandName = "gt2gh"
-	}
 	root := &cobra.Command{
-		Use:               commandName,
+		Use:               options.CommandName,
 		Short:             "Bridge Graphite-managed stacks to GitHub native stacks",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,
 		RunE:              func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
-		Version:           version,
+		Version:           options.Version,
 		DisableAutoGenTag: true,
 	}
-	root.SetOut(stdout)
-	root.SetErr(stderr)
+	root.SetOut(options.Stdout)
+	root.SetErr(options.Stderr)
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
 	root.PersistentFlags().Duration("timeout", 0, "maximum duration for each phase, discovery and mutation separately (default 20s discovery, 60s plus 30s per branch for mutation)")
 	root.PersistentFlags().Bool("json", false, "emit one JSON document instead of the human-readable preview")
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")
+
 	// Completion candidates come from the same Git and Graphite clients the
 	// services use, so no command has to depend on another to complete a flag.
-	completions := stack.Completions{Git: service.Git, Graphite: service.Graphite}
-	root.AddCommand(newLink(service, completions, presentation))
-	root.AddCommand(newStatus(service, completions, presentation))
-	root.AddCommand(newUnlink(service, unstacker, completions, presentation))
-	root.AddCommand(newSync(syncService, completions, presentation))
-	if pushService.Git != nil && pushService.Graphite != nil {
-		root.AddCommand(newPush(pushService, completions, presentation))
+	completions := stack.Completions{Git: options.Link.Git, Graphite: options.Link.Graphite}
+	root.AddCommand(newLink(options.Link, completions, presentation))
+	root.AddCommand(newStatus(options.Link, completions, presentation))
+	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, presentation))
+	root.AddCommand(newSync(options.Sync, completions, presentation))
+	if options.Push.Git != nil && options.Push.Graphite != nil {
+		root.AddCommand(newPush(options.Push, completions, presentation))
 	}
-	if submitService.Git != nil && submitService.Graphite != nil && submitService.GitHub != nil {
-		root.AddCommand(newSubmit(submitService, completions, presentation))
+	if options.Submit.Git != nil && options.Submit.Graphite != nil && options.Submit.GitHub != nil {
+		root.AddCommand(newSubmit(options.Submit, completions, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root
 }
 
-// commandContext decorates ctx with the diagnostic sinks for one invocation.
-// It must build on the caller's context: deriving from cmd.Context() instead
-// silently dropped every phase deadline the callers had just established.
 func commandContext(ctx context.Context, cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
 	ctx = diagnostic.WithWarningWriter(ctx, cmd.ErrOrStderr())
 	debug, _ := cmd.Flags().GetBool("debug")

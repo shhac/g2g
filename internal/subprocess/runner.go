@@ -17,11 +17,19 @@ type Runner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
+// waitDelay bounds how long a cancelled child may keep the output pipe open.
+// Killing a wrapper script does not reap its own children, and they inherit
+// that pipe, so without this a deadline is reported on time while the call
+// itself blocks until the grandchild happens to exit.
+const waitDelay = 2 * time.Second
+
 // ExecRunner invokes programs from PATH using the host operating system.
 type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	output, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	command := exec.CommandContext(ctx, name, args...)
+	command.WaitDelay = waitDelay
+	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {
 		return output, ctx.Err()
 	}

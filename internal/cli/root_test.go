@@ -65,7 +65,7 @@ func TestCommandContextWritesCompatibilityWarningsToStderrWithoutDebug(t *testin
 	var stdout, stderr bytes.Buffer
 	command := New("v", &stdout, &stderr)
 	command.SetContext(context.Background())
-	diagnostic.Warn(commandContext(command, "link", "preview", "", ""), "synthetic", "synthetic compatibility warning")
+	diagnostic.Warn(commandContext(command.Context(), command, "link", "preview", "", ""), "synthetic", "synthetic compatibility warning")
 	if got, want := stderr.String(), "warning: synthetic compatibility warning\n"; got != want {
 		t.Errorf("stderr = %q, want %q", got, want)
 	}

@@ -59,6 +59,9 @@ g2g push --remote staging --apply
 
 # Opt-in local diagnostics go only to stderr; stdout keeps the normal preview.
 g2g --debug link --branch feature/top
+
+# Raise the per-phase ceiling for a slow network or a deep stack.
+g2g --timeout 3m submit --spec "$spec_dir/submission.json" --apply
 ```
 
 `--help`, `--version`, and `completion bash|zsh|fish` are available; bare
@@ -69,6 +72,15 @@ Compatible Graphite patch/minor versions continue with a stderr warning; an
 unsupported major version or changed display grammar fails safely. Its tests
 use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
+
+Discovery and mutation are bounded separately. Discovery and revalidation get
+20 seconds; the mutation phase gets its own budget of 60 seconds plus 30 per
+selected branch, taken fresh rather than from whatever discovery left over, so
+a slow read can never cancel a push or pull-request creation halfway. The root
+`--timeout` flag replaces both ceilings. A mutation that does expire says so
+explicitly and states what may have already happened, because an interrupted
+`submit` can leave refs pushed and some pull requests created; re-running it
+with the same spec is safe and creates only what is missing.
 
 `--debug` is a root flag and may appear before or after `link`, `sync`, `push`,
 or `submit`. It

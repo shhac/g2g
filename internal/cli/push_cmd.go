@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -21,13 +20,14 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 		Short: "Atomically push a Graphite stack's local refs (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-			defer cancel()
 			mode := "preview"
 			if apply {
 				mode = "apply"
 			}
-			ctx = commandContext(cmd, "push", mode, selection.branch, selection.trunk)
+			budgets := newBudgets(cmd)
+			root := commandContext(cmd.Context(), cmd, "push", mode, selection.branch, selection.trunk)
+			ctx, cancel := budgets.discovery(root)
+			defer cancel()
 			plan, err := service.Plan(ctx, selection.Selection(), remote)
 			if err != nil {
 				return err
@@ -49,8 +49,10 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
-			if err := service.Execute(ctx, validated); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
+			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
+			defer cancelMutation()
+			if err := service.Execute(mutateCtx, validated); err != nil {
+				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "The push is atomic, so every selected ref advanced or none did; re-run g2g push to see which."))
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("Applied — remote refs updated atomically"))
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))

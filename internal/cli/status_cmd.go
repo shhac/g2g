@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -14,9 +13,8 @@ func newStatus(service link.Service, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	cmd := &cobra.Command{Use: "status", Short: "Inspect a Graphite stack, its pull requests, and native GitHub membership", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
+		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, selection.trunk))
 		defer cancel()
-		ctx = commandContext(cmd, "status", "read_only", selection.branch, selection.trunk)
 		plan, err := service.PlanWithOptions(ctx, selection.Selection())
 		if err != nil {
 			return err

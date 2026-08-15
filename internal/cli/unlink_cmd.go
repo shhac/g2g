@@ -23,13 +23,14 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		if number <= 0 {
 			return fmt.Errorf("--stack-number is required; run g2g status to inspect the selected PR path, then supply the GitHub stack number")
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-		defer cancel()
 		mode := "preview"
 		if apply {
 			mode = "apply"
 		}
-		ctx = commandContext(cmd, "unlink", mode, selection.branch, selection.trunk)
+		budgets := newBudgets(cmd)
+		root := commandContext(cmd.Context(), cmd, "unlink", mode, selection.branch, selection.trunk)
+		ctx, cancel := budgets.discovery(root)
+		defer cancel()
 		plan, err := service.PlanWithOptions(ctx, selection.Selection())
 		if err != nil {
 			return err
@@ -60,8 +61,10 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		if unstacker == nil {
 			return fmt.Errorf("GitHub stack unstack is not configured")
 		}
-		if err := unstacker.Unstack(ctx, number); err != nil {
-			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
+		mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
+		defer cancelMutation()
+		if err := unstacker.Unstack(mutateCtx, number); err != nil {
+			return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether the relationship was removed."))
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Unlinked — GitHub stack relationship removed"))
 		fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Branches and pull requests were unchanged."))

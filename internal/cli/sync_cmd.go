@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -18,13 +17,14 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 		Short: "Reconcile GitHub's native stack to Graphite (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-			defer cancel()
 			mode := "preview"
 			if apply {
 				mode = "apply"
 			}
-			ctx = commandContext(cmd, "sync", mode, selection.branch, selection.trunk)
+			budgets := newBudgets(cmd)
+			root := commandContext(cmd.Context(), cmd, "sync", mode, selection.branch, selection.trunk)
+			ctx, cancel := budgets.discovery(root)
+			defer cancel()
 			plan, err := service.PreviewWithOptions(ctx, selection.Selection())
 			if err != nil {
 				return err
@@ -59,8 +59,10 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
-			if err := service.Execute(ctx, validated); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
+			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Link.Branches))
+			defer cancelMutation()
+			if err := service.Execute(mutateCtx, validated); err != nil {
+				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))
 			}
 			fmt.Fprintln(cmd.OutOrStdout())
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))

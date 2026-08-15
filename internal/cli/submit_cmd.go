@@ -39,6 +39,8 @@ func newSubmit(service submit.Service, linkService link.Service, presentation Pr
 }
 
 type submitOptions struct {
+	budgets    budgets
+	root       context.Context
 	selection  stackOptions
 	remote     string
 	specPath   string
@@ -53,13 +55,14 @@ type submitOptions struct {
 }
 
 func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {
-	ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-	defer cancel()
 	mode := "preview"
 	if o.apply {
 		mode = "apply"
 	}
-	ctx = commandContext(cmd, "submit", mode, o.selection.branch, o.selection.trunk)
+	o.budgets = newBudgets(cmd)
+	o.root = commandContext(cmd.Context(), cmd, "submit", mode, o.selection.branch, o.selection.trunk)
+	ctx, cancel := o.budgets.discovery(o.root)
+	defer cancel()
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote)
 	if err != nil {
 		return err
@@ -153,7 +156,13 @@ func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, servic
 	if err := flushOutput(cmd.OutOrStdout()); err != nil {
 		return err
 	}
-	if err := service.Apply(ctx, validated, spec); err != nil {
+	// The mutation phase gets a fresh budget: it pushes, then creates one pull
+	// request per missing branch, and expiring partway through would leave the
+	// partial state the preview/revalidate sequence exists to avoid.
+	mutateCtx, cancelMutation := o.budgets.mutation(o.root, len(validated.Snapshot.Branches))
+	defer cancelMutation()
+	if err := service.Apply(mutateCtx, validated, spec); err != nil {
+		err = mutationTimeout(err, fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath))
 		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, writeNotApplied(cmd.OutOrStdout(), p, err))
 	}
 	if o.edit && !o.keepSpec {

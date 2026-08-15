@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,11 +18,6 @@ import (
 	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	syncer "github.com/shhac/gt2gh/internal/sync"
-)
-
-const (
-	linkTimeout       = 20 * time.Second
-	completionTimeout = 3 * time.Second
 )
 
 // New creates the canonical gt2gh root command. version is injected by main at
@@ -92,6 +86,7 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
+	root.PersistentFlags().Duration("timeout", 0, "maximum duration for each phase, discovery and mutation separately (default 20s discovery, 60s plus 30s per branch for mutation)")
 	root.AddCommand(newLink(service, presentation))
 	root.AddCommand(newStatus(service, presentation))
 	root.AddCommand(newUnlink(service, unstacker, presentation))
@@ -106,8 +101,11 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 	return root
 }
 
-func commandContext(cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
-	ctx := diagnostic.WithWarningWriter(cmd.Context(), cmd.ErrOrStderr())
+// commandContext decorates ctx with the diagnostic sinks for one invocation.
+// It must build on the caller's context: deriving from cmd.Context() instead
+// silently dropped every phase deadline the callers had just established.
+func commandContext(ctx context.Context, cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
+	ctx = diagnostic.WithWarningWriter(ctx, cmd.ErrOrStderr())
 	debug, _ := cmd.Flags().GetBool("debug")
 	if !debug {
 		return ctx

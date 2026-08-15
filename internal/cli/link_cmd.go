@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,13 +20,14 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 		Short: "Link a linear Graphite stack to GitHub (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			ctx, cancel := context.WithTimeout(cmd.Context(), linkTimeout)
-			defer cancel()
 			mode := "preview"
 			if apply {
 				mode = "apply"
 			}
-			ctx = commandContext(cmd, "link", mode, selection.branch, selection.trunk)
+			budgets := newBudgets(cmd)
+			root := commandContext(cmd.Context(), cmd, "link", mode, selection.branch, selection.trunk)
+			ctx, cancel := budgets.discovery(root)
+			defer cancel()
 			plan, err := service.PlanWithOptions(ctx, selection.Selection())
 			if err != nil {
 				return err
@@ -60,8 +60,10 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
-			if err := service.Execute(ctx, validated); err != nil {
-				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
+			mutateCtx, cancelMutation := budgets.mutation(root, len(validated.Branches))
+			defer cancelMutation()
+			if err := service.Execute(mutateCtx, validated); err != nil {
+				return writeNotApplied(cmd.OutOrStdout(), presentation, mutationTimeout(err, "Run g2g status to see whether GitHub recorded the link."))
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))

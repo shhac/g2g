@@ -13,7 +13,6 @@ type Ancestry interface {
 	CurrentBranch(context.Context) (string, error)
 	LocalBranches(context.Context) ([]string, error)
 	AncestorBranches(context.Context, string) ([]string, error)
-	CommitDistance(context.Context, string, string) (int, error)
 	Divergence(context.Context, string, string) (ahead, behind int, err error)
 	IsAncestor(context.Context, string, string) (bool, error)
 }
@@ -21,8 +20,8 @@ type Ancestry interface {
 // Candidate is one branch that could be the parent of a target.
 type Candidate struct {
 	Branch string
-	// Distance is how many commits separate the candidate from the target.
-	// The nearest ancestor is the immediate parent, so this is the ordering.
+	// Distance is how many commits the target has that the candidate does not.
+	// The nearest such branch is the immediate parent, so this is the ordering.
 	Distance int
 	// Ancestor records whether the candidate's tip is actually reachable from
 	// the target. A trunk that has moved on is offered without being one.
@@ -30,67 +29,53 @@ type Candidate struct {
 	Trunk    bool
 }
 
-// Candidates returns the possible parents of target, nearest ancestor first.
+// Candidates returns the possible parents of target, nearest first.
 //
-// Declared trunks are always offered even when they are not ancestors. Once a
-// trunk moves ahead its tip stops being reachable from the branches built on
-// it, so a stack's bottom branch would otherwise have no candidates at all.
-func Candidates(ctx context.Context, git Ancestry, target string, trunks []string) ([]Candidate, error) {
+// Two sets are tried in turn. The preferred set is the target's ancestors plus
+// the roots the graph already records, which is the answer in any repository
+// that has adopted anything at all. When that comes back empty — the first
+// branch into an empty graph, whose trunk has almost always moved on since the
+// branch left it — every local branch is measured instead. That fallback costs
+// one Git call per branch and runs once per repository, not once per command.
+func Candidates(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
 	if git == nil {
 		return nil, fmt.Errorf("graph discovery is not configured")
 	}
 	if target == "" {
 		return nil, fmt.Errorf("a target branch is required")
 	}
-	ancestors, err := git.AncestorBranches(ctx, target)
-	if err != nil {
-		return nil, err
-	}
-	candidates := make([]Candidate, 0, len(ancestors)+len(trunks))
-	seen := map[string]bool{target: true}
-	for _, ancestor := range ancestors {
-		distance, err := git.CommitDistance(ctx, ancestor, target)
-		if err != nil {
-			return nil, err
-		}
-		seen[ancestor] = true
-		candidates = append(candidates, Candidate{Branch: ancestor, Distance: distance, Ancestor: true, Trunk: slices.Contains(trunks, ancestor)})
-	}
-	sortCandidates(candidates)
-
-	detached := make([]string, 0, len(trunks))
-	for _, trunk := range trunks {
-		if !seen[trunk] {
-			seen[trunk] = true
-			detached = append(detached, trunk)
-		}
-	}
-	sort.Strings(detached)
-	for _, trunk := range detached {
-		candidates = append(candidates, Candidate{Branch: trunk, Trunk: true})
-	}
-	if len(candidates) != 0 {
-		return candidates, nil
-	}
-	return forkCandidates(ctx, git, target)
-}
-
-// forkCandidates finds parents by fork point rather than by ancestry.
-//
-// It exists for the first branch adopted into an empty graph. Ancestry finds
-// nothing there, because the trunk has almost always moved on since the branch
-// left it, and the graph does not yet record a root to offer instead. Without
-// this, adopting the very first branch of a stack would be a dead end.
-//
-// It costs one Git call per local branch, so it runs only when the cheap paths
-// found nothing — which is once per repository, not once per command.
-func forkCandidates(ctx context.Context, git Ancestry, target string) ([]Candidate, error) {
 	local, err := git.LocalBranches(ctx)
 	if err != nil {
 		return nil, err
 	}
-	candidates := make([]Candidate, 0, len(local))
-	for _, branch := range local {
+	ancestors, err := git.AncestorBranches(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	// A recorded root that no longer exists locally is not a candidate: it
+	// would be offered as a parent that could never be validated.
+	preferred := slices.Clone(ancestors)
+	for _, root := range roots {
+		if slices.Contains(local, root) && !slices.Contains(preferred, root) {
+			preferred = append(preferred, root)
+		}
+	}
+	candidates, err := measure(ctx, git, target, preferred, roots)
+	if err != nil || len(candidates) != 0 {
+		return candidates, err
+	}
+	return measure(ctx, git, target, local, roots)
+}
+
+// measure asks Git how each branch relates to the target and keeps the ones
+// that could be its parent, nearest first.
+//
+// One invocation per branch answers both questions at once. A branch with
+// nothing behind already contains the target, so it is a descendant and never
+// a parent; a branch with nothing ahead is a true ancestor.
+func measure(ctx context.Context, git Ancestry, target string, branches, roots []string) ([]Candidate, error) {
+	candidates := make([]Candidate, 0, len(branches))
+	for _, branch := range branches {
 		if branch == target {
 			continue
 		}
@@ -98,19 +83,22 @@ func forkCandidates(ctx context.Context, git Ancestry, target string) ([]Candida
 		if err != nil {
 			return nil, err
 		}
-		// Nothing of the target is missing from the branch, so the branch
-		// already contains it: a descendant, never a parent.
 		if behind == 0 {
 			continue
 		}
-		candidates = append(candidates, Candidate{Branch: branch, Distance: behind, Ancestor: ahead == 0})
+		candidates = append(candidates, Candidate{
+			Branch:   branch,
+			Distance: behind,
+			Ancestor: ahead == 0,
+			Trunk:    slices.Contains(roots, branch),
+		})
 	}
 	sortCandidates(candidates)
 	return candidates, nil
 }
 
 // sortCandidates orders by distance, then by name so equal distances are
-// stable rather than depending on map iteration.
+// stable rather than depending on the order branches happened to arrive in.
 func sortCandidates(candidates []Candidate) {
 	sort.Slice(candidates, func(left, right int) bool {
 		if candidates[left].Distance != candidates[right].Distance {

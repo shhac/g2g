@@ -42,7 +42,7 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return writeStackView(cmd.OutOrStdout(), graphStatusView(discovery), presentation)
+		return writeGraphView(cmd.OutOrStdout(), graphStatusView(discovery), discovery, presentation)
 	}
 	selection.register(cmd, service, graph.Scopes, "how much of the graph to show: branch, path, subtree, or graph")
 	return cmd
@@ -64,7 +64,7 @@ func newTrack(service graph.Service, presentation Presentation) *cobra.Command {
 				return service.RevalidateTrack(ctx, selection.Selection(), parent, preview)
 			},
 			render: func(writer io.Writer, plan graph.TrackPlan, p Presentation) error {
-				return writeStackView(writer, trackView(plan), p)
+				return writeGraphView(writer, trackView(plan), plan.Discovery, p)
 			},
 			execute:  service.ApplyTrack,
 			branches: func(plan graph.TrackPlan) int { return len(plan.Branches) },
@@ -110,7 +110,7 @@ func newUntrack(service graph.Service, presentation Presentation) *cobra.Command
 				return service.RevalidateUntrack(ctx, selection.Selection(), preview)
 			},
 			render: func(writer io.Writer, plan graph.UntrackPlan, p Presentation) error {
-				return writeStackView(writer, untrackView(plan), p)
+				return writeGraphView(writer, untrackView(plan), plan.Discovery, p)
 			},
 			execute:  service.ApplyUntrack,
 			branches: func(plan graph.UntrackPlan) int { return len(plan.Removed) },

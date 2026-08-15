@@ -13,10 +13,11 @@ type fakeAncestry struct {
 	current   string
 	local     []string
 	ancestors map[string][]string
-	distances map[string]int
-	// divergence maps "other...target" to the ahead/behind pair Git reports.
-	divergence map[string][2]int
-	err        error
+	// behind maps "other..target" to the commits the target has that other
+	// does not. Anything unlisted defaults to one commit behind, which keeps a
+	// case that is only about the candidate set free of noise.
+	behind map[string]int
+	err    error
 }
 
 func (f fakeAncestry) CurrentBranch(context.Context) (string, error) { return f.current, f.err }
@@ -27,15 +28,26 @@ func (f fakeAncestry) AncestorBranches(_ context.Context, target string) ([]stri
 	return f.ancestors[target], f.err
 }
 
-func (f fakeAncestry) CommitDistance(_ context.Context, base, head string) (int, error) {
-	return f.distances[base+".."+head], f.err
-}
-
+// Divergence answers from the same ancestor map the rest of the fake uses: an
+// ancestor has nothing ahead, a descendant has nothing behind.
 func (f fakeAncestry) Divergence(_ context.Context, other, target string) (int, int, error) {
 	if f.err != nil {
 		return 0, 0, f.err
 	}
-	return f.divergence[other+"..."+target][0], f.divergence[other+"..."+target][1], nil
+	ancestor, _ := f.IsAncestor(context.Background(), other, target)
+	descendant, _ := f.IsAncestor(context.Background(), target, other)
+	behind, listed := f.behind[other+".."+target]
+	if !listed {
+		behind = 1
+	}
+	if descendant {
+		behind = 0
+	}
+	ahead := 1
+	if ancestor {
+		ahead = 0
+	}
+	return ahead, behind, nil
 }
 
 func (f fakeAncestry) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
@@ -52,8 +64,9 @@ func (f fakeAncestry) IsAncestor(_ context.Context, ancestor, descendant string)
 
 func TestCandidatesOrderNearestAncestorFirst(t *testing.T) {
 	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-base", "synthetic-login"},
 		ancestors: map[string][]string{"synthetic-login": {"synthetic-auth", "synthetic-base"}},
-		distances: map[string]int{"synthetic-auth..synthetic-login": 1, "synthetic-base..synthetic-login": 6},
+		behind:    map[string]int{"synthetic-auth..synthetic-login": 1, "synthetic-base..synthetic-login": 6},
 	}
 
 	candidates, err := Candidates(context.Background(), git, "synthetic-login", nil)
@@ -69,7 +82,10 @@ func TestCandidatesOrderNearestAncestorFirst(t *testing.T) {
 // built on it, so a stack's bottom branch has no ancestors at all. Offering
 // trunks regardless is what stops that being a dead end.
 func TestCandidatesAlwaysOfferTrunksEvenWhenTheyAreNotAncestors(t *testing.T) {
-	git := fakeAncestry{ancestors: map[string][]string{"synthetic-auth": nil}}
+	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-main"},
+		ancestors: map[string][]string{"synthetic-auth": nil},
+	}
 
 	candidates, err := Candidates(context.Background(), git, "synthetic-auth", []string{"synthetic-main"})
 	if err != nil {
@@ -88,8 +104,9 @@ func TestCandidatesAlwaysOfferTrunksEvenWhenTheyAreNotAncestors(t *testing.T) {
 
 func TestCandidatesDoNotOfferATrunkTwice(t *testing.T) {
 	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-main"},
 		ancestors: map[string][]string{"synthetic-auth": {"synthetic-main"}},
-		distances: map[string]int{"synthetic-main..synthetic-auth": 2},
+		behind:    map[string]int{"synthetic-main..synthetic-auth": 2},
 	}
 
 	candidates, err := Candidates(context.Background(), git, "synthetic-auth", []string{"synthetic-main"})
@@ -105,7 +122,10 @@ func TestCandidatesDoNotOfferATrunkTwice(t *testing.T) {
 }
 
 func TestCandidatesNeverOfferTheTargetItself(t *testing.T) {
-	git := fakeAncestry{ancestors: map[string][]string{"synthetic-auth": nil}}
+	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-main"},
+		ancestors: map[string][]string{"synthetic-auth": nil},
+	}
 
 	candidates, err := Candidates(context.Background(), git, "synthetic-auth", []string{"synthetic-auth", "synthetic-main"})
 	if err != nil {
@@ -113,6 +133,44 @@ func TestCandidatesNeverOfferTheTargetItself(t *testing.T) {
 	}
 	if names := branchNames(candidates); names != "synthetic-main" {
 		t.Errorf("Candidates() = %s, want the target excluded", names)
+	}
+}
+
+// Offering a deleted root would name a parent that could never be validated.
+func TestCandidatesSkipARecordedRootThatIsNoLongerLocal(t *testing.T) {
+	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-main"},
+		ancestors: map[string][]string{"synthetic-auth": {"synthetic-main"}},
+	}
+
+	candidates, err := Candidates(context.Background(), git, "synthetic-auth", []string{"synthetic-main", "synthetic-deleted"})
+	if err != nil {
+		t.Fatalf("Candidates() error = %v", err)
+	}
+	if names := branchNames(candidates); names != "synthetic-main" {
+		t.Errorf("Candidates() = %s, want the deleted root omitted", names)
+	}
+}
+
+// A descendant already contains the target, so it can never be its parent.
+func TestCandidatesExcludeDescendants(t *testing.T) {
+	git := fakeAncestry{
+		local:     []string{"synthetic-auth", "synthetic-login", "synthetic-main"},
+		ancestors: map[string][]string{"synthetic-login": {"synthetic-auth"}, "synthetic-auth": nil},
+	}
+
+	// No ancestors and no recorded roots, so every local branch is measured.
+	candidates, err := Candidates(context.Background(), git, "synthetic-auth", nil)
+	if err != nil {
+		t.Fatalf("Candidates() error = %v", err)
+	}
+	for _, candidate := range candidates {
+		if candidate.Branch == "synthetic-login" {
+			t.Fatalf("Candidates() = %s, want the descendant excluded", branchNames(candidates))
+		}
+	}
+	if names := branchNames(candidates); names != "synthetic-main" {
+		t.Errorf("Candidates() = %s, want the fork-point fallback to find the trunk", names)
 	}
 }
 

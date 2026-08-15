@@ -184,6 +184,11 @@ are the local branches its commits sit on top of, ordered nearest first.
 ancestor is usually right, and "usually" is not a basis for writing down
 structure every later command trusts.
 
+A parent you name that is *not* an ancestor is recorded on request rather than
+refused, since that is how a stack looks before a restack, but `track` says so
+first — it is the fact that explains why the branch will then read as needing
+one.
+
 A trunk that has moved on is no longer an ancestor of the branches built from
 it, so recorded roots are always offered as candidates. Adopting the very first
 branch into an empty graph has neither, so it falls back to measuring from the

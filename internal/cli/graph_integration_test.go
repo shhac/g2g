@@ -39,7 +39,6 @@ func graphRepository(t *testing.T, adopted string) (*testutil.Recorder, string) 
 			// Real git separates the two counts with a tab, so the fixture does
 			// too: Lines spills to a file and can carry one.
 			{Prefix: "rev-list --left-right --count", Lines: []string{"1\t1"}},
-			{Prefix: "rev-list --count", Output: "1"},
 			{Prefix: "merge-base --is-ancestor"},
 		},
 	})
@@ -93,7 +92,7 @@ func TestTrackBuildsItsCandidateQueryFromGitAncestry(t *testing.T) {
 	}
 
 	recorder.Find("git for-each-ref --format=%(refname:short) --merged synthetic-login refs/heads/")
-	recorder.Find("git rev-list --count synthetic-auth..synthetic-login")
+	recorder.Find("git rev-list --left-right --count synthetic-auth...synthetic-login")
 	if !strings.Contains(stdout, "Candidate parents") {
 		t.Errorf("output does not offer candidates:\n%s", stdout)
 	}

@@ -103,17 +103,19 @@ func TestAncestorBranchesOmitsAMovedTrunk(t *testing.T) {
 	}
 }
 
-func TestCommitDistanceOrdersNearestAncestorFirst(t *testing.T) {
+// Ordering candidates needs the nearer ancestor to measure smaller, which is
+// what puts the immediate parent first.
+func TestDivergenceOrdersNearestAncestorFirst(t *testing.T) {
 	_, client := syntheticRepo(t)
 	ctx := context.Background()
 
-	near, err := client.CommitDistance(ctx, "synthetic-auth", "synthetic-login")
+	_, near, err := client.Divergence(ctx, "synthetic-auth", "synthetic-login")
 	if err != nil {
-		t.Fatalf("CommitDistance() error = %v", err)
+		t.Fatalf("Divergence() error = %v", err)
 	}
-	far, err := client.CommitDistance(ctx, "synthetic-main~1", "synthetic-login")
+	_, far, err := client.Divergence(ctx, "synthetic-main~1", "synthetic-login")
 	if err != nil {
-		t.Fatalf("CommitDistance() error = %v", err)
+		t.Fatalf("Divergence() error = %v", err)
 	}
 	if near != 1 {
 		t.Errorf("distance(auth, login) = %d, want 1", near)
@@ -189,8 +191,8 @@ func TestAncestryRejectsUnsafeRefNames(t *testing.T) {
 	if _, err := client.AncestorBranches(ctx, "-synthetic"); err == nil {
 		t.Error("AncestorBranches() error = nil for an option-like name")
 	}
-	if _, err := client.CommitDistance(ctx, "synthetic-a", "-synthetic"); err == nil {
-		t.Error("CommitDistance() error = nil for an option-like name")
+	if _, _, err := client.Divergence(ctx, "synthetic-a", "-synthetic"); err == nil {
+		t.Error("Divergence() error = nil for an option-like name")
 	}
 	if _, err := client.IsAncestor(ctx, "-synthetic", "synthetic-a"); err == nil {
 		t.Error("IsAncestor() error = nil for an option-like name")
@@ -239,11 +241,5 @@ func TestDivergenceReportsADescendantWithNothingBehind(t *testing.T) {
 	}
 	if behind != 0 {
 		t.Errorf("behind = %d, want 0 for a descendant", behind)
-	}
-}
-
-func TestDivergenceRejectsUnsafeRefNames(t *testing.T) {
-	if _, _, err := (Client{Runner: subprocess.ExecRunner{}}).Divergence(context.Background(), "-synthetic", "synthetic-a"); err == nil {
-		t.Error("Divergence() error = nil for an option-like name")
 	}
 }

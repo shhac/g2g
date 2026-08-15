@@ -36,18 +36,18 @@ const (
 	AuthorityGraphite Authority = "graphite"
 )
 
-// Origin records how an edge was arrived at. It is read by conflict reporting
-// rather than being decoration: "you chose this" and "we inferred this from
-// commit ancestry" deserve different confidence when they disagree.
+// Origin records how much Git agrees with an edge at the moment it was
+// recorded, which is not decoration: a parent that is already an ancestor is
+// confirmed, and one that is not is an assertion the user made about branches
+// whose commits do not yet line up.
 type Origin string
 
 const (
 	// OriginUser is an edge the user named explicitly.
 	OriginUser Origin = "user"
-	// OriginAncestry is an edge inferred from Git commit ancestry.
+	// OriginAncestry is an edge Git confirms: the parent's tip is reachable
+	// from the branch.
 	OriginAncestry Origin = "git-ancestry"
-	// OriginPullRequest is an edge observed from a pull request base.
-	OriginPullRequest Origin = "pull-request"
 )
 
 // Edge is one recorded parent relationship.

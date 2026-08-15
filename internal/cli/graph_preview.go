@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/graph"
@@ -54,38 +55,55 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 // renderDepths returns the indentation depth of each selected branch, or all
 // zeros when the selection is a chain.
 func renderDepths(discovery graph.Discovery) []int {
-	selected := make(map[string]int, len(discovery.Branches))
-	for index, branch := range discovery.Branches {
-		selected[branch] = index
-	}
-	children := make(map[string]int, len(discovery.Branches))
-	forked := false
-	for _, branch := range discovery.Branches {
-		parent, tracked := discovery.Graph.Parent(branch)
-		if !tracked {
-			continue
-		}
-		if _, inSelection := selected[parent]; !inSelection {
-			continue
-		}
-		children[parent]++
-		if children[parent] > 1 {
-			forked = true
-		}
-	}
-
+	positions := selectedPositions(discovery)
 	depths := make([]int, len(discovery.Branches))
-	if !forked {
+	if !forks(discovery, positions) {
 		return depths
 	}
 	for index, branch := range discovery.Branches {
-		parent, tracked := discovery.Graph.Parent(branch)
-		parentIndex, inSelection := selected[parent]
-		if tracked && inSelection {
+		if parentIndex, inSelection := selectedParent(discovery, positions, branch); inSelection {
 			depths[index] = depths[parentIndex] + 1
 		}
 	}
 	return depths
+}
+
+func selectedPositions(discovery graph.Discovery) map[string]int {
+	positions := make(map[string]int, len(discovery.Branches))
+	for index, branch := range discovery.Branches {
+		positions[branch] = index
+	}
+	return positions
+}
+
+// selectedParent locates a branch's parent within the selection. A parent
+// outside it is not a parent for rendering: the selection's own root hangs
+// from nothing.
+func selectedParent(discovery graph.Discovery, positions map[string]int, branch string) (int, bool) {
+	parent, tracked := discovery.Graph.Parent(branch)
+	if !tracked {
+		return 0, false
+	}
+	index, inSelection := positions[parent]
+	return index, inSelection
+}
+
+// forks reports whether any selected branch has two selected children. A
+// selection without one is a chain, and a chain reads better as the flat list
+// every other command shows.
+func forks(discovery graph.Discovery, positions map[string]int) bool {
+	children := make(map[int]int, len(discovery.Branches))
+	for _, branch := range discovery.Branches {
+		parentIndex, inSelection := selectedParent(discovery, positions, branch)
+		if !inSelection {
+			continue
+		}
+		children[parentIndex]++
+		if children[parentIndex] > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func graphView(discovery graph.Discovery, operation string) stackView {
@@ -97,13 +115,16 @@ func graphView(discovery graph.Discovery, operation string) stackView {
 	}
 }
 
-// storeNote goes last in every view: it says where the graph lives, which is
-// worth being able to find and is not what the reader came for.
-func storeNote(view stackView, discovery graph.Discovery) stackView {
-	return view.note(fmt.Sprintf("Scope %s · %s · %s", discovery.Scope, countBranches(len(discovery.Branches)), discovery.StorePath), severityNeutral)
+// writeGraphView renders a graph view and appends the store line to it.
+//
+// That line goes last in every one of these views — it says where the graph
+// lives, which is worth being able to find and is not what the reader came
+// for. Adding it here rather than at each view's return means no branch of any
+// of them can forget it.
+func writeGraphView(writer io.Writer, view stackView, discovery graph.Discovery, p Presentation) error {
+	summary := fmt.Sprintf("Scope %s · %s · %s", discovery.Scope, count(len(discovery.Branches), "branch", "branches"), discovery.StorePath)
+	return writeStackView(writer, view.note(summary, severityNeutral), p)
 }
-
-func countBranches(total int) string { return count(total, "branch", "branches") }
 
 func count(total int, singular, plural string) string {
 	if total == 1 {
@@ -131,7 +152,7 @@ func graphStatusView(discovery graph.Discovery) stackView {
 	if !discovery.Graph.Tracked(discovery.Target) {
 		view = view.note("This branch has no recorded parent · run g2g track to adopt one.", severityNeutral)
 	}
-	return storeNote(driftNotes(view, discovery), discovery)
+	return driftNotes(view, discovery)
 }
 
 func trackView(plan graph.TrackPlan) stackView {
@@ -141,10 +162,28 @@ func trackView(plan graph.TrackPlan) stackView {
 		if plan.NewTrunk != "" {
 			view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
 		}
-		return storeNote(view, plan.Discovery)
+		return view.note(confirmation(plan), severityFor(plan))
 	}
 	view = view.block("Apply blocked: " + plan.Blocked)
-	return storeNote(view.note(candidateAdvice(plan), severityNeutral), plan.Discovery)
+	return view.note(candidateAdvice(plan), severityNeutral)
+}
+
+// confirmation says whether Git already agrees with the edge being recorded.
+// A parent whose commits are not in the branch is not an error — it is how a
+// stack looks before it is restacked — but recording it silently would hide
+// the one fact that explains why.
+func confirmation(plan graph.TrackPlan) string {
+	if plan.Updated.Edges[plan.Target].Origin == graph.OriginAncestry {
+		return "Commit ancestry confirms " + plan.Parent + " is already below " + plan.Target + "."
+	}
+	return plan.Parent + " is not an ancestor of " + plan.Target + " · the edge is recorded as asserted, and " + plan.Target + " will read as needing a restack."
+}
+
+func severityFor(plan graph.TrackPlan) severity {
+	if plan.Updated.Edges[plan.Target].Origin == graph.OriginAncestry {
+		return severityNeutral
+	}
+	return severityWarn
 }
 
 // candidateAdvice names the choice rather than making it. The nearest ancestor
@@ -162,26 +201,23 @@ func candidateAdvice(plan graph.TrackPlan) string {
 }
 
 func describeCandidate(candidate graph.Candidate) string {
-	switch {
-	case candidate.Trunk && !candidate.Ancestor:
-		return " (recorded root)"
-	case candidate.Trunk:
-		return " (root, " + count(candidate.Distance, "commit", "commits") + " behind)"
-	default:
-		return " (" + count(candidate.Distance, "commit", "commits") + " behind)"
+	described := count(candidate.Distance, "commit", "commits") + " behind"
+	if candidate.Trunk {
+		described = "root, " + described
 	}
+	return " (" + described + ")"
 }
 
 func untrackView(plan graph.UntrackPlan) stackView {
 	view := graphView(plan.Discovery, "untrack")
 	if len(plan.Removed) == 0 {
-		return storeNote(view.note("No selected branch is tracked · nothing to remove.", severityNeutral), plan.Discovery)
+		return view.note("No selected branch is tracked · nothing to remove.", severityNeutral)
 	}
 	view = view.note("Removes the recorded parent of "+branchList(plan.Removed)+".", severityOK)
 	if len(plan.Orphaned) == 0 {
-		return storeNote(view, plan.Discovery)
+		return view
 	}
 	// Reparenting the children onto the grandparent would invent an edge the
 	// user never asked for, so the consequence is shown instead.
-	return storeNote(view.note("Leaves "+branchList(plan.Orphaned)+" without a tracked parent · they are not reparented.", severityWarn), plan.Discovery)
+	return view.note("Leaves "+branchList(plan.Orphaned)+" without a tracked parent · they are not reparented.", severityWarn)
 }

@@ -51,7 +51,7 @@ func stackGit() fakeAncestry {
 			"synthetic-session": {"synthetic-auth"},
 			"synthetic-auth":    {},
 		},
-		distances: map[string]int{"synthetic-auth..synthetic-login": 1, "synthetic-auth..synthetic-session": 1},
+		behind: map[string]int{"synthetic-auth..synthetic-login": 1, "synthetic-auth..synthetic-session": 1},
 	}
 }
 
@@ -310,5 +310,31 @@ func TestDiscoverPropagatesStoreFailures(t *testing.T) {
 
 	if _, err := service.Discover(context.Background(), Selection{Branch: "synthetic-login"}); err == nil {
 		t.Fatal("Discover() error = nil")
+	}
+}
+
+// Origin is persisted, so it has to mean something. A parent Git already
+// agrees with is confirmed; one it does not is the user asserting a
+// relationship the commits do not yet show.
+func TestPlanTrackRecordsWhetherGitConfirmsTheEdge(t *testing.T) {
+	git := stackGit()
+	// auth has no ancestors: its trunk has moved on since it forked.
+	service, _ := newService(t, git, New())
+	ctx := context.Background()
+
+	confirmed, err := service.PlanTrack(ctx, Selection{Branch: "synthetic-login"}, "synthetic-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := confirmed.Updated.Edges["synthetic-login"].Origin; got != OriginAncestry {
+		t.Errorf("origin = %q, want %q for a parent Git confirms", got, OriginAncestry)
+	}
+
+	asserted, err := service.PlanTrack(ctx, Selection{Branch: "synthetic-auth"}, "synthetic-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := asserted.Updated.Edges["synthetic-auth"].Origin; got != OriginUser {
+		t.Errorf("origin = %q, want %q for a parent that is not an ancestor", got, OriginUser)
 	}
 }

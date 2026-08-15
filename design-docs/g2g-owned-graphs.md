@@ -79,25 +79,37 @@ merged. gt2gh does not write Graphite's metadata under any circumstances.
 Parents are inferred from commit ancestry, which needs no network and works for
 branches that have never been pushed.
 
-For a target branch `C`, the candidate parents are every other local branch
-whose tip is an ancestor of `C` — exactly what `git for-each-ref --merged C`
-returns. Ordering them by `git rev-list --count <candidate>..C` puts the
-nearest ancestor first, and the nearest ancestor is the parent.
+For a target branch `C`, the preferred candidates are the branches whose tip is
+an ancestor of `C` — what `git for-each-ref --merged C` returns — plus the
+roots the graph already records, which are offered regardless of ancestry
+because a trunk stops being an ancestor the moment it moves ahead. A recorded
+root that no longer exists locally is dropped rather than offered as a parent
+that could never be validated.
 
-Declared trunks are always offered as candidates regardless of ancestry,
-because once a trunk moves ahead its tip stops being an ancestor of any branch
-built from it. Without that, a stack's bottom branch would have no candidates
-at all.
+Each candidate is then measured with one
+`git rev-list --left-right --count <candidate>...C`. That single invocation
+answers both directions: nothing ahead means the candidate is a true ancestor,
+nothing behind means it already contains `C` and is therefore a descendant and
+never a parent. The commits behind are the ordering, and the nearest is the
+parent.
 
-The method degrades in the right direction. When a parent is squash-merged and
-deleted, it simply drops out of the candidate set, the child falls through to
-the trunk question, and the trunk is the correct answer at that point.
+Measuring from the merge base rather than requiring ancestry is what makes the
+first adoption possible. An empty graph records no roots, and the trunk a
+branch forked from has almost always moved on since, so ancestry alone returns
+nothing at all. When the preferred set comes back empty, every local branch is
+measured instead: the fork point is still there. That fallback costs one Git
+call per branch and runs once per repository, not once per command.
+
+The method degrades in the right direction elsewhere too. When a parent is
+squash-merged and deleted, it simply drops out of the candidate set, the child
+falls through to the trunk question, and the trunk is the correct answer at
+that point.
 
 One primitive answers three questions, which is why it is worth having:
 
 | Question | Check |
 |---|---|
-| What is my parent? | nearest ancestor branch |
+| What is my parent? | nearest branch the target is ahead of |
 | Has my recorded parent drifted? | is the recorded parent's tip still an ancestor |
 | Does this branch need a restack? | it stopped being one |
 
@@ -131,7 +143,12 @@ partial write. Concurrent writers are last-writer-wins; the store is small,
 written only by an explicit `--apply`, and locking it would buy nothing.
 
 The file is a flat `branch -> {parent, authority, origin}` map plus the trunk
-set. **Graph identity is derived, not stored.** A graph is a connected
+set. `origin` records whether Git already agreed with the edge when it was
+written: `git-ancestry` when the parent's tip was reachable from the branch,
+`user` when it was not. The second is legitimate — it is how a stack looks
+before a restack — but `track` says so before writing it, because that fact is
+the one that explains why the branch will subsequently read as needing a
+restack. **Graph identity is derived, not stored.** A graph is a connected
 component of the edge relation, which is a computation rather than a record, so
 there is no identifier to generate, no branch-to-graph index to maintain, and
 no merge or split event when two components join. Branch rename becomes a key
@@ -149,7 +166,7 @@ An unrecognised future store version fails closed.
 
 ```text
 g2g graph   [--branch <branch>] [--scope branch|path|subtree|graph]
-g2g track   [--branch <branch>] [--parent <branch>] [--trunk <branch>] [--apply]
+g2g track   [--branch <branch>] [--parent <branch>] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
 ```
 
@@ -160,8 +177,14 @@ of calling an external CLI.
 
 `track` with no `--parent` previews the ordered candidate list and blocks,
 because choosing a parent for the user is exactly the guess this tool does not
-make. With `--parent` it validates that the parent exists locally, is an
-ancestor, and does not create a cycle.
+make. With `--parent` it validates that the parent exists locally and that the
+edge would not close a cycle, and it reports whether Git already agrees with
+the edge. A parent that is not an ancestor is recorded on request rather than
+refused — that is how a stack looks before a restack — but never silently.
+
+Recording a branch under a parent that is not itself tracked also records that
+parent as a root. Without it the next branch up the stack could not find the
+trunk as a candidate once the trunk had moved past being an ancestor.
 
 ### Why `--scope` and not `--tree`
 

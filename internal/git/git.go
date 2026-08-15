@@ -71,27 +71,6 @@ func (c Client) AncestorBranches(ctx context.Context, target string) ([]string, 
 	return branches, nil
 }
 
-// CommitDistance counts commits reachable from head but not from base. The
-// nearest ancestor branch is the immediate parent, so this is what orders
-// candidates.
-func (c Client) CommitDistance(ctx context.Context, base, head string) (int, error) {
-	if err := safeRef(base); err != nil {
-		return 0, err
-	}
-	if err := safeRef(head); err != nil {
-		return 0, err
-	}
-	output, err := c.run(ctx, "rev-list", "--count", base+".."+head)
-	if err != nil {
-		return 0, err
-	}
-	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	if err != nil {
-		return 0, fmt.Errorf("parse git rev-list --count output")
-	}
-	return count, nil
-}
-
 // Divergence counts the commits each of two branches has that the other does
 // not, measured from their merge base.
 //
@@ -116,16 +95,18 @@ func (c Client) Divergence(ctx context.Context, other, target string) (ahead, be
 	}
 	fields := strings.Fields(string(output))
 	if len(fields) != 2 {
-		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+		return 0, 0, errCounts
 	}
 	if ahead, err = strconv.Atoi(fields[0]); err != nil {
-		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+		return 0, 0, errCounts
 	}
 	if behind, err = strconv.Atoi(fields[1]); err != nil {
-		return 0, 0, fmt.Errorf("parse git rev-list --left-right --count output")
+		return 0, 0, errCounts
 	}
 	return ahead, behind, nil
 }
+
+var errCounts = errors.New("parse git rev-list --left-right --count output")
 
 // IsAncestor reports whether ancestor's tip is reachable from descendant.
 //

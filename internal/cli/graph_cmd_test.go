@@ -31,10 +31,17 @@ func (g graphGit) AncestorBranches(_ context.Context, target string) ([]string, 
 	return g.ancestors[target], nil
 }
 
-func (g graphGit) CommitDistance(_ context.Context, base, head string) (int, error) { return 1, nil }
-
+// Divergence answers from the same ancestor map: an ancestor has nothing
+// ahead, a descendant has nothing behind.
 func (g graphGit) Divergence(_ context.Context, other, target string) (int, int, error) {
-	return 1, 1, nil
+	ahead, behind := 1, 1
+	if ancestor, _ := g.IsAncestor(context.Background(), other, target); ancestor {
+		ahead = 0
+	}
+	if descendant, _ := g.IsAncestor(context.Background(), target, other); descendant {
+		behind = 0
+	}
+	return ahead, behind, nil
 }
 
 func (g graphGit) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
@@ -363,5 +370,147 @@ func TestTreePrefixesAreEmptyForALinearView(t *testing.T) {
 		if prefix != "" {
 			t.Errorf("prefix[%d] = %q, want empty", index, prefix)
 		}
+	}
+}
+
+// Completion is part of the documented interface, and the parent candidates it
+// offers must be the same ones the preview would show — otherwise a shell
+// suggests a branch that track then refuses.
+func TestParentCompletionOffersTheSameCandidatesAsThePreview(t *testing.T) {
+	service := graph.Service{Git: graphGitFixture(), Store: &graphStore{graph: graph.New()}}
+	selection := graphOptions{branch: "synthetic-login"}
+
+	completed, err := parentCompletions(service, &selection)(context.Background(), "")
+	if err != nil {
+		t.Fatalf("parentCompletions() error = %v", err)
+	}
+
+	plan, err := service.PlanTrack(context.Background(), selection.Selection(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewed := make([]string, 0, len(plan.Candidates))
+	for _, candidate := range plan.Candidates {
+		previewed = append(previewed, candidate.Branch)
+	}
+	if strings.Join(completed, ",") != strings.Join(previewed, ",") {
+		t.Errorf("completion = %v, preview = %v", completed, previewed)
+	}
+	if len(completed) == 0 {
+		t.Error("completion offered nothing")
+	}
+}
+
+func TestBranchCompletionListsLocalBranches(t *testing.T) {
+	service := graph.Service{Git: graphGitFixture(), Store: &graphStore{graph: graphFixture()}}
+
+	completed, err := localBranchCompletions(service)(context.Background(), "")
+	if err != nil {
+		t.Fatalf("localBranchCompletions() error = %v", err)
+	}
+	if len(completed) != len(graphGitFixture().local) {
+		t.Errorf("completion = %v, want every local branch", completed)
+	}
+}
+
+// Completion must not fail a shell when the service is absent.
+func TestBranchCompletionIsEmptyWithoutAGit(t *testing.T) {
+	completed, err := localBranchCompletions(graph.Service{})(context.Background(), "")
+	if err != nil || len(completed) != 0 {
+		t.Errorf("localBranchCompletions() = %v, %v; want empty and no error", completed, err)
+	}
+}
+
+func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
+	completed, err := staticCompletions(graph.Scopes)(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(completed, ",") != "branch,path,subtree,graph" {
+		t.Errorf("scope completion = %v", completed)
+	}
+	for _, value := range completed {
+		if _, err := graph.ParseScope(value); err != nil {
+			t.Errorf("completion offered %q, which ParseScope rejects", value)
+		}
+	}
+}
+
+// The three things gt2gh can see and deliberately will not repair each need to
+// reach the reader, because nothing else is going to tell them.
+func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
+	git := graphGitFixture()
+	// session's parent moved underneath it, and auth's parent was merged and
+	// deleted, so it is no longer a local branch.
+	git.ancestors["synthetic-session"] = nil
+	git.local = []string{"synthetic-auth", "synthetic-billing", "synthetic-login", "synthetic-session"}
+
+	store := &graphStore{graph: graphFixture()}
+	var stdout, stderr bytes.Buffer
+	command := NewWithOptions(Options{
+		Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr,
+		Graph:        graph.Service{Git: git, Store: store},
+		Presentation: &Presentation{},
+	})
+	command.SetArgs([]string{"graph", "--branch", "synthetic-auth", "--scope", "subtree"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("graph: %v\n%s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"Parent moved under synthetic-session",
+		"does not rebase",
+		"no longer a local branch for synthetic-auth",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// An untracked middle branch leaves its children with a parent the graph does
+// not know, and saying so is the whole point of not reparenting them.
+func TestGraphReportsBranchesWithNoTrackedParent(t *testing.T) {
+	orphaned := graphFixture().Untrack("synthetic-auth")
+	store := &graphStore{graph: orphaned}
+	var stdout, stderr bytes.Buffer
+	command := NewWithOptions(Options{
+		Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr,
+		Graph:        graph.Service{Git: graphGitFixture(), Store: store},
+		Presentation: &Presentation{},
+	})
+	command.SetArgs([]string{"graph", "--branch", "synthetic-login", "--scope", "graph"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("graph: %v\n%s", err, stdout.String())
+	}
+
+	if out := stdout.String(); !strings.Contains(out, "No tracked parent for") {
+		t.Errorf("output does not report the orphan:\n%s", out)
+	}
+}
+
+// Recording a parent whose commits are not in the branch is legitimate — it is
+// how a stack looks before a restack — but it must not happen silently.
+func TestTrackWarnsWhenTheParentIsNotAnAncestor(t *testing.T) {
+	out, _, err := runGraph(t, graph.New(), false, "track", "--branch", "synthetic-auth", "--parent", "synthetic-billing")
+	if err != nil {
+		t.Fatalf("track: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "is not an ancestor of synthetic-auth") {
+		t.Errorf("output does not warn about the asserted edge:\n%s", out)
+	}
+	if !strings.Contains(out, "needing a restack") {
+		t.Errorf("output does not say what the edge will read as:\n%s", out)
+	}
+}
+
+func TestTrackConfirmsAnEdgeGitAlreadyAgreesWith(t *testing.T) {
+	out, _, err := runGraph(t, graph.New(), false, "track", "--branch", "synthetic-login", "--parent", "synthetic-auth")
+	if err != nil {
+		t.Fatalf("track: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Commit ancestry confirms synthetic-auth is already below synthetic-login") {
+		t.Errorf("output does not confirm the edge:\n%s", out)
 	}
 }

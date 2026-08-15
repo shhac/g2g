@@ -32,10 +32,12 @@ type Locator interface {
 	CommonDir(context.Context) (string, error)
 }
 
-// Store reads and writes the adopted graph.
+// Store reads and writes the adopted graph. Path names the file it keeps it
+// in, so a preview can say what an apply would write rather than describe it.
 type Store interface {
 	Load(context.Context) (Graph, error)
 	Save(context.Context, Graph) error
+	Path(context.Context) (string, error)
 }
 
 // FileStore keeps the graph in a directory under the Git common directory.

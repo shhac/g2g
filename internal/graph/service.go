@@ -52,9 +52,10 @@ func (d Discovery) Equal(other Discovery) bool {
 // Orphans reports selected branches whose recorded parent is neither tracked
 // nor a trunk.
 func (d Discovery) Orphans() []string {
+	all := d.Graph.Orphans()
 	orphans := make([]string, 0)
 	for _, branch := range d.Branches {
-		if slices.Contains(d.Graph.Orphans(), branch) {
+		if slices.Contains(all, branch) {
 			orphans = append(orphans, branch)
 		}
 	}
@@ -109,7 +110,7 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 	if err != nil {
 		return Discovery{}, err
 	}
-	path, err := s.storePath(ctx)
+	path, err := s.Store.Path(ctx)
 	if err != nil {
 		return Discovery{}, err
 	}
@@ -132,19 +133,6 @@ func (s Service) target(ctx context.Context, requested string) (string, string, 
 		return "", "", err
 	}
 	return current, "current Git branch", nil
-}
-
-// storePath asks the store where it keeps the graph when it can. A store that
-// cannot say still works; the preview just describes the file instead of
-// naming it.
-func (s Service) storePath(ctx context.Context) (string, error) {
-	locatable, ok := s.Store.(interface {
-		Path(context.Context) (string, error)
-	})
-	if !ok {
-		return "", nil
-	}
-	return locatable.Path(ctx)
 }
 
 // TrackPlan records one branch under one parent.
@@ -196,7 +184,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		plan.Blocked = err.Error()
 		return plan, nil
 	}
-	updated, err := discovery.Graph.Track(discovery.Target, Edge{Parent: parent, Authority: AuthorityG2G, Origin: OriginUser})
+	updated, err := discovery.Graph.Track(discovery.Target, Edge{Parent: parent, Authority: AuthorityG2G, Origin: originOf(parent, candidates)})
 	if err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
@@ -210,6 +198,19 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	}
 	plan.Updated = updated
 	return plan, nil
+}
+
+// originOf records whether Git already agrees with the edge. A parent that is
+// an ancestor is confirmed; anything else is the user asserting a relationship
+// the commits do not yet show, which is worth saying out loud before it is
+// written down.
+func originOf(parent string, candidates []Candidate) Origin {
+	for _, candidate := range candidates {
+		if candidate.Branch == parent && candidate.Ancestor {
+			return OriginAncestry
+		}
+	}
+	return OriginUser
 }
 
 // knownRoots is where trunk candidates come from: whatever the graph already

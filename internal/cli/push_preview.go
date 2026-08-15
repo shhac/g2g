@@ -20,13 +20,6 @@ func pushView(plan push.Plan) stackView {
 	return view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 }
 
-func writeReadyToPush(writer io.Writer, plan push.Plan, presentation Presentation) error {
-	if err := writeReadyBanner(writer, presentation); err != nil {
-		return err
-	}
-	return writePushPlan(writer, plan, presentation)
-}
-
 func writePushPlan(writer io.Writer, plan push.Plan, presentation Presentation) error {
 	return writeStackView(writer, pushView(plan), presentation)
 }

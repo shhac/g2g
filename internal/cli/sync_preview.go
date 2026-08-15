@@ -67,13 +67,6 @@ func syncSeverity(state syncer.State) severity {
 	}
 }
 
-func writeReadyToSync(writer io.Writer, plan syncer.Plan, presentation Presentation) error {
-	if err := writeReadyBanner(writer, presentation); err != nil {
-		return err
-	}
-	return writeSyncPlan(writer, plan, presentation)
-}
-
 func writeSyncPlan(writer io.Writer, plan syncer.Plan, presentation Presentation) error {
 	return writeStackView(writer, syncView(plan), presentation)
 }

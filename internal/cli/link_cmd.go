@@ -53,13 +53,6 @@ func newLink(service link.Service, completions stack.Completions, presentation P
 	return cmd
 }
 
-func writeReadyToApply(writer io.Writer, plan link.Plan, presentation Presentation) error {
-	if err := writeReadyBanner(writer, presentation); err != nil {
-		return err
-	}
-	return writeLinkPlan(writer, plan, presentation)
-}
-
 func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) error {
 	return writeStackView(writer, linkView(plan), presentation)
 }

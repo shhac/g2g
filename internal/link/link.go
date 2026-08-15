@@ -50,8 +50,45 @@ type Plan struct {
 	Issues       []Issue
 }
 
+// IssueKind classifies why a node blocks apply. link's policy is stricter than
+// sync's, and a caller needs to distinguish them to say which command fixes
+// what: sync reconciles a wrong base but deliberately refuses to invent,
+// disambiguate, or reopen a pull request.
+type IssueKind string
+
+const (
+	// IssueBase is a pull request that exists and is open but is not based on
+	// its Graphite predecessor. This is the one kind sync repairs.
+	IssueBase IssueKind = "base"
+	// IssueMissing is a branch with no open pull request.
+	IssueMissing IssueKind = "missing"
+	// IssueNonOpen is a branch whose pull requests are all closed or merged.
+	IssueNonOpen IssueKind = "non-open"
+	// IssueAmbiguous is a branch with more than one open pull request.
+	IssueAmbiguous IssueKind = "ambiguous"
+)
+
 // Issue is a safe, actionable reason a displayed path node cannot be applied.
-type Issue struct{ Branch, Reason string }
+type Issue struct {
+	Branch string
+	Reason string
+	Kind   IssueKind
+}
+
+// SyncRepairable reports whether every blocker is a base that sync is designed
+// to reconcile, so a caller can name the command that actually fixes this
+// instead of leaving the user to work it out.
+func (p Plan) SyncRepairable() bool {
+	if len(p.Issues) == 0 {
+		return false
+	}
+	for _, issue := range p.Issues {
+		if issue.Kind != IssueBase {
+			return false
+		}
+	}
+	return true
+}
 
 // NothingToLink reports whether the fully validated path is shorter than the
 // minimum GitHub stack link accepts. Unresolved PR state is never a no-op.
@@ -218,15 +255,15 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		resolution := resolutions[branch]
 		switch {
 		case resolution.Ambiguous():
-			issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("%d open pull requests", resolution.OpenCount)})
+			issues = append(issues, Issue{Branch: branch, Kind: IssueAmbiguous, Reason: fmt.Sprintf("%d open pull requests", resolution.OpenCount)})
 		case resolution.Open != nil:
 			if expected := expectedBases[branch]; resolution.Open.Base != expected {
-				issues = append(issues, Issue{Branch: branch, Reason: fmt.Sprintf("PR #%d base %s, want %s", resolution.Open.Number, resolution.Open.Base, expected)})
+				issues = append(issues, Issue{Branch: branch, Kind: IssueBase, Reason: fmt.Sprintf("PR #%d base %s, want %s", resolution.Open.Number, resolution.Open.Base, expected)})
 			}
 		case resolution.Superseded():
-			issues = append(issues, Issue{Branch: branch, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
+			issues = append(issues, Issue{Branch: branch, Kind: IssueNonOpen, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
 		default:
-			issues = append(issues, Issue{Branch: branch, Reason: "no open pull request"})
+			issues = append(issues, Issue{Branch: branch, Kind: IssueMissing, Reason: "no open pull request"})
 		}
 	}
 	return issues

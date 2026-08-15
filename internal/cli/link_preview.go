@@ -43,12 +43,24 @@ func linkView(plan link.Plan) stackView {
 		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
 	if len(plan.Issues) != 0 {
-		return view.block("Apply blocked: resolve every unresolved GitHub PR mapping first.")
+		return view.block(blockedReason(plan))
 	}
 	if len(view.Action) == 0 {
 		return view.note("Nothing to link — this stack has one pull request.", severityNeutral)
 	}
 	return view
+}
+
+// blockedReason names the command that actually repairs the state. link's
+// policy requires every pull request to already sit on its Graphite
+// predecessor, but reconciling exactly that is what sync is for, so a path
+// blocked solely on bases would otherwise send the reader looking for a fix
+// the tool already has.
+func blockedReason(plan link.Plan) string {
+	if plan.SyncRepairable() {
+		return "Apply blocked: every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
+	}
+	return "Apply blocked: resolve every unresolved GitHub PR mapping first."
 }
 
 func commandText(command []string) string {

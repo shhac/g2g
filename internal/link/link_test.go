@@ -394,3 +394,45 @@ func (f *fakeGitHub) Link(_ context.Context, trunk string, branches []string) er
 	f.branches = append([]string(nil), branches...)
 	return nil
 }
+
+// The suggestion in preview is only safe if the kinds come out of real
+// assessment correctly, so pin them at the source rather than only where they
+// are rendered.
+func TestAssessedIssuesCarryTheirKind(t *testing.T) {
+	prs := []githubstack.PullRequest{
+		{Number: 1, Head: "wrong-base", Base: "synthetic-other", State: "OPEN"},
+		{Number: 2, Head: "closed-only", Base: "wrong-base", State: "CLOSED"},
+		{Number: 3, Head: "ambiguous", Base: "closed-only", State: "OPEN"},
+		{Number: 4, Head: "ambiguous", Base: "closed-only", State: "OPEN"},
+	}
+	branches := []string{"wrong-base", "closed-only", "ambiguous", "missing"}
+
+	kinds := map[string]IssueKind{}
+	for _, issue := range assessPRs(prs, "main", branches) {
+		kinds[issue.Branch] = issue.Kind
+	}
+
+	for branch, want := range map[string]IssueKind{
+		"wrong-base":  IssueBase,
+		"closed-only": IssueNonOpen,
+		"ambiguous":   IssueAmbiguous,
+		"missing":     IssueMissing,
+	} {
+		if kinds[branch] != want {
+			t.Errorf("%s kind = %q, want %q", branch, kinds[branch], want)
+		}
+	}
+}
+
+func TestSyncRepairableRequiresEveryIssueToBeABase(t *testing.T) {
+	base := Issue{Branch: "a", Kind: IssueBase}
+	if !(Plan{Issues: []Issue{base, {Branch: "b", Kind: IssueBase}}}).SyncRepairable() {
+		t.Error("all-base plan = false, want true")
+	}
+	if (Plan{Issues: []Issue{base, {Branch: "b", Kind: IssueMissing}}}).SyncRepairable() {
+		t.Error("mixed plan = true, want false")
+	}
+	if (Plan{}).SyncRepairable() {
+		t.Error("clean plan = true, want false")
+	}
+}

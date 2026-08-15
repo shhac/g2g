@@ -100,8 +100,10 @@ description: |
   Graphite path and reports each selected PR's native GitHub stack membership
   from the same batched PR query; keep the healthy case to one compact summary
   line and annotate only missing/conflicting nodes. `unlink` is the deliberate
-  inverse of `link`: it requires an explicit GitHub `--stack-number`, previews
-  first, and only `--apply` invokes `gh stack unstack`. It must never alter
+  inverse of `link`: it discovers the GitHub stack number from the selected
+  path and refuses rather than guesses when that path is unlinked or spans
+  several stacks, accepts `--stack-number` to override, previews first, and
+  only `--apply` invokes `gh stack unstack`. It must never alter
   Graphite, branches, PR content, reviewers, or PR lifecycle.
 
 - After command discovery, use the resolved command's `--help` or `link --help`

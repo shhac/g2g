@@ -176,11 +176,15 @@ path ends with one compact `GitHub stack #… · selected path … · aligned` l
 only missing or conflicting membership is annotated on individual nodes. It
 never changes GitHub or Graphite.
 
-`g2g unlink --stack-number <number>` previews removal of a GitHub-native stack
-relationship. `--apply` invokes the supported `gh stack unstack <number>` after
-the selected Graphite/PR path is revalidated. It never changes Graphite,
-branches, pull-request metadata, review state, or PR lifecycle. The stack
-number remains explicit until status can safely discover native membership.
+`g2g unlink` previews removal of a GitHub-native stack relationship. It
+discovers the stack number from the selected path, the same batched read
+`status` uses, so the number no longer has to be copied by hand. Discovery
+refuses rather than guesses: a path that is not linked, or that spans more than
+one stack, is an error naming `--stack-number`, which remains available to
+choose deliberately and always wins. `--apply` invokes the supported
+`gh stack unstack <number>` after the selected Graphite/PR path is revalidated.
+It never changes Graphite, branches, pull-request metadata, review state, or PR
+lifecycle.
 
 ## Submitting pull requests
 

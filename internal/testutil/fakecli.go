@@ -4,6 +4,7 @@ package testutil
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -91,7 +92,7 @@ func encodeRoutes(t *testing.T, dir, tool string, routes []Route) string {
 		case len(route.Lines) != 0:
 			// Spilled to a file so the routes file stays one line per route
 			// while the response itself can be many.
-			path := filepath.Join(dir, tool+"."+itoa(index)+".lines")
+			path := filepath.Join(dir, tool+"."+strconv.Itoa(index)+".lines")
 			if err := os.WriteFile(path, []byte(strings.Join(route.Lines, "\n")+"\n"), 0o600); err != nil {
 				t.Fatalf("write %s route lines: %v", tool, err)
 			}
@@ -104,22 +105,10 @@ func encodeRoutes(t *testing.T, dir, tool string, routes []Route) string {
 		if strings.ContainsAny(route.Prefix+payload, "\t\n") {
 			t.Fatalf("route %q has a tab or newline; use File for multi-line fixtures", route.Prefix)
 		}
-		out.WriteString(strings.Join([]string{route.Prefix, mode, itoa(route.Exit), payload}, "\t"))
+		out.WriteString(strings.Join([]string{route.Prefix, mode, strconv.Itoa(route.Exit), payload}, "\t"))
 		out.WriteString("\n")
 	}
 	return out.String()
-}
-
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	digits := ""
-	for value > 0 {
-		digits = string(rune('0'+value%10)) + digits
-		value /= 10
-	}
-	return digits
 }
 
 // dispatchScript is the same for every tool: it logs the call, then walks the

@@ -1,6 +1,6 @@
 # Initial scope
 
-**Status:** implemented through v0.5; later changes remain focused extensions.
+**Status:** implemented through v0.7; later changes remain focused extensions.
 **Graphite display contract:** baseline-tested with Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 

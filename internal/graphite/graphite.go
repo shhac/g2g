@@ -196,8 +196,10 @@ func checkVersion(output []byte) (string, bool, error) {
 	return version, version == KnownVersion, nil
 }
 
+// commandError keeps a failed Graphite invocation actionable while holding its
+// output to the same bounded, redacted treatment as every other diagnostic.
 func commandError(command string, err error, output []byte) error {
-	message := strings.TrimSpace(string(output))
+	message := diagnostic.BoundedOutput(output)
 	if message == "" {
 		return fmt.Errorf("%s failed: %w", command, err)
 	}

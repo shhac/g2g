@@ -45,8 +45,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
 			if err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if validated.NothingToLink() {
 				if err := writeLinkPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -56,16 +55,13 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				return err
 			}
 			if err := writeReadyToApply(cmd.OutOrStdout(), validated, presentation); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return fmt.Errorf("render ready-to-apply output: %w", err)
+				return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), presentation, err))
 			}
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if err := service.Execute(ctx, validated); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))
@@ -135,7 +131,10 @@ func writeCommand(writer io.Writer, command string, presentation Presentation) e
 	return err
 }
 
-func writeNotApplied(writer io.Writer, presentation Presentation, err error) {
+// writeNotApplied renders the outcome of a failed mutation and returns the
+// error marked as presented, so the top-level printer reports it without
+// repeating the diagnostic block.
+func writeNotApplied(writer io.Writer, presentation Presentation, err error) error {
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, presentation.problem("Not applied"))
 
@@ -146,21 +145,16 @@ func writeNotApplied(writer io.Writer, presentation Presentation, err error) {
 	}
 	fmt.Fprintln(writer, summary)
 
-	if diagnostic := commandDiagnostic(err); diagnostic != "" {
-		fmt.Fprintln(writer)
-		fmt.Fprintln(writer, presentation.subdued("Diagnostic:"))
-		for _, line := range strings.Split(diagnostic, "\n") {
-			fmt.Fprintln(writer, presentation.subdued("  "+line))
-		}
+	diagnostic := commandDiagnostic(err)
+	if diagnostic == "" {
+		return err
 	}
-}
-
-func commandDiagnostic(err error) string {
-	var commandErr *githubstack.CommandError
-	if errors.As(err, &commandErr) {
-		return commandErr.Diagnostic()
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, presentation.subdued("Diagnostic:"))
+	for _, line := range strings.Split(diagnostic, "\n") {
+		fmt.Fprintln(writer, presentation.subdued("  "+line))
 	}
-	return ""
+	return presentedError{err: err}
 }
 
 type outputFlusher interface{ Flush() error }

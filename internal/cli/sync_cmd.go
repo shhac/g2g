@@ -41,8 +41,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
 			if err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if validated.NothingToSync() {
 				if err := writeSyncPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -55,16 +54,13 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				return err
 			}
 			if err := writeReadyToSync(cmd.OutOrStdout(), validated, presentation); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return fmt.Errorf("render ready-to-apply output: %w", err)
+				return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), presentation, err))
 			}
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if err := service.Execute(ctx, validated); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout())
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Applied — GitHub stack updated"))

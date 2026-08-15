@@ -138,13 +138,11 @@ func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p P
 func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
 	validated, err := service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
 	if err != nil {
-		writeNotApplied(cmd.OutOrStdout(), p, err)
-		return err
+		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
 	if len(validated.Issues) != 0 {
 		err := fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
-		writeNotApplied(cmd.OutOrStdout(), p, err)
-		return err
+		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
 	if _, err := fmt.Fprintln(cmd.OutOrStdout(), p.accent("Ready to apply")); err != nil {
 		return err
@@ -156,8 +154,7 @@ func (o submitOptions) applyPlan(ctx context.Context, cmd *cobra.Command, servic
 		return err
 	}
 	if err := service.Apply(ctx, validated, spec); err != nil {
-		writeNotApplied(cmd.OutOrStdout(), p, err)
-		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
+		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, writeNotApplied(cmd.OutOrStdout(), p, err))
 	}
 	if o.edit && !o.keepSpec {
 		_ = os.RemoveAll(filepath.Dir(o.specPath))

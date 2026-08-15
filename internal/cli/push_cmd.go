@@ -41,20 +41,16 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			}
 			validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
 			if err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if err := writeReadyToPush(cmd.OutOrStdout(), validated, presentation); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return fmt.Errorf("render ready-to-apply output: %w", err)
+				return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), presentation, err))
 			}
 			if err := flushOutput(cmd.OutOrStdout()); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			if err := service.Execute(ctx, validated); err != nil {
-				writeNotApplied(cmd.OutOrStdout(), presentation, err)
-				return err
+				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("Applied — remote refs updated atomically"))
 			fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Changes were made."))

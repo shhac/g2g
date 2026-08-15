@@ -46,8 +46,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		}
 		validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
 		if err != nil {
-			writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			return err
+			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 		}
 		if _, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.accent("Ready to apply")); err != nil {
 			return err
@@ -62,8 +61,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 			return fmt.Errorf("GitHub stack unstack is not configured")
 		}
 		if err := unstacker.Unstack(ctx, number); err != nil {
-			writeNotApplied(cmd.OutOrStdout(), presentation, err)
-			return err
+			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("Unlinked — GitHub stack relationship removed"))
 		fmt.Fprintln(cmd.OutOrStdout(), presentation.subdued("Branches and pull requests were unchanged."))

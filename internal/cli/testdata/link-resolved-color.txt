@@ -1,0 +1,9 @@
+[1;36mTarget[0m  [1;37mbeta[0m  [2m· --branch[0m
+
+  [1;33m○[0m [1;33mmain[0m   [2mtrunk[0m
+  [2m│[0m
+  [2m●[0m [1;37malpha[0m  [35m#1[0m
+  [2m●[0m [1;37mbeta[0m   [35m#2[0m  [2m← target[0m
+
+[1;36mCommand to run[0m
+[1;97;48;5;236mgh stack link --base main alpha beta    [0m

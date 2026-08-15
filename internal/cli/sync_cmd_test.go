@@ -28,7 +28,7 @@ func TestSyncPreviewShowsDivergenceWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, expected := range []string{"Target: beta", "main (trunk)", "alpha (#1) (aligned)", "beta (#2) (divergent: base main, want alpha)", "Command to run\ngh stack link --base main alpha beta", "No changes were made."} {
+	for _, expected := range []string{"Target  beta", "○ main", "#1", "aligned", "#2", "divergent: base main, want alpha", "Command to run\ngh stack link --base main alpha beta", "No changes were made."} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("preview missing %q:\n%s", expected, output)
 		}
@@ -43,19 +43,16 @@ func TestSyncPlanSnapshotsUseOneSpacedGraphAndCopyableCommand(t *testing.T) {
 	for _, test := range []struct {
 		name         string
 		presentation Presentation
-		want         string
 	}{
-		{name: "plain", want: "Target: synthetic-top\n\n  synthetic-main (trunk)\n  └─ synthetic-a (#10) (aligned)\n    └─ synthetic-b (#11) (divergent: base synthetic-main, want synthetic-a)\n\nCommand to run\ngh stack link --base synthetic-main synthetic-a synthetic-b\n"},
-		{name: "color", presentation: Presentation{Color: true}, want: "\x1b[1;36mTarget\x1b[0m: \x1b[1;37msynthetic-top\x1b[0m\n\n  \x1b[1;33msynthetic-main (trunk)\x1b[0m\n  └─ \x1b[1;37msynthetic-a\x1b[0m (\x1b[35m#10\x1b[0m) \x1b[32m(aligned)\x1b[0m\n    └─ \x1b[1;37msynthetic-b\x1b[0m (\x1b[35m#11\x1b[0m) \x1b[1;38;5;214m(divergent: base synthetic-main, want synthetic-a)\x1b[0m\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgh stack link --base synthetic-main synthetic-a synthetic-b\x1b[0m\n"},
+		{name: "sync-plain"},
+		{name: "sync-color", presentation: Presentation{Color: true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			if err := writeSyncPlan(&output, plan, test.presentation); err != nil {
 				t.Fatal(err)
 			}
-			if got := output.String(); got != test.want {
-				t.Errorf("snapshot = %q, want %q", got, test.want)
-			}
+			assertGolden(t, test.name, output.String())
 		})
 	}
 }
@@ -66,7 +63,7 @@ func TestSyncPreviewShowsMissingAndUnsafeNodesWithoutApplyCommandMutation(t *tes
 	if err := writeSyncPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"synthetic-a (missing pull request)", "synthetic-b (#12) (non-open pull request)", "Apply blocked"} {
+	for _, expected := range []string{"missing pull request", "#12", "non-open pull request", "Apply blocked"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Errorf("preview missing %q: %q", expected, output.String())
 		}

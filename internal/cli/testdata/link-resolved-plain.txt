@@ -1,0 +1,9 @@
+Target  beta  · --branch
+
+  ○ main   trunk
+  │
+  ● alpha  #1
+  ● beta   #2  ← target
+
+Command to run
+gh stack link --base main alpha beta

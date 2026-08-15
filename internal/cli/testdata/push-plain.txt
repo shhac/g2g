@@ -1,0 +1,11 @@
+Target  synthetic-top
+
+  ○ synthetic-main   trunk
+  │
+  ● synthetic-lower
+  ● synthetic-top    ← target
+
+Command to run
+git push --atomic --force-with-lease origin synthetic-lower synthetic-top
+
+Atomic push: all selected refs advance together or none do.

@@ -39,8 +39,8 @@ func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	for _, expected := range []string{
-		"Target: beta",
-		"main (trunk)", "alpha (#1)", "beta (#2)",
+		"Target  beta",
+		"\u25cb main", "alpha", "#1", "beta", "#2",
 		"Command to run\ngh stack link --base main alpha beta",
 		"No changes were made.",
 	} {
@@ -58,13 +58,18 @@ func TestLinkPreviewGraphIsColoredOnlyWhenEnabled(t *testing.T) {
 	for _, test := range []struct {
 		color bool
 		want  string
-	}{{false, "  main (trunk)\n  └─ alpha (#1)\n    └─ beta (#2)"}, {true, "\x1b[1;33mmain (trunk)\x1b[0m"}} {
+	}{{false, "  ○ main   trunk"}, {true, "\x1b[1;33mmain\x1b[0m"}} {
+		presentation := Presentation{Color: test.color}
 		var output bytes.Buffer
-		if err := writeLinkPlan(&output, plan, Presentation{Color: test.color}); err != nil {
+		if err := writeLinkPlan(&output, plan, presentation); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(output.String(), test.want) || strings.Count(output.String(), "main (trunk)") != 1 || strings.Count(output.String(), "gh stack link --base main alpha beta") != 1 {
-			t.Errorf("preview = %q", output.String())
+		got := output.String()
+		if !strings.Contains(got, test.want) || strings.Count(got, trunkGlyph) != 1 || strings.Count(got, "gh stack link --base main alpha beta") != 1 {
+			t.Errorf("preview = %q", got)
+		}
+		if !test.color && strings.Contains(got, "\x1b[") {
+			t.Errorf("plain preview contains escape sequences: %q", got)
 		}
 	}
 }
@@ -80,30 +85,18 @@ func TestLinkPlanSnapshots(t *testing.T) {
 		name         string
 		plan         link.Plan
 		presentation Presentation
-		want         string
 	}{
-		{
-			name: "plain resolved", plan: resolved,
-			want: "Target: beta\n\n  main (trunk)\n  └─ alpha (#1)\n    └─ beta (#2)\n\nCommand to run\ngh stack link --base main alpha beta\n",
-		},
-		{
-			name: "color resolved", plan: resolved, presentation: Presentation{Color: true},
-			want: "\x1b[1;36mTarget\x1b[0m: \x1b[1;37mbeta\x1b[0m\n\n  \x1b[1;33mmain (trunk)\x1b[0m\n  └─ \x1b[1;37malpha\x1b[0m (\x1b[35m#1\x1b[0m)\n    └─ \x1b[1;37mbeta\x1b[0m (\x1b[35m#2\x1b[0m)\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgh stack link --base main alpha beta\x1b[0m\n",
-		},
-		{
-			name: "plain unresolved", plan: unresolved,
-			want: "Target: beta\n\n  main (trunk)\n  └─ alpha (#1)\n    └─ beta (unresolved: no open pull request)\n\nCommand to run\ngh stack link --base main alpha beta\nApply blocked: resolve every unresolved GitHub PR mapping first.\n",
-		},
+		{name: "link-resolved-plain", plan: resolved},
+		{name: "link-resolved-color", plan: resolved, presentation: Presentation{Color: true}},
+		{name: "link-unresolved-plain", plan: unresolved},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			if err := writeLinkPlan(&output, test.plan, test.presentation); err != nil {
 				t.Fatal(err)
 			}
-			if got := output.String(); got != test.want {
-				t.Errorf("snapshot = %q, want %q", got, test.want)
-			}
-			if strings.Contains(output.String(), "Link stack") || strings.Contains(output.String(), "bottom to top") || strings.Contains(output.String(), "current Git branch") {
+			assertGolden(t, test.name, output.String())
+			if strings.Contains(output.String(), "Link stack") || strings.Contains(output.String(), "bottom to top") {
 				t.Errorf("snapshot has redundant leader: %q", output.String())
 			}
 		})
@@ -125,7 +118,7 @@ func TestLinkPreviewCommandLineIsBareAndHighlightedOnlyWithColor(t *testing.T) {
 			if err := writeLinkPlan(&output, plan, presentation); err != nil {
 				t.Fatal(err)
 			}
-			want := presentation.accent("Command to run") + "\n" + presentation.command("gh stack link --base main alpha beta") + "\n"
+			want := presentation.accent("Command to run") + "\n" + commandLine("gh stack link --base main alpha beta", presentation) + "\n"
 			if got := output.String(); !strings.Contains(got, want) || strings.Contains(got, "$ gh stack link") || strings.Contains(got, "│gh stack") {
 				t.Errorf("preview = %q", got)
 			}
@@ -150,8 +143,8 @@ func TestLinkPreviewReportsNothingToLinkForOnePullRequest(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "current branch", args: []string{"link"}, want: "Target: alpha"},
-		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Target: alpha"},
+		{name: "current branch", args: []string{"link"}, want: "Target  alpha"},
+		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Target  alpha"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHub{}
@@ -177,7 +170,7 @@ func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "Target: beta") {
+	if !strings.Contains(output, "Target  beta") {
 		t.Errorf("output = %q", output)
 	}
 	if github.links != 0 {
@@ -191,7 +184,7 @@ func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview error = %v", err)
 	}
-	if !strings.Contains(output, "beta (unresolved: no open pull request)") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
+	if !strings.Contains(output, "unresolved: no open pull request") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
 		t.Errorf("preview = %q links=%d", output, github.links)
 	}
 	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
@@ -206,8 +199,8 @@ func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
 		prs  []githubstack.PullRequest
 		want string
 	}{
-		{name: "missing", want: "alpha (unresolved: no open pull request)"},
-		{name: "non-open", prs: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"}}, want: "alpha (unresolved: closed pull request)"},
+		{name: "missing", want: "unresolved: no open pull request"},
+		{name: "non-open", prs: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"}}, want: "unresolved: closed pull request"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHubPRs{prs: test.prs}
@@ -240,7 +233,7 @@ func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := output.String(); !strings.Contains(got, "beta (unresolved: closed pull request)") || !strings.Contains(got, "beta-two (unresolved: no open pull request)") || strings.Contains(got, "(#0)") {
+	if got := output.String(); !strings.Contains(got, "unresolved: closed pull request") || !strings.Contains(got, "unresolved: no open pull request") || strings.Contains(got, "(#0)") {
 		t.Errorf("preview = %q", got)
 	}
 }
@@ -292,7 +285,7 @@ func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
 		t.Errorf("events = %v, want flush before link", events)
 	}
 	output := writer.String()
-	if strings.Count(output, "main (trunk)") != 1 || strings.Count(output, "gh stack link --base main alpha beta") != 1 || !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") {
+	if strings.Count(output, "\u25cb main") != 1 || strings.Count(output, "gh stack link --base main alpha beta") != 1 || !strings.Contains(output, "Ready to apply") || !strings.Contains(output, "Applied — GitHub stack updated") {
 		t.Errorf("output = %q", output)
 	}
 }

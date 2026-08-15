@@ -21,7 +21,7 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"preview current", []string{"push"}, []string{"Target: synthetic-middle", "synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
+		{"preview current", []string{"push"}, []string{"Target  synthetic-middle", "synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
 		{"preview default full stack", []string{"push", "--branch", "synthetic-middle"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
 		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--no-stack"}, []string{"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle"}},
 	} {
@@ -62,29 +62,16 @@ func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
 	for _, test := range []struct {
 		name         string
 		presentation Presentation
-		want         string
 	}{
-		{
-			name: "plain",
-			want: "Target: synthetic-top\n\n  synthetic-main (trunk)\n  └─ synthetic-lower\n    └─ synthetic-top\n\nCommand to run\ngit push --atomic --force-with-lease origin synthetic-lower synthetic-top\nAtomic push: all selected refs advance together or none do.\n",
-		},
-		{
-			name:         "color",
-			presentation: Presentation{Color: true},
-			want:         "\x1b[1;36mTarget\x1b[0m: \x1b[1;37msynthetic-top\x1b[0m\n\n  \x1b[1;33msynthetic-main (trunk)\x1b[0m\n  └─ \x1b[1;37msynthetic-lower\x1b[0m\n    └─ \x1b[1;37msynthetic-top\x1b[0m\n\n\x1b[1;36mCommand to run\x1b[0m\n\x1b[1;97;48;5;236mgit push --atomic --force-with-lease origin synthetic-lower synthetic-top\x1b[0m\n\x1b[2mAtomic push: all selected refs advance together or none do.\x1b[0m\n",
-		},
+		{name: "push-plain"},
+		{name: "push-color", presentation: Presentation{Color: true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			if err := writePushPlan(&output, plan, test.presentation); err != nil {
 				t.Fatal(err)
 			}
-			if got := output.String(); got != test.want {
-				t.Errorf("snapshot = %q, want %q", got, test.want)
-			}
-			if strings.Contains(output.String(), "$ ") || strings.Contains(output.String(), "bottom to top") {
-				t.Errorf("command card contains decoration: %q", output.String())
-			}
+			assertGolden(t, test.name, output.String())
 		})
 	}
 }

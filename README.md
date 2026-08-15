@@ -104,10 +104,14 @@ that ancestry has multiple declared trunks, it fails closed and requires
 `--trunk <branch>`; an override must be both declared by Graphite and an
 ancestor of the selected branch.
 
-Preview renders the selected stack graph once and always shows the exact
-`gh stack link` command it validated. `--apply` re-discovers and revalidates
-before it prints one `Ready to apply` graph and command, flushes that output,
-and invokes the command. On success it prints a concise confirmation; on
+Preview renders the selected stack graph once and shows the exact `gh stack
+link` command only when apply would accept it, so a copyable command is never
+one that would be refused. Every stack gt2gh handles is linear, so the graph is
+a fixed-indent column rather than an escalating tree: the trunk is marked, the
+branches stacked on it follow bottom-to-top, and pull-request numbers and state
+line up in their own column. Blank lines bound the graph and each block below
+it. `--apply` re-discovers and revalidates before it prints one `Ready to
+apply` graph and command, flushes that output, and invokes the command. On success it prints a concise confirmation; on
 failure it never claims that changes were made. Manually copying the displayed
 command is a separate, deliberate snapshot action and does not cause `gt2gh`
 to re-resolve anything.
@@ -116,8 +120,13 @@ Color is enabled only for an interactive terminal. It is disabled for redirected
 output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
 for scripts. In color output, headers, trunks, branches, PR numbers, unresolved
 state, and success use distinct restrained roles; the renderer keeps plan data
-separate from ANSI decoration, leaving room for a future structured format
-without scraping terminal text.
+separate from ANSI decoration.
+
+Nothing but whitespace ever shares the line holding a copyable command: no
+prompt character, border, or annotation, so a loose, wrapped, or whole-line
+selection can only pick up spaces, which a shell ignores. In color output the
+highlight is padded a few columns past the command purely to widen the click
+target.
 
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by

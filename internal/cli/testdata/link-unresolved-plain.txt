@@ -1,0 +1,8 @@
+Target  beta  · --branch
+
+  ○ main   trunk
+  │
+  ● alpha  #1
+  ● beta   unresolved: no open pull request  ← target
+
+Apply blocked: resolve every unresolved GitHub PR mapping first.

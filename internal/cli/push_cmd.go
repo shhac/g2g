@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -36,7 +34,7 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 				if err := writePushPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
 					return err
 				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before one atomic push.")
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to push.")
 				return err
 			}
 			validated, err := service.Revalidate(ctx, selection.Selection(), remote, plan)
@@ -63,37 +61,4 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
 	return cmd
-}
-
-func writeReadyToPush(writer io.Writer, plan push.Plan, presentation Presentation) error {
-	if _, err := fmt.Fprintln(writer, presentation.accent("Ready to apply")); err != nil {
-		return err
-	}
-	return writePushPlan(writer, plan, presentation)
-}
-
-func writePushPlan(writer io.Writer, plan push.Plan, presentation Presentation) error {
-	preview := newPushPreview(plan)
-	if _, err := fmt.Fprintf(writer, "%s: %s\n\n", presentation.accent("Target"), presentation.branch(preview.Target)); err != nil {
-		return err
-	}
-	for index, node := range preview.Nodes {
-		if node.Trunk {
-			if _, err := fmt.Fprintf(writer, "  %s\n", presentation.trunk(node.Branch+" (trunk)")); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), presentation.branch(node.Branch)); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintln(writer); err != nil {
-		return err
-	}
-	if err := writeCommand(writer, preview.commandText(), presentation); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(writer, presentation.subdued("Atomic push: all selected refs advance together or none do."))
-	return err
 }

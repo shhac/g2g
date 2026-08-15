@@ -33,10 +33,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				if err := writeSyncPlan(cmd.OutOrStdout(), plan, presentation); err != nil {
 					return err
 				}
-				if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
-					return err
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link.")
+				fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to reconcile.")
 				return nil
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
@@ -50,7 +47,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
 					return err
 				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were needed or made."))
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
 				return err
 			}
 			if err := writeReadyToSync(cmd.OutOrStdout(), validated, presentation); err != nil {

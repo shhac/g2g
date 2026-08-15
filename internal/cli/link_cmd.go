@@ -37,10 +37,10 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 					return err
 				}
 				if plan.NothingToLink() {
-					fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were needed or made."))
+					fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
 					return nil
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made.")+" --apply re-discovers and revalidates before invoking gh stack link; copying the displayed command is your deliberate snapshot choice.")
+				fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to link.")
 				return nil
 			}
 			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
@@ -51,7 +51,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				if err := writeLinkPlan(cmd.OutOrStdout(), validated, presentation); err != nil {
 					return err
 				}
-				_, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were needed or made."))
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were needed or made."))
 				return err
 			}
 			if err := writeReadyToApply(cmd.OutOrStdout(), validated, presentation); err != nil {
@@ -76,61 +76,14 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 }
 
 func writeReadyToApply(writer io.Writer, plan link.Plan, presentation Presentation) error {
-	if _, err := fmt.Fprintln(writer, presentation.accent("Ready to apply")); err != nil {
+	if err := writeReadyBanner(writer, presentation); err != nil {
 		return err
 	}
 	return writeLinkPlan(writer, plan, presentation)
 }
 
 func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) error {
-	preview := newLinkPreview(plan)
-	if _, err := fmt.Fprintf(writer, "%s: %s\n", presentation.accent("Target"), presentation.branch(preview.Target)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(writer); err != nil {
-		return err
-	}
-	for index, node := range preview.Nodes {
-		if node.Trunk {
-			if _, err := fmt.Fprintf(writer, "  %s\n", presentation.trunk(node.Branch+" (trunk)")); err != nil {
-				return err
-			}
-			continue
-		}
-		label := presentation.branch(node.Branch) + " (" + presentation.pr(fmt.Sprintf("#%d", node.PRNumber)) + ")"
-		if node.Unresolved != "" {
-			label = presentation.branch(node.Branch) + " " + presentation.problem(fmt.Sprintf("(unresolved: %s)", node.Unresolved))
-		}
-		if _, err := fmt.Fprintf(writer, "%s└─ %s\n", strings.Repeat("  ", index), label); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintln(writer); err != nil {
-		return err
-	}
-	if preview.NothingToLink {
-		if _, err := fmt.Fprintln(writer, "Nothing to link — this stack has one pull request."); err != nil {
-			return err
-		}
-	} else {
-		if err := writeCommand(writer, preview.commandText(), presentation); err != nil {
-			return err
-		}
-	}
-	if preview.ApplyBlocked {
-		if _, err := fmt.Fprintln(writer, presentation.problem("Apply blocked: resolve every unresolved GitHub PR mapping first.")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func writeCommand(writer io.Writer, command string, presentation Presentation) error {
-	if _, err := fmt.Fprintln(writer, presentation.accent("Command to run")); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(writer, presentation.command(command))
-	return err
+	return writeStackView(writer, linkView(plan), presentation)
 }
 
 // writeNotApplied renders the outcome of a failed mutation and returns the

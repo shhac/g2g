@@ -126,7 +126,7 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(cmd.OutOrStdout(), p.notice("No changes were made. Create a spec with: g2g submit --write-spec <private-temp-dir>"))
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>")
 	return err
 }
 
@@ -134,7 +134,7 @@ func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p P
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(cmd.OutOrStdout(), p.notice("No changes were made. Re-run with --apply to atomically push, create missing PRs, and link the stack."))
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+p.notice("No changes were made.")+" Re-run with --apply to push, create missing PRs, and link.")
 	return err
 }
 
@@ -197,40 +197,37 @@ func editSpec(ctx context.Context, path string) error {
 	return command.Run()
 }
 
-func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string) error {
-	if _, err := fmt.Fprintf(w, "%s: %s\n\n", p.accent("Target"), p.branch(plan.Snapshot.Target)); err != nil {
-		return err
+func submitView(plan submit.Plan, template string) stackView {
+	view := stackView{
+		Operation:    "submit",
+		Target:       plan.Snapshot.Target,
+		TargetSource: plan.Snapshot.TargetSource,
+		Nodes:        []stackNode{{Branch: plan.Snapshot.Base, Trunk: true}},
 	}
-	if _, err := fmt.Fprintf(w, "  %s\n", p.trunk(plan.Snapshot.Base+" (trunk)")); err != nil {
-		return err
-	}
-	for i, branch := range plan.Snapshot.Branches {
-		marker := p.subdued("[create draft]")
-		if reason, blocked := plan.Issues[branch]; blocked {
-			marker = p.problem("[blocked: " + reason + "]")
-		} else if number := existingNumber(plan, branch); number != 0 {
-			marker = p.notice("[existing #" + fmt.Sprint(number) + "]")
-		} else if previous, replaced := plan.Superseded[branch]; replaced {
-			marker = p.subdued(fmt.Sprintf("[create draft · #%d %s]", previous.Number, strings.ToLower(previous.State)))
+	for _, branch := range plan.Snapshot.Branches {
+		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, State: "create draft"}
+		switch previous, replaced := plan.Superseded[branch]; {
+		case plan.Issues[branch] != "":
+			node.State, node.Severity = "blocked: "+plan.Issues[branch], severityBad
+		case existingNumber(plan, branch) != 0:
+			node.PRNumber, node.State, node.Severity = existingNumber(plan, branch), "existing", severityOK
+		case replaced:
+			node.State = fmt.Sprintf("create draft · #%d %s", previous.Number, strings.ToLower(previous.State))
 		}
-		if _, err := fmt.Fprintf(w, "%s└─ %s %s\n", strings.Repeat("  ", i+1), p.branch(branch), marker); err != nil {
-			return err
-		}
+		view.Nodes = append(view.Nodes, node)
 	}
-	if _, err := fmt.Fprintln(w); err != nil {
-		return err
-	}
+
 	if template != "" {
-		if _, err := fmt.Fprintln(w, p.subdued("PR template: "+template)); err != nil {
-			return err
-		}
+		view = view.note("PR template: "+template, severityNeutral)
 	}
-	message := "Missing PRs will be created as drafts; existing PRs are preserved."
 	if len(plan.Issues) != 0 {
-		message = "Apply blocked: repair the marked existing pull requests first."
+		return view.note("Apply blocked: repair the marked existing pull requests first.", severityBad)
 	}
-	_, err := fmt.Fprintln(w, p.subdued(message))
-	return err
+	return view.note("Missing PRs will be created as drafts; existing PRs are preserved.", severityNeutral)
+}
+
+func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string) error {
+	return writeStackView(w, submitView(plan, template), p)
 }
 
 func existingNumber(plan submit.Plan, branch string) int {

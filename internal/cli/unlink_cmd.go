@@ -42,7 +42,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 			if err := writeUnlinkPlan(cmd.OutOrStdout(), plan, number, presentation); err != nil {
 				return err
 			}
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), presentation.notice("No changes were made."))
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), "\n"+presentation.notice("No changes were made."))
 			return err
 		}
 		validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
@@ -76,11 +76,9 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 	return cmd
 }
 func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, p Presentation) error {
-	if err := writeStatus(w, plan, p); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(w, p.subdued("This removes GitHub's stack relationship only. Branches and pull requests remain unchanged.")); err != nil {
-		return err
-	}
-	return writeCommand(w, commandText([]string{"gh", "stack", "unstack", fmt.Sprint(number)}), p)
+	view := statusView(plan)
+	view.Operation = "unlink"
+	view.Notes = nil
+	view.Action = []string{"gh", "stack", "unstack", fmt.Sprint(number)}
+	return writeStackView(w, view.note("This removes GitHub's stack relationship only. Branches and pull requests remain unchanged.", severityNeutral), p)
 }

@@ -7,49 +7,39 @@ import (
 	"github.com/shhac/gt2gh/internal/link"
 )
 
-// linkPreview is the semantic human-preview projection. It intentionally has
-// no ANSI or writer dependency so another output format can consume the same
-// validated plan without parsing terminal text.
-type linkPreview struct {
-	Target        string
-	TargetSource  string
-	Nodes         []linkPreviewNode
-	Command       []string
-	ApplyBlocked  bool
-	NothingToLink bool
-}
-
-type linkPreviewNode struct {
-	Branch     string
-	Trunk      bool
-	PRNumber   int
-	Unresolved string
-}
-
-func newLinkPreview(plan link.Plan) linkPreview {
+func linkView(plan link.Plan) stackView {
 	issues := make(map[string]string, len(plan.Issues))
 	for _, issue := range plan.Issues {
 		issues[issue.Branch] = issue.Reason
 	}
 	prs := githubstack.ByHead(plan.PullRequests)
-	preview := linkPreview{
-		Target:        plan.Target,
-		TargetSource:  plan.TargetSource,
-		Nodes:         []linkPreviewNode{{Branch: plan.Base, Trunk: true}},
-		ApplyBlocked:  len(plan.Issues) != 0,
-		NothingToLink: plan.NothingToLink(),
-	}
-	if !preview.NothingToLink {
-		preview.Command = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
+
+	view := stackView{
+		Operation:    "link",
+		Target:       plan.Target,
+		TargetSource: plan.TargetSource,
+		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
 	}
 	for _, branch := range plan.Branches {
-		preview.Nodes = append(preview.Nodes, linkPreviewNode{Branch: branch, PRNumber: prs[branch].Number, Unresolved: issues[branch]})
+		node := stackNode{Branch: branch, Target: branch == plan.Target, PRNumber: prs[branch].Number, PRURL: prs[branch].URL}
+		// The marker keeps an unresolved node self-describing without colour,
+		// so redirected output still says why a branch cannot be linked.
+		if reason := issues[branch]; reason != "" {
+			node.PRNumber, node.State, node.Severity = 0, "unresolved: "+reason, severityBad
+		}
+		view.Nodes = append(view.Nodes, node)
 	}
-	return preview
-}
 
-func (p linkPreview) commandText() string {
-	return commandText(p.Command)
+	// A command is shown only when it would be accepted. Offering a copyable
+	// gh invocation that apply would refuse invites running it by hand.
+	if len(plan.Issues) != 0 {
+		return view.note("Apply blocked: resolve every unresolved GitHub PR mapping first.", severityBad)
+	}
+	if plan.NothingToLink() {
+		return view.note("Nothing to link — this stack has one pull request.", severityNeutral)
+	}
+	view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
+	return view
 }
 
 func commandText(command []string) string {

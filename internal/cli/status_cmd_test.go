@@ -15,7 +15,7 @@ func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Target: synthetic/top", "main (trunk)", "synthetic/lower (#11) [aligned]", "synthetic/top [blocked: no open pull request]", "Safe next action: repair"} {
+	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open pull request", "Safe next action: repair"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
@@ -32,7 +32,7 @@ func TestStatusRendersOneNativeStackSummaryWithoutRepeatedBadges(t *testing.T) {
 	if !strings.Contains(got, "GitHub stack #17 · selected path 2/2 · aligned") {
 		t.Errorf("missing aligned summary in %q", got)
 	}
-	if strings.Contains(got, "[stack #") {
+	if strings.Contains(got, "stack #17, position") {
 		t.Errorf("healthy graph repeated native-stack badges: %q", got)
 	}
 }
@@ -44,7 +44,7 @@ func TestStatusMarksOnlyNativeStackExceptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	for _, want := range []string{"synthetic/top (#12) [aligned] [not linked]", "GitHub stack #17 · partial (1/2 linked)"} {
+	for _, want := range []string{"#12", "not linked", "GitHub stack #17 \u00b7 partial (1/2 linked)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -58,7 +58,7 @@ func TestStatusMarksConflictingNativeStackMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	for _, want := range []string{"[stack #17, position 2]", "GitHub stack: conflicting membership"} {
+	for _, want := range []string{"stack #17, position 2", "GitHub stack: conflicting membership"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}

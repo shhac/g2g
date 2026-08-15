@@ -42,3 +42,24 @@ func TestBoundedOutputRedactsAndBoundsCredentialLines(t *testing.T) {
 		t.Errorf("BoundedOutput() = %q", got)
 	}
 }
+
+// An empty argument is still an argument. The sentinel that marked "already
+// appended" was indistinguishable from a genuinely empty argv element, so
+// diagnostics silently under-reported what was actually run.
+func TestSafeCommandKeepsEmptyArguments(t *testing.T) {
+	if got, want := SafeCommand("git", []string{"commit", "", "-m", "x"}), "git commit  -m x"; got != want {
+		t.Errorf("SafeCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestSafeCommandRedactsPrefixedCredentials(t *testing.T) {
+	for _, argument := range []string{"--token=abc", "--auth=abc", "--header=abc", "--cookie=abc"} {
+		got := SafeCommand("gh", []string{"api", argument})
+		if strings.Contains(got, "abc") {
+			t.Errorf("SafeCommand(%q) leaked the value: %q", argument, got)
+		}
+		if !strings.Contains(got, "[redacted]") {
+			t.Errorf("SafeCommand(%q) = %q, want a redaction marker", argument, got)
+		}
+	}
+}

@@ -102,28 +102,34 @@ func SafeCommand(name string, args []string) string {
 	parts = append(parts, name)
 	redactNext := false
 	for _, argument := range args {
-		if redactNext {
+		switch {
+		case redactNext:
 			parts = append(parts, "[redacted]")
 			redactNext = false
-			continue
-		}
-		if credentialFlag(argument) {
+		case credentialFlag(argument):
 			parts = append(parts, argument)
 			redactNext = true
-			continue
-		}
-		for _, prefix := range []string{"--token=", "--auth=", "--header=", "--cookie="} {
-			if strings.HasPrefix(argument, prefix) {
-				parts = append(parts, prefix+"[redacted]")
-				argument = ""
-				break
-			}
-		}
-		if argument != "" {
-			parts = append(parts, argument)
+		default:
+			parts = append(parts, redactPrefixed(argument))
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// credentialPrefixes are the flag forms that carry their secret inline.
+var credentialPrefixes = []string{"--token=", "--auth=", "--header=", "--cookie="}
+
+// redactPrefixed rewrites an inline credential flag, returning anything else
+// unchanged. Returning the argument rather than blanking it keeps a genuinely
+// empty argv element visible: the previous sentinel could not tell "already
+// handled" apart from "empty", so empty arguments vanished from diagnostics.
+func redactPrefixed(argument string) string {
+	for _, prefix := range credentialPrefixes {
+		if strings.HasPrefix(argument, prefix) {
+			return prefix + "[redacted]"
+		}
+	}
+	return argument
 }
 
 func credentialFlag(argument string) bool {

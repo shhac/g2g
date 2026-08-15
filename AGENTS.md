@@ -26,6 +26,23 @@ only process knowledge that is easy to miss.
   fixture must be fully synthetic—never copy a real checkout's names, graph, or
   CLI output into the repository.
 
+## g2g-owned graphs
+
+- Read `design-docs/g2g-owned-graphs.md` before touching `internal/graph`. The
+  forest model, per-branch authority, derived (never stored) graph identity,
+  and the deliberate absence of restack are decisions, not accidents.
+- `internal/graph` must depend on Git alone. Importing Graphite or GitHub into
+  it, or making any of `graph`/`track`/`untrack` need a network, removes the
+  only reason the package exists.
+- `track` previews candidates and blocks rather than choosing; `untrack`
+  reports the children it strands rather than reparenting them. Both are the
+  same fail-closed rule the Graphite commands follow, and both have tests that
+  fail if the guess is reintroduced.
+- Ancestry is the one seam where a PATH fake proves nothing, because the fake
+  answers whatever it is asked and the question is what Git considers
+  reachable. Those cases build a throwaway local repository — synthetic branch
+  names, no remote, nothing that leaves the machine.
+
 ## Fixtures and data hygiene
 
 - Put reusable Graphite display fixtures in `internal/graphite/testdata/`; keep

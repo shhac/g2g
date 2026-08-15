@@ -1,6 +1,9 @@
 # Initial scope
 
 **Status:** implemented through v0.7; later changes remain focused extensions.
+The graph/track/untrack commands are a separate project with its own document,
+[`g2g-owned-graphs.md`](g2g-owned-graphs.md); everything below concerns the
+Graphite-authoritative commands only.
 **Graphite display contract:** baseline-tested with Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
@@ -111,6 +114,9 @@ gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk
 gt2gh [--debug] submit [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--spec <submission.json> | --write-spec <private-temp-dir>] [--template <name> | --no-template] [--draft | --ready] [--apply]
 gt2gh [--debug] status [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack]
 gt2gh [--debug] unlink [--stack-number <github-stack-number>] [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+gt2gh [--debug] graph [--branch <local-branch>] [--scope branch|path|subtree|graph]
+gt2gh [--debug] track [--branch <local-branch>] [--parent <local-branch>] [--apply]
+gt2gh [--debug] untrack [--branch <local-branch>] [--scope branch|subtree] [--apply]
 gt2gh completion bash|zsh|fish
 ```
 

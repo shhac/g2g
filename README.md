@@ -5,6 +5,9 @@ branch stack into GitHub's native stack feature. Graphite remains the source of
 truth; `link` discovers a single ordered Graphite stack and, only with an
 explicit `--apply`, passes its branches to `gh stack link` from bottom to top.
 
+`gt2gh` can also keep a branch graph of its own, which needs neither Graphite
+nor GitHub. See [g2g-owned graphs](#g2g-owned-graphs).
+
 ## Command names
 
 `gt2gh` remains the project, repository, release-asset, and Homebrew formula
@@ -113,7 +116,7 @@ states the reason above the command and heads it `Command to run once
 unblocked` rather than presenting it as the next step. The only command never
 shown is one that cannot be constructed — `gh stack link` needs at least two
 branches, so a single-branch path prints `Nothing to link` instead.
-Every stack gt2gh handles is linear, so the graph is
+Every stack gt2gh projects onto GitHub is linear, so this graph is
 a fixed-indent column rather than an escalating tree: the trunk is marked, the
 branches stacked on it follow bottom-to-top, and pull-request numbers and state
 line up in their own column. Blank lines bound the graph and each block below
@@ -143,6 +146,78 @@ selection can only pick up spaces, which a shell ignores. In color output the
 highlight is padded a few columns past the command purely to widen the click
 target.
 
+## g2g-owned graphs
+
+`g2g graph`, `g2g track`, and `g2g untrack` maintain a branch forest gt2gh
+owns itself. They read Git and nothing else: no Graphite, no GitHub, no
+network. This is the structure that exists for branches you have not pushed
+yet, and it is the only place a fork can live — GitHub native stacks are
+linear, and a pull request base cannot describe a branch that has no pull
+request.
+
+Every branch has at most one parent, a parent may have many children, and a
+repository may have several roots. See
+[design-docs/g2g-owned-graphs.md](design-docs/g2g-owned-graphs.md) for the
+model, the storage decisions, and what is deliberately left out.
+
+```sh
+# Preview the candidate parents of the current branch. It refuses to choose.
+g2g track
+
+# Record a parent. Preview first; --apply writes.
+g2g track --branch feature/login --parent feature/auth
+g2g track --branch feature/login --parent feature/auth --apply
+
+# Inspect the graph. Scope widens from one branch to the whole tree.
+g2g graph                                    # root to the selected branch
+g2g graph --scope subtree                    # the branch and its descendants
+g2g graph --branch feature/login --scope graph   # the whole tree it belongs to
+
+# Remove edges. --scope subtree removes descendants too.
+g2g untrack --branch feature/auth --apply
+g2g untrack --branch feature/auth --scope subtree --apply
+```
+
+Parents are inferred from commit ancestry: the candidate parents of a branch
+are the local branches its commits sit on top of, ordered nearest first.
+`track` shows that list and blocks. It never picks for you — the nearest
+ancestor is usually right, and "usually" is not a basis for writing down
+structure every later command trusts.
+
+A trunk that has moved on is no longer an ancestor of the branches built from
+it, so recorded roots are always offered as candidates. Adopting the very first
+branch into an empty graph has neither, so it falls back to measuring from the
+fork point instead; that costs one Git call per local branch and runs only when
+the cheap paths found nothing.
+
+`graph` renders a fork with connectors and a chain as the same flat column
+every other command uses, because a chain has no structure that indentation
+would add. It reports two kinds of staleness and repairs neither:
+
+- **needs restack** — the recorded parent moved underneath the branch.
+- **parent missing** — the recorded parent is no longer a local branch, which
+  is what a squash-merged and deleted parent looks like.
+
+Untracking a branch in the middle leaves its children pointing at it and says
+so. Reparenting them onto the grandparent would invent an edge you never asked
+for.
+
+The graph is stored at `$(git rev-parse --path-format=absolute
+--git-common-dir)/g2g/graph.json`. Linked worktrees share it, it never appears
+in a diff or dirties a checkout, and it is neither pushed nor shared between
+clones — a fresh clone starts empty, which matches the unpublished branches
+those edges describe. Writes are a temporary file plus a rename, so a
+concurrent reader sees either the old graph or the new one. Its
+`storeSchemaVersion` is separate from the `--json` output's `schemaVersion`;
+an unrecognised store version fails closed rather than being rewritten.
+
+**gt2gh does not rebase.** It records structure and never repairs contents.
+Under squash merges this matters: when the bottom branch of a stack merges,
+GitHub retargets the child's pull request but the child still carries the
+original pre-squash commits, so its diff shows the parent's changes a second
+time. `g2g graph` reports the branches affected; something else has to fix
+them. See the design doc for the intended route when this changes.
+
 ## Machine-readable output
 
 Every command renders one semantic view, and `--json` and `--porcelain` are
@@ -159,11 +234,16 @@ g2g status --json
 # Stable tab-separated records, each led by its type:
 #   target <branch> <source>
 #   trunk  <branch>
-#   branch <name> <pr> <state> <severity> <url> <target?>
+#   branch <name> <pr> <state> <severity> <url> <target?> <parent?>
 #   command <argv>...
 #   note   <severity> <text>
 g2g link --porcelain
 ```
+
+`parent` is populated by `g2g graph`, where order alone cannot express
+structure once a graph forks; the linear commands leave it empty and their
+order still holds. In porcelain it is appended after the fields that shipped
+before it, so an existing reader keeps working.
 
 `blocked` is reported alongside `command`, not instead of it, so a consumer can
 see the destination and decide for itself; check `blocked` before acting on
@@ -282,6 +362,8 @@ declared trunk-to-selected path.
 - `internal/graphite`: strict, compatibility-gated read-only Graphite display parser.
 - `internal/git`, `internal/githubstack`: narrow repository, publication, and
   PR seams.
+- `internal/graph`: the branch forest gt2gh owns itself — model, ancestry
+  discovery, and the store under the Git common directory.
 - `internal/link`: Graphite-authoritative plan/apply orchestration.
 - `internal/push`: Git-only atomic stack-ref publication planning.
 - `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.

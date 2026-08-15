@@ -6,7 +6,9 @@ description: |
   Graphite/GitHub stack discovery or linking, reconciliation, CLI tests, or
   release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
   link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
-  "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push".
+  "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push",
+  "g2g graph", "g2g track", "g2g untrack", "g2g-owned graph", "branch graph
+  without Graphite".
 ---
 
 # gt2gh
@@ -28,6 +30,8 @@ description: |
 ## Work in this repository
 
 - Read `README.md` and `design-docs/initial-scope.md` before changing behavior.
+  For anything touching the gt2gh-owned branch forest, read
+  `design-docs/g2g-owned-graphs.md` first.
 - Treat Graphite as authoritative. Preserve the selected declared-trunk-to-leaf
   path in bottom-to-top order; do not manage, reorder, rebase, submit, or merge
   Graphite branches. A selected branch may sit in a forked tree, but siblings
@@ -61,12 +65,46 @@ description: |
   production discovery is strict, compatibility-gated noninteractive CLI
   parsing.
 
+## g2g-owned graphs
+
+- `graph`, `track`, and `untrack` operate on a branch forest gt2gh owns
+  itself. They read Git only: never call Graphite or GitHub from these paths,
+  and never make them require a network. That independence is the feature.
+- The model is a forest: at most one parent per branch, many children per
+  parent, several roots. Do not reintroduce a linear assumption. Graph identity
+  is derived from the edges, never stored; do not add graph IDs.
+- Authority is per branch (`g2g` or `graphite`), never per graph. A whole-graph
+  rule cannot survive two components becoming connected by an action gt2gh
+  never observed.
+- `track` must never choose a parent. Preview the ordered candidates and block.
+  Recording a structure every later command trusts is not a place for a good
+  guess.
+- `untrack` must never reparent the children it strands. Report them.
+- Do not record commit SHAs in the store: commits and force-pushes are content
+  movement, not structural drift. Validate against Git at read time instead.
+- gt2gh does not rebase and must not gain a checkout. `needs restack` and
+  `parent missing` are reported, never repaired. If restack is ever
+  implemented, it goes in a detached temporary worktree so HEAD, the index,
+  and the user's working tree are untouched.
+- The store lives under the Git common directory and is located with
+  `git rev-parse --path-format=absolute --git-common-dir`. The bare form is
+  relative to the working directory and silently wrong from a subdirectory.
+  Writes are temp-file plus rename. `storeSchemaVersion` is separate from the
+  `--json` `schemaVersion`; an unrecognised store version fails closed.
+- `--scope branch|path|subtree|graph` is graph selection, not projection
+  policy. Displaying a subtree does not imply a subtree can be linked on
+  GitHub. `--no-stack` on the Graphite-backed commands is the same axis as
+  `--scope branch`; unifying them is a deliberate, separate change.
+
 ## Develop and test
 
 - Keep external process calls behind `internal/subprocess.Runner`. Tests must
   use fake `gt` and `gh` executables on `PATH`, including captured supported
   Graphite text fixtures; never require credentials, network access, or real
-  CLI installations.
+  CLI installations. Graph ancestry is the one exception where a PATH fake
+  proves nothing — it answers whatever it is asked, and the question is what
+  Git considers reachable — so those cases build a throwaway local repository
+  with synthetic branch names and no remote.
 - Preserve the `completion bash|zsh|fish` interface. Dynamic `--branch` and
   `--trunk` completion must remain deterministic, read-only, and checkout-free.
 - Run `gofmt -w` on changed Go files and `go test ./...`. Use `go vet ./...`

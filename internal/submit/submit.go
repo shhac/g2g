@@ -150,22 +150,20 @@ func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) e
 // whose branch names were used before is the recovery this command exists for,
 // so that history is recorded as superseded and a new pull request is created.
 func assessExisting(prs []githubstack.PullRequest, base string, branches []string) (map[string]string, map[string]githubstack.PullRequest) {
-	resolutions := githubstack.ResolveHeads(prs)
 	issues := map[string]string{}
 	superseded := map[string]githubstack.PullRequest{}
-	for _, branch := range branches {
-		resolution := resolutions[branch]
+	for step := range githubstack.Along(base, branches, prs) {
+		resolution := step.Resolution
 		switch {
 		case resolution.Ambiguous():
-			issues[branch] = fmt.Sprintf("%d open pull requests", resolution.OpenCount)
+			issues[step.Branch] = fmt.Sprintf("%d open pull requests", resolution.OpenCount)
 		case resolution.Open != nil:
-			if resolution.Open.Base != base {
-				issues[branch] = "PR base " + resolution.Open.Base + ", want " + base
+			if resolution.Open.Base != step.ExpectedBase {
+				issues[step.Branch] = "PR base " + resolution.Open.Base + ", want " + step.ExpectedBase
 			}
 		case resolution.Superseded():
-			superseded[branch] = *resolution.Latest
+			superseded[step.Branch] = *resolution.Latest
 		}
-		base = branch
 	}
 	return issues, superseded
 }

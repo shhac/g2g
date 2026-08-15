@@ -52,3 +52,31 @@ func ResolveHeads(prs []PullRequest) map[string]Resolution {
 }
 
 const stateOpen = "OPEN"
+
+// PathStep is one branch on an ordered stack: the branch, the base it should
+// sit on, and the pull request that represents it.
+type PathStep struct {
+	Branch       string
+	ExpectedBase string
+	Resolution   Resolution
+}
+
+// Along yields each branch of an ordered path with its expected base and
+// resolved pull request.
+//
+// The base rolls: the bottom branch sits on the trunk and every branch above
+// sits on its predecessor. link, sync and submit each derive that same chain
+// before applying their own policy, and deriving it three times is what let a
+// fourth caller drift into scanning for the first open pull request instead of
+// going through the open-is-identity rule.
+func Along(base string, branches []string, prs []PullRequest) func(func(PathStep) bool) {
+	resolutions := ResolveHeads(prs)
+	return func(yield func(PathStep) bool) {
+		for _, branch := range branches {
+			if !yield(PathStep{Branch: branch, ExpectedBase: base, Resolution: resolutions[branch]}) {
+				return
+			}
+			base = branch
+		}
+	}
+}

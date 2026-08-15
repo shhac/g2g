@@ -143,15 +143,14 @@ func classify(discovery stack.Discovery) ([]Item, error) {
 			return nil, fmt.Errorf("GitHub has %d open pull requests for branch %q; refusing ambiguous sync", resolutions[branch].OpenCount, branch)
 		}
 	}
-	base := discovery.Base
 	items := make([]Item, 0, len(discovery.Branches))
-	for _, branch := range discovery.Branches {
-		resolution := resolutions[branch]
-		item := Item{Branch: branch, ExpectedBase: base, State: Missing}
+	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
+		resolution := step.Resolution
+		item := Item{Branch: step.Branch, ExpectedBase: step.ExpectedBase, State: Missing}
 		switch {
 		case resolution.Open != nil:
 			item.PullRequest = resolution.Open
-			if resolution.Open.Base == base {
+			if resolution.Open.Base == step.ExpectedBase {
 				item.State = Aligned
 			} else {
 				item.State = Divergent
@@ -163,7 +162,6 @@ func classify(discovery stack.Discovery) ([]Item, error) {
 			item.State = Unsafe
 		}
 		items = append(items, item)
-		base = branch
 	}
 	return items, nil
 }

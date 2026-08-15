@@ -185,3 +185,60 @@ func TestPullRequestNodeValidation(t *testing.T) {
 		})
 	}
 }
+
+// The rolling base is the stacking rule every command shares: the bottom
+// branch sits on the trunk, each one above on its predecessor.
+func TestAlongRollsTheBaseUpTheStack(t *testing.T) {
+	prs := []PullRequest{
+		{Number: 1, Head: "synthetic-lower", Base: "synthetic-main", State: "OPEN"},
+		{Number: 2, Head: "synthetic-top", Base: "synthetic-lower", State: "CLOSED"},
+	}
+
+	var got []string
+	for step := range Along("synthetic-main", []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, prs) {
+		got = append(got, step.Branch+"<-"+step.ExpectedBase)
+	}
+
+	want := "synthetic-lower<-synthetic-main,synthetic-middle<-synthetic-lower,synthetic-top<-synthetic-middle"
+	if strings.Join(got, ",") != want {
+		t.Errorf("path = %q, want %q", strings.Join(got, ","), want)
+	}
+}
+
+// Each step carries the same resolution the rest of the tool uses, so a
+// consumer cannot reach a different verdict about which PR represents a branch.
+func TestAlongCarriesTheSharedResolution(t *testing.T) {
+	prs := []PullRequest{
+		{Number: 1, Head: "synthetic-lower", Base: "synthetic-main", State: "OPEN"},
+		{Number: 9, Head: "synthetic-top", Base: "synthetic-lower", State: "CLOSED"},
+	}
+
+	states := map[string]string{}
+	for step := range Along("synthetic-main", []string{"synthetic-lower", "synthetic-top", "synthetic-absent"}, prs) {
+		switch {
+		case step.Resolution.Open != nil:
+			states[step.Branch] = "open"
+		case step.Resolution.Superseded():
+			states[step.Branch] = "superseded"
+		default:
+			states[step.Branch] = "missing"
+		}
+	}
+
+	for branch, want := range map[string]string{"synthetic-lower": "open", "synthetic-top": "superseded", "synthetic-absent": "missing"} {
+		if states[branch] != want {
+			t.Errorf("%s = %q, want %q", branch, states[branch], want)
+		}
+	}
+}
+
+func TestAlongStopsWhenTheConsumerStops(t *testing.T) {
+	visited := 0
+	for range Along("main", []string{"a", "b", "c"}, nil) {
+		visited++
+		break
+	}
+	if visited != 1 {
+		t.Errorf("visited %d steps after break, want 1", visited)
+	}
+}

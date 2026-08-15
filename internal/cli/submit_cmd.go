@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 )
@@ -203,11 +204,13 @@ func submitView(plan submit.Plan, template string) stackView {
 	}
 	for _, branch := range plan.Snapshot.Branches {
 		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, State: "create draft"}
-		switch previous, replaced := plan.Superseded[branch]; {
+		previous, replaced := plan.Superseded[branch]
+		existing := existingNumber(plan, branch)
+		switch {
 		case plan.Issues[branch] != "":
 			node.State, node.Severity = "blocked: "+plan.Issues[branch], severityBad
-		case existingNumber(plan, branch) != 0:
-			node.PRNumber, node.State, node.Severity = existingNumber(plan, branch), "existing", severityOK
+		case existing != 0:
+			node.PRNumber, node.State, node.Severity = existing, "existing", severityOK
 		case replaced:
 			node.State = fmt.Sprintf("create draft · #%d %s", previous.Number, strings.ToLower(previous.State))
 		}
@@ -227,11 +230,12 @@ func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template 
 	return writeStackView(w, submitView(plan, template), p)
 }
 
+// existingNumber routes through the shared resolution rather than scanning for
+// the first open head, so the preview cannot disagree with the plan about
+// which pull request represents a branch.
 func existingNumber(plan submit.Plan, branch string) int {
-	for _, pr := range plan.Existing {
-		if pr.Head == branch && pr.State == "OPEN" {
-			return pr.Number
-		}
+	if resolution := githubstack.ResolveHeads(plan.Existing)[branch]; resolution.Open != nil {
+		return resolution.Open.Number
 	}
 	return 0
 }

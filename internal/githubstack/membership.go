@@ -68,13 +68,3 @@ func ByHead(prs []PullRequest) map[string]PullRequest {
 	}
 	return indexed
 }
-
-// GroupByHead preserves all PR matches so callers can enforce their own
-// duplicate policy.
-func GroupByHead(prs []PullRequest) map[string][]PullRequest {
-	groups := make(map[string][]PullRequest, len(prs))
-	for _, pr := range prs {
-		groups[pr.Head] = append(groups[pr.Head], pr)
-	}
-	return groups
-}

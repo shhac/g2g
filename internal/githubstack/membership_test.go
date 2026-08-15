@@ -35,13 +35,3 @@ func TestAssessMembership(t *testing.T) {
 		})
 	}
 }
-
-func TestGroupByHeadPreservesDuplicatesAndByHeadUsesLast(t *testing.T) {
-	prs := []PullRequest{{Head: "synthetic/branch", Number: 1}, {Head: "synthetic/branch", Number: 2}}
-	if got := len(GroupByHead(prs)["synthetic/branch"]); got != 2 {
-		t.Errorf("group length = %d, want 2", got)
-	}
-	if got := ByHead(prs)["synthetic/branch"].Number; got != 2 {
-		t.Errorf("last number = %d, want 2", got)
-	}
-}

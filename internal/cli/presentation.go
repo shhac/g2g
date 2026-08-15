@@ -16,8 +16,6 @@ const (
 	ansiPR        = "\x1b[35m"
 	ansiAligned   = "\x1b[32m"
 	ansiDivergent = "\x1b[1;38;5;214m"
-	ansiMissing   = "\x1b[31m"
-	ansiUnsafe    = "\x1b[91m"
 	ansiProblem   = "\x1b[1;31m"
 	ansiCommand   = "\x1b[1;97;48;5;236m"
 	ansiSubdued   = "\x1b[2m"
@@ -64,8 +62,6 @@ func (p Presentation) branch(text string) string    { return p.style(ansiBranch,
 func (p Presentation) pr(text string) string        { return p.style(ansiPR, text) }
 func (p Presentation) aligned(text string) string   { return p.style(ansiAligned, text) }
 func (p Presentation) divergent(text string) string { return p.style(ansiDivergent, text) }
-func (p Presentation) missing(text string) string   { return p.style(ansiMissing, text) }
-func (p Presentation) unsafe(text string) string    { return p.style(ansiUnsafe, text) }
 func (p Presentation) problem(text string) string   { return p.style(ansiProblem, text) }
 func (p Presentation) command(text string) string   { return p.style(ansiCommand, text) }
 func (p Presentation) subdued(text string) string   { return p.style(ansiSubdued, text) }

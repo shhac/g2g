@@ -84,27 +84,38 @@ func snapshot() stack.Snapshot {
 }
 
 type fakeGit struct {
-	pushes  int
-	pushErr error
+	pushes    int
+	pushErr   error
+	cleanErr  error
+	remoteErr error
 }
 
 func (*fakeGit) CurrentBranch(context.Context) (string, error) { return "synthetic/top", nil }
 func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 	return []string{"main", "synthetic/lower", "synthetic/middle", "synthetic/top"}, nil
 }
-func (*fakeGit) Clean(context.Context) error                          { return nil }
-func (*fakeGit) Remote(context.Context, string) error                 { return nil }
+func (f *fakeGit) Clean(context.Context) error                        { return f.cleanErr }
+func (f *fakeGit) Remote(context.Context, string) error               { return f.remoteErr }
 func (f *fakeGit) PushAtomic(context.Context, string, []string) error { f.pushes++; return f.pushErr }
 
 type fakeGitHub struct {
 	prs         []githubstack.PullRequest
+	later       []githubstack.PullRequest
+	laterSet    bool
+	inspections int
 	created     []string
 	links       int
 	createErrAt int
 	linkErr     error
 }
 
+// Inspect returns later on every call after the first when one is configured,
+// which is how a revalidation observes GitHub changing under a preview.
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
+	f.inspections++
+	if f.laterSet && f.inspections > 1 {
+		return f.later, nil
+	}
 	return f.prs, nil
 }
 func (f *fakeGitHub) Create(_ context.Context, branch, base, _, _ string, _ bool, _ []string) error {

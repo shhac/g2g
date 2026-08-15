@@ -15,8 +15,14 @@ only process knowledge that is easy to miss.
   it, retain context cancellation, and route opt-in diagnostics through
   `internal/diagnostic`; diagnostic tests deliberately exercise redaction and
   bounded output.
-- Tests must stay offline. Use `internal/testutil.WithFakeExecutables` and
-  PATH-backed `git`/`gt`/`gh` scripts. Any Graphite display or error regression
+- Tests must stay offline. Use `internal/testutil.FakeCLIs` (declarative
+  routes plus an invocation recorder) or the lower-level
+  `WithFakeExecutables`, both PATH-backed `git`/`gt`/`gh` scripts. Prefer
+  injected fakes for decision matrices, where spawning a process per case buys
+  nothing, and PATH fakes for at least one end-to-end path per command, which
+  is the only thing that covers argv construction, response parsing, and exit
+  handling. A PATH fake answers from its routes whatever it is asked, so assert
+  the recorded request as well as the result — `Recorder.Find` exists for that. Any Graphite display or error regression
   fixture must be fully synthetic—never copy a real checkout's names, graph, or
   CLI output into the repository.
 

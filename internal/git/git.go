@@ -3,8 +3,11 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/subprocess"
@@ -40,6 +43,105 @@ func (c Client) LocalBranches(ctx context.Context) ([]string, error) {
 	}
 	sort.Strings(branches)
 	return branches, nil
+}
+
+// AncestorBranches returns every other local branch whose tip is reachable
+// from target, which is exactly the set of candidate parents for target.
+//
+// This is the primitive g2g-owned graphs are inferred from. It needs no
+// network and works for branches that were never pushed, which is the whole
+// case pull request bases cannot describe.
+func (c Client) AncestorBranches(ctx context.Context, target string) ([]string, error) {
+	if err := safeRef(target); err != nil {
+		return nil, err
+	}
+	output, err := c.run(ctx, "for-each-ref", "--format=%(refname:short)", "--merged", target, "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	branches := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		// for-each-ref includes the target itself; a candidate parent set that
+		// contains the target would let a branch be recorded as its own parent.
+		if line = strings.TrimSpace(line); line != "" && line != target {
+			branches = append(branches, line)
+		}
+	}
+	sort.Strings(branches)
+	return branches, nil
+}
+
+// CommitDistance counts commits reachable from head but not from base. The
+// nearest ancestor branch is the immediate parent, so this is what orders
+// candidates.
+func (c Client) CommitDistance(ctx context.Context, base, head string) (int, error) {
+	if err := safeRef(base); err != nil {
+		return 0, err
+	}
+	if err := safeRef(head); err != nil {
+		return 0, err
+	}
+	output, err := c.run(ctx, "rev-list", "--count", base+".."+head)
+	if err != nil {
+		return 0, err
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil {
+		return 0, fmt.Errorf("parse git rev-list --count output")
+	}
+	return count, nil
+}
+
+// IsAncestor reports whether ancestor's tip is reachable from descendant.
+//
+// git signals the negative answer with exit status 1, which the runner
+// reports as an error like any other failure. Treating that as a failure
+// would turn every ordinary "no" into a broken command, so exit 1 alone is
+// translated back into a false answer and every other status stays an error.
+func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+	if err := safeRef(ancestor); err != nil {
+		return false, err
+	}
+	if err := safeRef(descendant); err != nil {
+		return false, err
+	}
+	_, err := c.run(ctx, "merge-base", "--is-ancestor", ancestor, descendant)
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}
+
+// CommonDir returns the absolute Git common directory, which linked worktrees
+// share. --path-format=absolute is required: the bare form is resolved against
+// the current working directory, so it answers ".git" from the repository root
+// and "../../.git" from a subdirectory.
+func (c Client) CommonDir(ctx context.Context) (string, error) {
+	output, err := c.run(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	dir := strings.TrimSpace(string(output))
+	if dir == "" {
+		return "", fmt.Errorf("git rev-parse returned no common directory")
+	}
+	return dir, nil
+}
+
+// safeRef rejects the ref names that cannot be passed to Git as a positional
+// argument without being read as an option.
+func safeRef(ref string) error {
+	if ref == "" {
+		return fmt.Errorf("branch name must not be empty")
+	}
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("branch name %q cannot be passed safely to git", ref)
+	}
+	return nil
 }
 
 func (c Client) Clean(ctx context.Context) error {

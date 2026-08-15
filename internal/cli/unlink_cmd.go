@@ -99,9 +99,7 @@ func resolveStackNumber(requested int, plan link.Plan) (int, string, error) {
 }
 
 func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, source string, p Presentation) error {
-	view := statusView(plan)
-	view.Operation = "unlink"
-	view.Notes = nil
+	view, _ := membershipView(plan, "unlink")
 	view.Action = []string{"gh", "stack", "unstack", fmt.Sprint(number)}
 	view = view.note(fmt.Sprintf("GitHub stack #%d · %s", number, source), severityNeutral)
 	return writeStackView(w, view.note("This removes GitHub's stack relationship only. Branches and pull requests remain unchanged.", severityNeutral), p)

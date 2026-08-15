@@ -27,7 +27,11 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 	return cmd
 }
 
-func statusView(plan link.Plan) stackView {
+// membershipView is the graph both status and unlink render: the selected path
+// with each branch's pull request and native-stack membership. They differ only
+// in the notes below it, so unlink composes this rather than building status's
+// whole projection and discarding half of it.
+func membershipView(plan link.Plan, operation string) (stackView, githubstack.Membership) {
 	issues := map[string]string{}
 	for _, issue := range plan.Issues {
 		issues[issue.Branch] = issue.Reason
@@ -35,7 +39,7 @@ func statusView(plan link.Plan) stackView {
 	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
 
 	view := stackView{
-		Operation:    "status",
+		Operation:    operation,
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
@@ -50,46 +54,47 @@ func statusView(plan link.Plan) stackView {
 		pr := native.Branches[branch]
 		node.PRNumber, node.PRURL = pr.Number, pr.URL
 		node.State, node.Severity = "aligned", severityOK
-		if marker := nativeMarker(native, branch); marker != "" {
-			node.State, node.Severity = marker, nativeSeverity(native.State)
+		if marker, markerSeverity := membershipStyle(native, branch); marker != "" {
+			node.State, node.Severity = marker, markerSeverity
 		}
 		view.Nodes = append(view.Nodes, node)
 	}
+	return view, native
+}
 
+func statusView(plan link.Plan) stackView {
+	view, native := membershipView(plan, "status")
 	if len(plan.Issues) != 0 {
 		return view.block("Safe next action: repair the marked PR mappings.")
 	}
-	return view.note(nativeMessage(native), nativeNoteSeverity(native.State))
+	return view.note(nativeMessage(native), membershipNoteSeverity(native.State))
 }
 
 func writeStatus(writer io.Writer, plan link.Plan, p Presentation) error {
 	return writeStackView(writer, statusView(plan), p)
 }
 
-func nativeMarker(s githubstack.Membership, branch string) string {
-	pr := s.Branches[branch]
-	switch s.State {
+// membershipStyle answers everything a renderer needs about one branch's
+// native-stack membership in a single place. Three functions switching on the
+// same state meant its presentation was spread across three switches that had
+// to agree.
+func membershipStyle(membership githubstack.Membership, branch string) (marker string, nodeSeverity severity) {
+	pr := membership.Branches[branch]
+	switch membership.State {
 	case githubstack.Partial:
 		if pr.StackNumber == 0 {
-			return "not linked"
+			return "not linked", severityWarn
 		}
 	case githubstack.Conflicting:
 		if pr.StackNumber == 0 {
-			return "not linked"
+			return "not linked", severityBad
 		}
-		return fmt.Sprintf("stack #%d, position %d", pr.StackNumber, pr.StackPosition)
+		return fmt.Sprintf("stack #%d, position %d", pr.StackNumber, pr.StackPosition), severityBad
 	}
-	return ""
+	return "", severityNeutral
 }
 
-func nativeSeverity(state githubstack.MembershipState) severity {
-	if state == githubstack.Conflicting {
-		return severityBad
-	}
-	return severityWarn
-}
-
-func nativeNoteSeverity(state githubstack.MembershipState) severity {
+func membershipNoteSeverity(state githubstack.MembershipState) severity {
 	if state == githubstack.Conflicting {
 		return severityBad
 	}

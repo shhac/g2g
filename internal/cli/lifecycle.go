@@ -112,13 +112,18 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 }
 
 func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentation) error {
-	if err := writeReadyBanner(cmd.OutOrStdout(), p); err != nil {
-		return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), p, err))
+	err := writeReadyBanner(cmd.OutOrStdout(), p)
+	if err == nil {
+		err = f.render(cmd.OutOrStdout(), validated, p)
 	}
-	if err := f.render(cmd.OutOrStdout(), validated, p); err != nil {
-		return fmt.Errorf("render ready-to-apply output: %w", writeNotApplied(cmd.OutOrStdout(), p, err))
+	if err == nil {
+		return nil
 	}
-	return nil
+	// writeNotApplied both prints and marks the error as already presented, so
+	// keep that call on its own line rather than nesting it inside a wrap where
+	// the output it produces is invisible.
+	presented := writeNotApplied(cmd.OutOrStdout(), p, err)
+	return fmt.Errorf("render ready-to-apply output: %w", presented)
 }
 
 func (f applyFlow[P]) isNoOp(plan P) bool { return f.noOp != nil && f.noOp(plan) }

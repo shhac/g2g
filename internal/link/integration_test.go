@@ -57,7 +57,7 @@ esac`,
 		GitHub:   githubstack.Client{Runner: runner},
 	}
 
-	plan, err := service.Plan(context.Background(), "gamma-deep")
+	plan, err := service.Plan(context.Background(), link.Selection{Branch: "gamma-deep"})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -75,8 +75,13 @@ esac`,
 		t.Fatalf("preview did not use compact Graphite discovery:\n%s", arguments)
 	}
 
-	if _, err := service.Apply(context.Background(), "gamma-deep", plan); err != nil {
-		t.Fatalf("Apply() error = %v", err)
+	// Drive the production sequence: revalidate, then execute.
+	validated, err := service.Revalidate(context.Background(), link.Selection{Branch: "gamma-deep"}, plan)
+	if err != nil {
+		t.Fatalf("Revalidate() error = %v", err)
+	}
+	if err := service.Execute(context.Background(), validated); err != nil {
+		t.Fatalf("Execute() error = %v", err)
 	}
 	arguments, err = os.ReadFile(argumentsPath)
 	if err != nil {

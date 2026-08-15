@@ -131,11 +131,7 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 // Plan applies link's stricter policy: existing pull requests must already
 // have the expected base relationship. sync deliberately has a separate,
 // explicit reconciliation policy for detected divergence.
-func (s Service) Plan(ctx context.Context, requestedBranch string) (Plan, error) {
-	return s.PlanWithOptions(ctx, Selection{Branch: requestedBranch})
-}
-
-func (s Service) PlanWithOptions(ctx context.Context, selection Selection) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 	plan, err := s.DiscoverWithOptions(ctx, selection)
 	if err != nil {
 		return Plan{}, err
@@ -151,27 +147,19 @@ func (s Service) PlanWithOptions(ctx context.Context, selection Selection) (Plan
 	return plan, nil
 }
 
-// Apply revalidates all discovery and local state immediately before invoking
-// gh, and refuses if the revalidated plan differs from the preview.
-func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
-	plan, err := s.RevalidateWithOptions(ctx, Selection{Branch: requestedBranch}, preview)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := s.Execute(ctx, plan); err != nil {
-		return Plan{}, err
-	}
-	return plan, nil
-}
-
-func (s Service) RevalidateWithOptions(ctx context.Context, selection Selection, preview Plan) (Plan, error) {
+// Revalidate repeats all discovery and local state checks immediately before
+// a mutation, and refuses if the result differs from the preview the caller
+// already rendered. Callers run Execute themselves: the CLI interposes the
+// ready-to-apply render and its flush between the two, so composing them here
+// would describe a sequence production never performs.
+func (s Service) Revalidate(ctx context.Context, selection Selection, preview Plan) (Plan, error) {
 	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.PlanWithOptions(ctx, selection)
+	plan, err := s.Plan(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}

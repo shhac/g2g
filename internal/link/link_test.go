@@ -12,7 +12,7 @@ import (
 
 func TestPlanUsesCurrentBranchAndSelectedForkPath(t *testing.T) {
 	service := fakeService()
-	plan, err := service.Plan(context.Background(), "")
+	plan, err := service.Plan(context.Background(), Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -26,7 +26,7 @@ func TestPlanUsesCurrentBranchAndSelectedForkPath(t *testing.T) {
 
 func TestPlanUsesExplicitBranchWithoutCheckout(t *testing.T) {
 	service := fakeService()
-	plan, err := service.Plan(context.Background(), "gamma-deep")
+	plan, err := service.Plan(context.Background(), Selection{Branch: "gamma-deep"})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -39,11 +39,11 @@ func TestApplyRevalidatesBeforeGitHubMutation(t *testing.T) {
 	github := &fakeGitHub{}
 	service := fakeService()
 	service.GitHub = github
-	preview, err := service.Plan(context.Background(), "beta-two")
+	preview, err := service.Plan(context.Background(), Selection{Branch: "beta-two"})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if _, err := service.Apply(context.Background(), "beta-two", preview); err != nil {
+	if err := applyPlan(t, service, Selection{Branch: "beta-two"}, preview); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	if github.links != 1 {
@@ -58,14 +58,14 @@ func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 	github := &fakeGitHub{}
 	service := fakeService()
 	service.GitHub = github
-	preview, err := service.Plan(context.Background(), "alpha")
+	preview, err := service.Plan(context.Background(), Selection{Branch: "alpha"})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if !preview.NothingToLink() {
 		t.Fatal("NothingToLink() = false, want true")
 	}
-	if _, err := service.Apply(context.Background(), "alpha", preview); err != nil {
+	if err := applyPlan(t, service, Selection{Branch: "alpha"}, preview); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	if github.links != 0 {
@@ -78,7 +78,7 @@ func TestApplyStopsBeforeMutationWhenDirty(t *testing.T) {
 	service := fakeService()
 	service.Git = fakeGit{dirty: errors.New("dirty")}
 	service.GitHub = github
-	if _, err := service.Apply(context.Background(), "beta-two", Plan{}); err == nil {
+	if err := applyPlan(t, service, Selection{Branch: "beta-two"}, Plan{}); err == nil {
 		t.Fatal("Apply() error = nil")
 	}
 	if github.links != 0 {
@@ -93,11 +93,11 @@ func TestApplyRejectsPlanChangedDuringRevalidation(t *testing.T) {
 		Graphite: &changingGraphite{},
 		GitHub:   github,
 	}
-	preview, err := service.Plan(context.Background(), "")
+	preview, err := service.Plan(context.Background(), Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if _, err := service.Apply(context.Background(), "", preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if err := applyPlan(t, service, Selection{Branch: ""}, preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
 		t.Fatalf("Apply() error = %v, want plan-change error", err)
 	}
 	if github.links != 0 {
@@ -120,7 +120,7 @@ func TestApplyFailsClosedBeforeGitHubMutation(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			github := test.service.GitHub.(*fakeGitHub)
-			if _, err := test.service.Apply(context.Background(), "", Plan{}); err == nil {
+			if err := applyPlan(t, test.service, Selection{Branch: ""}, Plan{}); err == nil {
 				t.Fatal("Apply() error = nil")
 			}
 			if github.links != 0 {
@@ -143,7 +143,7 @@ func TestPlanRejectsUnsafeOrDivergentGitHubState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := fakeService()
 			service.GitHub = &fakeGitHub{prs: test.prs}
-			plan, err := service.Plan(context.Background(), "beta")
+			plan, err := service.Plan(context.Background(), Selection{Branch: "beta"})
 			if err != nil || len(plan.Issues) == 0 {
 				t.Fatalf("Plan() = (%v, %v), want unresolved issue", plan, err)
 			}
@@ -160,7 +160,7 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 		}},
 		GitHub: github,
 	}
-	if _, err := service.Plan(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to gh stack link") {
+	if _, err := service.Plan(context.Background(), Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to gh stack link") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if github.links != 0 {
@@ -174,7 +174,7 @@ func TestPlanAccumulatesEveryUnresolvedBranch(t *testing.T) {
 		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
 		{Number: 2, Head: "beta", Base: "alpha", State: "CLOSED"},
 	}}
-	plan, err := service.Plan(context.Background(), "beta-two")
+	plan, err := service.Plan(context.Background(), Selection{Branch: "beta-two"})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -210,10 +210,10 @@ func TestPlanWithOptionsUsesValidDeclaredAncestralOverride(t *testing.T) {
 		}},
 		GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 9, Head: "feature", Base: "main", State: "OPEN"}}},
 	}
-	if _, err := service.Plan(context.Background(), "feature"); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
+	if _, err := service.Plan(context.Background(), Selection{Branch: "feature"}); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
 		t.Fatalf("Plan() error = %v, want ambiguity", err)
 	}
-	plan, err := service.PlanWithOptions(context.Background(), Selection{Branch: "feature", Trunk: "main"})
+	plan, err := service.Plan(context.Background(), Selection{Branch: "feature", Trunk: "main"})
 	if err != nil {
 		t.Fatalf("PlanWithOptions() error = %v", err)
 	}
@@ -342,14 +342,14 @@ func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing
 		}},
 		GitHub: &fakeGitHub{},
 	}
-	plan, err := service.PlanWithOptions(context.Background(), Selection{})
+	plan, err := service.Plan(context.Background(), Selection{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := strings.Join(plan.Branches, ","), "lower,middle,top"; got != want {
 		t.Errorf("branches = %q, want %q", got, want)
 	}
-	plan, err = service.PlanWithOptions(context.Background(), Selection{NoStack: true})
+	plan, err = service.Plan(context.Background(), Selection{NoStack: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,4 +435,17 @@ func TestSyncRepairableRequiresEveryIssueToBeABase(t *testing.T) {
 	if (Plan{}).SyncRepairable() {
 		t.Error("clean plan = true, want false")
 	}
+}
+
+// applyPlan drives the sequence production actually performs: revalidate, then
+// execute. The service deliberately no longer composes the two, because the
+// CLI interposes the ready-to-apply render and its flush between them, so a
+// composite here would describe a sequence nothing runs.
+func applyPlan(t *testing.T, service Service, selection Selection, preview Plan) error {
+	t.Helper()
+	validated, err := service.Revalidate(context.Background(), selection, preview)
+	if err != nil {
+		return err
+	}
+	return service.Execute(context.Background(), validated)
 }

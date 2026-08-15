@@ -29,7 +29,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 			root := commandContext(cmd.Context(), cmd, "link", mode, selection.branch, selection.trunk)
 			ctx, cancel := budgets.discovery(root)
 			defer cancel()
-			plan, err := service.PlanWithOptions(ctx, selection.Selection())
+			plan, err := service.Plan(ctx, selection.Selection())
 			if err != nil {
 				return err
 			}
@@ -44,7 +44,7 @@ func newLink(service link.Service, presentation Presentation) *cobra.Command {
 				prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to link.")
 				return nil
 			}
-			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
+			validated, err := service.Revalidate(ctx, selection.Selection(), plan)
 			if err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}

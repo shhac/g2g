@@ -26,7 +26,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 			root := commandContext(cmd.Context(), cmd, "sync", mode, selection.branch, selection.trunk)
 			ctx, cancel := budgets.discovery(root)
 			defer cancel()
-			plan, err := service.PreviewWithOptions(ctx, selection.Selection())
+			plan, err := service.Preview(ctx, selection.Selection())
 			if err != nil {
 				return err
 			}
@@ -37,7 +37,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 				prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Re-run with --apply to reconcile.")
 				return nil
 			}
-			validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
+			validated, err := service.Revalidate(ctx, selection.Selection(), plan)
 			if err != nil {
 				return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 			}

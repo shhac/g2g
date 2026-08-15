@@ -61,11 +61,7 @@ type Plan struct {
 
 // Preview discovers the selected path and classifies GitHub's existing PR
 // relationship. It is entirely read-only.
-func (s Service) Preview(ctx context.Context, requestedBranch string) (Plan, error) {
-	return s.PreviewWithOptions(ctx, link.Selection{Branch: requestedBranch})
-}
-
-func (s Service) PreviewWithOptions(ctx context.Context, selection link.Selection) (Plan, error) {
+func (s Service) Preview(ctx context.Context, selection link.Selection) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
@@ -82,32 +78,17 @@ func (s Service) PreviewWithOptions(ctx context.Context, selection link.Selectio
 	return result, nil
 }
 
-// Apply revalidates the preview, then asks gh to update the native stack only
-// when every Graphite branch is already represented by an open PR. This avoids
-// silently creating mappings or repairing closed/ambiguous state.
-func (s Service) Apply(ctx context.Context, requestedBranch string, preview Plan) (Plan, error) {
-	return s.ApplyWithOptions(ctx, link.Selection{Branch: requestedBranch}, preview)
-}
-
-func (s Service) ApplyWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
-	plan, err := s.RevalidateWithOptions(ctx, selection, preview)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := s.Execute(ctx, plan); err != nil {
-		return Plan{}, err
-	}
-	return plan, nil
-}
-
-func (s Service) RevalidateWithOptions(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
+// Revalidate repeats discovery immediately before a mutation and refuses if
+// the result differs from the rendered preview. Callers run Execute
+// themselves, matching the CLI's render-and-flush-between sequence.
+func (s Service) Revalidate(ctx context.Context, selection link.Selection, preview Plan) (Plan, error) {
 	if s.Discoverer == nil || s.Git == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.PreviewWithOptions(ctx, selection)
+	plan, err := s.Preview(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}

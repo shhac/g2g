@@ -16,7 +16,7 @@ func TestPreviewClassifiesGraphiteAuthoritativeDifferences(t *testing.T) {
 		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
 		{Number: 3, Head: "gamma", Base: "beta", State: "MERGED"},
 	})
-	plan, err := service.Preview(context.Background(), "")
+	plan, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -38,14 +38,14 @@ func TestApplyReconcilesOnlyFullyMappedOpenPath(t *testing.T) {
 		{Number: 4, Head: "delta", Base: "main", State: "OPEN"},
 	})
 	service.GitHub = github
-	preview, err := service.Preview(context.Background(), "")
+	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
 	if !preview.CanApply() {
 		t.Fatal("CanApply() = false, want true")
 	}
-	if _, err := service.Apply(context.Background(), "", preview); err != nil {
+	if err := applyPlan(t, service, preview); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	if github.links != 1 {
@@ -66,14 +66,14 @@ func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 		Git:    fakeGit{},
 		GitHub: github,
 	}
-	preview, err := service.Preview(context.Background(), "")
+	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !preview.NothingToSync() {
 		t.Fatal("NothingToSync() = false")
 	}
-	if _, err := service.Apply(context.Background(), "", preview); err != nil {
+	if err := applyPlan(t, service, preview); err != nil {
 		t.Fatal(err)
 	}
 	if github.links != 0 {
@@ -91,11 +91,11 @@ func TestApplyFailsClosedForMissingOrUnsafeMappings(t *testing.T) {
 			github := &fakeGitHub{}
 			service := fakeService(prs)
 			service.GitHub = github
-			preview, err := service.Preview(context.Background(), "")
+			preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 			if err != nil {
 				t.Fatalf("Preview() error = %v", err)
 			}
-			if _, err := service.Apply(context.Background(), "", preview); err == nil {
+			if err := applyPlan(t, service, preview); err == nil {
 				t.Fatal("Apply() error = nil")
 			}
 			if github.links != 0 {
@@ -109,11 +109,11 @@ func TestApplyRejectsChangedPlan(t *testing.T) {
 	discoverer := &changingDiscoverer{}
 	github := &fakeGitHub{}
 	service := Service{Discoverer: discoverer, Git: fakeGit{}, GitHub: github}
-	preview, err := service.Preview(context.Background(), "")
+	preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
-	if _, err := service.Apply(context.Background(), "", preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if err := applyPlan(t, service, preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
 		t.Fatalf("Apply() error = %v, want changed-plan error", err)
 	}
 	if github.links != 0 {
@@ -140,11 +140,11 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 			})
 			service.Git = fakeGit{err: test.gitErr}
 			service.GitHub = test.github
-			preview, err := service.Preview(context.Background(), "")
+			preview, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 			if err != nil {
 				t.Fatalf("Preview() error = %v", err)
 			}
-			_, err = service.Apply(context.Background(), "", preview)
+			err = applyPlan(t, service, preview)
 			if err == nil || err.Error() != test.wantErr.Error() {
 				t.Fatalf("Apply() error = %v, want %v", err, test.wantErr)
 			}
@@ -157,7 +157,7 @@ func TestApplyPropagatesCleanAndGitHubFailures(t *testing.T) {
 
 func TestPreviewRejectsDuplicateOpenPullRequests(t *testing.T) {
 	service := fakeService([]githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "OPEN"}, {Number: 2, Head: "alpha", Base: "main", State: "OPEN"}})
-	if _, err := service.Preview(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "2 open pull requests") {
+	if _, err := service.Preview(context.Background(), link.Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "2 open pull requests") {
 		t.Fatalf("Preview() error = %v", err)
 	}
 }
@@ -170,7 +170,7 @@ func TestPreviewResolvesReusedBranchWithClosedHistory(t *testing.T) {
 		{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"},
 		{Number: 9, Head: "alpha", Base: "main", State: "OPEN"},
 	})
-	plan, err := service.Preview(context.Background(), "")
+	plan, err := service.Preview(context.Background(), link.Selection{Branch: ""})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -245,4 +245,16 @@ func statesToStrings(states []State) []string {
 		result[index] = string(state)
 	}
 	return result
+}
+
+// applyPlan drives the sequence production actually performs: revalidate, then
+// execute. The service no longer composes the two, because the CLI interposes
+// the ready-to-apply render and its flush between them.
+func applyPlan(t *testing.T, service Service, preview Plan) error {
+	t.Helper()
+	validated, err := service.Revalidate(context.Background(), link.Selection{}, preview)
+	if err != nil {
+		return err
+	}
+	return service.Execute(context.Background(), validated)
 }

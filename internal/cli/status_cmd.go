@@ -16,7 +16,7 @@ func newStatus(service link.Service, presentation Presentation) *cobra.Command {
 		presentation := presentation.resolve(cmd)
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, selection.trunk))
 		defer cancel()
-		plan, err := service.PlanWithOptions(ctx, selection.Selection())
+		plan, err := service.Plan(ctx, selection.Selection())
 		if err != nil {
 			return err
 		}

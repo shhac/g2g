@@ -56,7 +56,7 @@ esac`,
 	discoverer := link.Service{Git: localgit.Client{Runner: runner}, Graphite: graphite.Client{Runner: runner}, GitHub: githubstack.Client{Runner: runner}}
 	service := stackSync.Service{Discoverer: discoverer, Git: localgit.Client{Runner: runner}, GitHub: githubstack.Client{Runner: runner}}
 
-	preview, err := service.Preview(context.Background(), "gamma-deep")
+	preview, err := service.Preview(context.Background(), link.Selection{Branch: "gamma-deep"})
 	if err != nil {
 		t.Fatalf("Preview() error = %v", err)
 	}
@@ -70,8 +70,13 @@ esac`,
 	if strings.Contains(string(arguments), "gh stack link") {
 		t.Fatalf("preview invoked mutation:\n%s", arguments)
 	}
-	if _, err := service.Apply(context.Background(), "gamma-deep", preview); err != nil {
-		t.Fatalf("Apply() error = %v", err)
+	// Drive the production sequence: revalidate, then execute.
+	validated, err := service.Revalidate(context.Background(), link.Selection{Branch: "gamma-deep"}, preview)
+	if err != nil {
+		t.Fatalf("Revalidate() error = %v", err)
+	}
+	if err := service.Execute(context.Background(), validated); err != nil {
+		t.Fatalf("Execute() error = %v", err)
 	}
 	arguments, err = os.ReadFile(argumentsPath)
 	if err != nil {
@@ -82,15 +87,15 @@ esac`,
 	}
 
 	t.Setenv("GH_PRS", `{"data":{"repository":{"pr0":{"nodes":[{"number":1,"url":"https://example.test/1","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]},"pr1":{"nodes":[{"number":2,"url":"https://example.test/2","headRefName":"gamma","baseRefName":"alpha","state":"OPEN"}]},"pr2":{"nodes":[]}}}}`)
-	blocked, err := service.Preview(context.Background(), "gamma-deep")
+	blocked, err := service.Preview(context.Background(), link.Selection{Branch: "gamma-deep"})
 	if err != nil {
 		t.Fatalf("blocked Preview() error = %v", err)
 	}
 	if blocked.CanApply() {
 		t.Fatal("blocked CanApply() = true")
 	}
-	if _, err := service.Apply(context.Background(), "gamma-deep", blocked); err == nil {
-		t.Fatal("blocked Apply() error = nil")
+	if _, err := service.Revalidate(context.Background(), link.Selection{Branch: "gamma-deep"}, blocked); err == nil {
+		t.Fatal("blocked Revalidate() error = nil")
 	}
 	arguments, err = os.ReadFile(argumentsPath)
 	if err != nil {

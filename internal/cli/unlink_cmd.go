@@ -33,7 +33,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		root := commandContext(cmd.Context(), cmd, "unlink", mode, selection.branch, selection.trunk)
 		ctx, cancel := budgets.discovery(root)
 		defer cancel()
-		plan, err := service.PlanWithOptions(ctx, selection.Selection())
+		plan, err := service.Plan(ctx, selection.Selection())
 		if err != nil {
 			return err
 		}
@@ -51,7 +51,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 			err := prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made."))
 			return err
 		}
-		validated, err := service.RevalidateWithOptions(ctx, selection.Selection(), plan)
+		validated, err := service.Revalidate(ctx, selection.Selection(), plan)
 		if err != nil {
 			return writeNotApplied(cmd.OutOrStdout(), presentation, err)
 		}

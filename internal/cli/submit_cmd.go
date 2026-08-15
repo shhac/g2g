@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -75,8 +74,15 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	if o.writeSpec != "" {
 		return o.writeDraft(cmd, plan, chosenTemplate)
 	}
-	if err := o.prepareSpec(ctx, cmd, plan, chosenTemplate); err != nil {
-		return err
+	// --edit creates the document this command then reads. Returning the path
+	// rather than assigning o.specPath as a side effect keeps the dispatch
+	// below readable from here: previously the variable it switches on was set
+	// inside a method several calls away.
+	if o.edit {
+		o.specPath, err = o.editedSpec(ctx, cmd, plan, chosenTemplate)
+		if err != nil {
+			return err
+		}
 	}
 	if o.specPath == "" {
 		return o.previewWithoutSpec(cmd, plan, presentation, templateName)
@@ -90,37 +96,6 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		return o.previewWithSpec(cmd, plan, presentation, templateName)
 	}
 	return o.applyPlan(cmd, service, plan, spec, presentation, templateName)
-}
-
-func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string) error {
-	path, err := submit.Write(o.writeSpec, submit.NewSpec(plan.Snapshot.Branches, body))
-	if err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote draft submission spec: %s\n", path)
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Next: add a title for every PR, then run g2g submit --spec "+path+" to validate it.")
-	return err
-}
-
-func (o *submitOptions) prepareSpec(ctx context.Context, cmd *cobra.Command, plan submit.Plan, body string) error {
-	if !o.edit {
-		return nil
-	}
-	dir, err := os.MkdirTemp("", "g2g-submit-")
-	if err != nil {
-		return err
-	}
-	o.specPath, err = submit.Write(dir, submit.NewSpec(plan.Snapshot.Branches, body))
-	if err != nil {
-		return err
-	}
-	if err := editSpec(ctx, o.specPath); err != nil {
-		return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
-	}
-	if !o.apply {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Edited submission spec: "+o.specPath)
-	}
-	return nil
 }
 
 func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
@@ -178,30 +153,6 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 	return flow.run(cmd, o.root, o.budgets, p, true)
 }
 
-func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {
-	if ready {
-		return false
-	}
-	if cmd.Flags().Changed("draft") {
-		return draft
-	}
-	return specDraft
-}
-
-func editSpec(ctx context.Context, path string) error {
-	editor := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editor == "" {
-		return fmt.Errorf("EDITOR is not set; use --write-spec <private-temp-dir>, edit submission.json, then pass --spec")
-	}
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		return fmt.Errorf("EDITOR is empty; use --write-spec <private-temp-dir> instead")
-	}
-	command := exec.CommandContext(ctx, parts[0], append(parts[1:], path)...)
-	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return command.Run()
-}
-
 func submitView(plan submit.Plan, template string) stackView {
 	view := stackView{
 		Operation:    "submit",
@@ -245,8 +196,4 @@ func existingNumber(plan submit.Plan, branch string) int {
 		return resolution.Open.Number
 	}
 	return 0
-}
-
-func actionableSpecError(err error, path string) error {
-	return fmt.Errorf("%w\n\nNext steps:\n  1. Repair %s.\n  2. Validate: g2g submit --spec %s\n  3. Apply: g2g submit --spec %s --apply", err, path, path, path)
 }

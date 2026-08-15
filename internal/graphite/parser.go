@@ -68,27 +68,32 @@ func parseLog(output string) (graph, error) {
 func buildGraph(records []record) (graph, error) {
 	result := graph{nodes: make(map[string]node)}
 	lastAtDepth := make(map[int]string)
-	var previous *record
 
-	for _, current := range records {
+	for index, current := range records {
 		if _, exists := result.nodes[current.name]; exists {
 			return graph{}, fmt.Errorf("Graphite display repeats branch %q", current.name)
 		}
-		parent, root, err := resolveParent(current, previous, lastAtDepth)
+		// Reading the predecessor out of the slice avoids taking the address of
+		// the loop variable and makes the "first record has none" case explicit
+		// rather than resting on an unstated non-empty precondition.
+		var previous *record
+		if index > 0 {
+			previous = &records[index-1]
+		}
+		parent, err := resolveParent(current, previous, lastAtDepth)
 		if err != nil {
 			return graph{}, err
 		}
 		result.nodes[current.name] = node{name: current.name, parent: parent}
-		if root {
+		if current.root {
 			result.roots = append(result.roots, current.name)
 		}
 		lastAtDepth[current.depth] = current.name
 		for depth := current.depth + 1; depth <= current.depth+current.span; depth++ {
 			lastAtDepth[depth] = current.name
 		}
-		previous = &current
 	}
-	if previous.span != 0 {
+	if records[len(records)-1].span != 0 {
 		return graph{}, fmt.Errorf("Graphite display ends after a fork connector")
 	}
 	return result, nil
@@ -97,45 +102,49 @@ func buildGraph(records []record) (graph, error) {
 // resolveParent turns one compact display record into the graph relationship
 // it declares. Keeping this pure makes unsupported lane transitions fail at a
 // single, independently testable boundary.
-func resolveParent(current record, previous *record, lastAtDepth map[int]string) (string, bool, error) {
+func resolveParent(current record, previous *record, lastAtDepth map[int]string) (string, error) {
 	if current.root {
 		if current.depth != 0 || (previous != nil && previous.span != 0) {
-			return "", false, drift(current.line, current.name)
+			return "", drift(current.line, current.name)
 		}
-		return "", true, nil
+		return "", nil
 	}
 	if previous == nil {
-		return "", false, drift(current.line, current.name)
+		return "", drift(current.line, current.name)
 	}
 	switch {
 	case current.depth > previous.depth:
 		if previous.span == 0 || current.depth != previous.depth+previous.span {
-			return "", false, drift(current.line, current.name)
+			return "", drift(current.line, current.name)
 		}
-		return previous.name, false, nil
+		return previous.name, nil
 	case current.depth == previous.depth:
 		if previous.span != 0 {
-			return "", false, drift(current.line, current.name)
+			return "", drift(current.line, current.name)
 		}
-		return previous.name, false, nil
+		return previous.name, nil
 	default:
 		if previous.span != 0 {
-			return "", false, drift(current.line, current.name)
+			return "", drift(current.line, current.name)
 		}
 		parent, exists := lastAtDepth[current.depth]
 		if !exists {
-			return "", false, drift(current.line, current.name)
+			return "", drift(current.line, current.name)
 		}
-		return parent, false, nil
+		return parent, nil
 	}
 }
 
 func parseRecord(line string, lineNumber int) (record, bool) {
 	remainder, depth := trimGraphPrefix(line)
-	if !strings.HasPrefix(remainder, "◯") && !strings.HasPrefix(remainder, "◉") {
+	// Cut whichever node glyph is present rather than slicing by the width of
+	// one of them. Both encode to three bytes today, so the old form was
+	// correct only by coincidence: a third marker of a different width would
+	// have corrupted parsing silently instead of failing closed.
+	remainder, ok := cutNodeGlyph(remainder)
+	if !ok {
 		return record{}, false
 	}
-	remainder = remainder[len("◯"):]
 	span := 0
 	if strings.HasPrefix(remainder, "─") {
 		span = 1
@@ -158,6 +167,16 @@ func parseRecord(line string, lineNumber int) (record, bool) {
 		return record{}, false
 	}
 	return record{name: name, depth: depth, span: span, line: lineNumber}, true
+}
+
+// cutNodeGlyph removes the leading node marker, reporting whether there was one.
+func cutNodeGlyph(line string) (string, bool) {
+	for _, glyph := range []string{"◯", "◉"} {
+		if rest, ok := strings.CutPrefix(line, glyph); ok {
+			return rest, true
+		}
+	}
+	return line, false
 }
 
 func parseBranchLabel(label string) (string, bool) {

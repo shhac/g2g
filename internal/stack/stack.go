@@ -8,8 +8,8 @@ package stack
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
@@ -188,6 +188,8 @@ func SelectBoundary(path, trunks []string, requestedTrunk string) (string, strin
 			indices[branch] = index
 		}
 	}
+	// Guard clauses in the order a reader asks the questions: was one chosen,
+	// is there none, is there more than one, and only then the single case.
 	if requestedTrunk != "" {
 		index, valid := indices[requestedTrunk]
 		if !valid {
@@ -198,18 +200,13 @@ func SelectBoundary(path, trunks []string, requestedTrunk string) (string, strin
 		}
 		return requestedTrunk, "--trunk", append([]string(nil), path[index+1:]...), nil
 	}
-	if len(indices) == 1 {
-		for trunk, index := range indices {
-			return trunk, "Graphite-declared ancestry", append([]string(nil), path[index+1:]...), nil
-		}
-	}
 	if len(indices) == 0 {
 		return "", "", nil, fmt.Errorf("selected Graphite ancestry %q has no declared trunk; use supported Graphite configuration to resolve it", strings.Join(path, " -> "))
 	}
-	candidates := make([]string, 0, len(indices))
-	for trunk := range indices {
-		candidates = append(candidates, trunk)
+	if len(indices) > 1 {
+		candidates := slices.Sorted(maps.Keys(indices))
+		return "", "", nil, fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
 	}
-	sort.Strings(candidates)
-	return "", "", nil, fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
+	trunk := slices.Collect(maps.Keys(indices))[0]
+	return trunk, "Graphite-declared ancestry", append([]string(nil), path[indices[trunk]+1:]...), nil
 }

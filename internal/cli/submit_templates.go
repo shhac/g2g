@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -27,9 +29,8 @@ func resolveTemplate(requested string, disabled bool) (string, string, error) {
 		return "", "", nil
 	}
 	if len(templates) == 1 {
-		for name, content := range templates {
-			return content, name, nil
-		}
+		name := slices.Collect(maps.Keys(templates))[0]
+		return templates[name], name, nil
 	}
 	return "", "", fmt.Errorf("multiple pull request templates found (%s); rerun with --template <name> or --no-template", strings.Join(templateNames(templates), ", "))
 }

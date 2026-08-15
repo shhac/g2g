@@ -1,0 +1,41 @@
+# Verification for every change on main. The release workflow runs the same
+# three checks as a gate before it publishes, so a v* tag can never ship a
+# formula built from an unverified tree.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Format, vet, and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "These files need gofmt -w:" >&2
+            echo "${unformatted}" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # Tests install fake gt/gh/git executables on PATH, so this needs no
+      # credentials and makes no network requests.
+      - name: go test
+        run: go test ./...

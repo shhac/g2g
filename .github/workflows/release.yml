@@ -1,6 +1,10 @@
 # Release on a v* tag push: the shared workflow cross-builds, publishes the
 # GitHub Release, and regenerates + pushes the Homebrew formula. To release:
 #   git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# The shared go-release workflow builds and publishes but does not test, so the
+# verify job below gates it. A tag whose tree fails gofmt, vet, or the suite
+# publishes nothing.
 name: Release
 
 on:
@@ -8,8 +12,37 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
+  verify:
+    name: Format, vet, and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "These files need gofmt -w:" >&2
+            echo "${unformatted}" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
   release:
+    needs: verify
     uses: shhac/homebrew-tap/.github/workflows/go-release.yml@main
     permissions:
       contents: write

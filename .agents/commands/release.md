@@ -6,9 +6,12 @@ argument-hint: <patch|minor|major>
 # Release
 
 Releasing `gt2gh` is automated. Pushing a `v*` tag triggers
-`.github/workflows/release.yml`, which calls the shared `go-release` workflow in
-`shhac/homebrew-tap` to cross-build every platform, publish the GitHub Release,
-and regenerate + push `Formula/gt2gh.rb` to the tap. The tag also triggers
+`.github/workflows/release.yml`, whose `verify` job runs `gofmt`, `go vet`, and
+`go test` and gates the release job. That job calls the shared `go-release`
+workflow in `shhac/homebrew-tap` to cross-build every platform, publish the
+GitHub Release, and regenerate + push `Formula/gt2gh.rb` to the tap — the
+shared workflow builds and publishes only, so `verify` is the sole automated
+check that the tagged tree is sound. The tag also triggers
 `.github/workflows/publish-skill.yml`, which publishes `skills/gt2gh` to
 `shhac/agent-skills`. **No manual build, and no manual formula bump.**
 The formula remains `gt2gh` but installs the executable as `g2g`, including
@@ -17,7 +20,8 @@ bash, zsh, and fish completions generated from that installed executable.
 ## Steps
 
 1. `$ARGUMENTS` must be `patch`, `minor`, or `major` — else stop and ask.
-2. Pre-flight (CI re-runs tests on the tag, but check locally first):
+2. Pre-flight (the tag's `verify` job gates the release, but check locally
+   first so a bad tag is never pushed):
    - Clean tree (`git status --short`), on `main`, up to date with `origin/main`.
    - Format, tests, and vet pass: `gofmt -d $(rg --files -g '*.go')`,
      `go test ./...`, and `go vet ./...`. The version is injected from the tag

@@ -15,6 +15,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	syncer "github.com/shhac/gt2gh/internal/sync"
@@ -90,15 +91,18 @@ func newWithSubmitPresentation(version, commandName string, stdout, stderr io.Wr
 	root.PersistentFlags().Bool("json", false, "emit one JSON document instead of the human-readable preview")
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")
-	root.AddCommand(newLink(service, presentation))
-	root.AddCommand(newStatus(service, presentation))
-	root.AddCommand(newUnlink(service, unstacker, presentation))
-	root.AddCommand(newSync(syncService, service, presentation))
+	// Completion candidates come from the same Git and Graphite clients the
+	// services use, so no command has to depend on another to complete a flag.
+	completions := stack.Completions{Git: service.Git, Graphite: service.Graphite}
+	root.AddCommand(newLink(service, completions, presentation))
+	root.AddCommand(newStatus(service, completions, presentation))
+	root.AddCommand(newUnlink(service, unstacker, completions, presentation))
+	root.AddCommand(newSync(syncService, completions, presentation))
 	if pushService.Git != nil && pushService.Graphite != nil {
-		root.AddCommand(newPush(pushService, service, presentation))
+		root.AddCommand(newPush(pushService, completions, presentation))
 	}
 	if submitService.Git != nil && submitService.Graphite != nil && submitService.GitHub != nil {
-		root.AddCommand(newSubmit(submitService, service, presentation))
+		root.AddCommand(newSubmit(submitService, completions, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

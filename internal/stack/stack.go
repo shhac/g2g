@@ -79,9 +79,11 @@ type Snapshot struct {
 
 // Resolve selects a local Graphite path without checkout. command names the
 // consumer's action in an option-like branch safety error.
+var errNotConfigured = fmt.Errorf("stack resolver is not fully configured")
+
 func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Selection, command string) (Snapshot, error) {
 	if git == nil || graphiteClient == nil {
-		return Snapshot{}, fmt.Errorf("stack resolver is not fully configured")
+		return Snapshot{}, errNotConfigured
 	}
 	target, source, err := resolveTarget(ctx, git, selection.Branch)
 	if err != nil {

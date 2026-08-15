@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +16,7 @@ type Unstacker interface {
 	Unstack(context.Context, int) error
 }
 
-func newUnlink(service link.Service, unstacker Unstacker, presentation Presentation) *cobra.Command {
+func newUnlink(service link.Service, unstacker Unstacker, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	var number int
@@ -77,7 +78,7 @@ func newUnlink(service link.Service, unstacker Unstacker, presentation Presentat
 		return nil
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink (defaults to the one discovered on the selected path)")
-	selection.register(cmd, service, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
+	selection.register(cmd, completions, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack unstack after revalidation")
 	return cmd
 }

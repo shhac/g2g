@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
-func newPush(service push.Service, linkService link.Service, presentation Presentation) *cobra.Command {
+func newPush(service push.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var remote string
 	var selection stackOptions
 	var apply bool
@@ -58,7 +58,7 @@ func newPush(service push.Service, linkService link.Service, presentation Presen
 			return nil
 		},
 	}
-	selection.register(cmd, linkService, "Graphite-tracked local branch to push (defaults to current branch)", "Graphite-declared trunk to use as the push base")
+	selection.register(cmd, completions, "Graphite-tracked local branch to push (defaults to current branch)", "Graphite-declared trunk to use as the push base")
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
 	return cmd

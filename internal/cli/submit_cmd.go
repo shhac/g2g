@@ -11,17 +11,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 )
 
-func newSubmit(service submit.Service, linkService link.Service, presentation Presentation) *cobra.Command {
+func newSubmit(service submit.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var options submitOptions
 	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return options.run(cmd, service, presentation.resolve(cmd))
 	}
-	options.selection.register(cmd, linkService, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
+	options.selection.register(cmd, completions, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
 	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().StringVar(&options.specPath, "spec", "", "submission JSON spec to validate or apply")
 	cmd.Flags().StringVar(&options.writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")

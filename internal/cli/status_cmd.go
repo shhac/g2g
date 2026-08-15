@@ -6,10 +6,11 @@ import (
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/spf13/cobra"
 )
 
-func newStatus(service link.Service, presentation Presentation) *cobra.Command {
+func newStatus(service link.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	cmd := &cobra.Command{Use: "status", Short: "Inspect a Graphite stack, its pull requests, and native GitHub membership", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -22,7 +23,7 @@ func newStatus(service link.Service, presentation Presentation) *cobra.Command {
 		}
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
 	}
-	selection.register(cmd, service, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
+	selection.register(cmd, completions, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
 	return cmd
 }
 

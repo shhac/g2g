@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
-func newSync(service syncer.Service, linkService link.Service, presentation Presentation) *cobra.Command {
+func newSync(service syncer.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
@@ -64,7 +64,7 @@ func newSync(service syncer.Service, linkService link.Service, presentation Pres
 			return nil
 		},
 	}
-	selection.register(cmd, linkService, "Graphite-tracked local branch to reconcile (defaults to current branch)", "Graphite-declared trunk to use as the link base")
+	selection.register(cmd, completions, "Graphite-tracked local branch to reconcile (defaults to current branch)", "Graphite-declared trunk to use as the link base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "reconcile eligible GitHub stack relationships after revalidation")
 	return cmd
 }

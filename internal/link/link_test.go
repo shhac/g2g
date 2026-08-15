@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -191,17 +192,6 @@ func issueBranches(issues []Issue) []string {
 	return result
 }
 
-func TestBranchCompletionsAreLocalTrackedAndSorted(t *testing.T) {
-	service := fakeService()
-	branches, err := service.BranchCompletions(context.Background(), "beta")
-	if err != nil {
-		t.Fatalf("BranchCompletions() error = %v", err)
-	}
-	if got, want := strings.Join(branches, ","), "beta,beta-one,beta-two,beta-two-deep"; got != want {
-		t.Errorf("branches = %q, want %q", got, want)
-	}
-}
-
 func TestPlanWithOptionsUsesValidDeclaredAncestralOverride(t *testing.T) {
 	service := Service{
 		Git: fakeGit{current: "feature", branches: []string{"develop", "main", "feature"}},
@@ -219,36 +209,6 @@ func TestPlanWithOptionsUsesValidDeclaredAncestralOverride(t *testing.T) {
 	}
 	if plan.Base != "main" || strings.Join(plan.Branches, ",") != "feature" {
 		t.Errorf("plan = base %q branches %v", plan.Base, plan.Branches)
-	}
-}
-
-func TestTrunkCompletionsAreLocalAndSorted(t *testing.T) {
-	service := fakeService()
-	service.Git = fakeGit{current: "beta", branches: []string{"main", "develop", "staging", "alpha", "beta"}}
-	service.Graphite = fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"staging", "main", "develop"}}}}
-	branches, err := service.TrunkCompletions(context.Background(), "", "")
-	if err != nil {
-		t.Fatalf("TrunkCompletions() error = %v", err)
-	}
-	if got, want := strings.Join(branches, ","), "develop,main,staging"; got != want {
-		t.Errorf("branches = %q, want %q", got, want)
-	}
-}
-
-func TestTrunkCompletionsUseExplicitTargetWithoutCheckout(t *testing.T) {
-	service := Service{
-		Git: fakeGit{current: "current", branches: []string{"main", "develop", "current", "chosen"}},
-		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
-			"current": {Path: []string{"main", "current"}, Trunks: []string{"main"}},
-			"chosen":  {Path: []string{"develop", "chosen"}, Trunks: []string{"develop"}},
-		}},
-	}
-	branches, err := service.TrunkCompletions(context.Background(), "chosen", "d")
-	if err != nil {
-		t.Fatalf("TrunkCompletions() error = %v", err)
-	}
-	if got, want := strings.Join(branches, ","), "develop"; got != want {
-		t.Errorf("branches = %q, want %q", got, want)
 	}
 }
 
@@ -379,10 +339,9 @@ func (f *fakeGitHub) Inspect(_ context.Context, branches []string) ([]githubstac
 		}
 		return prs, f.inspectErr
 	}
-	wanted := branchSet(branches)
 	var matching []githubstack.PullRequest
 	for _, pr := range f.prs {
-		if wanted[pr.Head] {
+		if slices.Contains(branches, pr.Head) {
 			matching = append(matching, pr)
 		}
 	}

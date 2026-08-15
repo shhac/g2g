@@ -75,7 +75,7 @@ use fake executables on `PATH`, so they need neither authentication nor a
 network connection.
 
 Discovery and mutation are bounded separately. Discovery and revalidation get
-20 seconds; the mutation phase gets its own budget of 60 seconds plus 30 per
+45 seconds; the mutation phase gets its own budget of 60 seconds plus 30 per
 selected branch, taken fresh rather than from whatever discovery left over, so
 a slow read can never cancel a push or pull-request creation halfway. The root
 `--timeout` flag replaces both ceilings. A mutation that does expire says so

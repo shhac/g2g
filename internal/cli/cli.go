@@ -99,7 +99,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	root.SetOut(options.Stdout)
 	root.SetErr(options.Stderr)
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
-	root.PersistentFlags().Duration("timeout", 0, "maximum duration for each phase, discovery and mutation separately (default 20s discovery, 60s plus 30s per branch for mutation)")
+	root.PersistentFlags().Duration("timeout", 0, "maximum duration for each phase, discovery and mutation separately (default 45s discovery, 60s plus 30s per branch for mutation)")
 	root.PersistentFlags().Bool("json", false, "emit one JSON document instead of the human-readable preview")
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")

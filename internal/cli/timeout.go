@@ -10,9 +10,12 @@ import (
 )
 
 const (
-	// discoveryTimeout bounds read-only discovery and revalidation. Both are a
-	// handful of local CLI invocations plus two GitHub reads.
-	discoveryTimeout = 20 * time.Second
+	// discoveryTimeout bounds read-only discovery and revalidation: a handful
+	// of local CLI invocations plus two GitHub reads. Set generously, because
+	// this ceiling is newly enforced — the deadline never actually fired
+	// before — and a large repository or a slow network should not start
+	// failing where it previously succeeded. --timeout narrows it.
+	discoveryTimeout = 45 * time.Second
 	// mutationBase and mutationPerBranch bound the mutation phase, which gets
 	// its own budget so discovery cost can never shorten it. submit performs
 	// one push plus a pull-request creation per branch, so the ceiling scales

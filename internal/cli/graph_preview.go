@@ -40,6 +40,10 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 	switch discovery.States[branch] {
 	case graph.StateNeedsRestack:
 		return "needs restack", severityWarn
+	case graph.StateMovedOffParent:
+		return "moved off parent", severityWarn
+	case graph.StateForkUnresolvable:
+		return "fork point lost", severityBad
 	case graph.StateParentMissing:
 		return "parent missing", severityWarn
 	case graph.StateUntracked:
@@ -136,7 +140,13 @@ func count(total int, singular, plural string) string {
 // driftNotes report what gt2gh can see and deliberately will not repair.
 func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if stale := discovery.NeedsRestack(); len(stale) != 0 {
-		view = view.note("Parent moved under "+branchList(stale)+" · gt2gh records structure and does not rebase.", severityWarn)
+		view = view.note("Parent moved under "+branchList(stale)+" · run g2g restack.", severityWarn)
+	}
+	if moved := discovery.InState(graph.StateMovedOffParent); len(moved) != 0 {
+		view = view.note("No longer built on the recorded parent: "+branchList(moved)+" · retrack before restacking, the replay range would be wrong.", severityWarn)
+	}
+	if lost := discovery.InState(graph.StateForkUnresolvable); len(lost) != 0 {
+		view = view.note("Recorded fork point is gone for "+branchList(lost)+" · retrack to record it again.", severityBad)
 	}
 	if missing := discovery.MissingParents(); len(missing) != 0 {
 		view = view.note("Recorded parent is no longer a local branch for "+branchList(missing)+" · retrack onto its new parent.", severityWarn)

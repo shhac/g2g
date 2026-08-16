@@ -71,7 +71,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Sync:        syncer.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
 		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
 		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
-		Graph:       graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}},
+		Graph:       graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient},
 		Unstacker:   githubClient,
 	})
 }

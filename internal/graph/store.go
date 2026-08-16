@@ -85,6 +85,7 @@ type storedEdge struct {
 	Parent    string `json:"parent"`
 	Authority string `json:"authority"`
 	Origin    string `json:"origin,omitempty"`
+	ForkPoint string `json:"forkPoint,omitempty"`
 }
 
 // Load returns the adopted graph. A missing store is an empty graph rather
@@ -121,6 +122,11 @@ func decode(contents []byte, path string) (Graph, error) {
 			Parent:    stored.Parent,
 			Authority: Authority(stored.Authority),
 			Origin:    Origin(stored.Origin),
+			// An edge written before fork points were recorded loads with an
+			// empty one. Assess then falls back to the parent's current tip,
+			// which is correct until the edge has drifted and fails closed
+			// afterwards, so no migration pass is needed.
+			ForkPoint: stored.ForkPoint,
 		}
 	}
 	if err := loaded.Validate(); err != nil {
@@ -196,6 +202,7 @@ func encode(g Graph) ([]byte, error) {
 			Parent:    edge.Parent,
 			Authority: string(edge.Authority),
 			Origin:    string(edge.Origin),
+			ForkPoint: edge.ForkPoint,
 		}
 	}
 	contents, err := json.MarshalIndent(doc, "", "  ")

@@ -52,14 +52,22 @@ const (
 
 // Edge is one recorded parent relationship.
 //
-// It deliberately holds no commit SHA. Commits and force-pushes are normal
-// content movement rather than structural drift, so recording one would make
-// every ordinary commit look like the graph had changed. Structure is checked
-// against Git at read time instead.
+// A branch's own tip is deliberately absent: it moves with every ordinary
+// commit, so recording it would make routine work look like the graph had
+// changed. ForkPoint is different — see its own comment.
 type Edge struct {
 	Parent    string
 	Authority Authority
 	Origin    Origin
+	// ForkPoint is the parent's tip when this edge was written. It is
+	// structural rather than drift state: it answers which commits belong to
+	// the branch, namely ForkPoint..branch, and that range is what a restack
+	// replays. It changes only when an edge is adopted or restacked.
+	//
+	// It cannot be derived after the fact. Once a merged parent's branch is
+	// deleted, the merge base with the trunk points before the parent's work
+	// and replaying from there would reapply it.
+	ForkPoint string
 }
 
 // Graph is a forest of branches plus the trunks its roots sit on.

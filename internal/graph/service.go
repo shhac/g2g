@@ -13,9 +13,19 @@ import (
 // Service reads and adopts g2g-owned graphs. It needs Git and a store, and
 // notably not Graphite or GitHub: a g2g-owned graph is exactly the structure
 // that exists without either.
+// Pinner keeps recorded fork points reachable. It is separate from Ancestry
+// because Ancestry is read-only by contract and this writes a ref.
+type Pinner interface {
+	PinForkPoint(ctx context.Context, branch, object string) error
+	UnpinForkPoint(ctx context.Context, branch string) error
+}
+
 type Service struct {
 	Git   Ancestry
 	Store Store
+	// Refs pins fork points so they survive garbage collection. A service
+	// without one still works; its fork points are simply unprotected.
+	Refs Pinner
 }
 
 // Selection is the no-checkout selector the graph commands share.
@@ -73,6 +83,9 @@ func (d Discovery) NeedsRestack() []string {
 func (d Discovery) MissingParents() []string {
 	return d.branchesInState(StateParentMissing)
 }
+
+// InState returns the selected branches in one state, in render order.
+func (d Discovery) InState(want NodeState) []string { return d.branchesInState(want) }
 
 func (d Discovery) branchesInState(want NodeState) []string {
 	matching := make([]string, 0)
@@ -184,7 +197,18 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		plan.Blocked = err.Error()
 		return plan, nil
 	}
-	updated, err := discovery.Graph.Track(discovery.Target, Edge{Parent: parent, Authority: AuthorityG2G, Origin: originOf(parent, candidates)})
+	forkPoint, err := s.Git.Resolve(ctx, parent)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	updated, err := discovery.Graph.Track(discovery.Target, Edge{
+		Parent:    parent,
+		Authority: AuthorityG2G,
+		Origin:    originOf(parent, candidates),
+		// Recorded now, because after the parent is merged and deleted there
+		// is nothing left to derive it from.
+		ForkPoint: forkPoint,
+	})
 	if err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
@@ -318,7 +342,10 @@ func (s Service) ApplyTrack(ctx context.Context, plan TrackPlan) error {
 		return fmt.Errorf("cannot track %q: %s", plan.Target, plan.Blocked)
 	}
 	diagnostic.Event(ctx, "graph.track.apply", diagnostic.Field{Key: "branch", Value: plan.Target}, diagnostic.Field{Key: "parent", Value: plan.Parent})
-	return s.Store.Save(ctx, plan.Updated)
+	if err := s.Store.Save(ctx, plan.Updated); err != nil {
+		return err
+	}
+	return s.pin(ctx, plan.Target, plan.Updated.Edges[plan.Target].ForkPoint)
 }
 
 // ApplyUntrack writes the adopted graph.
@@ -327,5 +354,25 @@ func (s Service) ApplyUntrack(ctx context.Context, plan UntrackPlan) error {
 		return fmt.Errorf("no tracked branches were selected")
 	}
 	diagnostic.Event(ctx, "graph.untrack.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Removed, ",")})
-	return s.Store.Save(ctx, plan.Updated)
+	if err := s.Store.Save(ctx, plan.Updated); err != nil {
+		return err
+	}
+	if s.Refs == nil {
+		return nil
+	}
+	for _, branch := range plan.Removed {
+		if err := s.Refs.UnpinForkPoint(ctx, branch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pin keeps a fork point reachable. A repository without a pinner still
+// records the fork point; it is only unprotected against collection.
+func (s Service) pin(ctx context.Context, branch, forkPoint string) error {
+	if s.Refs == nil || forkPoint == "" {
+		return nil
+	}
+	return s.Refs.PinForkPoint(ctx, branch, forkPoint)
 }

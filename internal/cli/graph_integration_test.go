@@ -40,6 +40,8 @@ func graphRepository(t *testing.T, adopted string) (*testutil.Recorder, string) 
 			// too: Lines spills to a file and can carry one.
 			{Prefix: "rev-list --left-right --count", Lines: []string{"1\t1"}},
 			{Prefix: "merge-base --is-ancestor"},
+			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "update-ref"},
 		},
 	})
 	return recorder, common

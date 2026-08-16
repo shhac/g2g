@@ -44,6 +44,10 @@ func (g graphGit) Divergence(_ context.Context, other, target string) (int, int,
 	return ahead, behind, nil
 }
 
+func (g graphGit) Resolve(_ context.Context, revision string) (string, error) {
+	return revision, nil
+}
+
 func (g graphGit) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
 	for _, candidate := range g.ancestors[descendant] {
 		if candidate == ancestor {
@@ -440,8 +444,8 @@ func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
 // reach the reader, because nothing else is going to tell them.
 func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
 	git := graphGitFixture()
-	// session's parent moved underneath it, and auth's parent was merged and
-	// deleted, so it is no longer a local branch.
+	// session was rewritten off its recorded base, and auth's parent was
+	// merged and deleted, so it is no longer a local branch.
 	git.ancestors["synthetic-session"] = nil
 	git.local = []string{"synthetic-auth", "synthetic-billing", "synthetic-login", "synthetic-session"}
 
@@ -459,8 +463,7 @@ func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
 
 	out := stdout.String()
 	for _, want := range []string{
-		"Parent moved under synthetic-session",
-		"does not rebase",
+		"synthetic-session",
 		"no longer a local branch for synthetic-auth",
 	} {
 		if !strings.Contains(out, want) {

@@ -17,7 +17,26 @@ type fakeAncestry struct {
 	// does not. Anything unlisted defaults to one commit behind, which keeps a
 	// case that is only about the candidate set free of noise.
 	behind map[string]int
-	err    error
+	// objects maps a revision to the object id it resolves to; an unlisted
+	// name resolves to itself, which keeps cases that are not about object
+	// ids free of noise.
+	objects      map[string]string
+	unresolvable map[string]bool
+	err          error
+}
+
+// Resolve mirrors git rev-parse over that table.
+func (f fakeAncestry) Resolve(_ context.Context, revision string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.unresolvable[revision] {
+		return "", errors.New("not a commit in this repository")
+	}
+	if resolved, listed := f.objects[revision]; listed {
+		return resolved, nil
+	}
+	return revision, nil
 }
 
 func (f fakeAncestry) CurrentBranch(context.Context) (string, error) { return f.current, f.err }
@@ -295,4 +314,96 @@ func branchNames(candidates []Candidate) string {
 		names = append(names, candidate.Branch)
 	}
 	return strings.Join(names, ",")
+}
+
+// The ancestor probe belongs on the fork point, not the parent. An amended
+// parent stops being an ancestor of its children even though nothing is wrong
+// with them, which is exactly the case a restack repairs.
+func TestAssessDistinguishesAMovedParentFromAMovedBranch(t *testing.T) {
+	tracked := Graph{Edges: map[string]Edge{
+		"synthetic-child": {Parent: "synthetic-parent", ForkPoint: "fork-old"},
+	}}
+
+	for name, test := range map[string]struct {
+		git  fakeAncestry
+		want NodeState
+	}{
+		"parent moved, branch intact": {
+			// The fork point is still in the child's history; the parent's tip
+			// has moved past it.
+			git: fakeAncestry{
+				local:     []string{"synthetic-parent", "synthetic-child"},
+				objects:   map[string]string{"synthetic-parent": "parent-new", "fork-old": "fork-old"},
+				ancestors: map[string][]string{"synthetic-child": {"fork-old"}},
+			},
+			want: StateNeedsRestack,
+		},
+		"branch rewritten off its base": {
+			// Someone rebased the child by hand, so its recorded base is gone
+			// from its history and the replay range would be meaningless.
+			git: fakeAncestry{
+				local:     []string{"synthetic-parent", "synthetic-child"},
+				objects:   map[string]string{"synthetic-parent": "fork-old", "fork-old": "fork-old"},
+				ancestors: map[string][]string{"synthetic-child": {}},
+			},
+			want: StateMovedOffParent,
+		},
+		"nothing moved": {
+			git: fakeAncestry{
+				local:     []string{"synthetic-parent", "synthetic-child"},
+				objects:   map[string]string{"synthetic-parent": "fork-old", "fork-old": "fork-old"},
+				ancestors: map[string][]string{"synthetic-child": {"fork-old"}},
+			},
+			want: StateAligned,
+		},
+		"fork point collected": {
+			git: fakeAncestry{
+				local:        []string{"synthetic-parent", "synthetic-child"},
+				objects:      map[string]string{"synthetic-parent": "parent-new"},
+				unresolvable: map[string]bool{"fork-old": true},
+			},
+			want: StateForkUnresolvable,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			states, err := Assess(context.Background(), test.git, tracked, []string{"synthetic-child"})
+			if err != nil {
+				t.Fatalf("Assess() error = %v", err)
+			}
+			if states["synthetic-child"] != test.want {
+				t.Errorf("state = %q, want %q", states["synthetic-child"], test.want)
+			}
+		})
+	}
+}
+
+// Only aligned and needs-restack describe a branch a rebase may act on.
+func TestRestackableStates(t *testing.T) {
+	for state, want := range map[NodeState]bool{
+		StateAligned: true, StateNeedsRestack: true,
+		StateMovedOffParent: false, StateParentMissing: false,
+		StateForkUnresolvable: false, StateUntracked: false,
+	} {
+		if state.Restackable() != want {
+			t.Errorf("%q.Restackable() = %t, want %t", state, state.Restackable(), want)
+		}
+	}
+}
+
+// An edge adopted before fork points existed must keep working rather than
+// reporting a state its writer never saw.
+func TestAssessToleratesAnEdgeWithNoForkPoint(t *testing.T) {
+	legacy := Graph{Edges: map[string]Edge{"synthetic-child": {Parent: "synthetic-parent"}}}
+	git := fakeAncestry{
+		local:     []string{"synthetic-parent", "synthetic-child"},
+		ancestors: map[string][]string{"synthetic-child": {"synthetic-parent"}},
+	}
+
+	states, err := Assess(context.Background(), git, legacy, []string{"synthetic-child"})
+	if err != nil {
+		t.Fatalf("Assess() error = %v", err)
+	}
+	if states["synthetic-child"] != StateAligned {
+		t.Errorf("state = %q, want %q", states["synthetic-child"], StateAligned)
+	}
 }

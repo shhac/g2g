@@ -132,6 +132,91 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 	return false, err
 }
 
+// Resolve returns the object id a revision names. It is how a fork point
+// recorded as text is checked against the repository that has to contain it.
+func (c Client) Resolve(ctx context.Context, revision string) (string, error) {
+	if err := safeRef(revision); err != nil {
+		return "", err
+	}
+	// ^{commit} makes an object that exists but is not a commit an error here
+	// rather than a confusing failure inside a later rebase.
+	output, err := c.run(ctx, "rev-parse", "--verify", "--quiet", revision+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
+	}
+	resolved := strings.TrimSpace(string(output))
+	if resolved == "" {
+		return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
+	}
+	return resolved, nil
+}
+
+// forkPointPrefix keeps every recorded fork point reachable.
+//
+// A fork point is the one object a restack cannot do without, and it becomes
+// unreachable exactly when it matters most: after a merged parent's branch is
+// deleted. Naming it with a ref stops garbage collection taking it.
+const forkPointPrefix = "refs/g2g/forkpoints/"
+
+// PinForkPoint records a ref for a fork point so the object survives gc.
+func (c Client) PinForkPoint(ctx context.Context, branch, object string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	if err := safeRef(object); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "update-ref", forkPointPrefix+branch, object)
+	return err
+}
+
+// UnpinForkPoint drops the ref for a branch gt2gh no longer records.
+func (c Client) UnpinForkPoint(ctx context.Context, branch string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	// -d on a ref that is already gone is an error, and an untrack of a branch
+	// that never had a pin is ordinary, so a missing ref is not a failure.
+	if _, err := c.run(ctx, "update-ref", "-d", forkPointPrefix+branch); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// CherryDropped returns the commits in upstream..head whose content is not
+// already present in upstream.
+//
+// This separates a commit a rewritten parent genuinely dropped from one it
+// merely rewrote. The distinction decides whether a child may absorb what its
+// parent no longer has: absorbing a rewritten commit would give the child a
+// stale duplicate of work the parent still carries under a new object id.
+func (c Client) CherryDropped(ctx context.Context, upstream, head string) ([]string, error) {
+	if err := safeRef(upstream); err != nil {
+		return nil, err
+	}
+	if err := safeRef(head); err != nil {
+		return nil, err
+	}
+	output, err := c.run(ctx, "cherry", upstream, head)
+	if err != nil {
+		return nil, err
+	}
+	dropped := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		mark, object, found := strings.Cut(strings.TrimSpace(line), " ")
+		// A leading + means no equivalent content upstream: genuinely dropped.
+		// A leading - means it was rewritten and the content is still there.
+		if found && mark == "+" {
+			dropped = append(dropped, object)
+		}
+	}
+	return dropped, nil
+}
+
 // isolatedRemotePrefix namespaces the refs gt2gh fetches for itself.
 //
 // gt2gh must never move the user's remote-tracking refs. Doing so is not just

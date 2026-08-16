@@ -15,6 +15,7 @@ type Ancestry interface {
 	AncestorBranches(context.Context, string) ([]string, error)
 	Divergence(context.Context, string, string) (ahead, behind int, err error)
 	IsAncestor(context.Context, string, string) (bool, error)
+	Resolve(context.Context, string) (string, error)
 }
 
 // Candidate is one branch that could be the parent of a target.
@@ -116,14 +117,26 @@ const (
 	// branch, so the edge describes the branch as it currently is.
 	StateAligned NodeState = "aligned"
 	// StateNeedsRestack means the parent moved. The edge is still correct; the
-	// branch's contents are not, and gt2gh does not rebase.
+	// branch's contents are not.
 	StateNeedsRestack NodeState = "needs restack"
+	// StateMovedOffParent means the branch is no longer built on its recorded
+	// parent at all, which is what a manual rebase looks like. The recorded
+	// fork point is meaningless from here, so nothing may be replayed until
+	// the edge is recorded again.
+	StateMovedOffParent NodeState = "moved off parent"
 	// StateParentMissing means the recorded parent is no longer a local
 	// branch, which is what a merged and deleted parent looks like.
 	StateParentMissing NodeState = "parent missing"
+	// StateForkUnresolvable means the recorded fork point is no longer an
+	// object in this repository, usually because it was collected after the
+	// parent branch went away.
+	StateForkUnresolvable NodeState = "fork point unresolvable"
 	// StateUntracked means the graph records no parent for the branch.
 	StateUntracked NodeState = "untracked"
 )
+
+// Restackable reports whether a state describes a branch a rebase may act on.
+func (s NodeState) Restackable() bool { return s == StateAligned || s == StateNeedsRestack }
 
 // Assess reports each branch's state against Git.
 //
@@ -146,23 +159,66 @@ func Assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[
 
 	states := make(map[string]NodeState, len(branches))
 	for _, branch := range branches {
-		parent, tracked := g.Parent(branch)
-		if !tracked {
-			states[branch] = StateUntracked
-			continue
-		}
-		if !present[parent] {
-			states[branch] = StateParentMissing
-			continue
-		}
-		aligned, err := git.IsAncestor(ctx, parent, branch)
+		state, err := classify(ctx, git, g, present, branch)
 		if err != nil {
 			return nil, err
 		}
-		states[branch] = StateNeedsRestack
-		if aligned {
-			states[branch] = StateAligned
-		}
+		states[branch] = state
 	}
 	return states, nil
+}
+
+// classify answers what the graph knows about one branch.
+//
+// Two probes are needed and neither is sufficient alone.
+//
+// The ancestor probe asks whether the branch still contains its own recorded
+// base. It is asked of the fork point rather than of the parent, because an
+// amended or rebased parent is no longer an ancestor of its children even
+// though nothing is wrong with them — that is precisely the ordinary case a
+// restack repairs. A fork point that has stopped being an ancestor means the
+// branch itself was rewritten, and the recorded range is then meaningless.
+//
+// The equality probe asks whether the parent has moved since the edge was
+// written, which is what makes the contents stale.
+func classify(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string) (NodeState, error) {
+	edge, tracked := g.Edges[branch]
+	if !tracked {
+		return StateUntracked, nil
+	}
+	if !present[edge.Parent] {
+		return StateParentMissing, nil
+	}
+	parentTip, err := git.Resolve(ctx, edge.Parent)
+	if err != nil {
+		return "", err
+	}
+	// An edge written before fork points were recorded can only be checked the
+	// way it used to be. It fails closed once it drifts, because the restack
+	// guard refuses a fork point it cannot verify.
+	if edge.ForkPoint == "" {
+		built, err := git.IsAncestor(ctx, edge.Parent, branch)
+		if err != nil {
+			return "", err
+		}
+		if built {
+			return StateAligned, nil
+		}
+		return StateNeedsRestack, nil
+	}
+	forkPoint, err := git.Resolve(ctx, edge.ForkPoint)
+	if err != nil {
+		return StateForkUnresolvable, nil
+	}
+	intact, err := git.IsAncestor(ctx, forkPoint, branch)
+	if err != nil {
+		return "", err
+	}
+	if !intact {
+		return StateMovedOffParent, nil
+	}
+	if forkPoint == parentTip {
+		return StateAligned, nil
+	}
+	return StateNeedsRestack, nil
 }

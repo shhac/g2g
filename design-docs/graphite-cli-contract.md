@@ -1,8 +1,11 @@
-# Graphite CLI display contract
+# Graphite CLI contract
 
-`gt2gh` discovers Graphite relationships only through Graphite's supported
-read-only CLI surface. It never reads Graphite's private metadata database or
-configuration and never enables `--debug`.
+`gt2gh` reaches Graphite only through its supported, noninteractive CLI. It
+never reads Graphite's private metadata database or configuration and never
+enables `--debug`.
+
+Discovery is read-only. `mirror` is the one command that writes, and it writes
+only through the two commands documented under [Write contract](#write-contract).
 
 ## Command contract
 
@@ -30,6 +33,37 @@ The fully synthetic fixture at
 models the compact 1.8.6 tree grammar with unequal sibling paths, a repeated
 connector, and a nested fork. It contains no user repository data. Tests use
 only fake executables on `PATH`.
+
+## Write contract
+
+`g2g mirror` writes Graphite through exactly two commands, both gated on the
+same version check as discovery:
+
+```text
+gt track <branch> --parent <parent> --no-interactive
+gt untrack <branch> --force --no-interactive
+```
+
+Three properties of these commands shape the mirror design, and each was read
+from `gt track --help` / `gt untrack --help` on 1.8.6 rather than assumed:
+
+- **Both take an explicit branch argument.** `gt track [branch]` and
+  `gt untrack [branch]` default to the current branch when it is omitted, so
+  passing it is what keeps mirroring checkout-free. Nothing else would be
+  acceptable: a mirror that checked out every branch in the forest would be a
+  worse operation than the drift it fixes.
+- **`--parent` must name an already-tracked branch.** Writes are therefore
+  ordered **parents before children**, and a mirror that adds a chain adds it
+  from the root down.
+- **`gt untrack` cascades to children.** Untracking a branch untracks its whole
+  subtree, which is why `--prune` refuses a branch with a Graphite child that
+  is not itself being pruned, and why prunes are ordered **deepest first**.
+  Without both, pruning one stale branch would silently untrack the branches
+  the mirror had just aligned.
+
+`--force` on `untrack` suppresses only the confirmation prompt for a branch with
+children; it does not change what is removed. `--no-interactive` is passed for
+the same reason it is passed to `gt log`.
 
 ## Accepted grammar
 

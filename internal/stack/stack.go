@@ -92,6 +92,11 @@ type Selection struct {
 	Branch  string
 	Trunk   string
 	NoStack bool
+	// From pins which source answers, for this invocation only. Empty means
+	// precedence decides, which is the normal case. Nothing is recorded: once
+	// a branch is in the g2g store there is otherwise no way to ask Graphite
+	// what it thinks, and comparing the two views is the whole point.
+	From Source
 }
 
 // Snapshot is the validated ordered path a command acts on, whichever source

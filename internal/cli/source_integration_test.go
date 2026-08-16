@@ -191,6 +191,108 @@ func TestFlagCompletionStillReadsGraphiteWhereItIsUsed(t *testing.T) {
 	}
 }
 
+// dualSourceRepository is described by both sources, and they disagree: g2g
+// records synthetic-top under synthetic-lower, Graphite declares it directly on
+// a different trunk. Precedence alone can never show the second, which is what
+// --from exists to fix.
+func dualSourceRepository(t *testing.T) *testutil.Recorder {
+	t.Helper()
+
+	common := testutil.GraphiteRepository(t)
+	dir := filepath.Join(common, "g2g")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "graph.json"), []byte(ownedGraph), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return testutil.FakeCLIs(t, map[string][]testutil.Route{
+		"git": {
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
+			{Prefix: "branch --show-current", Output: "synthetic-top"},
+			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-other", "synthetic-side", "synthetic-top", "synthetic-trunk"}},
+			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "merge-base --is-ancestor"},
+			{Prefix: "status --porcelain"},
+			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
+			{Prefix: "ls-remote"},
+			{Prefix: "push"},
+		},
+		"gt": {
+			{Prefix: "--version", Output: "1.8.6"},
+			{Prefix: "log", Lines: []string{"◯  synthetic-other", "◉  synthetic-top"}},
+		},
+		"gh": {
+			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+			{Prefix: "api graphql", Output: ownedPullRequests},
+			{Prefix: "stack link"},
+		},
+	})
+}
+
+// Precedence still decides by default: g2g holds the edge, so g2g answers and
+// Graphite is never asked.
+func TestPrecedenceStillDecidesWithoutFrom(t *testing.T) {
+	recorder := dualSourceRepository(t)
+
+	stdout, _, err := run(t, "push")
+	if err != nil {
+		t.Fatalf("push: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "synthetic-lower") {
+		t.Errorf("preview does not show the g2g-recorded path:\n%s", stdout)
+	}
+	recorder.AssertNone("gt ")
+}
+
+// --from graphite overrides precedence for one invocation, which is the only
+// way to see Graphite's view of a branch g2g has adopted.
+func TestFromPinsTheSourceAgainstPrecedence(t *testing.T) {
+	recorder := dualSourceRepository(t)
+
+	stdout, _, err := run(t, "push", "--from", "graphite")
+	if err != nil {
+		t.Fatalf("push --from graphite: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "synthetic-other") {
+		t.Errorf("preview does not show the Graphite-declared base:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "synthetic-lower") {
+		t.Errorf("preview still shows the g2g path despite --from graphite:\n%s", stdout)
+	}
+	if recorder.Find("gt log") == "" {
+		t.Error("Graphite was never consulted despite --from graphite")
+	}
+}
+
+// Pinning does not force a source to answer. The refusal names the source the
+// user chose, not a precedence they did not.
+func TestFromReportsASourceThatDoesNotDescribeTheBranch(t *testing.T) {
+	g2gOwnedRepository(t, ownedGraph)
+
+	_, _, err := run(t, "push", "--from", "graphite")
+	if err == nil {
+		t.Fatal("push --from graphite: error = nil where Graphite is not configured")
+	}
+	if !strings.Contains(err.Error(), "graphite does not describe") {
+		t.Errorf("error = %v, want it to name the pinned source", err)
+	}
+}
+
+func TestFromRejectsAnUnknownSource(t *testing.T) {
+	g2gOwnedRepository(t, ownedGraph)
+
+	_, _, err := run(t, "push", "--from", "synthetic-nonsense")
+	if err == nil {
+		t.Fatal("push --from synthetic-nonsense: error = nil")
+	}
+	for _, want := range []string{"unknown source", "g2g", "graphite"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want it to contain %q", err, want)
+		}
+	}
+}
+
 // stackCommands are the commands that take --branch and --trunk. They share
 // one registration helper, but each wires it itself, so each is checked: a
 // command that forgot to pass its completions would otherwise fail silently,

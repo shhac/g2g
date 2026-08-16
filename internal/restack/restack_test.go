@@ -499,3 +499,120 @@ func TestPlanWithoutReplaySupportStillPlans(t *testing.T) {
 		t.Error("no steps planned")
 	}
 }
+
+// forkedParent is the shape the absorb question exists for: the parent no
+// longer has commits the child still carries.
+func droppedCommitGit() *fakeGit {
+	git := stackGit()
+	// synthetic-a's tip moved and the fork point is no longer behind it, so
+	// synthetic-b carries a commit synthetic-a has given up.
+	git.objects["synthetic-a"] = "a-new"
+	git.ancestors["synthetic-b"] = []string{"a-old", "trunk-old"}
+	git.ancestors["a-new"] = []string{"trunk-old"}
+	git.dropped = map[string][]string{"a-new..a-old": {"dropped-1"}}
+	git.behind = map[string]int{"a-new..a-old": 1}
+	return git
+}
+
+// Keeping commits the parent dropped is a metadata change: the parent's tip is
+// already an ancestor of the child, so nothing is rewritten.
+func TestAbsorbRewritesNothingAndOnlyMovesTheForkPoint(t *testing.T) {
+	git := droppedCommitGit()
+	service, store, _ := newService(git, stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", true)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Blocked = %q for an absorbable set", plan.Blocked)
+	}
+	if err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if len(git.replays) != 0 || len(git.rebases) != 0 {
+		t.Error("absorbing rewrote commits; it only has to re-record where the branch forks")
+	}
+	if store.graph.Edges["synthetic-b"].ForkPoint == "" {
+		t.Error("the fork point was not re-recorded")
+	}
+}
+
+// A commit the parent rewrote still exists there under a new object id, so
+// keeping the old copy would duplicate it. Only a set that is entirely
+// dropped can be absorbed.
+func TestAbsorbIsRefusedWhenAnOrphanWasRewrittenRatherThanRemoved(t *testing.T) {
+	git := droppedCommitGit()
+	// Two commits differ, but only one of them is genuinely gone.
+	git.behind["a-new..a-old"] = 2
+	service, _, _ := newService(git, stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", true)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked == "" {
+		t.Fatal("Blocked = \"\" for a set that cannot be absorbed")
+	}
+	if !strings.Contains(plan.Blocked, "duplicate") {
+		t.Errorf("Blocked = %q, want it to say why", plan.Blocked)
+	}
+}
+
+func TestPlanReportsOrphansSoTheyAreNeverDroppedSilently(t *testing.T) {
+	service, _, _ := newService(droppedCommitGit(), stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Orphaned()) == 0 {
+		t.Fatal("no orphans reported for a parent that dropped a commit")
+	}
+	if !plan.Absorbable() {
+		t.Error("Absorbable() = false for a set where every orphan is genuinely dropped")
+	}
+}
+
+func TestSkipAdvancesTheInterruptedRewrite(t *testing.T) {
+	git := stackGit()
+	git.inProgress = true
+	git.objects["synthetic-trunk"] = "trunk-old"
+	service, _, journal := newService(git, stack())
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.present = true
+
+	if err := service.Skip(context.Background()); err != nil {
+		t.Fatalf("Skip() error = %v", err)
+	}
+	if len(git.steps) != 1 || git.steps[0] != "skip" {
+		t.Errorf("steps = %v, want one skip", git.steps)
+	}
+	if journal.cleared != 1 {
+		t.Error("the journal outlived the completed operation")
+	}
+}
+
+func TestSkipRefusesWhenNothingIsInProgress(t *testing.T) {
+	service, _, _ := newService(stackGit(), stack())
+	if err := service.Skip(context.Background()); err == nil {
+		t.Error("Skip() error = nil with no restack in progress")
+	}
+}
+
+// Revalidation is what stops a rewrite acting on a world that moved between
+// the preview and the apply.
+func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
+	git := stackGit()
+	service, _, _ := newService(git, stack())
+	preview, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	git.objects["synthetic-b"] = "b-moved"
+	if _, err := service.Revalidate(context.Background(), selection(), "", false, preview); err == nil {
+		t.Fatal("Revalidate() error = nil after a branch moved")
+	}
+}

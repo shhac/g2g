@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"strings"
-
-	"github.com/shhac/gt2gh/internal/graph"
 	"github.com/shhac/gt2gh/internal/restack"
 )
 
@@ -64,18 +60,9 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 	return view.note("This will not apply cleanly. Applying rebases in your working tree and stops on the conflict for you to resolve, then g2g restack --continue.", severityWarn)
 }
 
-func restackProgressView(plan restack.Plan, operation string) stackView {
-	view := graphView(plan.Discovery, operation)
-	return view.note(fmt.Sprintf("%s branches remain to replay.", strings.ToUpper(operation[:1])+operation[1:]), severityNeutral)
-}
-
 // interruptedNote is what every other command shows while a restack is
 // unfinished, because a branch may already have moved while the graph still
 // records where it used to be.
 func interruptedNote() string {
 	return "A restack is in progress. Finish it with g2g restack --continue, or undo it with g2g restack --abort."
-}
-
-func restackStates(discovery graph.Discovery) []string {
-	return discovery.InState(graph.StateNeedsRestack)
 }

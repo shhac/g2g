@@ -30,6 +30,11 @@ func mirrorRepository(t *testing.T, graphJSON string, graphiteLog []string) *tes
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-stale", "synthetic-top", "synthetic-trunk"}},
+			// import resolves a fork point per adopted edge and asks Git whether
+			// it confirms each declared relationship.
+			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "merge-base --is-ancestor"},
+			{Prefix: "update-ref"},
 		},
 		"gt": {
 			{Prefix: "--version", Output: "1.8.6"},
@@ -150,5 +155,61 @@ func TestMirrorRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 		if strings.Contains(strings.ToLower(entry.Name()), "graphite") {
 			t.Errorf("previewing a mirror enrolled the repository: %s", entry.Name())
 		}
+	}
+}
+
+// import is the other direction: it writes the gt2gh graph and never Graphite.
+func TestImportAdoptsIntoTheG2GGraphOnly(t *testing.T) {
+	recorder := mirrorRepository(t, "", strangerGraphiteLog)
+
+	stdout, stderr, err := run(t, "import", "--apply")
+	if err != nil {
+		t.Fatalf("import --apply: %v\n%s%s", err, stdout, stderr)
+	}
+
+	for _, branch := range []string{"synthetic-lower", "synthetic-top", "synthetic-stale"} {
+		if !strings.Contains(stdout, branch) {
+			t.Errorf("preview omits %s:\n%s", branch, stdout)
+		}
+	}
+	recorder.AssertNone("gt track")
+	recorder.AssertNone("gt untrack")
+}
+
+// Adoption is the authority claim, so the preview has to say so rather than
+// only listing branches.
+func TestImportPreviewNamesTheAuthorityShift(t *testing.T) {
+	mirrorRepository(t, "", strangerGraphiteLog)
+
+	stdout, _, err := run(t, "import")
+	if err != nil {
+		t.Fatalf("import: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "answers for") {
+		t.Errorf("preview does not say gt2gh takes over answering:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "--from graphite") {
+		t.Errorf("preview does not say how to see Graphite's view afterwards:\n%s", stdout)
+	}
+}
+
+// A disagreement is refused rather than resolved, and both answers are named.
+func TestImportBlocksAndNamesBothRecords(t *testing.T) {
+	mirrorRepository(t, mirrorGraph, invertedGraphiteLog)
+
+	stdout, _, err := run(t, "import")
+	if err != nil {
+		t.Fatalf("import: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "Apply blocked") {
+		t.Errorf("preview is not blocked by the disagreement:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "gt2gh says") || !strings.Contains(stdout, "Graphite says") {
+		t.Errorf("preview does not name both records:\n%s", stdout)
+	}
+
+	_, _, applyErr := run(t, "import", "--apply")
+	if applyErr == nil {
+		t.Error("import --apply: error = nil for a blocked plan")
 	}
 }

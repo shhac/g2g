@@ -171,8 +171,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
 		root.AddCommand(newSync(options.Sync, presentation))
 	}
-	if options.Align.Graph.Store != nil && options.Align.Graphite != nil {
+	if options.Align.Graph.Store != nil && options.Align.Graph.Git != nil && options.Align.Graphite != nil {
 		root.AddCommand(newMirror(options.Align, guard, presentation))
+		root.AddCommand(newImport(options.Align, guard, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

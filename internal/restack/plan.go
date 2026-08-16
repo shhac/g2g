@@ -109,6 +109,16 @@ func (p Plan) rebaseRange() localgit.Range {
 	return localgit.Range{From: rewriting[0].ForkPoint, To: rewriting[len(rewriting)-1].Branch}
 }
 
+// Replaying lists the branches whose commits are actually replayed, which is
+// not every branch in the plan: one that collapses only has its ref moved.
+func (p Plan) Replaying() []string {
+	branches := make([]string, 0, len(p.Steps))
+	for _, step := range p.rewriting() {
+		branches = append(branches, step.Branch)
+	}
+	return branches
+}
+
 // rewriting is the steps that actually have commits to replay.
 func (p Plan) rewriting() []Step {
 	steps := make([]Step, 0, len(p.Steps))

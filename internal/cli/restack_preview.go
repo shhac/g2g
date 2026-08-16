@@ -12,7 +12,13 @@ func restackView(plan restack.Plan) stackView {
 	if len(plan.Steps) == 0 {
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)
 	}
-	view = view.note("Replays "+branchList(plan.Branches())+" onto "+plan.Steps[0].Parent+".", severityOK)
+	// A branch that collapses is not replayed, only moved, and saying it was
+	// replayed would misdescribe what happened to its commits.
+	if replaying := plan.Replaying(); len(replaying) != 0 {
+		view = view.note("Replays "+branchList(replaying)+" onto "+plan.Steps[0].Parent+".", severityOK)
+	} else {
+		view = view.note("Moves "+branchList(plan.Emptied())+" onto "+plan.Steps[0].Parent+" · nothing needs replaying.", severityOK)
+	}
 	view = orphanNote(view, plan)
 	view = emptiedNote(view, plan)
 	return engineNote(view, plan)

@@ -29,12 +29,24 @@ type RefUpdate struct {
 // Branch strips the refs/heads/ prefix a ref update carries.
 func (u RefUpdate) Branch() string { return strings.TrimPrefix(u.Ref, "refs/heads/") }
 
-// replayMinorVersion is the first Git minor release with git replay.
-const replayMinorVersion = 44
+// replayMinorVersion is the first Git minor release whose replay this project
+// has actually verified.
+//
+// The command exists from 2.44, but its handling of a rewrite that lands on a
+// base already containing equivalent work changed later: 2.54 refuses a case
+// 2.55 completes. Since replay is documented as experimental and cannot be
+// pinned with a flag the way rebase can, the gate names the version that was
+// tested rather than the version that first shipped the subcommand. Anything
+// older takes the resumable engine, which is correct on every version.
+const replayMinorVersion = 55
 
 // SupportsReplay reports whether this Git can replay commits without a
-// checkout. The command is documented as experimental, so it is gated the same
-// way the Graphite CLI is: recognised versions only, and no attempt to guess.
+// checkout, which is the difference between a rewrite that leaves the working
+// tree alone and one that takes it over.
+//
+// It is gated the same way the Graphite CLI is: verified versions only, and no
+// attempt to guess. Answering false costs the conflict prediction and the
+// untouched checkout, and costs nothing else.
 func (c Client) SupportsReplay(ctx context.Context) (bool, error) {
 	output, err := c.run(ctx, "--version")
 	if err != nil {

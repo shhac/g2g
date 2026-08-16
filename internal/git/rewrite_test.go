@@ -102,8 +102,9 @@ func TestSupportsReplayRecognisesThisGit(t *testing.T) {
 func TestSupportsReplayGatesOnTheVersionItParses(t *testing.T) {
 	for version, want := range map[string]bool{
 		"git version 2.55.0":       true,
-		"git version 2.44.0":       true,
-		"git version 2.43.9":       false,
+		"git version 2.56.1":       true,
+		"git version 2.54.0":       false,
+		"git version 2.44.0":       false,
 		"git version 3.0.0":        true,
 		"git version 2.39.5 (Foo)": false,
 	} {

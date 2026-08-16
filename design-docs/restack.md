@@ -137,10 +137,22 @@ result without mutating anything.
 | Resolvable | no `--continue` | `--continue` / `--abort` |
 | Preview without mutating | `--ref-action=print` | — |
 
-`git replay` is EXPERIMENTAL (Git 2.44+), so it is gated the same way the
-Graphite CLI is. Where it is absent there is no prediction at all, and that is
-reported as such: "we could not look" and "we looked and it will conflict" lead
-a reader to different actions, and only one of them would be true.
+`git replay` is EXPERIMENTAL. The subcommand exists from Git 2.44, but its
+handling of a rewrite landing on a base that already contains equivalent work
+changed later — 2.54 refuses a case 2.55 completes — and unlike rebase it has
+no flag to pin that behaviour. So it is gated at the version actually verified
+rather than the one that first shipped it, the same way the Graphite CLI is.
+
+Where it is unavailable there is no prediction at all, and that is reported as
+such: "we could not look" and "we looked and it will conflict" lead a reader to
+different actions, and only one of them would be true. The resumable engine is
+correct on every version, so the cost is the conflict warning and the untouched
+checkout, not correctness.
+
+**Consequence for testing:** CI runs an older Git than this project's baseline,
+so it exercises the resumable engine and never the preview one. The cases that
+can only hold with replay skip themselves by asking the same question the code
+does. Both engines are exercised by forcing the gate closed locally.
 
 **Neither engine is trusted with an already-upstream commit.** Whether a
 rewrite drops one or reapplies it varies by version — `git replay` changed

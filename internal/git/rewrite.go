@@ -133,7 +133,13 @@ func (c Client) Rebase(ctx context.Context, onto string, replayed Range) error {
 	if err := safeRef(replayed.To); err != nil {
 		return err
 	}
-	_, err := c.run(ctx, "rebase", "--onto", onto, replayed.From, replayed.To, "--update-refs")
+	// --no-reapply-cherry-picks is not a preference, it is what makes this
+	// engine agree with the other one. A commit whose content is already in
+	// the new base must be dropped — that is precisely what repairs a stack
+	// after a squash merge — and older Git reapplies it by default, which
+	// conflicts every time on exactly the case this command exists for.
+	_, err := c.run(ctx, "rebase", "--onto", onto, replayed.From, replayed.To,
+		"--update-refs", "--no-reapply-cherry-picks")
 	return err
 }
 

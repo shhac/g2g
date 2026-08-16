@@ -87,6 +87,18 @@ func (p Plan) rebaseRange() localgit.Range {
 	return localgit.Range{From: p.Steps[0].ForkPoint, To: p.Steps[len(p.Steps)-1].Branch}
 }
 
+// reparenting is the branches this plan moves to a different parent, which is
+// only ever the result of an explicit --onto.
+func (p Plan) reparenting() map[string]string {
+	moves := map[string]string{}
+	for _, step := range p.Steps {
+		if recorded, tracked := p.Graph.Parent(step.Branch); tracked && recorded != step.Parent {
+			moves[step.Branch] = step.Parent
+		}
+	}
+	return moves
+}
+
 // chain reports whether the steps form a single line of descent, which is the
 // only shape the resumable engine can rewrite in one invocation.
 func (p Plan) chain() bool {
@@ -112,6 +124,10 @@ type Plan struct {
 	// moves nothing.
 	Updates []localgit.RefUpdate
 	Clean   bool
+	// Predicted records that the preview actually ran. A Git too old to
+	// replay cannot say anything in advance, and "we could not look" must not
+	// be reported as "we looked and it will conflict".
+	Predicted bool
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 }
@@ -180,6 +196,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Absorb == other.Absorb &&
 		p.Blocked == other.Blocked &&
 		p.Clean == other.Clean &&
+		p.Predicted == other.Predicted &&
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
 			return left.Branch == right.Branch && left.Parent == right.Parent &&
 				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&
@@ -213,12 +230,13 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto strin
 		plan.Blocked = "commits the parent dropped were rewritten rather than removed, so absorbing them would duplicate work the parent still carries"
 		return plan, nil
 	}
-	updates, clean, err := s.preview(ctx, plan)
+	updates, clean, predicted, err := s.preview(ctx, plan)
 	if err != nil {
 		return Plan{}, err
 	}
 	plan.Updates, plan.Clean = updates, clean
-	if !clean && !plan.chain() {
+	plan.Predicted = predicted
+	if predicted && !clean && !plan.chain() {
 		// The resumable engine rewrites one line of descent per invocation, so
 		// a conflicting fork would need several and a journal that tracks
 		// which of them finished. Refusing is honest until it does.
@@ -345,13 +363,14 @@ func (s Service) classifyOrphans(ctx context.Context, step *Step) error {
 // preview asks the replay engine what the rewrite would produce, without
 // producing it. A repository whose Git cannot replay gets no prediction, which
 // costs the conflict warning but nothing else.
-func (s Service) preview(ctx context.Context, plan Plan) ([]localgit.RefUpdate, bool, error) {
+func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.RefUpdate, clean, predicted bool, err error) {
 	supported, err := s.Git.SupportsReplay(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if !supported {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
-	return s.Git.PreviewReplay(ctx, plan.Steps[0].Base, plan.ranges())
+	updates, clean, err = s.Git.PreviewReplay(ctx, plan.Steps[0].Base, plan.ranges())
+	return updates, clean, err == nil, err
 }

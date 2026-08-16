@@ -643,3 +643,26 @@ func TestContinuingIntoAnotherRoundReplaysFromTheTopmostForkPoint(t *testing.T) 
 		t.Errorf("range ends at %q, want the tip of the chain", got.To)
 	}
 }
+
+// A Git that cannot preview must not be reported as having previewed. "We
+// could not look" and "we looked and it will conflict" lead a reader to
+// different actions.
+func TestPlanWithoutReplayReportsThatNothingWasPredicted(t *testing.T) {
+	git := stackGit()
+	git.replaySupported = false
+	service, _, _ := newService(git, stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Predicted {
+		t.Error("Predicted = true without a preview engine")
+	}
+	if plan.Clean {
+		t.Error("Clean = true without a preview to establish it")
+	}
+	if plan.Blocked != "" {
+		t.Errorf("Blocked = %q; an unpredictable rewrite is still allowed to run", plan.Blocked)
+	}
+}

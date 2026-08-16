@@ -44,6 +44,11 @@ type Record struct {
 	// Original maps every branch in the operation to its tip when the
 	// operation began. This is the whole reason for --abort.
 	Original map[string]string `json:"original"`
+	// Reparent maps a branch to the parent this operation moves it to. It is
+	// recorded rather than re-derived because once the rewrite has happened
+	// the branch no longer sits where the graph says, so a fresh plan reports
+	// it as moved off its parent and can no longer tell where it was headed.
+	Reparent map[string]string `json:"reparent,omitempty"`
 }
 
 // Selection rebuilds the graph selection this record was started with.

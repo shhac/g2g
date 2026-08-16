@@ -63,7 +63,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // ancestor of the branch.
 func (s Service) absorb(ctx context.Context, plan Plan) error {
 	diagnostic.Event(ctx, "restack.absorb", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	return s.recordStructure(ctx, plan)
+	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
 }
 
 func (s Service) replay(ctx context.Context, plan Plan) error {
@@ -77,7 +77,7 @@ func (s Service) replay(ctx context.Context, plan Plan) error {
 	if err := s.Git.ResetKeep(ctx); err != nil {
 		return err
 	}
-	return s.recordStructure(ctx, plan)
+	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
 }
 
 // rebase runs the resumable engine and journals enough to undo the whole
@@ -91,6 +91,7 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 		Scope:    string(plan.Scope),
 		ReturnTo: plan.Target,
 		Original: map[string]string{},
+		Reparent: plan.reparenting(),
 	}
 	for _, step := range plan.Steps {
 		record.Original[step.Branch] = step.Tip
@@ -102,7 +103,7 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 	if err := s.Git.Rebase(ctx, plan.Steps[0].Base, plan.rebaseRange()); err != nil {
 		return err
 	}
-	return s.finish(ctx, graph.Selection{Branch: plan.Target, Scope: plan.Scope})
+	return s.finish(ctx, record)
 }
 
 // recordStructure writes back what the rewrite actually produced: any branch
@@ -121,26 +122,27 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 //
 // A branch that is not actually built on its parent is skipped: writing its
 // parent's tip as a fork point would assert a range that does not exist.
-func (s Service) recordStructure(ctx context.Context, plan Plan) error {
+func (s Service) recordStructure(ctx context.Context, branches []string, reparent map[string]string) error {
 	adopted, err := s.Graph.Store.Load(ctx)
 	if err != nil {
 		return err
 	}
 	updated := adopted.Clone()
-	for _, step := range plan.Steps {
-		edge, tracked := updated.Edges[step.Branch]
-		if !tracked || edge.Parent == step.Parent {
+	for _, branch := range slices.Sorted(maps.Keys(reparent)) {
+		parent := reparent[branch]
+		edge, tracked := updated.Edges[branch]
+		if !tracked || edge.Parent == parent {
 			continue
 		}
-		edge.Parent = step.Parent
-		updated.Edges[step.Branch] = edge
+		edge.Parent = parent
+		updated.Edges[branch] = edge
 		// A new base that nothing else hangs from is a root of the forest, and
 		// recording it is what lets the next branch find it as a candidate.
-		if !updated.Tracked(step.Parent) && !updated.IsTrunk(step.Parent) {
-			updated = updated.WithTrunks(append(slices.Clone(updated.Trunks), step.Parent)...)
+		if !updated.Tracked(parent) && !updated.IsTrunk(parent) {
+			updated = updated.WithTrunks(append(slices.Clone(updated.Trunks), parent)...)
 		}
 	}
-	for _, branch := range plan.Discovery.Branches {
+	for _, branch := range branches {
 		edge, tracked := updated.Edges[branch]
 		if !tracked {
 			continue
@@ -186,7 +188,7 @@ func (s Service) Continue(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.finish(ctx, record.Selection())
+	return s.finish(ctx, record)
 }
 
 // Skip abandons the commit an interrupted rebase stopped on.
@@ -201,13 +203,13 @@ func (s Service) Skip(ctx context.Context) error {
 	if err := s.Git.RebaseSkip(ctx); err != nil {
 		return err
 	}
-	return s.finish(ctx, record.Selection())
+	return s.finish(ctx, record)
 }
 
 // finish re-derives what is left. Anything still needing a rewrite is done
 // now; when nothing is, the graph is brought up to date and the journal goes.
-func (s Service) finish(ctx context.Context, selection graph.Selection) error {
-	plan, err := s.Plan(ctx, selection, "", false)
+func (s Service) finish(ctx context.Context, record Record) error {
+	plan, err := s.Plan(ctx, record.Selection(), record.Onto, record.Absorb)
 	if err != nil {
 		return err
 	}
@@ -220,7 +222,10 @@ func (s Service) finish(ctx context.Context, selection graph.Selection) error {
 		}
 		return s.Git.Rebase(ctx, plan.Steps[0].Base, plan.rebaseRange())
 	}
-	if err := s.recordStructure(ctx, plan); err != nil {
+	// The reparenting comes from the record rather than the fresh plan: once
+	// the rewrite has happened the branch no longer sits where the graph says,
+	// so the plan can no longer tell where it was headed.
+	if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
 		return err
 	}
 	return s.Journal.Clear(ctx)

@@ -1,11 +1,15 @@
 package cli_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	localgit "github.com/shhac/gt2gh/internal/git"
+	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
 // restackRepo builds a real stack and moves its trunk on, which is the shape
@@ -165,9 +169,28 @@ func isAncestor(t *testing.T, ancestor, descendant string) bool {
 	return command.Run() == nil
 }
 
+// requireReplay skips a case that can only hold where Git can rewrite without
+// a checkout. The behaviour is genuinely different on an older Git, and
+// asserting it anyway would be asserting the environment.
+//
+// It asks the same question the code does, rather than probing Git itself:
+// what matters is whether gt2gh will use that engine, not whether the
+// subcommand happens to exist.
+func requireReplay(t *testing.T) {
+	t.Helper()
+	supported, err := (localgit.Client{Runner: subprocess.ExecRunner{}}).SupportsReplay(context.Background())
+	if err != nil {
+		t.Fatalf("SupportsReplay() error = %v", err)
+	}
+	if !supported {
+		t.Skip("this Git cannot replay commits without a checkout")
+	}
+}
+
 // The whole point of the clean engine: the stack is repaired and the user's
 // checkout is never touched.
 func TestRestackReplaysTheStackWithoutTouchingTheCheckout(t *testing.T) {
+	requireReplay(t)
 	restackRepo(t)
 	trackStack(t)
 	advanceTrunk(t, false)
@@ -218,6 +241,8 @@ func TestRestackCarriesDescendantsNotJustTheBottomBranch(t *testing.T) {
 // A branch whose content is entirely upstream collapses onto its base, and a
 // pull request for it would show nothing. That has to be said out loud.
 func TestRestackReportsABranchItEmpties(t *testing.T) {
+	// Which branches end up empty is known only from a preview.
+	requireReplay(t)
 	restackRepo(t)
 	trackStack(t)
 	advanceTrunk(t, false)
@@ -257,6 +282,7 @@ func TestRestackPreviewChangesNothing(t *testing.T) {
 // Taking over the working tree is announced before it happens, which is only
 // possible because the preview engine has no side effects.
 func TestRestackWarnsBeforeItTakesOverTheWorkingTree(t *testing.T) {
+	requireReplay(t)
 	restackRepo(t)
 	trackStack(t)
 	advanceTrunk(t, true)

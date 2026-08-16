@@ -344,7 +344,7 @@ func TestRebaseRequestsUpdateRefs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recorder.Find("git rebase --onto synthetic-trunk synthetic-fork synthetic-b --update-refs")
+	recorder.Find("git rebase --onto synthetic-trunk synthetic-fork synthetic-b --update-refs --no-reapply-cherry-picks")
 }
 
 func TestRebaseStepsSuppressTheEditor(t *testing.T) {

@@ -54,6 +54,11 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 	if plan.Absorb {
 		return view
 	}
+	if !plan.Predicted {
+		// Saying it will conflict would be a claim we have not made: this Git
+		// cannot produce the result without performing it.
+		return view.note("This Git cannot preview the result, so applying rebases in your working tree. If it stops on a conflict, resolve it and run g2g restack --continue.", severityWarn)
+	}
 	if plan.Clean {
 		return view.note("Applies without touching your working tree or checked-out branch.", severityNeutral)
 	}

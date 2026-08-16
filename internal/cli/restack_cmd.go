@@ -77,29 +77,45 @@ func runResume(cmd *cobra.Command, ctx context.Context, service restack.Service,
 	ctx, cancel := budgets.mutation(ctx, 1)
 	defer cancel()
 
-	switch {
-	case options.abort:
+	if options.abort {
 		if err := service.Abort(ctx); err != nil {
 			return err
 		}
 		return prose(cmd.OutOrStdout(), p, p.notice("Restack aborted. Every branch is back where it started."))
-	case options.skip:
-		if err := service.Skip(ctx); err != nil {
-			return err
-		}
-	default:
-		if err := service.Continue(ctx); err != nil {
-			return err
-		}
+	}
+
+	advance := service.Continue
+	if options.skip {
+		advance = service.Skip
+	}
+	if err := advance(ctx); err != nil {
+		// Resuming can run straight into the next conflict, which is the
+		// operation working rather than failing. Reporting the raw git error
+		// would tell the reader nothing about what to do next.
+		return resumeError(cmd, ctx, service, err, p)
 	}
 	remaining, err := service.InProgress(ctx)
 	if err != nil {
 		return err
 	}
 	if remaining {
-		return prose(cmd.OutOrStdout(), p, p.notice("Stopped again. Resolve the conflict, then rerun g2g restack --continue."))
+		return stoppedOnConflict(cmd, p)
 	}
 	return prose(cmd.OutOrStdout(), p, p.notice("Restack complete."))
+}
+
+// resumeError distinguishes hitting the next conflict from genuinely failing.
+func resumeError(cmd *cobra.Command, ctx context.Context, service restack.Service, err error, p Presentation) error {
+	interrupted, checkErr := service.InProgress(ctx)
+	if checkErr != nil || !interrupted {
+		return err
+	}
+	return stoppedOnConflict(cmd, p)
+}
+
+func stoppedOnConflict(cmd *cobra.Command, p Presentation) error {
+	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict."))
+	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve the conflicting files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
 }
 
 // runRestack is the preview/apply sequence. It is written out rather than
@@ -161,8 +177,7 @@ func applyRestack(cmd *cobra.Command, ctx context.Context, budgets budgets, serv
 		// and resumable, and saying "no changes were made" would be a lie.
 		interrupted, checkErr := service.InProgress(mutateCtx)
 		if checkErr == nil && interrupted {
-			_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict."))
-			return prose(cmd.OutOrStdout(), p, p.subdued("Resolve the conflicting files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
+			return stoppedOnConflict(cmd, p)
 		}
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}

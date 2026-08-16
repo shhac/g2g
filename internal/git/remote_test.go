@@ -35,6 +35,10 @@ func syntheticRemote(t *testing.T) (upstream string, client Client) {
 	// Background maintenance writes into .git after a commit, which races the
 	// temporary directory's cleanup. Disabling it in the repository covers
 	// every invocation, including the ones the code under test makes.
+	// The identity has to live in the repository: the code under test spawns
+	// its own git, which does not see the environment these helpers use.
+	run(clone, "config", "user.name", "synthetic")
+	run(clone, "config", "user.email", "synthetic@example.test")
 	run(clone, "config", "gc.auto", "0")
 	run(clone, "config", "maintenance.auto", "false")
 	if err := os.WriteFile(filepath.Join(clone, "base.txt"), []byte("base"), 0o600); err != nil {

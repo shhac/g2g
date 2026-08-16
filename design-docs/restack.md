@@ -137,11 +137,8 @@ result without mutating anything.
 | Resolvable | no `--continue` | `--continue` / `--abort` |
 | Preview without mutating | `--ref-action=print` | — |
 
-`git replay` is EXPERIMENTAL. The subcommand exists from Git 2.44, but its
-handling of a rewrite landing on a base that already contains equivalent work
-changed later — 2.54 refuses a case 2.55 completes — and unlike rebase it has
-no flag to pin that behaviour. So it is gated at the version actually verified
-rather than the one that first shipped it, the same way the Graphite CLI is.
+`git replay` is EXPERIMENTAL (Git 2.44+), so it is gated the same way the
+Graphite CLI is.
 
 Where it is unavailable there is no prediction at all, and that is reported as
 such: "we could not look" and "we looked and it will conflict" lead a reader to
@@ -149,10 +146,18 @@ different actions, and only one of them would be true. The resumable engine is
 correct on every version, so the cost is the conflict warning and the untouched
 checkout, not correctness.
 
-**Consequence for testing:** CI runs an older Git than this project's baseline,
-so it exercises the resumable engine and never the preview one. The cases that
-can only hold with replay skip themselves by asking the same question the code
-does. Both engines are exercised by forcing the gate closed locally.
+**A rewrite commits, so it needs an identity.** Both engines create commits,
+and some platforms guess a committer from the system while others refuse. A
+test fixture that sets one only in the environment its own helpers use does not
+give it to the code under test, which spawns its own Git — so a rewrite
+succeeds on a developer's machine and stops half-way on a runner, having
+applied the patch and failed to record it. The identity belongs in the
+repository's own configuration, where every invocation sees it.
+
+That failure is worth knowing by shape: patch applied, changes staged, nothing
+unmerged, operation stopped. It reads exactly like a conflict and is not one,
+which is why an interrupted rewrite reports what it actually found rather than
+assuming.
 
 **The engines are driven differently because they model the work
 differently.** Replay takes the whole set at once and needs one shared origin.

@@ -59,6 +59,13 @@ func stackRepo(t *testing.T, overlap bool) (Client, map[string]string) {
 	// Background maintenance writes into .git after a commit, which races the
 	// temporary directory's cleanup. Disabling it in the repository covers
 	// every invocation, including the ones the code under test makes.
+	// The identity has to live in the repository, not just in the environment
+	// these helpers use: the code under test spawns its own git, which
+	// inherits the test process's environment instead. Some platforms guess an
+	// identity from the system and some refuse, so a rewrite that commits
+	// works in one place and stops half-way in another.
+	run("config", "user.name", "synthetic")
+	run("config", "user.email", "synthetic@example.test")
 	run("config", "gc.auto", "0")
 	run("config", "maintenance.auto", "false")
 	write("shared.txt", "base\n")
@@ -104,9 +111,8 @@ func requireReplay(t *testing.T, client Client) {
 func TestSupportsReplayGatesOnTheVersionItParses(t *testing.T) {
 	for version, want := range map[string]bool{
 		"git version 2.55.0":       true,
-		"git version 2.56.1":       true,
-		"git version 2.54.0":       false,
-		"git version 2.44.0":       false,
+		"git version 2.44.0":       true,
+		"git version 2.43.9":       false,
 		"git version 3.0.0":        true,
 		"git version 2.39.5 (Foo)": false,
 	} {

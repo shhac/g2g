@@ -42,6 +42,13 @@ func syntheticRepo(t *testing.T) (string, Client) {
 	// Background maintenance writes into .git after a commit, which races the
 	// temporary directory's cleanup. Disabling it in the repository covers
 	// every invocation, including the ones the code under test makes.
+	// The identity has to live in the repository, not just in the environment
+	// these helpers use: the code under test spawns its own git, which
+	// inherits the test process's environment instead. Some platforms guess an
+	// identity from the system and some refuse, so a rewrite that commits
+	// works in one place and stops half-way in another.
+	run("config", "user.name", "synthetic")
+	run("config", "user.email", "synthetic@example.test")
 	run("config", "gc.auto", "0")
 	run("config", "maintenance.auto", "false")
 	commit("root")

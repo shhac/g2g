@@ -154,9 +154,30 @@ there is no identifier to generate, no branch-to-graph index to maintain, and
 no merge or split event when two components join. Branch rename becomes a key
 rewrite rather than a graph migration.
 
-Commit SHAs are deliberately **not** stored. Commits and force-pushes are
-normal content movement, not structural drift. Structure is validated by
-branch existence and ancestry at read time instead.
+A branch's own tip is deliberately **not** stored. It moves with every
+ordinary commit, so recording it would make routine work look like the graph
+had changed.
+
+The **fork point** is stored, and the distinction matters. An edge records the
+parent's tip at the moment the edge was written:
+
+```json
+"synthetic-login": { "parent": "synthetic-auth", "forkPoint": "1005ca4…" }
+```
+
+That is not drift state, it is structural state — it answers *which commits
+are mine*, namely `forkPoint..branch`. Without it a restack cannot compute what
+to replay, because the range must exclude everything that was already in the
+parent. It changes only on structural events (adopting an edge, restacking),
+never on a commit or a force push.
+
+It is also what lets a restack survive its parent's deletion. Once a merged
+parent's branch is gone, `merge-base(trunk, child)` points at the fork with the
+*old* trunk and replaying from there would reapply the parent's work; the
+recorded fork point still says exactly where the child's own commits begin.
+
+This is the one place the model follows Graphite's rather than diverging from
+it: Graphite stores `parentBranchRevision` per edge for the same reason.
 
 The store carries its own schema version, independent of the `--json` output
 schema. They evolve separately and must never be reasoned about as one number.
@@ -203,7 +224,9 @@ only on the new commands.
 
 ## Known limits
 
-**No restack.** gt2gh does not rebase, and does not check out branches. It can
+**No restack yet.** The operation is designed in
+[restack.md](restack.md) but not implemented. gt2gh does not rebase today, and
+does not check out branches. It can
 repair a tree's parent edges but cannot repair a branch's contents.
 
 This matters most under squash merges. When the bottom branch of a stack is

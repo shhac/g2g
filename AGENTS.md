@@ -28,7 +28,15 @@ only process knowledge that is easy to miss.
 
 ## g2g-owned graphs
 
-- Read `design-docs/g2g-owned-graphs.md` before touching `internal/graph`. The
+- Read `design-docs/g2g-owned-graphs.md` before touching `internal/graph`, and
+  `design-docs/restack.md` before anything that rewrites history or reads the
+  remote.
+- Never move the user's remote-tracking refs. `RemoteTips` reads through
+  `ls-remote` and writes nothing; `FetchIsolated` writes only under
+  `refs/g2g/remotes/` and needs both `--refmap=` and `--no-write-fetch-head`.
+  A bare `--force-with-lease` takes its baseline from the remote-tracking ref,
+  so refreshing it silently disarms the check; leases are pinned to the tips
+  the plan observed. The
   forest model, per-branch authority, derived (never stored) graph identity,
   and the deliberate absence of restack are decisions, not accidents.
 - `internal/graph` must depend on Git alone. Importing Graphite or GitHub into

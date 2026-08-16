@@ -162,6 +162,12 @@ description: |
 - A diverged base is reported, never merged or reset. Pruning edits the graph
   and never deletes a branch.
 
+- `retarget` is the only command that changes what a merge will do. It writes
+  through exactly `gh pr edit <number> --base <branch>`, moves only the bases
+  that disagree with the resolved stack, and refuses a branch with more than one
+  open pull request rather than choosing between them. Do not fold it into
+  `submit` or run it as the tail of `restack`.
+
 ## Develop and test
 
 - Keep external process calls behind `internal/subprocess.Runner`. Tests must

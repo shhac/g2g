@@ -321,3 +321,53 @@ func TestBlockedMirrorIsNotReportedAsNothingToDo(t *testing.T) {
 		t.Error("mirror --apply: error = nil for a blocked plan")
 	}
 }
+
+// retarget is the one command that changes what a merge will do, so the exact
+// gh invocation matters as much as the decision behind it.
+func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
+	// synthetic-lower sits correctly on the trunk; synthetic-top still records
+	// the trunk as its base though the stack says it sits on synthetic-lower.
+	stale := `{"data":{"repository":{` +
+		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
+	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, stale)
+
+	stdout, _, err := run(t, "retarget")
+	if err != nil {
+		t.Fatalf("retarget: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "base synthetic-trunk → synthetic-lower") {
+		t.Errorf("preview does not name the base it would move:\n%s", stdout)
+	}
+	recorder.AssertNone("gh pr edit")
+
+	if _, _, err := run(t, "retarget", "--apply"); err != nil {
+		t.Fatalf("retarget --apply: %v", err)
+	}
+	edited := recorder.Find("gh pr edit")
+	if !strings.Contains(edited, "202") || !strings.Contains(edited, "--base synthetic-lower") {
+		t.Errorf("recorded %q, want #202 pointed at synthetic-lower", edited)
+	}
+	// The pull request already sitting where it belongs is left alone.
+	if strings.Contains(edited, "201") {
+		t.Errorf("recorded %q, want the correct pull request untouched", edited)
+	}
+}
+
+// A stack GitHub already agrees with is a no-op, which is what makes this safe
+// to run after every restack.
+func TestRetargetIsANoOpWhenBasesAlreadyMatch(t *testing.T) {
+	aligned := `{"data":{"repository":{` +
+		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]}}}}`
+	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, aligned)
+
+	stdout, _, err := run(t, "retarget", "--apply")
+	if err != nil {
+		t.Fatalf("retarget --apply: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "Nothing to do") {
+		t.Errorf("an aligned stack does not report a no-op:\n%s", stdout)
+	}
+	recorder.AssertNone("gh pr edit")
+}

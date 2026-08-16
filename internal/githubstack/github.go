@@ -308,3 +308,27 @@ func (c Client) Unstack(ctx context.Context, number int) error {
 func commandError(command string, err error, output []byte) error {
 	return &CommandError{Command: command, Cause: err, Output: string(output)}
 }
+
+// Retarget points an open pull request at a different base branch.
+//
+// It is the one GitHub mutation that changes what a merge will do rather than
+// how the pull requests are displayed, which is why it is a deliberate command
+// of its own rather than the tail of a restack.
+func (c Client) Retarget(ctx context.Context, number int, base string) error {
+	if c.Runner == nil {
+		return fmt.Errorf("GitHub runner is not configured")
+	}
+	if number <= 0 {
+		return fmt.Errorf("pull request number is required")
+	}
+	if err := subprocess.CheckArgument("gh", "base branch", base); err != nil {
+		return err
+	}
+	args := []string{"pr", "edit", strconv.Itoa(number), "--base", base}
+	diagnostic.Event(ctx, "github.pr_retarget", diagnostic.Field{Key: "number", Value: strconv.Itoa(number)}, diagnostic.Field{Key: "base", Value: base})
+	output, err := c.Runner.Run(ctx, "gh", args...)
+	if err != nil {
+		return commandError("gh "+strings.Join(args, " "), err, output)
+	}
+	return nil
+}

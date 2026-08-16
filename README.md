@@ -398,6 +398,27 @@ different responses and only you can give the second.
 Pruning forgets a landed branch in the recorded graph. It never deletes a
 branch — that is a separate, deliberate act, not the tail of another command.
 
+## Retargeting pull request bases
+
+After a restack the local stack is correct and GitHub may still record where
+each pull request used to sit. A base is what a merge follows, so leaving it
+stale means merging into the wrong branch.
+
+```sh
+g2g retarget            # which bases would move, and where from
+g2g retarget --apply
+```
+
+It is separate from `submit` deliberately. Creating a pull request and changing
+what an existing one will merge into are different classes of act, and the
+second wants its own preview — every line names the pull request, the base it
+has, and the base it would get.
+
+It touches only the pull requests whose base disagrees with the resolved stack,
+leaves branches with no pull request to `submit`, ignores merged and closed
+ones, and refuses outright when a branch has more than one open pull request,
+because nothing here can tell which one you meant.
+
 ## Machine-readable output
 
 Every command renders one semantic view, and `--json` and `--porcelain` are

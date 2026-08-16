@@ -306,6 +306,10 @@ command it is a path-scoped `untrack`, not a stored authority field.
 **Mirroring to GitHub.** Closed while native stacks are linear, not deferred
 pending effort.
 
-**Retargeting pull request bases.** Unchanged and still the largest gap in the
-end-to-end story: after a restack the local stack is correct and the remote
-bases may not be.
+**Retargeting pull request bases.** Built, as `g2g retarget`. It is its own
+command rather than a step inside `submit` or the tail of `restack`, because
+changing what a merge will do is a different class of act from creating a pull
+request and wants its own preview. It moves only the bases that disagree,
+refuses a branch with more than one open pull request rather than choosing, and
+is a no-op when GitHub already agrees — which is what makes it safe to run after
+every restack.

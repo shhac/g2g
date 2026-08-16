@@ -54,6 +54,7 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 			{Prefix: "pr create"},
 			{Prefix: "stack link"},
 			{Prefix: "stack unstack"},
+			{Prefix: "pr edit"},
 		},
 	})
 	return recorder, common
@@ -310,6 +311,7 @@ var stackCommands = []struct {
 	{name: "unlink", pullRequests: ownedLinkedPullRequests},
 	{name: "push", pullRequests: ownedPullRequests},
 	{name: "submit", pullRequests: ownedPullRequests},
+	{name: "retarget", pullRequests: ownedPullRequests},
 }
 
 // The list above is hand-maintained, because each command needs its own

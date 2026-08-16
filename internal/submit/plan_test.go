@@ -22,7 +22,7 @@ func (f fakeGraphite) DiscoverStack(context.Context, string, bool) (graphite.Sta
 
 func planService(github *fakeGitHub) (Service, *fakeGit) {
 	git := &fakeGit{}
-	return Service{Git: git, Graphite: fakeGraphite{}, GitHub: github}, git
+	return Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{}), GitHub: github}, git
 }
 
 func planFor(t *testing.T, prs []githubstack.PullRequest) Plan {
@@ -247,4 +247,11 @@ func TestPlanRejectsAnUnconfiguredServiceAndUnknownRemote(t *testing.T) {
 	if github.inspections != 0 {
 		t.Errorf("GitHub was read before the remote was validated: %d inspections", github.inspections)
 	}
+}
+
+// graphiteSelector wraps a Graphite fixture as the source it now is. These
+// cases assert Graphite-backed behaviour, which selection becoming pluggable
+// must not have changed.
+func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSelector {
+	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }

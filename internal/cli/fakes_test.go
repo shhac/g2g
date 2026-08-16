@@ -8,6 +8,7 @@ import (
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 // Fakes and helpers shared by every test in this package. They live apart from
@@ -37,17 +38,19 @@ func cliService(github *cliGitHub) link.Service {
 }
 
 func cliServiceWithGitHub(github link.GitHub) link.Service {
+	git := cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}}
 	return link.Service{
-		Git:      cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
-		Graphite: cliGraphite{},
+		Git:      git,
+		Selector: stack.GraphiteSelector{Git: git, Graphite: cliGraphite{}},
 		GitHub:   github,
 	}
 }
 
 func cliSingleBranchService(github link.GitHub) link.Service {
+	git := cliGit{current: "alpha", branches: []string{"main", "alpha"}}
 	return link.Service{
-		Git:      cliGit{current: "alpha", branches: []string{"main", "alpha"}},
-		Graphite: cliSingleBranchGraphite{},
+		Git:      git,
+		Selector: stack.GraphiteSelector{Git: git, Graphite: cliSingleBranchGraphite{}},
 		GitHub:   github,
 	}
 }

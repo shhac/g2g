@@ -263,7 +263,7 @@ func TestRevalidateRefusesWhenTheGraphMovedUnderneath(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Another worktree adopts an edge between preview and apply.
-	store.graph, err = store.graph.Track("synthetic-docs", Edge{Parent: "synthetic-main", Authority: AuthorityG2G})
+	store.graph, err = store.graph.Track("synthetic-docs", Edge{Parent: "synthetic-main"})
 	if err != nil {
 		t.Fatal(err)
 	}

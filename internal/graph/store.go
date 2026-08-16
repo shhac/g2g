@@ -83,7 +83,6 @@ type document struct {
 
 type storedEdge struct {
 	Parent    string `json:"parent"`
-	Authority string `json:"authority"`
 	Origin    string `json:"origin,omitempty"`
 	ForkPoint string `json:"forkPoint,omitempty"`
 }
@@ -119,9 +118,8 @@ func decode(contents []byte, path string) (Graph, error) {
 	loaded := Graph{Edges: make(map[string]Edge, len(doc.Branches)), Trunks: doc.Trunks}
 	for branch, stored := range doc.Branches {
 		loaded.Edges[branch] = Edge{
-			Parent:    stored.Parent,
-			Authority: Authority(stored.Authority),
-			Origin:    Origin(stored.Origin),
+			Parent: stored.Parent,
+			Origin: Origin(stored.Origin),
 			// An edge written before fork points were recorded loads with an
 			// empty one. Assess then falls back to the parent's current tip,
 			// which is correct until the edge has drifted and fails closed
@@ -200,7 +198,6 @@ func encode(g Graph) ([]byte, error) {
 	for branch, edge := range g.Edges {
 		doc.Branches[branch] = storedEdge{
 			Parent:    edge.Parent,
-			Authority: string(edge.Authority),
 			Origin:    string(edge.Origin),
 			ForkPoint: edge.ForkPoint,
 		}

@@ -48,6 +48,7 @@ type Discovery struct {
 func (s Snapshot) Equal(other Snapshot) bool {
 	return s.Target == other.Target &&
 		s.TargetSource == other.TargetSource &&
+		s.Source == other.Source &&
 		s.Base == other.Base &&
 		s.BaseSource == other.BaseSource &&
 		slices.Equal(s.GraphitePath, other.GraphitePath) &&
@@ -59,18 +60,25 @@ func (d Discovery) Equal(other Discovery) bool {
 	return d.Snapshot.Equal(other.Snapshot) && slices.Equal(d.PullRequests, other.PullRequests)
 }
 
-// Discover resolves the selected path and reads its pull requests, without
-// checking out a branch or mutating anything.
-func Discover(ctx context.Context, git Git, graphiteClient Graphite, github GitHub, selection Selection, command string) (Discovery, error) {
-	if github == nil {
+// PathSelector produces the ordered path a command acts on. Resolver is the
+// production implementation; a command needs only this much of it.
+type PathSelector interface {
+	Select(ctx context.Context, selection Selection, command string) (Snapshot, error)
+}
+
+// Discover resolves the selected path through whichever source describes it,
+// and reads its pull requests, without checking out a branch or mutating
+// anything.
+func Discover(ctx context.Context, selector PathSelector, github GitHub, selection Selection, command string) (Discovery, error) {
+	if selector == nil || github == nil {
 		return Discovery{}, fmt.Errorf("stack discovery is not fully configured")
 	}
-	snapshot, err := Resolve(ctx, git, graphiteClient, selection, command)
+	snapshot, err := selector.Select(ctx, selection, command)
 	if err != nil {
 		return Discovery{}, err
 	}
 	diagnostic.Event(ctx, "discovery.target", diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "source", Value: snapshot.TargetSource})
-	diagnostic.Event(ctx, "discovery.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
+	diagnostic.Event(ctx, "discovery.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "structure", Value: string(snapshot.Source)}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
 	prs, err := github.Inspect(ctx, snapshot.Branches)
 	if err != nil {
 		return Discovery{}, err
@@ -86,14 +94,20 @@ type Selection struct {
 	NoStack bool
 }
 
-// Snapshot contains the validated Graphite facts common to link, sync, and push.
+// Snapshot is the validated ordered path a command acts on, whichever source
+// described it.
 type Snapshot struct {
 	Target       string
 	TargetSource string
+	// GraphitePath is the full declared ancestry including the base. Only a
+	// Graphite selection fills it; it exists for revalidation, which must
+	// notice ancestry moving even when Branches does not change.
 	GraphitePath []string
 	Base         string
 	BaseSource   string
 	Branches     []string
+	// Source names where the structure came from, so a preview can say.
+	Source Source
 }
 
 // Resolve selects a local Graphite path without checkout. command names the

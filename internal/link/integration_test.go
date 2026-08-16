@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	"github.com/shhac/gt2gh/internal/testutil"
 )
@@ -51,9 +52,10 @@ case "$1 $2" in
 esac`,
 	})
 	runner := subprocess.ExecRunner{}
+	gitClient := localgit.Client{Runner: runner}
 	service := link.Service{
-		Git:      localgit.Client{Runner: runner},
-		Graphite: graphite.Client{Runner: runner},
+		Git:      gitClient,
+		Selector: stack.GraphiteSelector{Git: gitClient, Graphite: graphite.Client{Runner: runner}},
 		GitHub:   githubstack.Client{Runner: runner},
 	}
 

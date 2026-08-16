@@ -79,10 +79,10 @@ func (s *graphStore) Path(context.Context) (string, error) {
 func graphFixture() graph.Graph {
 	return graph.Graph{
 		Edges: map[string]graph.Edge{
-			"synthetic-auth":    {Parent: "synthetic-main", Authority: graph.AuthorityG2G, Origin: graph.OriginUser},
-			"synthetic-login":   {Parent: "synthetic-auth", Authority: graph.AuthorityG2G, Origin: graph.OriginUser},
-			"synthetic-session": {Parent: "synthetic-auth", Authority: graph.AuthorityG2G, Origin: graph.OriginUser},
-			"synthetic-billing": {Parent: "synthetic-main", Authority: graph.AuthorityG2G, Origin: graph.OriginUser},
+			"synthetic-auth":    {Parent: "synthetic-main", Origin: graph.OriginUser},
+			"synthetic-login":   {Parent: "synthetic-auth", Origin: graph.OriginUser},
+			"synthetic-session": {Parent: "synthetic-auth", Origin: graph.OriginUser},
+			"synthetic-billing": {Parent: "synthetic-main", Origin: graph.OriginUser},
 		},
 		Trunks: []string{"synthetic-main"},
 	}

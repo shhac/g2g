@@ -48,8 +48,8 @@ func graphRepository(t *testing.T, adopted string) (*testutil.Recorder, string) 
 }
 
 const adoptedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-main"],"branches":{
-	"synthetic-auth":{"parent":"synthetic-main","authority":"g2g","origin":"user"},
-	"synthetic-login":{"parent":"synthetic-auth","authority":"g2g","origin":"user"}}}`
+	"synthetic-auth":{"parent":"synthetic-main","origin":"user"},
+	"synthetic-login":{"parent":"synthetic-auth","origin":"user"}}}`
 
 func TestGraphReadsTheStoreThroughRealAdapters(t *testing.T) {
 	recorder, _ := graphRepository(t, adoptedGraph)
@@ -130,9 +130,8 @@ func TestTrackApplyWritesAStoreThatReadsBack(t *testing.T) {
 		StoreSchemaVersion int      `json:"storeSchemaVersion"`
 		Trunks             []string `json:"trunks"`
 		Branches           map[string]struct {
-			Parent    string `json:"parent"`
-			Authority string `json:"authority"`
-			Origin    string `json:"origin"`
+			Parent string `json:"parent"`
+			Origin string `json:"origin"`
 		} `json:"branches"`
 	}
 	if err := json.Unmarshal(contents, &written); err != nil {
@@ -141,7 +140,7 @@ func TestTrackApplyWritesAStoreThatReadsBack(t *testing.T) {
 	if written.StoreSchemaVersion != 1 {
 		t.Errorf("storeSchemaVersion = %d", written.StoreSchemaVersion)
 	}
-	if edge := written.Branches["synthetic-login"]; edge.Parent != "synthetic-auth" || edge.Authority != "g2g" || edge.Origin != "user" {
+	if edge := written.Branches["synthetic-login"]; edge.Parent != "synthetic-auth" || edge.Origin != "user" {
 		t.Errorf("written edge = %#v", edge)
 	}
 	if len(written.Trunks) != 1 || written.Trunks[0] != "synthetic-auth" {

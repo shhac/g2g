@@ -42,9 +42,9 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 
 	return testutil.FakeCLIs(t, map[string][]testutil.Route{
 		"git": {
-			// The restack guard looks for an in-flight journal, which needs
-			// the common directory. An empty one means nothing is in flight.
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: t.TempDir()},
+			// The common directory serves two questions: whether a restack is
+			// in flight, and whether this repository uses Graphite at all.
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
@@ -203,6 +203,7 @@ func TestFailedGitHubCallReportsItsOwnOutput(t *testing.T) {
 	}
 	testutil.FakeCLIs(t, map[string][]testutil.Route{
 		"git": {
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 		},

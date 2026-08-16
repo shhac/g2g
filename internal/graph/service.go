@@ -202,9 +202,8 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		return TrackPlan{}, err
 	}
 	updated, err := discovery.Graph.Track(discovery.Target, Edge{
-		Parent:    parent,
-		Authority: AuthorityG2G,
-		Origin:    originOf(parent, candidates),
+		Parent: parent,
+		Origin: originOf(parent, candidates),
 		// Recorded now, because after the parent is merged and deleted there
 		// is nothing left to derive it from.
 		ForkPoint: forkPoint,

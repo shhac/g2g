@@ -44,6 +44,9 @@ type Options struct {
 	// service allowed to change history.
 	Restack restack.Service
 
+	// Completions supplies branch and trunk candidates for shell completion.
+	Completions stack.Completions
+
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
 	Unstacker Unstacker
@@ -65,14 +68,31 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	gitClient := localgit.Client{Runner: runner}
 	graphiteClient := graphite.Client{Runner: runner}
 	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient}
+	// Precedence is declared here and nowhere else. Adopting a branch into
+	// gt2gh's own store is the user saying they want gt2gh to own it, so that
+	// is asked first; Graphite answers for everything it still tracks.
+	selector := stack.Resolver{
+		Git: gitClient,
+		Selectors: []stack.Selector{
+			graph.Selector{Service: graphService},
+			stack.GraphiteSelector{
+				Git:      gitClient,
+				Graphite: graphiteClient,
+				Configured: func(ctx context.Context) (bool, error) {
+					return graphite.Configured(ctx, gitClient)
+				},
+			},
+		},
+	}
 	return NewWithOptions(Options{
 		Version:     version,
 		CommandName: commandName,
 		Stdout:      stdout,
 		Stderr:      stderr,
-		Link:        link.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
-		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
-		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
+		Link:        link.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Push:        push.Service{Git: gitClient, Selector: selector},
+		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Completions: stack.Completions{Git: gitClient, Graphite: graphiteClient},
 		Graph:       graphService,
 		Restack:     restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}},
 		Unstacker:   githubClient,
@@ -115,14 +135,14 @@ func NewWithOptions(options Options) *cobra.Command {
 
 	// Completion candidates come from the same Git and Graphite clients the
 	// services use, so no command has to depend on another to complete a flag.
-	completions := stack.Completions{Git: options.Link.Git, Graphite: options.Link.Graphite}
+	completions := options.Completions
 	root.AddCommand(newLink(options.Link, completions, guard, presentation))
 	root.AddCommand(newStatus(options.Link, completions, presentation))
 	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
-	if options.Push.Git != nil && options.Push.Graphite != nil {
+	if options.Push.Git != nil && options.Push.Selector != nil {
 		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}
-	if options.Submit.Git != nil && options.Submit.Graphite != nil && options.Submit.GitHub != nil {
+	if options.Submit.Git != nil && options.Submit.Selector != nil && options.Submit.GitHub != nil {
 		root.AddCommand(newSubmit(options.Submit, completions, guard, presentation))
 	}
 	if options.Graph.Git != nil && options.Graph.Store != nil {

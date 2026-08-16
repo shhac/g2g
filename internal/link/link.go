@@ -34,8 +34,10 @@ type GitHub interface {
 
 // Service coordinates a safe link plan.
 type Service struct {
-	Git      Git
-	Graphite Graphite
+	Git Git
+	// Selector supplies the ordered path, from whichever source describes the
+	// branch. link only needs a path, so it works with any of them.
+	Selector stack.PathSelector
 	GitHub   GitHub
 }
 
@@ -124,10 +126,10 @@ type Selection = stack.Selection
 // DiscoverWithOptions resolves an optional pivot and optional full linear
 // stack without checking out any branch.
 func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (Plan, error) {
-	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
+	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
-	discovery, err := stack.Discover(ctx, s.Git, s.Graphite, s.GitHub, selection, "gh stack link")
+	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "gh stack link")
 	if err != nil {
 		return Plan{}, err
 	}
@@ -159,7 +161,7 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 // ready-to-apply render and its flush between the two, so composing them here
 // would describe a sequence production never performs.
 func (s Service) Revalidate(ctx context.Context, selection Selection, preview Plan) (Plan, error) {
-	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
+	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
 	if err := s.Git.Clean(ctx); err != nil {

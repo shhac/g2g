@@ -12,6 +12,7 @@ import (
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/subprocess"
 	"github.com/shhac/gt2gh/internal/testutil"
 )
@@ -42,9 +43,10 @@ exit 9`,
 	var debug bytes.Buffer
 	ctx := diagnostic.WithSink(context.Background(), diagnostic.Writer{Out: &debug})
 	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
+	gitClient := localgit.Client{Runner: runner}
 	service := Service{
-		Git:      localgit.Client{Runner: runner},
-		Graphite: graphite.Client{Runner: runner},
+		Git:      gitClient,
+		Selector: stack.GraphiteSelector{Git: gitClient, Graphite: graphite.Client{Runner: runner}},
 	}
 	selection := link.Selection{}
 	preview, err := service.Plan(ctx, selection, "origin")

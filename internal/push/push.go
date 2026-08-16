@@ -24,8 +24,10 @@ type Graphite interface {
 }
 
 type Service struct {
-	Git      Git
-	Graphite Graphite
+	Git Git
+	// Selector supplies the ordered path, from whichever source describes the
+	// branch. push only publishes refs, so it works with any of them.
+	Selector stack.PathSelector
 }
 
 type Plan struct {
@@ -58,13 +60,13 @@ func (p Plan) Leases() []localgit.Lease {
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
-	if s.Git == nil || s.Graphite == nil {
+	if s.Git == nil || s.Selector == nil {
 		return Plan{}, fmt.Errorf("push service is not fully configured")
 	}
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	snapshot, err := stack.Resolve(ctx, s.Git, s.Graphite, selection, "git push")
+	snapshot, err := s.Selector.Select(ctx, selection, "git push")
 	if err != nil {
 		return Plan{}, err
 	}

@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"errors"
+	"github.com/shhac/gt2gh/internal/stack"
 	"slices"
 	"strings"
 	"testing"
@@ -91,7 +92,7 @@ func TestApplyRejectsPlanChangedDuringRevalidation(t *testing.T) {
 	github := &fakeGitHub{}
 	service := Service{
 		Git:      fakeGit{current: "beta", branches: []string{"main", "other-main", "alpha", "beta"}},
-		Graphite: &changingGraphite{},
+		Selector: graphiteSelector(fakeGit{current: "beta", branches: []string{"main", "other-main", "alpha", "beta"}}, &changingGraphite{}),
 		GitHub:   github,
 	}
 	preview, err := service.Plan(context.Background(), Selection{Branch: ""})
@@ -111,12 +112,12 @@ func TestApplyFailsClosedBeforeGitHubMutation(t *testing.T) {
 		name    string
 		service Service
 	}{
-		{"current branch resolution", Service{Git: fakeGit{currentErr: context.Canceled}, Graphite: fakeGraphite{}, GitHub: &fakeGitHub{}}},
-		{"local branch listing", Service{Git: fakeGit{current: "beta", branchesErr: context.Canceled}, Graphite: fakeGraphite{}, GitHub: &fakeGitHub{}}},
-		{"Graphite discovery", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Graphite: fakeGraphite{discoverErr: context.Canceled}, GitHub: &fakeGitHub{}}},
-		{"missing local stack branch", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "missing", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{}}},
-		{"GitHub inspection", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{inspectErr: context.Canceled}}},
-		{"non-open pull request", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Graphite: fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}, GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 2, Head: "alpha", Base: "main", State: "MERGED"}}}}},
+		{"current branch resolution", Service{Git: fakeGit{currentErr: context.Canceled}, Selector: graphiteSelector(fakeGit{currentErr: context.Canceled}, fakeGraphite{}), GitHub: &fakeGitHub{}}},
+		{"local branch listing", Service{Git: fakeGit{current: "beta", branchesErr: context.Canceled}, Selector: graphiteSelector(fakeGit{current: "beta", branchesErr: context.Canceled}, fakeGraphite{}), GitHub: &fakeGitHub{}}},
+		{"Graphite discovery", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Selector: graphiteSelector(fakeGit{current: "beta", branches: []string{"main", "beta"}}, fakeGraphite{discoverErr: context.Canceled}), GitHub: &fakeGitHub{}}},
+		{"missing local stack branch", Service{Git: fakeGit{current: "beta", branches: []string{"main", "beta"}}, Selector: graphiteSelector(fakeGit{current: "beta", branches: []string{"main", "beta"}}, fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "missing", "beta"}, Trunks: []string{"main"}}}}), GitHub: &fakeGitHub{}}},
+		{"GitHub inspection", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Selector: graphiteSelector(fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}), GitHub: &fakeGitHub{inspectErr: context.Canceled}}},
+		{"non-open pull request", Service{Git: fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, Selector: graphiteSelector(fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"}}, fakeGraphite{paths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}), GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 2, Head: "alpha", Base: "main", State: "MERGED"}}}}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -156,9 +157,9 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 	github := &fakeGitHub{}
 	service := Service{
 		Git: fakeGit{current: "synthetic-tip", branches: []string{"main", "-synthetic-option", "synthetic-tip"}},
-		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+		Selector: graphiteSelector(fakeGit{current: "synthetic-tip", branches: []string{"main", "-synthetic-option", "synthetic-tip"}}, fakeGraphite{paths: map[string]graphite.Stack{
 			"synthetic-tip": {Path: []string{"main", "-synthetic-option", "synthetic-tip"}, Trunks: []string{"main"}},
-		}},
+		}}),
 		GitHub: github,
 	}
 	if _, err := service.Plan(context.Background(), Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to gh stack link") {
@@ -195,9 +196,9 @@ func issueBranches(issues []Issue) []string {
 func TestPlanWithOptionsUsesValidDeclaredAncestralOverride(t *testing.T) {
 	service := Service{
 		Git: fakeGit{current: "feature", branches: []string{"develop", "main", "feature"}},
-		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+		Selector: graphiteSelector(fakeGit{current: "feature", branches: []string{"develop", "main", "feature"}}, fakeGraphite{paths: map[string]graphite.Stack{
 			"feature": {Path: []string{"develop", "main", "feature"}, Trunks: []string{"develop", "main"}},
-		}},
+		}}),
 		GitHub: &fakeGitHub{prs: []githubstack.PullRequest{{Number: 9, Head: "feature", Base: "main", State: "OPEN"}}},
 	}
 	if _, err := service.Plan(context.Background(), Selection{Branch: "feature"}); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
@@ -216,7 +217,7 @@ func fakeService() Service {
 	branches := []string{"main", "alpha", "beta", "beta-one", "beta-two", "beta-two-deep", "gamma", "gamma-deep"}
 	return Service{
 		Git: fakeGit{current: "beta-two-deep", branches: branches},
-		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+		Selector: graphiteSelector(fakeGit{current: "beta-two-deep", branches: branches}, fakeGraphite{paths: map[string]graphite.Stack{
 			"alpha":         {Path: []string{"main", "alpha"}, Trunks: []string{"main"}},
 			"beta":          {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}},
 			"beta-one":      {Path: []string{"main", "alpha", "beta", "beta-one"}, Trunks: []string{"main"}},
@@ -224,7 +225,7 @@ func fakeService() Service {
 			"beta-two-deep": {Path: []string{"main", "alpha", "beta", "beta-two", "beta-two-deep"}, Trunks: []string{"main"}},
 			"gamma":         {Path: []string{"main", "alpha", "gamma"}, Trunks: []string{"main"}},
 			"gamma-deep":    {Path: []string{"main", "alpha", "gamma", "gamma-deep"}, Trunks: []string{"main"}},
-		}, tracked: branches[1:]},
+		}, tracked: branches[1:]}),
 		GitHub: &fakeGitHub{prs: []githubstack.PullRequest{
 			{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
 			{Number: 2, Head: "beta", Base: "alpha", State: "OPEN"},
@@ -295,11 +296,11 @@ func (f *changingGraphite) DiscoverStack(ctx context.Context, branch string, _ b
 func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing.T) {
 	service := Service{
 		Git: fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}},
-		Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+		Selector: graphiteSelector(fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}, fakeGraphite{paths: map[string]graphite.Stack{
 			"middle": {Path: []string{"main", "lower", "middle"}, Trunks: []string{"main"}},
 		}, stackPaths: map[string]graphite.Stack{
 			"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}},
-		}},
+		}}),
 		GitHub: &fakeGitHub{},
 	}
 	plan, err := service.Plan(context.Background(), Selection{})
@@ -407,4 +408,11 @@ func applyPlan(t *testing.T, service Service, selection Selection, preview Plan)
 		return err
 	}
 	return service.Execute(context.Background(), validated)
+}
+
+// graphiteSelector wraps a Graphite fixture as the source it now is. These
+// cases assert Graphite-backed behaviour, which selection becoming pluggable
+// must not have changed.
+func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSelector {
+	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }

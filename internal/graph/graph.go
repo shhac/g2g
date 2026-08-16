@@ -19,23 +19,6 @@ import (
 	"sort"
 )
 
-// Authority records which system owns a branch's parent edge.
-//
-// Authority is per branch rather than per graph on purpose. A whole-graph rule
-// cannot survive an edge appearing between two previously separate components,
-// because that merges them through an action gt2gh never observed and would
-// invalidate both. Per branch, the rule is local: an edge whose endpoints
-// disagree is one conflict, reported where it is.
-type Authority string
-
-const (
-	// AuthorityG2G marks an edge the user adopted into the local store.
-	AuthorityG2G Authority = "g2g"
-	// AuthorityGraphite marks an edge Graphite declares. gt2gh reads these and
-	// never writes them back: Graphite has no supported mutation contract.
-	AuthorityGraphite Authority = "graphite"
-)
-
 // Origin records how much Git agrees with an edge at the moment it was
 // recorded, which is not decoration: a parent that is already an ancestor is
 // confirmed, and one that is not is an assertion the user made about branches
@@ -56,9 +39,8 @@ const (
 // commit, so recording it would make routine work look like the graph had
 // changed. ForkPoint is different — see its own comment.
 type Edge struct {
-	Parent    string
-	Authority Authority
-	Origin    Origin
+	Parent string
+	Origin Origin
 	// ForkPoint is the parent's tip when this edge was written. It is
 	// structural rather than drift state: it answers which commits belong to
 	// the branch, namely ForkPoint..branch, and that range is what a restack

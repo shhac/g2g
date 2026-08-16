@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"errors"
+	"github.com/shhac/gt2gh/internal/stack"
 	"strings"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
-			plan, err := Service{Git: git, Graphite: fakeGraphite{paths: paths()}}.Plan(context.Background(), test.selection, "origin")
+			plan, err := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths()})}.Plan(context.Background(), test.selection, "origin")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -38,12 +39,12 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 
 func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
-	service := Service{Git: git, Graphite: fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}}}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}})}
 	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil || strings.Join(plan.Branches, ",") != "lower,middle,top" {
 		t.Fatalf("Plan() = (%#v, %v)", plan, err)
 	}
-	service.Graphite = fakeGraphite{paths: paths(), stackErr: errors.New("multiple descendants")}
+	service.Selector = graphiteSelector(service.Git, fakeGraphite{paths: paths(), stackErr: errors.New("multiple descendants")})
 	if _, err := service.Plan(context.Background(), link.Selection{}, "origin"); err == nil || !strings.Contains(err.Error(), "multiple descendants") {
 		t.Fatalf("Plan() fork error = %v", err)
 	}
@@ -51,7 +52,7 @@ func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 
 func TestApplyRevalidatesThenMakesOneAtomicLeasePush(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
-	service := Service{Git: git, Graphite: fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}}}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}})}
 	selection := link.Selection{}
 	preview, err := service.Plan(context.Background(), selection, "origin")
 	if err != nil {
@@ -72,7 +73,7 @@ func TestApplyRevalidatesThenMakesOneAtomicLeasePush(t *testing.T) {
 func TestRevalidateRefusesAChangedPushPlanBeforeMutation(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	graphite := &changingGraphite{first: paths()["middle"], next: graphite.Stack{Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}
-	service := Service{Git: git, Graphite: graphite}
+	service := Service{Git: git, Selector: graphiteSelector(git, graphite)}
 	preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +97,7 @@ func TestApplyRefusesChangedPlanAndRemoteOrPushFailures(t *testing.T) {
 		{"lease rejection", &fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, pushErr: errors.New("lease rejected")}, fakeGraphite{paths: paths()}, "lease rejected"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			service := Service{Git: test.git, Graphite: test.graphite}
+			service := Service{Git: test.git, Selector: graphiteSelector(test.git, test.graphite)}
 			if test.name == "missing remote" {
 				if _, err := service.Plan(context.Background(), link.Selection{}, "origin"); err == nil || !strings.Contains(err.Error(), test.wantError) {
 					t.Fatalf("Plan() error = %v", err)
@@ -121,7 +122,7 @@ func TestApplyRefusesChangedPlanAndRemoteOrPushFailures(t *testing.T) {
 func TestPlanRejectsEmptyRemote(t *testing.T) {
 	service := Service{
 		Git:      &fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, remoteErr: errors.New("remote name must be nonempty")},
-		Graphite: fakeGraphite{paths: paths()},
+		Selector: graphiteSelector(&fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, remoteErr: errors.New("remote name must be nonempty")}, fakeGraphite{paths: paths()}),
 	}
 	if _, err := service.Plan(context.Background(), link.Selection{}, ""); err == nil || !strings.Contains(err.Error(), "nonempty") {
 		t.Fatalf("Plan() error = %v", err)
@@ -130,9 +131,9 @@ func TestPlanRejectsEmptyRemote(t *testing.T) {
 
 func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 	git := &fakeGit{current: "tip", branches: []string{"main", "-synthetic-option", "tip"}}
-	service := Service{Git: git, Graphite: fakeGraphite{paths: map[string]graphite.Stack{
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: map[string]graphite.Stack{
 		"tip": {Path: []string{"main", "-synthetic-option", "tip"}, Trunks: []string{"main"}},
-	}}}
+	}})}
 	if _, err := service.Plan(context.Background(), link.Selection{NoStack: true}, "origin"); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -225,7 +226,7 @@ func paths() map[string]graphite.Stack {
 func TestPlanPinsTheObservedRemoteTipsAsLeases(t *testing.T) {
 	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
 		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
-	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
 
 	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil {
@@ -243,7 +244,7 @@ func TestPlanPinsTheObservedRemoteTipsAsLeases(t *testing.T) {
 func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
 	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
 		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
-	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
 	preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +261,7 @@ func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
 func TestUnpushedBranchesLeaseTheAbsentValue(t *testing.T) {
 	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
 		tips: map[string]string{"alpha": "aaa111"}}
-	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
 
 	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
 	if err != nil {
@@ -271,4 +272,11 @@ func TestUnpushedBranchesLeaseTheAbsentValue(t *testing.T) {
 			t.Errorf("beta lease = %q", lease.Argument())
 		}
 	}
+}
+
+// graphiteSelector wraps a Graphite fixture as the source it now is. These
+// cases assert Graphite-backed behaviour, which selection becoming pluggable
+// must not have changed.
+func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSelector {
+	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }

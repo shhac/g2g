@@ -31,8 +31,10 @@ type GitHub interface {
 }
 
 type Service struct {
-	Git      Git
-	Graphite Graphite
+	Git Git
+	// Selector supplies the ordered path, from whichever source describes the
+	// branch.
+	Selector stack.PathSelector
 	GitHub   GitHub
 }
 
@@ -60,13 +62,13 @@ func (p Plan) Leases() []localgit.Lease {
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
-	if s.Git == nil || s.Graphite == nil || s.GitHub == nil {
+	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
 		return Plan{}, fmt.Errorf("submit service is not fully configured")
 	}
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	discovery, err := stack.Discover(ctx, s.Git, s.Graphite, s.GitHub, selection, "g2g submit")
+	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "g2g submit")
 	if err != nil {
 		return Plan{}, err
 	}

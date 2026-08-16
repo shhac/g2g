@@ -49,8 +49,8 @@ func TestSaveThenLoadRoundTripsTheForest(t *testing.T) {
 	if !loaded.Equal(forest()) {
 		t.Errorf("round trip = %#v, want %#v", loaded, forest())
 	}
-	if edge := loaded.Edges["synthetic-login"]; edge.Authority != AuthorityG2G || edge.Origin != OriginAncestry {
-		t.Errorf("edge = %#v, want authority and origin preserved", edge)
+	if edge := loaded.Edges["synthetic-login"]; edge.Origin != OriginAncestry {
+		t.Errorf("edge = %#v, want the origin preserved", edge)
 	}
 }
 

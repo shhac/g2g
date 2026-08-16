@@ -208,3 +208,20 @@ func (r *Recorder) AssertOrder(prefixes ...string) {
 		at = found + 1
 	}
 }
+
+// GraphiteRepository returns a common directory that looks like a repository
+// already using Graphite.
+//
+// The marker matters because gt2gh checks for it before running Graphite at
+// all: Graphite's discovery command creates state in a repository that has
+// never used it, so a fixture that omits this is asserting the opposite —
+// that Graphite should not be consulted here.
+func GraphiteRepository(t *testing.T) string {
+	t.Helper()
+
+	common := t.TempDir()
+	if err := os.WriteFile(filepath.Join(common, ".graphite_repo_config"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("write Graphite repository marker: %v", err)
+	}
+	return common
+}

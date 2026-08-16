@@ -187,8 +187,8 @@ func (j *memoryJournal) Clear(context.Context) error { j.cleared++; j.present = 
 func stack() graph.Graph {
 	return graph.Graph{
 		Edges: map[string]graph.Edge{
-			"synthetic-a": {Parent: "synthetic-trunk", ForkPoint: "trunk-old", Authority: graph.AuthorityG2G},
-			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "a-old", Authority: graph.AuthorityG2G},
+			"synthetic-a": {Parent: "synthetic-trunk", ForkPoint: "trunk-old"},
+			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "a-old"},
 		},
 		Trunks: []string{"synthetic-trunk"},
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/stack"
 )
 
 // These constructors exist only for tests, which is why they live here. They
@@ -15,12 +16,26 @@ import (
 // pick out.
 
 func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
-	return NewWithOptions(Options{Version: version, Stdout: stdout, Stderr: stderr, Link: service})
+	return NewWithOptions(Options{
+		Version: version, Stdout: stdout, Stderr: stderr, Link: service,
+		Completions: testCompletions(),
+	})
+}
+
+// testCompletions names where completion candidates come from. Production
+// wires this from the real clients; a service no longer carries a Graphite
+// client for it to be derived from, which is the point of the change.
+func testCompletions() stack.Completions {
+	return stack.Completions{
+		Git:      cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
+		Graphite: cliGraphite{},
+	}
 }
 
 func newWithPresentation(version, commandName string, stdout, stderr io.Writer, service link.Service, pushService push.Service, presentation Presentation) *cobra.Command {
 	return NewWithOptions(Options{
 		Version: version, CommandName: commandName, Stdout: stdout, Stderr: stderr,
 		Link: service, Push: pushService, Presentation: &presentation,
+		Completions: testCompletions(),
 	})
 }

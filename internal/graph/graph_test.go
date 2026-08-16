@@ -15,10 +15,10 @@ import (
 func forest() Graph {
 	return Graph{
 		Edges: map[string]Edge{
-			"synthetic-auth":    {Parent: "synthetic-main", Authority: AuthorityG2G, Origin: OriginUser},
-			"synthetic-login":   {Parent: "synthetic-auth", Authority: AuthorityG2G, Origin: OriginAncestry},
-			"synthetic-session": {Parent: "synthetic-auth", Authority: AuthorityG2G, Origin: OriginAncestry},
-			"synthetic-billing": {Parent: "synthetic-main", Authority: AuthorityG2G, Origin: OriginUser},
+			"synthetic-auth":    {Parent: "synthetic-main", Origin: OriginUser},
+			"synthetic-login":   {Parent: "synthetic-auth", Origin: OriginAncestry},
+			"synthetic-session": {Parent: "synthetic-auth", Origin: OriginAncestry},
+			"synthetic-billing": {Parent: "synthetic-main", Origin: OriginUser},
 		},
 		Trunks: []string{"synthetic-main"},
 	}
@@ -119,7 +119,7 @@ func TestTrackRefusesCyclesAndSelfParents(t *testing.T) {
 func TestTrackLeavesThePreviousGraphUntouched(t *testing.T) {
 	base := forest()
 
-	updated, err := base.Track("synthetic-invoice", Edge{Parent: "synthetic-billing", Authority: AuthorityG2G})
+	updated, err := base.Track("synthetic-invoice", Edge{Parent: "synthetic-billing"})
 	if err != nil {
 		t.Fatalf("Track() error = %v", err)
 	}
@@ -132,7 +132,7 @@ func TestTrackLeavesThePreviousGraphUntouched(t *testing.T) {
 }
 
 func TestTrackReparentsAnExistingBranch(t *testing.T) {
-	updated, err := forest().Track("synthetic-login", Edge{Parent: "synthetic-billing", Authority: AuthorityG2G})
+	updated, err := forest().Track("synthetic-login", Edge{Parent: "synthetic-billing"})
 	if err != nil {
 		t.Fatalf("Track() error = %v", err)
 	}

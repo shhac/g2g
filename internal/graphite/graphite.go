@@ -4,6 +4,8 @@ package graphite
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -204,4 +206,36 @@ func commandError(command string, err error, output []byte) error {
 		return fmt.Errorf("%s failed: %w", command, err)
 	}
 	return fmt.Errorf("%s failed: %w (%s)", command, err, message)
+}
+
+// repoConfigName is the file Graphite writes when a repository starts using
+// it. Only its existence is ever consulted.
+const repoConfigName = ".graphite_repo_config"
+
+// Configured reports whether this repository already uses Graphite.
+//
+// This is the one place gt2gh looks at a Graphite-owned path, and it is a
+// deliberate, narrow exception to reading none of them. The alternative is
+// worse: Graphite's discovery command creates state in a repository that has
+// never used it, so merely asking "does Graphite describe this branch?" would
+// enrol a repository whose owner chose not to. Existence is all that is read —
+// never contents, and never for structure.
+func Configured(ctx context.Context, git CommonDirReader) (bool, error) {
+	if git == nil {
+		return false, nil
+	}
+	common, err := git.CommonDir(ctx)
+	if err != nil {
+		return false, err
+	}
+	if _, err := os.Stat(filepath.Join(common, repoConfigName)); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// CommonDirReader supplies the Git common directory, which linked worktrees
+// share, so this answers the same way from any of them.
+type CommonDirReader interface {
+	CommonDir(context.Context) (string, error)
 }

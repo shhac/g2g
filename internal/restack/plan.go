@@ -26,6 +26,7 @@ type Git interface {
 	RebaseAbort(context.Context) error
 	RebaseSkip(context.Context) error
 	RebaseInProgress(context.Context) (bool, error)
+	ConflictedPaths(context.Context) ([]string, error)
 	ResetKeep(context.Context) error
 	CherryDropped(context.Context, string, string) ([]string, error)
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)

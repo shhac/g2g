@@ -309,6 +309,11 @@ func (s Service) Abort(ctx context.Context) error {
 	return s.Journal.Clear(ctx)
 }
 
+// Conflicted lists the files an interrupted rewrite left for the user.
+func (s Service) Conflicted(ctx context.Context) ([]string, error) {
+	return s.Git.ConflictedPaths(ctx)
+}
+
 // InProgress reports an unfinished restack, which every other command has to
 // refuse while it lasts: a branch may already have moved while the graph still
 // records where it used to be.

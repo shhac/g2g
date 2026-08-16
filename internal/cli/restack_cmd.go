@@ -99,7 +99,7 @@ func runResume(cmd *cobra.Command, ctx context.Context, service restack.Service,
 		return err
 	}
 	if remaining {
-		return stoppedOnConflict(cmd, p)
+		return stoppedOnConflict(cmd, ctx, service, p)
 	}
 	return prose(cmd.OutOrStdout(), p, p.notice("Restack complete."))
 }
@@ -110,12 +110,16 @@ func resumeError(cmd *cobra.Command, ctx context.Context, service restack.Servic
 	if checkErr != nil || !interrupted {
 		return err
 	}
-	return stoppedOnConflict(cmd, p)
+	return stoppedOnConflict(cmd, ctx, service, p)
 }
 
-func stoppedOnConflict(cmd *cobra.Command, p Presentation) error {
-	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve the conflicting files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
+func stoppedOnConflict(cmd *cobra.Command, ctx context.Context, service restack.Service, p Presentation) error {
+	message := "Stopped on a conflict."
+	if paths, err := service.Conflicted(ctx); err == nil && len(paths) != 0 {
+		message = "Stopped on a conflict in " + branchList(paths) + "."
+	}
+	_ = prose(cmd.OutOrStdout(), p, p.problem(message))
+	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve those files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
 }
 
 // runRestack is the preview/apply sequence. It is written out rather than
@@ -177,7 +181,7 @@ func applyRestack(cmd *cobra.Command, ctx context.Context, budgets budgets, serv
 		// and resumable, and saying "no changes were made" would be a lie.
 		interrupted, checkErr := service.InProgress(mutateCtx)
 		if checkErr == nil && interrupted {
-			return stoppedOnConflict(cmd, p)
+			return stoppedOnConflict(cmd, mutateCtx, service, p)
 		}
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}

@@ -151,6 +151,14 @@ func keepBothSides(contents string) string {
 	return strings.Join(kept, "\n") + "\n"
 }
 
+func readOrEmpty(path string) string {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "(unreadable: " + err.Error() + ")"
+	}
+	return string(contents)
+}
+
 func gitOutput(t *testing.T, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", args...)
@@ -232,8 +240,11 @@ func TestRestackCarriesDescendantsNotJustTheBottomBranch(t *testing.T) {
 	}
 
 	if gitOutput(t, "rev-parse", "synthetic-b") == before {
-		t.Fatalf("synthetic-b was left behind while its parent was rewritten:\n%s\n%s",
-			stdout, gitOutput(t, "log", "--oneline", "--graph", "--all"))
+		t.Fatalf("synthetic-b was left behind while its parent was rewritten:\n%s\n--- refs ---\n%s\n--- status ---\n%s\n--- file ---\n%s",
+			stdout,
+			gitOutput(t, "log", "--oneline", "--graph", "--all", "--decorate"),
+			gitOutput(t, "status", "--porcelain"),
+			readOrEmpty("shared.txt"))
 	}
 	if commits := gitOutput(t, "log", "--oneline", "synthetic-trunk..synthetic-b"); !strings.Contains(commits, "b1") {
 		t.Errorf("synthetic-b lost its own commit:\n%s", commits)

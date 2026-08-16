@@ -204,6 +204,24 @@ func (c Client) UpdateBranch(ctx context.Context, branch, object string) error {
 	return err
 }
 
+// ConflictedPaths lists the files an interrupted rewrite left unmerged.
+//
+// Telling someone a rewrite stopped without telling them where is most of the
+// way to telling them nothing: these are the files they have to open.
+func (c Client) ConflictedPaths(ctx context.Context) ([]string, error) {
+	output, err := c.run(ctx, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			paths = append(paths, line)
+		}
+	}
+	return paths, nil
+}
+
 // ResetKeep points the index and working tree at the current branch tip.
 //
 // A replay moves refs without touching the working tree, so a user standing on

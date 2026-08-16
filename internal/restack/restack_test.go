@@ -21,7 +21,8 @@ type fakeGit struct {
 	dropped   map[string][]string
 	behind    map[string]int
 	// collapses names branches whose own work is already in their new base.
-	collapses map[string]bool
+	collapses  map[string]bool
+	conflicted []string
 
 	replaySupported       bool
 	replayLeavesRefsAlone bool
@@ -121,6 +122,8 @@ func (f *fakeGit) RebaseSkip(context.Context) error {
 }
 
 func (f *fakeGit) RebaseInProgress(context.Context) (bool, error) { return f.inProgress, nil }
+
+func (f *fakeGit) ConflictedPaths(context.Context) ([]string, error) { return f.conflicted, nil }
 
 func (f *fakeGit) ResetKeep(context.Context) error { f.resets++; return nil }
 

@@ -7,6 +7,7 @@ description: |
   release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
   link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
   "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push",
+  "g2g source resolution", "stack without Graphite",
   "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g-owned graph",
   "branch graph without Graphite", "restack after squash merge".
 ---
@@ -111,6 +112,28 @@ description: |
   policy. Displaying a subtree does not imply a subtree can be linked on
   GitHub. `--no-stack` on the Graphite-backed commands is the same axis as
   `--scope branch`; unifying them is a deliberate, separate change.
+
+## Source resolution
+
+- Every stack-selecting command resolves which source describes the branch:
+  gt2gh's own store first (adoption is the claim), then Graphite. The answer is
+  derived per branch on every run and never stored — there is no owner field,
+  and adding one reintroduces state that goes stale through actions gt2gh never
+  observes.
+- **Never run Graphite in a repository that does not already use it.** Its
+  discovery command creates state, so `Describes` is answered from the
+  repository's own configuration and `Select` is the only call that runs `gt`.
+  Checking for that file is the single deliberate exception to reading none of
+  Graphite's paths, and only its existence is ever read.
+- Authority governs mutation, not description. Reading composes across sources;
+  `restack` refuses a branch it has no fork point for and names `g2g track`.
+- GitHub's native stack is not a source. It is written from the others, and is
+  only ever read to report membership or to find a stack to unlink.
+- `link` covers both creating and repairing the GitHub relationship; there is
+  no separate reconcile command. `sync` means fetch, advance the base, replay,
+  prune — the meaning `gt sync` has.
+- A diverged base is reported, never merged or reset. Pruning edits the graph
+  and never deletes a branch.
 
 ## Develop and test
 

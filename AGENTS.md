@@ -61,6 +61,19 @@ only process knowledge that is easy to miss.
   rather than resuming a stored queue, which is what makes the user's own
   `git rebase --continue`/`--abort` harmless.
 
+## Source resolution
+
+- Read `design-docs/source-resolution.md` before changing how a command selects
+  a stack. Precedence is declared once, in the root command's wiring, and
+  nowhere else.
+- `Describes` must be free of side effects. Graphite's discovery creates state
+  in a repository that has never used it, so asking whether Graphite applies is
+  answered from the repository rather than by running `gt`. A test fixture that
+  omits the marker is asserting that Graphite should not be consulted.
+- Converting a command to a different source must not change what a
+  Graphite-backed selection produces. The golden files are the check: a diff
+  there during selection work is a bug, not an update.
+
 ## Fixtures and data hygiene
 
 - Put reusable Graphite display fixtures in `internal/graphite/testdata/`; keep

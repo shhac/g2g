@@ -47,9 +47,6 @@ g2g link --branch feature/top --apply
 # Stop at the selected branch instead of resolving its full linear stack.
 g2g link --branch feature/middle --no-stack
 
-# Preview Graphite-authoritative reconciliation for existing GitHub PRs.
-g2g sync --branch feature/top
-
 # Preview an atomic, lease-protected publication of Graphite-selected local
 # refs. It reads Graphite but never submits/restacks or invokes GitHub.
 # Full-stack expansion is default.
@@ -86,11 +83,10 @@ explicitly and states what may have already happened, because an interrupted
 `submit` can leave refs pushed and some pull requests created; re-running it
 with the same spec is safe and creates only what is missing.
 
-`--debug` is a root flag and may appear before or after `link`, `sync`, `push`,
-or `submit`. It
+`--debug` is a root flag and may appear before or after any command. It
 does not change discovery, timeouts, checkout behavior, or mutations. Its
 stderr-only records summarize supported Graphite discovery, the selected path,
-batched GitHub PR facts for `link`/`sync`, including native stack number and
+batched GitHub PR facts for `link`, including native stack number and
 position, or the selected remote and atomic leased Git argv for `push`, plus
 plan/revalidation decisions and bounded
 subprocess status. It never logs environment values, credentials, auth headers,
@@ -130,7 +126,7 @@ A blocked preview names the command that repairs the state rather than leaving
 the reader to work it out. A branch whose pull request has merged points at
 `gt sync`, because the stack itself is stale and only Graphite can restack
 around it; a branch with no pull request, or one closed without merging, points
-at `g2g submit`; a pull request open on the wrong branch points at `g2g sync`.
+at `g2g submit`; a pull request open on the wrong branch points at `g2g link`.
 Two open pull requests for one branch is the only state with no command to
 offer, and it says so. `status` gives the same advice, phrased as a next step.
 
@@ -285,6 +281,54 @@ A branch you rebased by hand is refused rather than replayed: its recorded
 fork point is no longer in its history, so the replay range would silently
 widen to include the base's own commits. Re-record it with `g2g track` first.
 
+## Where structure comes from
+
+Every command that selects a stack asks one question first: which source
+describes this branch?
+
+```
+adopted into gt2gh's store  →  gt2gh's own graph
+tracked by Graphite         →  Graphite
+neither                     →  refused, with the remedy
+```
+
+Adoption wins because recording an edge is you saying you want gt2gh to own
+the branch. The answer is worked out per branch, every time, and never stored —
+so moving a branch between sources is just `g2g track` or `g2g untrack`, in
+either direction, and there is no record to go stale.
+
+`link`, `push`, and `submit` therefore work on a stack gt2gh owns, with no
+Graphite installed. And **gt2gh will not run Graphite in a repository that does
+not already use it** — Graphite's discovery creates state, so being asked
+whether it applies must not be what enrols you.
+
+`restack` is the exception, and deliberately: it needs a fork point, which only
+gt2gh's own store records. It refuses a Graphite-owned branch and says to
+`g2g track` it first. Authority governs what may be changed, not what may be
+read.
+
+## Staying up to date
+
+```sh
+# Fetch, fast-forward the base, replay the stack, forget what has landed.
+g2g sync
+
+g2g sync --apply
+g2g sync --apply --prune=false   # keep landed branches in the graph
+```
+
+This is `git switch main && git pull && git switch back && restack` in one
+command, and it needs no Graphite.
+
+The fetch writes only into `refs/g2g/remotes/`, so your own remote-tracking
+refs, `FETCH_HEAD`, and ahead/behind counts are untouched. The base is
+**fast-forwarded or not at all**: a base that has diverged is reported, never
+merged or reset, because "you are behind" and "you have diverged" want
+different responses and only you can give the second.
+
+Pruning forgets a landed branch in the recorded graph. It never deletes a
+branch — that is a separate, deliberate act, not the tail of another command.
+
 ## Machine-readable output
 
 Every command renders one semantic view, and `--json` and `--porcelain` are
@@ -391,12 +435,6 @@ A source build or unrenamed release archive keeps the release-asset name:
 ```sh
 gt2gh link
 ```
-
-`g2g sync` is also preview-first. Its one graph labels each selected branch's
-PR and aligned, divergent, missing, or unsafe state, then shows an exact command
-only when applicable. It can reconcile the native stack only with `--apply` and
-deliberately refuses to create a PR for a Graphite-only branch or repair a
-closed/non-open PR.
 
 `g2g push` is a deliberately narrow publication escape hatch for a
 Graphite-managed linear path. It reads Graphite to discover that path, but never

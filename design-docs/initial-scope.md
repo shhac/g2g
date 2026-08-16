@@ -1,9 +1,13 @@
 # Initial scope
 
 **Status:** implemented through v0.7; later changes remain focused extensions.
-The graph/track/untrack/restack commands are a separate project with its own document,
-[`g2g-owned-graphs.md`](g2g-owned-graphs.md); everything below concerns the
-Graphite-authoritative commands only.
+The graph/track/untrack/restack commands are a separate project with its own
+document, [`g2g-owned-graphs.md`](g2g-owned-graphs.md), and which source
+describes a stack is settled in
+[`source-resolution.md`](source-resolution.md) — where `sync` also takes its
+current meaning, and the separate reconcile command it describes below was
+folded into `link`. Everything else here concerns the Graphite-backed
+behaviour, which is unchanged.
 **Graphite display contract:** baseline-tested with Graphite CLI 1.8.6; see
 [`graphite-cli-contract.md`](graphite-cli-contract.md).
 
@@ -109,7 +113,7 @@ The implemented surface is:
 
 ```text
 gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
-gt2gh [--debug] sync [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+gt2gh [--debug] sync [--branch <local-branch>] [--remote <name>] [--prune] [--apply]
 gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--apply]
 gt2gh [--debug] submit [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--spec <submission.json> | --write-spec <private-temp-dir>] [--template <name> | --no-template] [--draft | --ready] [--apply]
 gt2gh [--debug] status [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack]

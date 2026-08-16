@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -146,5 +147,43 @@ func TestSelectorWithoutAStoreDescribesNothing(t *testing.T) {
 	describes, err := (Selector{}).Describes(context.Background(), "synthetic-b")
 	if err != nil || describes {
 		t.Errorf("Describes() = %t, %v; want false", describes, err)
+	}
+}
+
+// A zero value must answer rather than panic: completion reaches these on a
+// keystroke, in whatever state the process happens to be wired.
+func TestZeroValueStoreCandidatesOfferNothing(t *testing.T) {
+	candidates := StoreCandidates{}
+
+	branches, err := candidates.Branches(context.Background())
+	if err != nil || len(branches) != 0 {
+		t.Errorf("Branches() = %v, %v; want none and no error", branches, err)
+	}
+	trunks, err := candidates.Trunks(context.Background(), "synthetic-b")
+	if err != nil || len(trunks) != 0 {
+		t.Errorf("Trunks() = %v, %v; want none and no error", trunks, err)
+	}
+}
+
+// An unreadable store is reported, never quietly treated as an empty one: a
+// silent "nothing is tracked" would make every command refuse for a reason
+// that has nothing to do with what the user asked.
+func TestAnUnreadableStoreIsReportedNotTreatedAsEmpty(t *testing.T) {
+	broken := Service{
+		Git:   fakeAncestry{current: "synthetic-b", local: []string{"synthetic-trunk", "synthetic-b"}},
+		Store: &memoryStore{err: fmt.Errorf("synthetic store failure")},
+	}
+
+	if _, err := (Selector{Service: broken}).Describes(context.Background(), "synthetic-b"); err == nil {
+		t.Error("Describes() error = nil for an unreadable store")
+	}
+	if _, err := (Selector{Service: broken}).Select(context.Background(), stack.Selection{Branch: "synthetic-b"}, "g2g test"); err == nil {
+		t.Error("Select() error = nil for an unreadable store")
+	}
+	if _, err := (StoreCandidates{Service: broken}).Branches(context.Background()); err == nil {
+		t.Error("Branches() error = nil for an unreadable store")
+	}
+	if _, err := (StoreCandidates{Service: broken}).Trunks(context.Background(), "synthetic-b"); err == nil {
+		t.Error("Trunks() error = nil for an unreadable store")
 	}
 }

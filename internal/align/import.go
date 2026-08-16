@@ -137,7 +137,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
-		recorded, err := updated.Track(adoption.Branch, graph.Edge{
+		recorded, promoted, err := updated.Adopt(adoption.Branch, graph.Edge{
 			Parent:    adoption.Parent,
 			Origin:    originFor(confirmed),
 			ForkPoint: forkPoint,
@@ -145,29 +145,13 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
-		promoting := newTrunk(updated, adoption.Parent)
-		if promoting {
-			trunks = append(trunks, adoption.Parent)
+		if promoted != "" {
+			trunks = append(trunks, promoted)
 		}
-		updated = promote(recorded, updated.Trunks, adoption.Parent, promoting)
+		updated = recorded
 	}
 	sort.Strings(trunks)
 	return updated, trunks, nil
-}
-
-// newTrunk reports a parent that is about to become a root of the forest,
-// because nothing else records it.
-func newTrunk(current graph.Graph, parent string) bool {
-	return !current.Tracked(parent) && !current.IsTrunk(parent)
-}
-
-// promote keeps "record the edge" and "the parent becomes a trunk" as two
-// separate steps rather than one variable reassigned across a branch.
-func promote(recorded graph.Graph, trunks []string, parent string, promoting bool) graph.Graph {
-	if !promoting {
-		return recorded
-	}
-	return recorded.WithTrunks(append(slices.Clone(trunks), parent)...)
 }
 
 // ApplyImport writes the adopted graph and pins each fork point.

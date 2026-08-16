@@ -189,7 +189,45 @@ func (g Graph) Track(branch string, edge Edge) (Graph, error) {
 	if _, err := updated.Path(edge.Parent); err != nil {
 		return Graph{}, fmt.Errorf("recording %q under %q would create a parent cycle", branch, edge.Parent)
 	}
-	return updated, nil
+	// A trunk is a branch nothing sits under. Recording a parent for one ends
+	// that, so the entry goes with it — otherwise adopting a stack from its tip
+	// downwards, which is what being on the tip branch leads you to do, promotes
+	// each branch to a trunk on the way past and never takes it back.
+	return updated.withoutTrunk(branch), nil
+}
+
+// Adopt records an edge and keeps the trunk set true either side of it: the
+// branch stops being a trunk because something now sits above it, and the
+// parent becomes one if nothing else records it. newTrunk names the parent when
+// it was promoted, which is what a preview says out loud.
+//
+// Track alone is not enough for a caller, and three of them were each pairing it
+// with their own promotion step. Two took the trunk list from the graph before
+// the edge was recorded, which quietly put back the entry Track had just
+// removed. The rule belongs here, once, with the type that owns the invariant.
+func (g Graph) Adopt(branch string, edge Edge) (Graph, string, error) {
+	updated, err := g.Track(branch, edge)
+	if err != nil {
+		return Graph{}, "", err
+	}
+	if g.Tracked(edge.Parent) || updated.IsTrunk(edge.Parent) {
+		return updated, "", nil
+	}
+	return updated.WithTrunks(append(slices.Clone(updated.Trunks), edge.Parent)...), edge.Parent, nil
+}
+
+// withoutTrunk drops branch from the trunk set, leaving the rest as they were.
+func (g Graph) withoutTrunk(branch string) Graph {
+	if !g.IsTrunk(branch) {
+		return g
+	}
+	remaining := make([]string, 0, len(g.Trunks))
+	for _, trunk := range g.Trunks {
+		if trunk != branch {
+			remaining = append(remaining, trunk)
+		}
+	}
+	return g.WithTrunks(remaining...)
 }
 
 // Untrack removes the edges for the given branches, returning a new graph.

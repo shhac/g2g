@@ -201,7 +201,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	updated, err := discovery.Graph.Track(discovery.Target, Edge{
+	updated, newTrunk, err := discovery.Graph.Adopt(discovery.Target, Edge{
 		Parent: parent,
 		Origin: originOf(parent, candidates),
 		// Recorded now, because after the parent is merged and deleted there
@@ -215,10 +215,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	// A parent that is not itself tracked becomes a root of the forest. Saying
 	// so is what lets the next branch in the stack find it as a candidate once
 	// the trunk has moved past being an ancestor.
-	if !discovery.Graph.Tracked(parent) && !discovery.Graph.IsTrunk(parent) {
-		plan.NewTrunk = parent
-		updated = updated.WithTrunks(append(slices.Clone(discovery.Graph.Trunks), parent)...)
-	}
+	plan.NewTrunk = newTrunk
 	plan.Updated = updated
 	return plan, nil
 }

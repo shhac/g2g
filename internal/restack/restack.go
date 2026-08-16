@@ -211,12 +211,14 @@ func (s Service) recordStructure(ctx context.Context, branches []string, reparen
 			continue
 		}
 		edge.Parent = parent
-		updated.Edges[branch] = edge
-		// A new base that nothing else hangs from is a root of the forest, and
-		// recording it is what lets the next branch find it as a candidate.
-		if !updated.Tracked(parent) && !updated.IsTrunk(parent) {
-			updated = updated.WithTrunks(append(slices.Clone(updated.Trunks), parent)...)
+		// Adopt keeps the trunk set true on both sides: a new base that nothing
+		// else hangs from becomes a root, and a branch that has just gained one
+		// stops being one.
+		adoptedGraph, _, err := updated.Adopt(branch, edge)
+		if err != nil {
+			return err
 		}
+		updated = adoptedGraph
 	}
 	for _, branch := range branches {
 		edge, tracked := updated.Edges[branch]

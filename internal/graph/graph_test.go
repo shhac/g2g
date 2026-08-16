@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -194,5 +195,58 @@ func TestEqualComparesStructureAndTrunks(t *testing.T) {
 func TestEqualTreatsNilAndEmptyEdgesAsTheSame(t *testing.T) {
 	if !(Graph{}).Equal(New()) {
 		t.Error("Equal() = false comparing a zero graph with an empty one")
+	}
+}
+
+// A trunk is a branch nothing sits under, so recording a parent for one has to
+// end its trunkhood. Adopting a stack from the tip downwards — which is what
+// standing on the tip branch leads you to do — otherwise promotes every branch
+// to a trunk on the way past and never takes it back.
+func TestTrackingATrunkStopsItBeingOne(t *testing.T) {
+	adopting := New().WithTrunks("synthetic-b")
+	adopting, err := adopting.Track("synthetic-c", Edge{Parent: "synthetic-b"})
+	if err != nil {
+		t.Fatalf("Track() error = %v", err)
+	}
+	if !adopting.IsTrunk("synthetic-b") {
+		t.Fatal("synthetic-b should still be a trunk while nothing sits under it")
+	}
+
+	adopting, err = adopting.Track("synthetic-b", Edge{Parent: "synthetic-a"})
+	if err != nil {
+		t.Fatalf("Track() error = %v", err)
+	}
+
+	if adopting.IsTrunk("synthetic-b") {
+		t.Errorf("Trunks = %v, want synthetic-b dropped once it gained a parent", adopting.Trunks)
+	}
+	if parent, _ := adopting.Parent("synthetic-b"); parent != "synthetic-a" {
+		t.Errorf("parent of synthetic-b = %q", parent)
+	}
+}
+
+// The whole bottom-up sequence, as a user performs it: only the branch nothing
+// sits under is left as a trunk.
+func TestAdoptingAChainFromTheTipLeavesOneTrunk(t *testing.T) {
+	adopting := New()
+	for _, step := range []struct{ branch, parent string }{
+		{"synthetic-c", "synthetic-b"},
+		{"synthetic-b", "synthetic-a"},
+		{"synthetic-a", "synthetic-trunk"},
+	} {
+		var err error
+		if !adopting.Tracked(step.parent) && !adopting.IsTrunk(step.parent) {
+			adopting = adopting.WithTrunks(append(slices.Clone(adopting.Trunks), step.parent)...)
+		}
+		if adopting, err = adopting.Track(step.branch, Edge{Parent: step.parent}); err != nil {
+			t.Fatalf("Track(%s) error = %v", step.branch, err)
+		}
+	}
+
+	if got := strings.Join(adopting.Trunks, ","); got != "synthetic-trunk" {
+		t.Errorf("Trunks = %s, want only synthetic-trunk", got)
+	}
+	if got := strings.Join(adopting.Roots(), ","); got != "synthetic-trunk" {
+		t.Errorf("Roots() = %s, want the trunk set to agree with the derived roots", got)
 	}
 }

@@ -20,14 +20,15 @@ if [ "$1 $2" = "remote get-url" ]; then printf 'https://example.test/synthetic.g
 if [ "$1" = "push" ]; then exit 0; fi
 exit 9`,
 	})
-	if err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []string{"synthetic-lower", "synthetic-top"}); err != nil {
+	if err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-lower", Expected: "aaa"}, {Branch: "synthetic-top", Expected: "bbb"}}); err != nil {
 		t.Fatal(err)
 	}
 	called, err := os.ReadFile(arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(called), "remote get-url origin\npush --atomic --force-with-lease origin synthetic-lower synthetic-top\n"; got != want {
+	want := "remote get-url origin\npush --atomic --force-with-lease=refs/heads/synthetic-lower:aaa --force-with-lease=refs/heads/synthetic-top:bbb origin synthetic-lower synthetic-top\n"
+	if got := string(called); got != want {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 }
@@ -43,12 +44,12 @@ if [ "$1 $2" = "remote get-url" ]; then exit 0; fi
 printf '%s\n' 'synthetic push failure' >&2
 exit 1`,
 			})
-			err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []string{"synthetic-branch"})
+			err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-branch", Expected: "aaa"}})
 			if err == nil {
 				t.Fatal("PushAtomic() error = nil")
 			}
 			called, readErr := os.ReadFile(arguments)
-			if readErr != nil || strings.Count(string(called), "push ") != 1 || !strings.Contains(string(called), "push --atomic --force-with-lease origin synthetic-branch") {
+			if readErr != nil || strings.Count(string(called), "push ") != 1 || !strings.Contains(string(called), "push --atomic --force-with-lease=refs/heads/synthetic-branch:aaa origin synthetic-branch") {
 				t.Errorf("calls=%q readErr=%v", called, readErr)
 			}
 		})

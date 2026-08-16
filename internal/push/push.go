@@ -4,6 +4,7 @@ package push
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
@@ -14,7 +15,8 @@ import (
 type Git interface {
 	stack.Git
 	Remote(context.Context, string) error
-	PushAtomic(context.Context, string, []string) error
+	RemoteTips(context.Context, string, []string) (map[string]string, error)
+	PushAtomic(context.Context, string, []localgit.Lease) error
 }
 
 type Graphite interface {
@@ -29,6 +31,30 @@ type Service struct {
 type Plan struct {
 	stack.Snapshot
 	Remote string
+	// RemoteTips is what the remote held when the plan was built. It is the
+	// lease the push asserts, so a branch that moved in between is rejected
+	// rather than overwritten.
+	RemoteTips map[string]string
+}
+
+// pushArgs is the exact invocation Execute makes, so a diagnostic never
+// advertises a command that differs from the one that runs.
+func (p Plan) pushArgs() []string {
+	args := []string{"push", "--atomic"}
+	for _, lease := range p.Leases() {
+		args = append(args, lease.Argument())
+	}
+	args = append(args, p.Remote)
+	return append(args, p.Branches...)
+}
+
+// Leases pairs each selected branch with the tip the plan observed for it.
+func (p Plan) Leases() []localgit.Lease {
+	leases := make([]localgit.Lease, 0, len(p.Branches))
+	for _, branch := range p.Branches {
+		leases = append(leases, localgit.Lease{Branch: branch, Expected: p.RemoteTips[branch]})
+	}
+	return leases
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
@@ -45,7 +71,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote}
+	tips, err := s.Git.RemoteTips(ctx, remote, snapshot.Branches)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -54,7 +84,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		diagnostic.Field{Key: "base", Value: snapshot.Base},
 		diagnostic.Field{Key: "remote", Value: remote},
 		diagnostic.Field{Key: "branches", Value: strings.Join(snapshot.Branches, ",")},
-		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", remote}, snapshot.Branches...))},
+		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
 	return plan, nil
 }
@@ -80,14 +110,19 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		diagnostic.Field{Key: "decision", Value: "run"},
 		diagnostic.Field{Key: "remote", Value: plan.Remote},
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")},
-		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", append([]string{"push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...))},
+		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
-	return s.Git.PushAtomic(ctx, plan.Remote, plan.Branches)
+	return s.Git.PushAtomic(ctx, plan.Remote, plan.Leases())
 }
 
 // Equal compares every fact that can change which refs are pushed where.
+// Equal compares every fact that changes what the push does, including the
+// remote tips the leases assert: a branch that moved on the remote between
+// preview and apply must stop the push, not be overwritten by it.
 func (p Plan) Equal(other Plan) bool {
-	return p.Snapshot.Equal(other.Snapshot) && p.Remote == other.Remote
+	return p.Snapshot.Equal(other.Snapshot) &&
+		p.Remote == other.Remote &&
+		maps.Equal(p.RemoteTips, other.RemoteTips)
 }
 
 var _ Git = localgit.Client{}

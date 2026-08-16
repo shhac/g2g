@@ -254,16 +254,56 @@ func (c Client) Remote(ctx context.Context, name string) error {
 	return err
 }
 
-// PushAtomic force-with-lease pushes every branch as one atomic operation. It
-// deliberately has no fallback to a weaker push mode.
-func (c Client) PushAtomic(ctx context.Context, remote string, branches []string) error {
+// absentOnRemote is the lease value asserting a branch does not exist on the
+// remote yet. git rejects the push if one has appeared since.
+const absentOnRemote = "0000000000000000000000000000000000000000"
+
+// Lease is one branch plus the remote tip the plan observed for it. Expected
+// is empty when the branch was not on the remote at all.
+type Lease struct {
+	Branch   string
+	Expected string
+}
+
+// Argument renders the pinned lease flag for this branch.
+func (l Lease) Argument() string {
+	expected := l.Expected
+	if expected == "" {
+		expected = absentOnRemote
+	}
+	return "--force-with-lease=refs/heads/" + l.Branch + ":" + expected
+}
+
+// PushAtomic publishes every branch as one atomic operation, each protected by
+// a lease naming the exact remote tip the plan was built against.
+//
+// The lease is pinned rather than left bare on purpose. A bare
+// --force-with-lease takes its baseline from the remote-tracking ref, so what
+// it protects depends on when the user last happened to run git fetch — and
+// any fetch performed in between refreshes the baseline to the very commit the
+// check exists to defend. Naming the observed tip makes the push assert
+// exactly what the preview showed, which is the same contract revalidation
+// already provides for everything else.
+//
+// There is deliberately no fallback to a weaker push mode.
+func (c Client) PushAtomic(ctx context.Context, remote string, leases []Lease) error {
 	if err := c.Remote(ctx, remote); err != nil {
 		return err
 	}
-	if len(branches) == 0 {
+	if len(leases) == 0 {
 		return fmt.Errorf("no branches selected for push")
 	}
-	args := append([]string{"push", "--atomic", "--force-with-lease", remote}, branches...)
+	args := []string{"push", "--atomic"}
+	branches := make([]string, 0, len(leases))
+	for _, lease := range leases {
+		if err := safeRef(lease.Branch); err != nil {
+			return err
+		}
+		args = append(args, lease.Argument())
+		branches = append(branches, lease.Branch)
+	}
+	args = append(args, remote)
+	args = append(args, branches...)
 	_, err := c.run(ctx, args...)
 	return err
 }

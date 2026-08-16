@@ -31,6 +31,7 @@ func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
+			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},
 		"gt": {
@@ -109,7 +110,7 @@ func TestEveryApplyMutatesExactlyOnce(t *testing.T) {
 	}{
 		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
 		{name: "sync", args: []string{"sync", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
-		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --force-with-lease origin synthetic-lower synthetic-top"},
+		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --force-with-lease="},
 		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack 42"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

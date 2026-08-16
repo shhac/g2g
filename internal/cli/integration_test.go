@@ -46,6 +46,7 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
+			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},
 		"gt": {
@@ -168,7 +169,7 @@ func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing
 	if got := recorder.Count("gh pr create"); got != 1 {
 		t.Errorf("pr create invocations = %d, want 1:\n%s", got, strings.Join(recorder.Calls(), "\n"))
 	}
-	recorder.AssertOrder("git push --atomic --force-with-lease origin synthetic-lower synthetic-top", "gh pr create", "gh stack link")
+	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create", "gh stack link")
 	if !strings.Contains(stdout, "Applied") {
 		t.Errorf("submit did not confirm success:\n%s", stdout)
 	}

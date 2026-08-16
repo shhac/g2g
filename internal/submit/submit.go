@@ -18,7 +18,8 @@ type Git interface {
 	stack.Git
 	Clean(context.Context) error
 	Remote(context.Context, string) error
-	PushAtomic(context.Context, string, []string) error
+	RemoteTips(context.Context, string, []string) (map[string]string, error)
+	PushAtomic(context.Context, string, []localgit.Lease) error
 }
 
 type Graphite interface{ stack.Graphite }
@@ -44,6 +45,18 @@ type Plan struct {
 	// merged, so a preview can show that a new one will be created rather than
 	// silently reusing a branch name that has history.
 	Superseded map[string]githubstack.PullRequest
+	// RemoteTips is what the remote held when the plan was built; the push
+	// leases assert exactly these.
+	RemoteTips map[string]string
+}
+
+// Leases pairs each selected branch with the tip the plan observed for it.
+func (p Plan) Leases() []localgit.Lease {
+	leases := make([]localgit.Lease, 0, len(p.Snapshot.Branches))
+	for _, branch := range p.Snapshot.Branches {
+		leases = append(leases, localgit.Lease{Branch: branch, Expected: p.RemoteTips[branch]})
+	}
+	return leases
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
@@ -59,7 +72,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	}
 	snapshot := discovery.Snapshot
 	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded}
+	tips, err := s.Git.RemoteTips(ctx, remote, snapshot.Branches)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, RemoteTips: tips}
 	decision := "ready"
 	if len(plan.Issues) != 0 {
 		decision = "blocked"
@@ -74,7 +91,8 @@ func (p Plan) Equal(other Plan) bool {
 		p.Snapshot.Equal(other.Snapshot) &&
 		slices.Equal(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&
-		maps.Equal(p.Superseded, other.Superseded)
+		maps.Equal(p.Superseded, other.Superseded) &&
+		maps.Equal(p.RemoteTips, other.RemoteTips)
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
@@ -103,7 +121,7 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 	if err := validateSpec(plan, spec); err != nil {
 		return err
 	}
-	if err := s.Git.PushAtomic(ctx, plan.Remote, plan.Snapshot.Branches); err != nil {
+	if err := s.Git.PushAtomic(ctx, plan.Remote, plan.Leases()); err != nil {
 		return err
 	}
 	if err := s.createMissingPulls(ctx, plan, spec); err != nil {

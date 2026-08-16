@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 )
@@ -141,6 +142,8 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 }
 
 type fakeGit struct {
+	tips                 map[string]string
+	leases               []localgit.Lease
 	current, remote      string
 	branches, pushed     []string
 	remoteErr, pushErr   error
@@ -153,7 +156,23 @@ func (f *fakeGit) CurrentBranch(context.Context) (string, error) {
 }
 func (f *fakeGit) LocalBranches(context.Context) ([]string, error) { return f.branches, nil }
 func (f *fakeGit) Remote(context.Context, string) error            { return f.remoteErr }
-func (f *fakeGit) PushAtomic(_ context.Context, remote string, branches []string) error {
+func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+	if f.tips != nil {
+		return f.tips, nil
+	}
+	tips := map[string]string{}
+	for _, branch := range branches {
+		tips[branch] = "remote-" + branch
+	}
+	return tips, nil
+}
+
+func (f *fakeGit) PushAtomic(_ context.Context, remote string, leases []localgit.Lease) error {
+	branches := make([]string, 0, len(leases))
+	for _, lease := range leases {
+		branches = append(branches, lease.Branch)
+		f.leases = append(f.leases, lease)
+	}
 	f.pushes++
 	f.remote = remote
 	f.pushed = append([]string(nil), branches...)
@@ -197,5 +216,59 @@ func paths() map[string]graphite.Stack {
 	return map[string]graphite.Stack{
 		"middle": {Path: []string{"main", "lower", "middle"}, Trunks: []string{"main"}},
 		"top":    {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}},
+	}
+}
+
+// A bare --force-with-lease takes its baseline from the remote-tracking ref,
+// so what it protects depends on when the user last fetched. Naming the tip
+// the plan observed makes the push assert exactly what the preview showed.
+func TestPlanPinsTheObservedRemoteTipsAsLeases(t *testing.T) {
+	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
+		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
+	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lease := range plan.Leases() {
+		if lease.Expected != git.tips[lease.Branch] {
+			t.Errorf("%s lease = %q, want the observed tip %q", lease.Branch, lease.Expected, git.tips[lease.Branch])
+		}
+	}
+}
+
+// A branch that moved on the remote between preview and apply must stop the
+// push rather than be overwritten by it.
+func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
+	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
+		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
+	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+	preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	git.tips = map[string]string{"alpha": "aaa111", "beta": "ccc333"}
+	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", preview); err == nil {
+		t.Fatal("Revalidate() error = nil after a remote tip moved")
+	}
+}
+
+// A branch not yet on the remote leases the zero object id, which git reads as
+// "must not exist" and rejects if one has appeared.
+func TestUnpushedBranchesLeaseTheAbsentValue(t *testing.T) {
+	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
+		tips: map[string]string{"alpha": "aaa111"}}
+	service := Service{Git: git, Graphite: fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}}}
+
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lease := range plan.Leases() {
+		if lease.Branch == "beta" && lease.Argument() != "--force-with-lease=refs/heads/beta:0000000000000000000000000000000000000000" {
+			t.Errorf("beta lease = %q", lease.Argument())
+		}
 	}
 }

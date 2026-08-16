@@ -95,6 +95,7 @@ func TestSubmitRetainsTheSpecWhenGitHubFails(t *testing.T) {
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
+			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},
 		"gt": {

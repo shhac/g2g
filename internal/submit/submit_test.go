@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/stack"
 )
@@ -84,6 +85,7 @@ func snapshot() stack.Snapshot {
 }
 
 type fakeGit struct {
+	leases    []localgit.Lease
 	pushes    int
 	pushErr   error
 	cleanErr  error
@@ -94,9 +96,21 @@ func (*fakeGit) CurrentBranch(context.Context) (string, error) { return "synthet
 func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 	return []string{"main", "synthetic/lower", "synthetic/middle", "synthetic/top"}, nil
 }
-func (f *fakeGit) Clean(context.Context) error                        { return f.cleanErr }
-func (f *fakeGit) Remote(context.Context, string) error               { return f.remoteErr }
-func (f *fakeGit) PushAtomic(context.Context, string, []string) error { f.pushes++; return f.pushErr }
+func (f *fakeGit) Clean(context.Context) error          { return f.cleanErr }
+func (f *fakeGit) Remote(context.Context, string) error { return f.remoteErr }
+func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+	tips := map[string]string{}
+	for _, branch := range branches {
+		tips[branch] = "remote-" + branch
+	}
+	return tips, nil
+}
+
+func (f *fakeGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease) error {
+	f.pushes++
+	f.leases = leases
+	return f.pushErr
+}
 
 type fakeGitHub struct {
 	prs         []githubstack.PullRequest

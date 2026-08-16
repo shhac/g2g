@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
@@ -163,7 +164,7 @@ func TestPushDebugIsStderrOnly(t *testing.T) {
 	for _, expected := range []string{
 		"operation=\"push\"", "event=push.plan", "target=\"synthetic-middle\"",
 		"full_stack=\"true\"", "remote=\"origin\"",
-		"command=\"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top\"",
+		"command=\"git push --atomic --force-with-lease=refs/heads/synthetic-lower:",
 	} {
 		if !strings.Contains(stderr.String(), expected) {
 			t.Errorf("debug missing %q: %q", expected, stderr.String())
@@ -185,7 +186,19 @@ type cliPushGit struct {
 func (f *cliPushGit) CurrentBranch(context.Context) (string, error)   { return f.current, nil }
 func (f *cliPushGit) LocalBranches(context.Context) ([]string, error) { return f.branches, nil }
 func (f *cliPushGit) Remote(context.Context, string) error            { return f.remoteErr }
-func (f *cliPushGit) PushAtomic(_ context.Context, _ string, branches []string) error {
+func (f *cliPushGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+	tips := map[string]string{}
+	for _, branch := range branches {
+		tips[branch] = "remote-" + branch
+	}
+	return tips, nil
+}
+
+func (f *cliPushGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease) error {
+	branches := make([]string, 0, len(leases))
+	for _, lease := range leases {
+		branches = append(branches, lease.Branch)
+	}
 	f.pushes++
 	if f.events != nil {
 		*f.events = append(*f.events, "push")

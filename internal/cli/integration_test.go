@@ -42,6 +42,9 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 
 	return testutil.FakeCLIs(t, map[string][]testutil.Route{
 		"git": {
+			// The restack guard looks for an in-flight journal, which needs
+			// the common directory. An empty one means nothing is in flight.
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: t.TempDir()},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},

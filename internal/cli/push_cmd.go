@@ -9,7 +9,7 @@ import (
 	"github.com/shhac/gt2gh/internal/stack"
 )
 
-func newPush(service push.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
+func newPush(service push.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var remote string
 	var selection stackOptions
 	var apply bool
@@ -30,6 +30,7 @@ func newPush(service push.Service, completions stack.Completions, presentation P
 					return service.Revalidate(ctx, selection.Selection(), remote, preview)
 				},
 				render:   writePushPlan,
+				guard:    guard,
 				execute:  service.Execute,
 				branches: func(plan push.Plan) int { return len(plan.Branches) },
 				notices: flowNotices{

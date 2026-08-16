@@ -15,8 +15,8 @@ import (
 	"github.com/shhac/gt2gh/internal/submit"
 )
 
-func newSubmit(service submit.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
-	var options submitOptions
+func newSubmit(service submit.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+	options := submitOptions{guard: guard}
 	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return options.run(cmd, service, presentation.resolve(cmd))
@@ -39,7 +39,10 @@ func newSubmit(service submit.Service, completions stack.Completions, presentati
 }
 
 type submitOptions struct {
-	budgets    budgets
+	budgets budgets
+	// guard refuses the command while another operation has left the
+	// repository part-way through a rewrite.
+	guard      func(context.Context) error
 	root       context.Context
 	selection  stackOptions
 	remote     string
@@ -130,6 +133,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
 			return writeSubmitPreview(w, plan, presentation, template)
 		},
+		guard: o.guard,
 		execute: func(ctx context.Context, plan submit.Plan) error {
 			if err := service.Apply(ctx, plan, spec); err != nil {
 				return err

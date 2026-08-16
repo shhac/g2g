@@ -14,7 +14,7 @@ import (
 	"github.com/shhac/gt2gh/internal/stack"
 )
 
-func newLink(service link.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
+func newLink(service link.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
@@ -34,6 +34,7 @@ func newLink(service link.Service, completions stack.Completions, presentation P
 					return service.Revalidate(ctx, selection.Selection(), preview)
 				},
 				render:   writeLinkPlan,
+				guard:    guard,
 				execute:  service.Execute,
 				branches: func(plan link.Plan) int { return len(plan.Branches) },
 				noOp:     link.Plan.NothingToLink,

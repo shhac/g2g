@@ -34,6 +34,12 @@ type applyFlow[P any] struct {
 	// such as where a submission spec was retained.
 	wrapMutationError func(error) error
 
+	// guard refuses the whole command when another operation has left the
+	// repository part-way through a rewrite. Mid-restack a branch may already
+	// have moved while the graph still records where it used to be, so any
+	// mutation would act on a structure that is currently untrue.
+	guard func(context.Context) error
+
 	notices flowNotices
 }
 
@@ -56,6 +62,11 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
 
+	if f.guard != nil {
+		if err := f.guard(ctx); err != nil {
+			return err
+		}
+	}
 	plan, err := f.plan(ctx)
 	if err != nil {
 		return err

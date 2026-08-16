@@ -48,7 +48,7 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 	return cmd
 }
 
-func newTrack(service graph.Service, presentation Presentation) *cobra.Command {
+func newTrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var parent string
 	var apply bool
@@ -66,6 +66,7 @@ func newTrack(service graph.Service, presentation Presentation) *cobra.Command {
 			render: func(writer io.Writer, plan graph.TrackPlan, p Presentation) error {
 				return writeGraphView(writer, trackView(plan), plan.Discovery, p)
 			},
+			guard:    guard,
 			execute:  service.ApplyTrack,
 			branches: func(plan graph.TrackPlan) int { return len(plan.Branches) },
 			noOp:     trackIsNoOp,
@@ -95,7 +96,7 @@ func trackIsNoOp(plan graph.TrackPlan) bool {
 	return tracked && recorded == plan.Parent && plan.NewTrunk == ""
 }
 
-func newUntrack(service graph.Service, presentation Presentation) *cobra.Command {
+func newUntrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
 	cmd := &cobra.Command{Use: "untrack", Short: "Remove a branch from the gt2gh-owned graph", Args: cobra.NoArgs}
@@ -112,6 +113,7 @@ func newUntrack(service graph.Service, presentation Presentation) *cobra.Command
 			render: func(writer io.Writer, plan graph.UntrackPlan, p Presentation) error {
 				return writeGraphView(writer, untrackView(plan), plan.Discovery, p)
 			},
+			guard:    guard,
 			execute:  service.ApplyUntrack,
 			branches: func(plan graph.UntrackPlan) int { return len(plan.Removed) },
 			noOp:     func(plan graph.UntrackPlan) bool { return len(plan.Removed) == 0 },

@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/gt2gh/internal/graphite"
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/gt2gh/internal/restack"
 	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
@@ -41,6 +42,9 @@ type Options struct {
 	// Graph owns the branch forest gt2gh keeps itself. It needs neither
 	// Graphite nor GitHub, which is the whole point of it.
 	Graph graph.Service
+	// Restack rewrites branch contents to match that structure. It is the only
+	// service allowed to change history.
+	Restack restack.Service
 
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
@@ -62,6 +66,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	githubClient := githubstack.Client{Runner: runner}
 	gitClient := localgit.Client{Runner: runner}
 	graphiteClient := graphite.Client{Runner: runner}
+	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient}
 	return NewWithOptions(Options{
 		Version:     version,
 		CommandName: commandName,
@@ -71,7 +76,8 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Sync:        syncer.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
 		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
 		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
-		Graph:       graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient},
+		Graph:       graphService,
+		Restack:     restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}},
 		Unstacker:   githubClient,
 	})
 }
@@ -86,6 +92,7 @@ func NewWithOptions(options Options) *cobra.Command {
 			options.Unstacker = configured
 		}
 	}
+	guard := restackGuard(options.Restack)
 	presentation := detectPresentation(options.Stdout)
 	if options.Presentation != nil {
 		presentation = *options.Presentation
@@ -112,20 +119,23 @@ func NewWithOptions(options Options) *cobra.Command {
 	// Completion candidates come from the same Git and Graphite clients the
 	// services use, so no command has to depend on another to complete a flag.
 	completions := stack.Completions{Git: options.Link.Git, Graphite: options.Link.Graphite}
-	root.AddCommand(newLink(options.Link, completions, presentation))
+	root.AddCommand(newLink(options.Link, completions, guard, presentation))
 	root.AddCommand(newStatus(options.Link, completions, presentation))
-	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, presentation))
-	root.AddCommand(newSync(options.Sync, completions, presentation))
+	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
+	root.AddCommand(newSync(options.Sync, completions, guard, presentation))
 	if options.Push.Git != nil && options.Push.Graphite != nil {
-		root.AddCommand(newPush(options.Push, completions, presentation))
+		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}
 	if options.Submit.Git != nil && options.Submit.Graphite != nil && options.Submit.GitHub != nil {
-		root.AddCommand(newSubmit(options.Submit, completions, presentation))
+		root.AddCommand(newSubmit(options.Submit, completions, guard, presentation))
 	}
 	if options.Graph.Git != nil && options.Graph.Store != nil {
 		root.AddCommand(newGraph(options.Graph, presentation))
-		root.AddCommand(newTrack(options.Graph, presentation))
-		root.AddCommand(newUntrack(options.Graph, presentation))
+		root.AddCommand(newTrack(options.Graph, guard, presentation))
+		root.AddCommand(newUntrack(options.Graph, guard, presentation))
+	}
+	if options.Restack.Git != nil && options.Restack.Journal != nil {
+		root.AddCommand(newRestack(options.Restack, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

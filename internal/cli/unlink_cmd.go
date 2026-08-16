@@ -16,7 +16,7 @@ type Unstacker interface {
 	Unstack(context.Context, int) error
 }
 
-func newUnlink(service link.Service, unstacker Unstacker, completions stack.Completions, presentation Presentation) *cobra.Command {
+func newUnlink(service link.Service, unstacker Unstacker, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	var number int
@@ -57,6 +57,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 			render: func(w io.Writer, p link.Plan, presentation Presentation) error {
 				return writeUnlinkPlan(w, p, resolved, source, presentation)
 			},
+			guard: guard,
 			execute: func(ctx context.Context, _ link.Plan) error {
 				if unstacker == nil {
 					return fmt.Errorf("GitHub stack unstack is not configured")

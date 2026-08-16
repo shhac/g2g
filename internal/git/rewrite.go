@@ -172,6 +172,20 @@ func (c Client) RebaseInProgress(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
+// UpdateBranch points a branch at an object. It is how an aborted restack
+// restores a branch git has already forgotten about, because git only rolls
+// back the single rebase invocation it was running.
+func (c Client) UpdateBranch(ctx context.Context, branch, object string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	if err := safeRef(object); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "update-ref", "refs/heads/"+branch, object)
+	return err
+}
+
 // ResetKeep points the index and working tree at the current branch tip.
 //
 // A replay moves refs without touching the working tree, so a user standing on

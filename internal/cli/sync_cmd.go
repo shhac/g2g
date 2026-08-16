@@ -9,7 +9,7 @@ import (
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
-func newSync(service syncer.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
+func newSync(service syncer.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
@@ -29,6 +29,7 @@ func newSync(service syncer.Service, completions stack.Completions, presentation
 					return service.Revalidate(ctx, selection.Selection(), preview)
 				},
 				render:   writeSyncPlan,
+				guard:    guard,
 				execute:  service.Execute,
 				branches: func(plan syncer.Plan) int { return len(plan.Discovery.Branches) },
 				noOp:     syncer.Plan.NothingToSync,

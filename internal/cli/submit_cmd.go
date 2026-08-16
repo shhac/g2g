@@ -17,11 +17,11 @@ import (
 
 func newSubmit(service submit.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	options := submitOptions{guard: guard}
-	cmd := &cobra.Command{Use: "submit", Short: "Publish a Graphite stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "submit", Short: "Publish a stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return options.run(cmd, service, presentation.resolve(cmd))
 	}
-	options.selection.register(cmd, completions, "Graphite-tracked local branch to submit (defaults to current branch)", "Graphite-declared trunk to use as the submit base")
+	options.selection.register(cmd, completions, "local branch to submit (defaults to current branch)", "trunk to use as the submit base")
 	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().StringVar(&options.specPath, "spec", "", "submission JSON spec to validate or apply")
 	cmd.Flags().StringVar(&options.writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")

@@ -19,7 +19,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "link",
-		Short: "Link a linear Graphite stack to GitHub (preview by default)",
+		Short: "Link a stack to GitHub's native stacks (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
@@ -49,7 +49,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 		},
 	}
-	selection.register(cmd, completions, "Graphite-tracked local branch to link (defaults to current branch)", "Graphite-declared trunk to use as the link base")
+	selection.register(cmd, completions, "local branch to link (defaults to current branch)", "trunk to use as the link base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	return cmd
 }

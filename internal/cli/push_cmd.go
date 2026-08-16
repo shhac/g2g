@@ -15,7 +15,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "push",
-		Short: "Atomically push a Graphite stack's local refs (preview by default)",
+		Short: "Atomically push a stack's local refs (preview by default)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
@@ -43,7 +43,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 		},
 	}
-	selection.register(cmd, completions, "Graphite-tracked local branch to push (defaults to current branch)", "Graphite-declared trunk to use as the push base")
+	selection.register(cmd, completions, "local branch to push (defaults to current branch)", "trunk to use as the push base")
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
 	return cmd

@@ -122,7 +122,7 @@ func NewWithOptions(options Options) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:               options.CommandName,
-		Short:             "Bridge Graphite-managed stacks to GitHub native stacks",
+		Short:             "Manage stacked branches and project them onto GitHub",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,

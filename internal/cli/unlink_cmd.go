@@ -75,7 +75,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink (defaults to the one discovered on the selected path)")
-	selection.register(cmd, completions, "Graphite-tracked local branch to inspect (defaults to current branch)", "Graphite-declared trunk to use as the base")
+	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack unstack after revalidation")
 	return cmd
 }

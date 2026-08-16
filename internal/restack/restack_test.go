@@ -99,8 +99,13 @@ func (f *fakeGit) Rebase(_ context.Context, onto string, replayed localgit.Range
 	f.ontos = append(f.ontos, onto)
 	if f.rebaseErr != nil {
 		f.inProgress = true
+		return f.rebaseErr
 	}
-	return f.rebaseErr
+	// Model what the rewrite does to the repository, not just that it was
+	// asked for, exactly as Replay does: the branch now descends from the base
+	// it was moved onto, which is what verify and the next plan check.
+	f.ancestors[replayed.To] = append(f.ancestors[replayed.To], onto)
+	return nil
 }
 
 func (f *fakeGit) RebaseContinue(context.Context) error {
@@ -766,4 +771,100 @@ func TestApplyRefusesToReportSuccessWhenTheRewriteDidNotHappen(t *testing.T) {
 	if !strings.Contains(err.Error(), "did not perform the rewrite") {
 		t.Errorf("error = %v, want it to say the rewrite did not happen", err)
 	}
+}
+
+// chainStack is three deep, so a stop part-way leaves work above it.
+func chainStack() graph.Graph {
+	return graph.Graph{
+		Edges: map[string]graph.Edge{
+			// a has already been dealt with: its work is upstream and it sits
+			// on the new trunk, which is the state a resume finds it in.
+			"synthetic-a": {Parent: "synthetic-trunk", ForkPoint: "trunk-new"},
+			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "a-old"},
+			"synthetic-c": {Parent: "synthetic-b", ForkPoint: "b-old"},
+		},
+		Trunks: []string{"synthetic-trunk"},
+	}
+}
+
+// chainGitMidResume is the repository as a resumed restack finds it: the
+// interrupted branch has just been rewritten onto the new trunk, so its
+// recorded fork point is no longer in it, while everything above is untouched.
+func chainGitMidResume() *fakeGit {
+	return &fakeGit{
+		current: "synthetic-b",
+		local:   []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c"},
+		objects: map[string]string{
+			"synthetic-trunk": "trunk-new",
+			"synthetic-a":     "a-old",
+			"synthetic-b":     "b-new",
+			"synthetic-c":     "c-old",
+			"trunk-old":       "trunk-old",
+			"trunk-new":       "trunk-new",
+			"a-old":           "a-old",
+			"b-old":           "b-old",
+		},
+		ancestors: map[string][]string{
+			"synthetic-a": {"trunk-new"},
+			// b was rewritten: it descends from the new trunk and no longer
+			// carries the fork point the graph records for it.
+			"synthetic-b": {"trunk-new"},
+			// c is untouched, so it still sits on the pre-rewrite b.
+			"synthetic-c": {"b-old", "a-old", "trunk-old"},
+		},
+		replaySupported: true,
+		previewClean:    true,
+	}
+}
+
+// A resumed restack has to carry on to the branches above the one that
+// conflicted. It used to stop and report success, because the branch it had
+// just rewritten no longer matched its recorded fork point and the recomputed
+// plan read that as a refusal rather than as work already done.
+func TestContinueCarriesOnToTheRestOfTheChain(t *testing.T) {
+	git := chainGitMidResume()
+	git.inProgress = true
+	service, _, journal := newService(git, chainStack())
+	journal.record = Record{
+		Branch:   "synthetic-c",
+		Scope:    string(graph.ScopeGraph),
+		ReturnTo: "synthetic-c",
+		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
+		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
+	}
+	journal.present = true
+
+	if err := service.Continue(context.Background()); err != nil {
+		t.Fatalf("Continue() error = %v", err)
+	}
+
+	rewritten := append(append([]string{}, rangeTargets(git.rebases)...), replayTargets(git.replays)...)
+	if !contains(rewritten, "synthetic-c") {
+		t.Errorf("rewrote %v, want synthetic-c carried on to", rewritten)
+	}
+}
+
+func rangeTargets(ranges []localgit.Range) []string {
+	targets := make([]string, 0, len(ranges))
+	for _, r := range ranges {
+		targets = append(targets, r.To)
+	}
+	return targets
+}
+
+func replayTargets(replays [][]localgit.Range) []string {
+	targets := make([]string, 0)
+	for _, batch := range replays {
+		targets = append(targets, rangeTargets(batch)...)
+	}
+	return targets
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

@@ -622,8 +622,6 @@ func chainedRestackRepo(t *testing.T) string {
 // has to satisfy, and the fix belongs in internal/restack with the fork-point
 // and replay-range rules in design-docs/restack.md, not in a structure sweep.
 func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
-	t.Skip("known defect: --continue stops after the interrupted branch and reports success")
-
 	dir := chainedRestackRepo(t)
 	for _, pair := range [][2]string{{"synthetic-a", "synthetic-trunk"}, {"synthetic-b", "synthetic-a"}, {"synthetic-c", "synthetic-b"}} {
 		if _, _, err := run(t, "track", "--branch", pair[0], "--parent", pair[1], "--apply"); err != nil {

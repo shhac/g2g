@@ -282,29 +282,53 @@ func (s Service) Skip(ctx context.Context) error {
 // finish re-derives what is left. Anything still needing a rewrite is done
 // now; when nothing is, the graph is brought up to date and the journal goes.
 func (s Service) finish(ctx context.Context, record Record) error {
-	plan, err := s.Plan(ctx, record.Selection(), record.Onto, record.Absorb)
-	if err != nil {
-		return err
-	}
-	// More of the chain still to rewrite: a resumed restack carries on past the
-	// branch whose conflict was just resolved.
-	if len(plan.Steps) != 0 && plan.Blocked == "" {
-		if !plan.Clean {
-			return s.rebaseEach(ctx, plan)
-		}
-		if err := s.replay(ctx, plan); err != nil {
+	// Each pass records what has already been rewritten, then asks what is
+	// left. The order matters: a branch this operation has replayed no longer
+	// sits on the fork point the graph holds for it, and a plan measured
+	// against that stale value reads it as moved off its parent. That refuses
+	// the whole selection, so a resumed restack used to stop at the branch
+	// whose conflict was just resolved and report success while every branch
+	// above it stayed on abandoned history.
+	//
+	for pass := 0; ; pass++ {
+		discovery, err := s.Graph.Discover(ctx, record.Selection())
+		if err != nil {
 			return err
 		}
-		return s.Journal.Clear(ctx)
+		if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
+			return err
+		}
+		plan, err := s.Plan(ctx, record.Selection(), record.Onto, record.Absorb)
+		if err != nil {
+			return err
+		}
+		if len(plan.Steps) == 0 || plan.Blocked != "" {
+			// Nothing left to rewrite. The reparenting comes from the record
+			// rather than the fresh plan: once the rewrite has happened the
+			// branch no longer sits where the graph says, so the plan can no
+			// longer tell where it was headed.
+			if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
+				return err
+			}
+			return s.Journal.Clear(ctx)
+		}
+		// Every pass that finds work rewrites at least one branch, so needing
+		// more passes than there are branches means it is not converging.
+		if pass > len(plan.Discovery.Branches) {
+			return fmt.Errorf("restack did not settle after %d passes · run g2g restack to see the current state", pass)
+		}
+		if plan.Clean {
+			if err := s.replay(ctx, plan); err != nil {
+				return err
+			}
+			return s.Journal.Clear(ctx)
+		}
+		// Carrying on can stop again on the next branch, which is the same
+		// state this began in: the journal stays and --continue re-derives.
+		if err := s.rebaseEach(ctx, plan); err != nil {
+			return err
+		}
 	}
-	// Nothing left to rewrite. The reparenting comes from the record rather
-	// than the fresh plan: once the rewrite has happened the branch no longer
-	// sits where the graph says, so the plan can no longer tell where it was
-	// headed.
-	if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
-		return err
-	}
-	return s.Journal.Clear(ctx)
 }
 
 // Abort restores every branch to the tip it had when the operation began,

@@ -23,11 +23,12 @@ type fakeGit struct {
 	// collapses names branches whose own work is already in their new base.
 	collapses map[string]bool
 
-	replaySupported bool
-	previewClean    bool
-	previewUpdates  []localgit.RefUpdate
-	rebaseErr       error
-	inProgress      bool
+	replaySupported       bool
+	replayLeavesRefsAlone bool
+	previewClean          bool
+	previewUpdates        []localgit.RefUpdate
+	rebaseErr             error
+	inProgress            bool
 
 	replays  [][]localgit.Range
 	rebases  []localgit.Range
@@ -83,6 +84,9 @@ func (f *fakeGit) Replay(_ context.Context, onto string, ranges []localgit.Range
 	// Model what the rewrite does to the repository, not just that it was
 	// asked for: every replayed branch now descends from the new base, which
 	// is what the fork points recorded afterwards are checked against.
+	if f.replayLeavesRefsAlone {
+		return nil
+	}
 	for _, replayed := range ranges {
 		f.ancestors[replayed.To] = append(f.ancestors[replayed.To], onto)
 	}
@@ -732,5 +736,29 @@ func TestAWhollyCollapsedSelectionRunsNoEngine(t *testing.T) {
 	}
 	if len(git.replays) != 0 || len(git.rebases) != 0 {
 		t.Errorf("an engine ran with nothing to replay: replays=%v rebases=%v", git.replays, git.rebases)
+	}
+}
+
+// Both engines are external and version-dependent, so success is checked
+// against the outcome rather than against an exit status. A rewrite that
+// quietly left a branch where it was would otherwise look identical to one
+// that worked.
+func TestApplyRefusesToReportSuccessWhenTheRewriteDidNotHappen(t *testing.T) {
+	git := stackGit()
+	// The engine returns zero but moves nothing, which is what an unsupported
+	// version looks like from here.
+	git.replayLeavesRefsAlone = true
+	service, _, _ := newService(git, stack())
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = service.Apply(context.Background(), plan)
+	if err == nil {
+		t.Fatal("Apply() error = nil after an engine that did nothing")
+	}
+	if !strings.Contains(err.Error(), "did not perform the rewrite") {
+		t.Errorf("error = %v, want it to say the rewrite did not happen", err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
@@ -422,6 +423,12 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	output, err := c.Runner.Run(ctx, "git", args...)
 	if err != nil {
+		// Git says why it failed on its own output, and discarding it leaves
+		// an exit status where a reason should be — which is the difference
+		// between "a rebase failed" and "these files conflict".
+		if reason := diagnostic.BoundedOutput(output); reason != "" {
+			return nil, fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, reason)
+		}
 		return nil, fmt.Errorf("git %s failed: %w", strings.Join(args, " "), err)
 	}
 	return output, nil

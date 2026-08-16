@@ -67,6 +67,30 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	return s.rebase(ctx, plan)
 }
 
+// verify checks that the engine did what the plan said, rather than reporting
+// success because the command exited zero.
+//
+// Both engines are external and their behaviour varies by version, so the one
+// thing worth asserting is the outcome: every branch that was to be rewritten
+// now sits on the base it was aimed at. A rewrite that quietly left a branch
+// where it was would otherwise be indistinguishable from one that worked, and
+// the stack would look repaired while still being wrong.
+func (s Service) verify(ctx context.Context, plan Plan) error {
+	for _, step := range plan.rewriting() {
+		// Against the parent branch rather than the base recorded in the plan:
+		// in a stack the parent is being rewritten too, so its planned tip is
+		// exactly the commit it no longer points at.
+		built, err := s.Git.IsAncestor(ctx, step.Parent, step.Branch)
+		if err != nil {
+			return err
+		}
+		if !built {
+			return fmt.Errorf("%s was not replayed onto %s; this Git did not perform the rewrite that was planned", step.Branch, step.Parent)
+		}
+	}
+	return nil
+}
+
 // collapse moves the branches whose work is entirely in their new base.
 func (s Service) collapse(ctx context.Context, plan Plan) error {
 	for _, step := range plan.collapsing() {
@@ -93,6 +117,9 @@ func (s Service) replay(ctx context.Context, plan Plan) error {
 	ranges := plan.ranges()
 	diagnostic.Event(ctx, "restack.replay", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
 	if err := s.Git.Replay(ctx, plan.onto(), ranges); err != nil {
+		return err
+	}
+	if err := s.verify(ctx, plan); err != nil {
 		return err
 	}
 	// A replay moves refs without touching the index, so a user standing on a

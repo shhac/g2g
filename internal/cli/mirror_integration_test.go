@@ -294,3 +294,30 @@ func TestAlignedMirrorReportsNothingToDo(t *testing.T) {
 		}
 	}
 }
+
+// A blocked plan also has no writes, so it must not be reported as agreement.
+// "Nothing to do" and "this cannot be done" are opposite answers that happen to
+// produce the same empty list.
+func TestBlockedMirrorIsNotReportedAsNothingToDo(t *testing.T) {
+	// Graphite has never heard of the gt2gh graph's root, and cannot be told
+	// about it without being given a parent.
+	mirrorRepository(t, mirrorGraph, []string{"◯  synthetic-other", "◉  synthetic-elsewhere"})
+
+	stdout, _, err := run(t, "mirror")
+	if err != nil {
+		t.Fatalf("mirror: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "Apply blocked") {
+		t.Errorf("a blocked mirror is not reported as blocked:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Nothing to do") {
+		t.Errorf("a blocked mirror claimed there was nothing to do:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "synthetic-trunk") {
+		t.Errorf("the refusal does not name the root Graphite lacks:\n%s", stdout)
+	}
+
+	if _, _, applyErr := run(t, "mirror", "--apply"); applyErr == nil {
+		t.Error("mirror --apply: error = nil for a blocked plan")
+	}
+}

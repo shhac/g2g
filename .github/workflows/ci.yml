@@ -32,6 +32,11 @@ jobs:
             exit 1
           fi
 
+      # The rewrite engines behave differently across Git versions, so record
+      # which one this run exercised.
+      - name: git version
+        run: git --version
+
       - name: go vet
         run: go vet ./...
 

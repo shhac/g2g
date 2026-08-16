@@ -322,7 +322,7 @@ func TestRestackStopsOnConflictThenContinues(t *testing.T) {
 
 	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
 	if !strings.Contains(stdout, "Stopped on a conflict") {
-		t.Fatalf("apply did not stop on the conflict:\n%s", stdout)
+		t.Fatalf("apply did not stop on the conflict:\n%s\n--- status ---\n%s", stdout, gitOutput(t, "status", "--porcelain"))
 	}
 	journal := filepath.Join(dir, ".git", "g2g", "restack.json")
 	if _, err := os.Stat(journal); err != nil {

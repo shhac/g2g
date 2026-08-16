@@ -90,8 +90,7 @@ func runResume(cmd *cobra.Command, ctx context.Context, service restack.Service,
 	}
 	if err := advance(ctx); err != nil {
 		// Resuming can run straight into the next conflict, which is the
-		// operation working rather than failing. Reporting the raw git error
-		// would tell the reader nothing about what to do next.
+		// operation working rather than failing.
 		return resumeError(cmd, ctx, service, err, p)
 	}
 	remaining, err := service.InProgress(ctx)
@@ -99,7 +98,7 @@ func runResume(cmd *cobra.Command, ctx context.Context, service restack.Service,
 		return err
 	}
 	if remaining {
-		return stoppedOnConflict(cmd, ctx, service, p)
+		return stopped(cmd, ctx, service, nil, p)
 	}
 	return prose(cmd.OutOrStdout(), p, p.notice("Restack complete."))
 }
@@ -110,15 +109,24 @@ func resumeError(cmd *cobra.Command, ctx context.Context, service restack.Servic
 	if checkErr != nil || !interrupted {
 		return err
 	}
-	return stoppedOnConflict(cmd, ctx, service, p)
+	return stopped(cmd, ctx, service, err, p)
 }
 
-func stoppedOnConflict(cmd *cobra.Command, ctx context.Context, service restack.Service, p Presentation) error {
-	message := "Stopped on a conflict."
-	if paths, err := service.Conflicted(ctx); err == nil && len(paths) != 0 {
-		message = "Stopped on a conflict in " + branchList(paths) + "."
+// stopped reports an interrupted rewrite.
+//
+// A rewrite that stops with no unmerged file has not hit a conflict, and
+// saying it has sends the reader looking for something that is not there. In
+// that case what Git said is the only useful thing we have.
+func stopped(cmd *cobra.Command, ctx context.Context, service restack.Service, cause error, p Presentation) error {
+	paths, err := service.Conflicted(ctx)
+	if err != nil || len(paths) == 0 {
+		_ = prose(cmd.OutOrStdout(), p, p.problem("The rewrite stopped part-way, with nothing left unmerged."))
+		if cause != nil {
+			_ = prose(cmd.OutOrStdout(), p, p.subdued(cause.Error()))
+		}
+		return prose(cmd.OutOrStdout(), p, p.subdued("Inspect with git status, then run g2g restack --continue, or g2g restack --abort to undo."))
 	}
-	_ = prose(cmd.OutOrStdout(), p, p.problem(message))
+	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+branchList(paths)+"."))
 	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve those files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
 }
 
@@ -181,7 +189,7 @@ func applyRestack(cmd *cobra.Command, ctx context.Context, budgets budgets, serv
 		// and resumable, and saying "no changes were made" would be a lie.
 		interrupted, checkErr := service.InProgress(mutateCtx)
 		if checkErr == nil && interrupted {
-			return stoppedOnConflict(cmd, mutateCtx, service, p)
+			return stopped(cmd, mutateCtx, service, err, p)
 		}
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}

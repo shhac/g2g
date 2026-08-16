@@ -253,7 +253,7 @@ func TestRestackCarriesDescendantsNotJustTheBottomBranch(t *testing.T) {
 			gitOutput(t, "status", "--porcelain"),
 			readOrEmpty("shared.txt"))
 	}
-	if commits := gitOutput(t, "log", "--oneline", "synthetic-trunk..synthetic-b"); !strings.Contains(commits, "b1") {
+	if commits := subjects(t, "synthetic-trunk..synthetic-b"); !strings.Contains(commits, "b1") {
 		t.Errorf("synthetic-b lost its own commit:\n%s", commits)
 	}
 }
@@ -489,7 +489,7 @@ func TestRestackDropsOrphansByDefault(t *testing.T) {
 		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
 
-	if commits := gitOutput(t, "log", "--oneline", "synthetic-a..synthetic-b"); strings.Contains(commits, "a2") {
+	if commits := subjects(t, "synthetic-a..synthetic-b"); strings.Contains(commits, "a2") {
 		t.Errorf("the dropped commit survived in synthetic-b:\n%s\n--- output ---\n%s", commits, stdout)
 	}
 }
@@ -540,6 +540,18 @@ func TestRestackOntoRecordsTheNewParent(t *testing.T) {
 // so only one branch is ever rebased and a resumed restack always finds an
 // empty plan waiting for it. The branch of finish that carries on past the
 // resolved branch — the whole reason the journal exists — was never reached.
+// subjects lists commit subjects and nothing else.
+//
+// These assertions used to read `git log --oneline`, which prefixes every line
+// with an abbreviated hash, and then matched a two-character subject against
+// it. "9ddaba2 b1" contains "a2", so a run failed whenever git happened to
+// produce a hash carrying the pair — and the reverse, a hash containing the
+// subject a test wanted present, would have passed a broken run silently.
+func subjects(t *testing.T, revisions string) string {
+	t.Helper()
+	return gitOutput(t, "log", "--format=%s", revisions)
+}
+
 func chainedRestackRepo(t *testing.T) string {
 	t.Helper()
 
@@ -646,10 +658,10 @@ func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
 	if parent != tipOfB {
 		t.Errorf("synthetic-c sits on %s, want the rewritten synthetic-b %s", parent, tipOfB)
 	}
-	if got := strings.Count(gitOutput(t, "log", "--oneline", "synthetic-c"), "c1"); got != 1 {
+	if got := strings.Count(subjects(t, "synthetic-c"), "c1"); got != 1 {
 		t.Errorf("c1 appears %d times in synthetic-c, want exactly once", got)
 	}
-	if !strings.Contains(gitOutput(t, "log", "--oneline", "synthetic-c"), "b1") {
+	if !strings.Contains(subjects(t, "synthetic-c"), "b1") {
 		t.Error("synthetic-c lost the branch it sits on")
 	}
 }

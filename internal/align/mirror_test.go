@@ -17,9 +17,17 @@ type fakeGraphite struct {
 	forest graphite.Forest
 	calls  []string
 	err    error
+	asked  *bool
+	// failAfter makes the (failAfter+1)th write fail, so a test can assert what
+	// a mirror does when Graphite refuses part-way through a sequence.
+	failAfter int
+	writeErr  error
 }
 
 func (f *fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	if f.asked != nil {
+		*f.asked = true
+	}
 	if f.err != nil {
 		return graphite.Forest{}, f.err
 	}
@@ -28,11 +36,18 @@ func (f *fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
 
 func (f *fakeGraphite) Track(_ context.Context, branch, parent string) error {
 	f.calls = append(f.calls, "track "+branch+" onto "+parent)
-	return f.err
+	return f.writeFailure()
 }
 
 func (f *fakeGraphite) Untrack(_ context.Context, branch string) error {
 	f.calls = append(f.calls, "untrack "+branch)
+	return f.writeFailure()
+}
+
+func (f *fakeGraphite) writeFailure() error {
+	if f.writeErr != nil && len(f.calls) > f.failAfter {
+		return f.writeErr
+	}
 	return f.err
 }
 
@@ -151,8 +166,13 @@ func TestMirrorBlocksOnARootGraphiteDoesNotKnow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanMirror() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-trunk") {
-		t.Errorf("Blocked = %q, want it to name the root Graphite lacks", plan.Blocked)
+	if plan.Blocked == "" {
+		t.Error("Blocked = empty for a root Graphite does not track")
+	}
+	// The name is carried, not rendered: the preview composes the sentence with
+	// the same helper every other branch list in the output uses.
+	if got := strings.Join(plan.UnknownRoots, ","); got != "synthetic-trunk" {
+		t.Errorf("UnknownRoots = %s, want the root Graphite lacks", got)
 	}
 	if err := svc.ApplyMirror(context.Background(), plan); err == nil {
 		t.Error("ApplyMirror() error = nil for a blocked plan")
@@ -356,5 +376,97 @@ func TestMirrorNeverChangesTheG2GGraph(t *testing.T) {
 	}
 	if len(store.writes) != 0 {
 		t.Errorf("mirror wrote to the gt2gh store %d times, want none", len(store.writes))
+	}
+}
+
+// The design doc claims a mirror "does not unwind... re-running is how the rest
+// gets done". Nothing exercised that claim: no test made Graphite refuse a
+// write. This does, and pins both halves — it stops, and it stops where it said.
+func TestMirrorStopsAtTheFirstWriteGraphiteRefuses(t *testing.T) {
+	client := &fakeGraphite{
+		forest:    forestOf(map[string]string{"synthetic-trunk": ""}, "synthetic-trunk"),
+		failAfter: 1,
+		writeErr:  fmt.Errorf("synthetic Graphite refusal"),
+	}
+	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+
+	plan, err := svc.PlanMirror(context.Background(), false)
+	if err != nil {
+		t.Fatalf("PlanMirror() error = %v", err)
+	}
+	if len(plan.Writes) != 2 {
+		t.Fatalf("Writes = %v, want two so a mid-sequence failure is observable", plan.Writes)
+	}
+
+	if err := svc.ApplyMirror(context.Background(), plan); err == nil {
+		t.Fatal("ApplyMirror() error = nil when Graphite refused a write")
+	}
+	// The first write happened, the second was attempted and failed, and nothing
+	// after it ran.
+	if got, want := client.recorded(), "track synthetic-lower onto synthetic-trunk; track synthetic-top onto synthetic-lower"; got != want {
+		t.Errorf("recorded %q, want %q", got, want)
+	}
+}
+
+// A prune that fails must not carry on removing. Untracking cascades, so
+// continuing past a failure is how a mirror would take branches nobody asked it
+// to.
+func TestMirrorStopsWhenAPruneFails(t *testing.T) {
+	client := &fakeGraphite{
+		forest: forestOf(map[string]string{
+			"synthetic-trunk": "",
+			"synthetic-lower": "synthetic-trunk",
+			"synthetic-top":   "synthetic-lower",
+			"synthetic-a":     "synthetic-trunk",
+			"synthetic-b":     "synthetic-trunk",
+		}, "synthetic-trunk"),
+		writeErr: fmt.Errorf("synthetic Graphite refusal"),
+	}
+	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+
+	plan, err := svc.PlanMirror(context.Background(), true)
+	if err != nil {
+		t.Fatalf("PlanMirror() error = %v", err)
+	}
+	if len(plan.Prunes) != 2 {
+		t.Fatalf("Prunes = %v, want two so a mid-sequence failure is observable", plan.Prunes)
+	}
+
+	if err := svc.ApplyMirror(context.Background(), plan); err == nil {
+		t.Fatal("ApplyMirror() error = nil when a prune failed")
+	}
+	if got := len(client.calls); got != 1 {
+		t.Errorf("made %d calls (%s), want to stop after the first failure", got, client.recorded())
+	}
+}
+
+// Revalidation must catch a plan whose shape is unchanged but whose content
+// moved. Comparing lengths alone would let a stale plan through and mirror the
+// wrong parent.
+func TestRevalidateMirrorCatchesAChangedParentAtTheSameCount(t *testing.T) {
+	client := &fakeGraphite{forest: forestOf(map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-lower": "synthetic-trunk",
+		"synthetic-top":   "synthetic-trunk",
+	}, "synthetic-trunk")}
+	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+
+	preview, err := svc.PlanMirror(context.Background(), false)
+	if err != nil {
+		t.Fatalf("PlanMirror() error = %v", err)
+	}
+	if len(preview.Writes) != 1 {
+		t.Fatalf("Writes = %v, want exactly one so the count cannot change", preview.Writes)
+	}
+
+	// Still exactly one write to make, but for a different branch.
+	client.forest = forestOf(map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-lower": "synthetic-top",
+		"synthetic-top":   "synthetic-lower",
+	}, "synthetic-trunk")
+
+	if _, err := svc.RevalidateMirror(context.Background(), false, preview); err == nil {
+		t.Error("RevalidateMirror() error = nil when a write changed at an unchanged count")
 	}
 }

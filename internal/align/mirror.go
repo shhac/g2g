@@ -9,6 +9,7 @@ package align
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -69,6 +70,9 @@ type MirrorPlan struct {
 	// Prunes are the strangers being removed, ordered deepest first because
 	// untracking cascades. Empty unless --prune was asked for.
 	Prunes []string
+	// UnknownRoots are the roots of the gt2gh forest Graphite has never heard
+	// of. They are what Blocked is about when it is set.
+	UnknownRoots []string
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 }
@@ -121,8 +125,11 @@ func (s Service) PlanMirror(ctx context.Context, prune bool) (MirrorPlan, error)
 	}
 
 	plan := MirrorPlan{}
-	if missing := unknownRoots(adopted, forest); len(missing) != 0 {
-		plan.Blocked = fmt.Sprintf("Graphite does not track %s, and cannot be told to without being given a parent · track %s in Graphite first, or run gt init if it has no trunk", branchList(missing), pluralThem(missing))
+	// The list is carried rather than rendered. Every other branch list a user
+	// reads is composed in the presentation layer, and composing this one here
+	// meant one preview printed two different phrasings of the same idea.
+	if plan.UnknownRoots = unknownRoots(adopted, forest); len(plan.UnknownRoots) != 0 {
+		plan.Blocked = "Graphite does not track every root of the gt2gh graph, and cannot be told to without being given a parent"
 		return plan, nil
 	}
 	plan.Writes = writes(adopted, forest)
@@ -184,7 +191,9 @@ func (p MirrorPlan) Equal(other MirrorPlan) bool {
 			return false
 		}
 	}
-	return equalStrings(p.Prunes, other.Prunes) && equalStrings(p.Strangers, other.Strangers)
+	return slices.Equal(p.Prunes, other.Prunes) &&
+		slices.Equal(p.Strangers, other.Strangers) &&
+		slices.Equal(p.UnknownRoots, other.UnknownRoots)
 }
 
 func (s Service) both(ctx context.Context) (graph.Graph, graphite.Forest, error) {
@@ -324,25 +333,4 @@ func depth(branch string, forest graphite.Forest) int {
 		steps++
 	}
 	return steps
-}
-
-func equalStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
-func branchList(branches []string) string { return strings.Join(branches, ", ") }
-
-func pluralThem(items []string) string {
-	if len(items) == 1 {
-		return "it"
-	}
-	return "them"
 }

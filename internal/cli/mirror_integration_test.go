@@ -213,3 +213,84 @@ func TestImportBlocksAndNamesBothRecords(t *testing.T) {
 		t.Error("import --apply: error = nil for a blocked plan")
 	}
 }
+
+// A Graphite write that fails must be reported, not swallowed into a success
+// message. Nothing exercised a failing gt write end to end before this.
+func TestMirrorReportsAFailedGraphiteWrite(t *testing.T) {
+	common := testutil.GraphiteRepository(t)
+	dir := filepath.Join(common, "g2g")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "graph.json"), []byte(mirrorGraph), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testutil.FakeCLIs(t, map[string][]testutil.Route{
+		"git": {
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
+			{Prefix: "branch --show-current", Output: "synthetic-top"},
+			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-top", "synthetic-trunk"}},
+		},
+		"gt": {
+			{Prefix: "--version", Output: "1.8.6"},
+			{Prefix: "log", Lines: invertedGraphiteLog},
+			{Prefix: "track", Stderr: "synthetic graphite refusal", Exit: 1},
+		},
+	})
+
+	stdout, _, err := run(t, "mirror", "--apply")
+	if err == nil {
+		t.Fatalf("mirror --apply: error = nil when gt track failed\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Graphite is aligned.") {
+		t.Errorf("a failed mirror claimed success:\n%s", stdout)
+	}
+}
+
+// import must refuse a Graphite-free repository for the same reason mirror
+// does: reading the forest is what enrols it.
+func TestImportRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
+	recorder, common := g2gOwnedRepository(t, ownedGraph)
+
+	_, _, err := run(t, "import")
+	if err == nil {
+		t.Fatal("import: error = nil in a repository that does not use Graphite")
+	}
+	if !strings.Contains(err.Error(), "does not use Graphite") {
+		t.Errorf("error = %v", err)
+	}
+
+	recorder.AssertNone("gt ")
+	entries, err := os.ReadDir(common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Name()), "graphite") {
+			t.Errorf("previewing an import enrolled the repository: %s", entry.Name())
+		}
+	}
+}
+
+// Both commands must say "nothing to do" rather than claim work they did not
+// do. The hand-rolled flow they started with printed a ready-to-apply banner
+// and then reported success for an empty plan.
+func TestAlignedMirrorReportsNothingToDo(t *testing.T) {
+	mirrorRepository(t, mirrorGraph, []string{"◯  synthetic-trunk", "◯  synthetic-lower", "◉  synthetic-top"})
+
+	for _, arguments := range [][]string{{"mirror"}, {"mirror", "--apply"}} {
+		stdout, _, err := run(t, arguments...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", arguments, err, stdout)
+		}
+		if !strings.Contains(stdout, "Nothing to do") {
+			t.Errorf("%v does not report a no-op:\n%s", arguments, stdout)
+		}
+		if strings.Contains(stdout, "Ready to apply") {
+			t.Errorf("%v shows a ready banner with nothing to do:\n%s", arguments, stdout)
+		}
+		if strings.Contains(stdout, "Rerun with --apply") {
+			t.Errorf("%v invites an apply with nothing to apply:\n%s", arguments, stdout)
+		}
+	}
+}

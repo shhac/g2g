@@ -18,8 +18,8 @@ func importView(plan align.ImportPlan) stackView {
 		view = view.note(conflictNote(plan), severityBad)
 		return view.block("Apply blocked: " + plan.Blocked)
 	}
+	// Nothing-to-adopt is applyFlow's line to say, not this view's.
 	if len(plan.Adopt) == 0 {
-		view = view.note("Graphite declares nothing the gt2gh graph does not already record.", severityNeutral)
 		return agreementNote(view, plan)
 	}
 	view = view.note("Adopts "+branchList(plan.Claims())+" into the gt2gh graph.", severityOK)
@@ -41,9 +41,17 @@ func agreementNote(view stackView, plan align.ImportPlan) stackView {
 // conflictNote names each disagreement in full. "Blocked on a conflict" is not
 // actionable; which parent each record holds is.
 func conflictNote(plan align.ImportPlan) string {
-	note := "The two records disagree:"
+	note := "The two records disagree about " + branchList(conflictedBranches(plan)) + ":"
 	for _, conflict := range plan.Conflicts {
 		note += fmt.Sprintf("\n  %s · gt2gh says %s, Graphite says %s", conflict.Branch, conflict.Ours, conflict.Theirs)
 	}
 	return note
+}
+
+func conflictedBranches(plan align.ImportPlan) []string {
+	names := make([]string, 0, len(plan.Conflicts))
+	for _, conflict := range plan.Conflicts {
+		names = append(names, conflict.Branch)
+	}
+	return names
 }

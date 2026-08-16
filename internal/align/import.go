@@ -75,7 +75,29 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 		return ImportPlan{}, err
 	}
 
-	plan := ImportPlan{Updated: adopted}
+	plan := classify(adopted, forest, local)
+	plan.Updated = adopted
+	if len(plan.Conflicts) != 0 {
+		plan.Blocked = "the gt2gh graph already records a different parent · untrack to take Graphite's answer, or leave it as it is"
+		return plan, nil
+	}
+	if plan.Updated, plan.NewTrunks, err = s.adopt(ctx, adopted, plan.Adopt); err != nil {
+		return ImportPlan{}, err
+	}
+	diagnostic.Event(ctx, "import.plan",
+		diagnostic.Field{Key: "adopt", Value: strings.Join(plan.Claims(), ",")},
+		diagnostic.Field{Key: "agreed", Value: strings.Join(plan.Agreed, ",")},
+		diagnostic.Field{Key: "conflicts", Value: strings.Join(conflicting(plan.Conflicts), ",")},
+	)
+	return plan, nil
+}
+
+// classify sorts every edge Graphite declares into adopt, conflict, or agreed.
+//
+// It is pure, like mirror's writes and strangers, so the decision matrix is
+// testable from plain values with no repository, no fakes, and no Git.
+func classify(adopted graph.Graph, forest graphite.Forest, local []string) ImportPlan {
+	plan := ImportPlan{}
 	for _, branch := range declaredOrder(forest) {
 		parent := forest.Parents[branch]
 		switch {
@@ -92,20 +114,7 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 			plan.Adopt = append(plan.Adopt, Adoption{Branch: branch, Parent: parent})
 		}
 	}
-	if len(plan.Conflicts) != 0 {
-		plan.Blocked = fmt.Sprintf("the gt2gh graph already records %s under a different parent · untrack %s to take Graphite's answer, or leave it as it is",
-			branchList(conflicting(plan.Conflicts)), pluralThem(conflicting(plan.Conflicts)))
-		return plan, nil
-	}
-	if plan.Updated, plan.NewTrunks, err = s.adopt(ctx, adopted, plan.Adopt); err != nil {
-		return ImportPlan{}, err
-	}
-	diagnostic.Event(ctx, "import.plan",
-		diagnostic.Field{Key: "adopt", Value: strings.Join(plan.Claims(), ",")},
-		diagnostic.Field{Key: "agreed", Value: strings.Join(plan.Agreed, ",")},
-		diagnostic.Field{Key: "conflicts", Value: strings.Join(conflicting(plan.Conflicts), ",")},
-	)
-	return plan, nil
+	return plan
 }
 
 // adopt builds the resulting graph, resolving a fork point per edge as it goes.
@@ -128,7 +137,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
-		next, err := updated.Track(adoption.Branch, graph.Edge{
+		recorded, err := updated.Track(adoption.Branch, graph.Edge{
 			Parent:    adoption.Parent,
 			Origin:    originFor(confirmed),
 			ForkPoint: forkPoint,
@@ -136,14 +145,29 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
-		if !updated.Tracked(adoption.Parent) && !updated.IsTrunk(adoption.Parent) {
+		promoting := newTrunk(updated, adoption.Parent)
+		if promoting {
 			trunks = append(trunks, adoption.Parent)
-			next = next.WithTrunks(append(slices.Clone(updated.Trunks), adoption.Parent)...)
 		}
-		updated = next
+		updated = promote(recorded, updated.Trunks, adoption.Parent, promoting)
 	}
 	sort.Strings(trunks)
 	return updated, trunks, nil
+}
+
+// newTrunk reports a parent that is about to become a root of the forest,
+// because nothing else records it.
+func newTrunk(current graph.Graph, parent string) bool {
+	return !current.Tracked(parent) && !current.IsTrunk(parent)
+}
+
+// promote keeps "record the edge" and "the parent becomes a trunk" as two
+// separate steps rather than one variable reassigned across a branch.
+func promote(recorded graph.Graph, trunks []string, parent string, promoting bool) graph.Graph {
+	if !promoting {
+		return recorded
+	}
+	return recorded.WithTrunks(append(slices.Clone(trunks), parent)...)
 }
 
 // ApplyImport writes the adopted graph and pins each fork point.
@@ -199,7 +223,7 @@ func (p ImportPlan) Equal(other ImportPlan) bool {
 			return false
 		}
 	}
-	return equalStrings(p.Agreed, other.Agreed) && p.Updated.Equal(other.Updated)
+	return slices.Equal(p.Agreed, other.Agreed) && p.Updated.Equal(other.Updated)
 }
 
 // declaredOrder walks Graphite's forest from its roots down, so a parent is

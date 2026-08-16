@@ -77,13 +77,9 @@ func (c Client) Track(ctx context.Context, branch, parent string) error {
 	if err := c.gate(ctx); err != nil {
 		return err
 	}
-	arguments := []string{"track", branch, "--parent", parent, "--no-interactive"}
 	diagnostic.Event(ctx, "graphite.track", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "parent", Value: parent})
-	output, err := c.Runner.Run(ctx, "gt", arguments...)
-	if err != nil {
-		return commandError("gt "+strings.Join(arguments, " "), err, output)
-	}
-	return nil
+	_, err := c.run(ctx, "track", branch, "--parent", parent, "--no-interactive")
+	return err
 }
 
 // Untrack removes branch from Graphite.
@@ -98,13 +94,9 @@ func (c Client) Untrack(ctx context.Context, branch string) error {
 	if err := c.gate(ctx); err != nil {
 		return err
 	}
-	arguments := []string{"untrack", branch, "--force", "--no-interactive"}
 	diagnostic.Event(ctx, "graphite.untrack", diagnostic.Field{Key: "branch", Value: branch})
-	output, err := c.Runner.Run(ctx, "gt", arguments...)
-	if err != nil {
-		return commandError("gt "+strings.Join(arguments, " "), err, output)
-	}
-	return nil
+	_, err := c.run(ctx, "untrack", branch, "--force", "--no-interactive")
+	return err
 }
 
 // safeArguments refuses names a shell-free exec would still hand to Graphite as

@@ -140,6 +140,12 @@ func TestOptionLikeNamesAreRefusedBeforeSpawning(t *testing.T) {
 	if err := client.Untrack(context.Background(), "-synthetic"); err == nil {
 		t.Error("Untrack() error = nil for an option-like branch name")
 	}
+	if err := client.Track(context.Background(), "", "synthetic-lower"); err == nil {
+		t.Error("Track() error = nil for an empty branch name")
+	}
+	if err := client.Untrack(context.Background(), ""); err == nil {
+		t.Error("Untrack() error = nil for an empty branch name")
+	}
 	if got := recorded(); got != "" {
 		t.Errorf("recorded %q, want no Graphite command to have run at all", got)
 	}
@@ -151,5 +157,28 @@ func TestAnUnconfiguredClientRefusesToWrite(t *testing.T) {
 	}
 	if err := (Client{}).Untrack(context.Background(), "synthetic-top"); err == nil {
 		t.Error("Untrack() error = nil on an unconfigured client")
+	}
+}
+
+// A write that Graphite rejects must surface as an error naming the command,
+// not be swallowed. Nothing exercised a failing gt write before this.
+func TestAFailingWriteIsReportedWithItsCommand(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{
+		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
+printf 'synthetic graphite refusal\n' >&2
+exit 1`,
+	})
+	client := Client{Runner: subprocess.ExecRunner{}}
+
+	err := client.Track(context.Background(), "synthetic-top", "synthetic-lower")
+	if err == nil {
+		t.Fatal("Track() error = nil when gt exited non-zero")
+	}
+	if !strings.Contains(err.Error(), "gt track synthetic-top") {
+		t.Errorf("error = %v, want it to name the command that failed", err)
+	}
+
+	if err := client.Untrack(context.Background(), "synthetic-top"); err == nil {
+		t.Error("Untrack() error = nil when gt exited non-zero")
 	}
 }

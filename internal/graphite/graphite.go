@@ -158,9 +158,9 @@ func (c Client) gate(ctx context.Context) error {
 	if c.Runner == nil {
 		return fmt.Errorf("Graphite runner is not configured")
 	}
-	version, err := c.Runner.Run(ctx, "gt", "--version")
+	version, err := c.run(ctx, "--version")
 	if err != nil {
-		return commandError("gt --version", err, version)
+		return err
 	}
 	got, known, err := checkVersion(version)
 	if err != nil {
@@ -173,13 +173,24 @@ func (c Client) gate(ctx context.Context) error {
 	return nil
 }
 
+// run invokes Graphite and reports a failure as the command that produced it.
+// Four call sites were each rebuilding the same command string to wrap the
+// error, which is four chances to word it differently.
+func (c Client) run(ctx context.Context, arguments ...string) ([]byte, error) {
+	output, err := c.Runner.Run(ctx, "gt", arguments...)
+	if err != nil {
+		return nil, commandError("gt "+strings.Join(arguments, " "), err, output)
+	}
+	return output, nil
+}
+
 func (c Client) read(ctx context.Context) (graph, error) {
 	if err := c.gate(ctx); err != nil {
 		return graph{}, err
 	}
-	output, err := c.Runner.Run(ctx, "gt", "log", "short", "--all", "--reverse", "--no-interactive")
+	output, err := c.run(ctx, "log", "short", "--all", "--reverse", "--no-interactive")
 	if err != nil {
-		return graph{}, commandError("gt log short --all --reverse --no-interactive", err, output)
+		return graph{}, err
 	}
 	graph, err := parseLog(string(output))
 	if err == nil {

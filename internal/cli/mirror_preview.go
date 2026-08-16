@@ -15,11 +15,14 @@ import (
 func mirrorView(plan align.MirrorPlan, prune bool) stackView {
 	view := stackView{Operation: "mirror", Target: "graphite", TargetSource: "destination"}
 	if plan.Blocked != "" {
+		if len(plan.UnknownRoots) != 0 {
+			view = view.note(fmt.Sprintf("Graphite does not track %s · track %s in Graphite first, or run gt init if it has no trunk.",
+				branchList(plan.UnknownRoots), pick(len(plan.UnknownRoots), "it", "them")), severityBad)
+		}
 		return view.block("Apply blocked: " + plan.Blocked)
 	}
-	if plan.Aligned() {
-		view = view.note("Graphite already agrees with the gt2gh graph.", severityNeutral)
-	}
+	// Nothing-to-do is applyFlow's line to say, not this view's: saying it here
+	// too printed it twice.
 	view = writeNotes(view, plan)
 	return strangerNotes(view, plan, prune)
 }

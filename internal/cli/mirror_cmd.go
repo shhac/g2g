@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -23,57 +23,36 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		ctx := commandContext(cmd.Context(), cmd, "mirror", applyMode(apply), "", "")
-		budgets := newBudgets(cmd)
-		if guard != nil {
-			if err := guard(ctx); err != nil {
-				return err
-			}
+		flow := applyFlow[align.MirrorPlan]{
+			plan: func(ctx context.Context) (align.MirrorPlan, error) {
+				return service.PlanMirror(ctx, prune)
+			},
+			revalidate: func(ctx context.Context, preview align.MirrorPlan) (align.MirrorPlan, error) {
+				return service.RevalidateMirror(ctx, prune, preview)
+			},
+			render: func(writer io.Writer, plan align.MirrorPlan, p Presentation) error {
+				return writeStackView(writer, mirrorView(plan, prune), p)
+			},
+			guard:    guard,
+			execute:  service.ApplyMirror,
+			branches: func(plan align.MirrorPlan) int { return len(plan.Writes) + len(plan.Prunes) },
+			noOp:     mirrorIsNoOp,
+			notices: flowNotices{
+				preview:  "Rerun with --apply to align Graphite.",
+				noOp:     "Graphite already agrees with the gt2gh graph. Nothing to do.",
+				applied:  "Graphite is aligned.",
+				changed:  "The gt2gh graph is unchanged and still answers for these branches.",
+				recovery: "Some branches may already have been tracked in Graphite · rerun g2g mirror to see what is left.",
+			},
 		}
-
-		discoveryCtx, cancel := budgets.discovery(ctx)
-		defer cancel()
-		plan, err := service.PlanMirror(discoveryCtx, prune)
-		if err != nil {
-			return err
-		}
-		if !apply {
-			if err := writeStackView(cmd.OutOrStdout(), mirrorView(plan, prune), presentation); err != nil {
-				return err
-			}
-			return prose(cmd.OutOrStdout(), presentation, "\n"+presentation.notice("No changes were made.")+" Rerun with --apply to align Graphite.")
-		}
-		if plan.Blocked != "" {
-			return writeNotApplied(cmd.OutOrStdout(), presentation, fmt.Errorf("%s", plan.Blocked))
-		}
-		return applyMirror(cmd, ctx, budgets, service, plan, prune, presentation)
+		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&prune, "prune", false, "untrack branches in Graphite that the gt2gh graph does not record (the gt2gh graph is never changed)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the reconciliation instead of previewing it")
 	return cmd
 }
 
-// applyMirror re-reads both graphs, renders, and flushes before it writes.
-func applyMirror(cmd *cobra.Command, ctx context.Context, budgets budgets, service align.Service, plan align.MirrorPlan, prune bool, p Presentation) error {
-	mutateCtx, cancel := budgets.mutation(ctx, len(plan.Writes)+len(plan.Prunes))
-	defer cancel()
-
-	confirmed, err := service.RevalidateMirror(mutateCtx, prune, plan)
-	if err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-	if err := writeReadyBanner(cmd.OutOrStdout(), p); err != nil {
-		return err
-	}
-	if err := writeStackView(cmd.OutOrStdout(), mirrorView(confirmed, prune), p); err != nil {
-		return err
-	}
-	if err := flushOutput(cmd.OutOrStdout()); err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-
-	if err := service.ApplyMirror(mutateCtx, confirmed); err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-	_ = prose(cmd.OutOrStdout(), p, p.notice("Graphite is aligned."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("The gt2gh graph is unchanged and still answers for these branches."))
-}
+// mirrorIsNoOp reports a plan with nothing to do. A blocked plan also has no
+// writes, and must not be reported as agreement: "nothing to do" and "this
+// cannot be done" are opposite answers that happen to produce an empty list.
+func mirrorIsNoOp(plan align.MirrorPlan) bool { return plan.Blocked == "" && plan.Aligned() }

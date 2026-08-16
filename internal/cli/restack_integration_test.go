@@ -226,12 +226,14 @@ func TestRestackCarriesDescendantsNotJustTheBottomBranch(t *testing.T) {
 	advanceTrunk(t, false)
 	before := gitOutput(t, "rev-parse", "synthetic-b")
 
-	if _, _, err := run(t, "restack", "--scope", "graph", "--apply"); err != nil {
-		t.Fatal(err)
+	stdout, _, err := run(t, "restack", "--scope", "graph", "--apply")
+	if err != nil {
+		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
 
 	if gitOutput(t, "rev-parse", "synthetic-b") == before {
-		t.Fatal("synthetic-b was left behind while its parent was rewritten")
+		t.Fatalf("synthetic-b was left behind while its parent was rewritten:\n%s\n%s",
+			stdout, gitOutput(t, "log", "--oneline", "--graph", "--all"))
 	}
 	if commits := gitOutput(t, "log", "--oneline", "synthetic-trunk..synthetic-b"); !strings.Contains(commits, "b1") {
 		t.Errorf("synthetic-b lost its own commit:\n%s", commits)
@@ -464,12 +466,13 @@ func TestRestackAbsorbRewritesNothing(t *testing.T) {
 func TestRestackDropsOrphansByDefault(t *testing.T) {
 	droppedCommitRepo(t)
 
-	if stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path", "--apply"); err != nil {
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path", "--apply")
+	if err != nil {
 		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
 
 	if commits := gitOutput(t, "log", "--oneline", "synthetic-a..synthetic-b"); strings.Contains(commits, "a2") {
-		t.Errorf("the dropped commit survived in synthetic-b:\n%s", commits)
+		t.Errorf("the dropped commit survived in synthetic-b:\n%s\n--- output ---\n%s", commits, stdout)
 	}
 }
 
@@ -494,7 +497,8 @@ func TestRestackOntoRecordsTheNewParent(t *testing.T) {
 	}
 
 	if !isAncestor(t, "synthetic-release", "synthetic-a") {
-		t.Fatal("synthetic-a was not moved onto the new base")
+		t.Fatalf("synthetic-a was not moved onto the new base:\n%s\n%s",
+			stdout, gitOutput(t, "log", "--oneline", "--graph", "--all"))
 	}
 	// The graph must now agree, so a later command measures against reality.
 	graph, _, err := run(t, "graph", "--branch", "synthetic-b", "--scope", "graph")

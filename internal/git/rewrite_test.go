@@ -87,15 +87,17 @@ func stackRepo(t *testing.T, overlap bool) (Client, map[string]string) {
 	return Client{Runner: subprocess.ExecRunner{}}, tips
 }
 
-func TestSupportsReplayRecognisesThisGit(t *testing.T) {
-	client, _ := stackRepo(t, false)
-
+// requireReplay skips a case that only applies where the preview engine is
+// used. Replay is gated to a verified version, so an older Git takes the
+// resumable engine and these say nothing about it.
+func requireReplay(t *testing.T, client Client) {
+	t.Helper()
 	supported, err := client.SupportsReplay(context.Background())
 	if err != nil {
 		t.Fatalf("SupportsReplay() error = %v", err)
 	}
 	if !supported {
-		t.Skip("this Git predates git replay; the rewrite tests below need it")
+		t.Skip("this Git is below the verified replay baseline")
 	}
 }
 
@@ -126,6 +128,7 @@ func TestSupportsReplayGatesOnTheVersionItParses(t *testing.T) {
 // A preview has to be free: exact object ids, and not one ref moved.
 func TestPreviewReplayReportsUpdatesWithoutMovingAnything(t *testing.T) {
 	client, tips := stackRepo(t, false)
+	requireReplay(t, client)
 	ctx := context.Background()
 
 	updates, clean, err := client.PreviewReplay(ctx, "synthetic-trunk",
@@ -151,6 +154,7 @@ func TestPreviewReplayReportsUpdatesWithoutMovingAnything(t *testing.T) {
 // ask before it takes over the working tree.
 func TestPreviewReplayPredictsAConflictWithoutFailing(t *testing.T) {
 	client, tips := stackRepo(t, true)
+	requireReplay(t, client)
 
 	_, clean, err := client.PreviewReplay(context.Background(), "synthetic-trunk",
 		[]Range{{From: tips["forkPoint"], To: "synthetic-b"}})
@@ -164,6 +168,7 @@ func TestPreviewReplayPredictsAConflictWithoutFailing(t *testing.T) {
 
 func TestReplayRewritesWithoutTouchingTheCheckout(t *testing.T) {
 	client, tips := stackRepo(t, false)
+	requireReplay(t, client)
 	ctx := context.Background()
 	head := currentBranch(t)
 
@@ -187,6 +192,7 @@ func TestReplayRewritesWithoutTouchingTheCheckout(t *testing.T) {
 // is why it is safe to try first.
 func TestReplayLeavesNothingBehindOnConflict(t *testing.T) {
 	client, tips := stackRepo(t, true)
+	requireReplay(t, client)
 	ctx := context.Background()
 
 	err := client.Replay(ctx, "synthetic-trunk", []Range{{From: tips["forkPoint"], To: "synthetic-b"}})
@@ -219,7 +225,7 @@ func TestRebaseStopsAndResumesAcrossInvocations(t *testing.T) {
 		t.Fatalf("RebaseInProgress() = %t, %v; want an interrupted rebase", inProgress, err)
 	}
 
-	if err := os.WriteFile("shared.txt", []byte("base\nrewritten-upstream\nb\n"), 0o600); err != nil {
+	if err := os.WriteFile("shared.txt", []byte("base\nrewritten-upstream\nb\nresolved\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	stage(t, "shared.txt")

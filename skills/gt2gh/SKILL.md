@@ -7,8 +7,8 @@ description: |
   release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
   link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
   "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push",
-  "g2g graph", "g2g track", "g2g untrack", "g2g-owned graph", "branch graph
-  without Graphite".
+  "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g-owned graph",
+  "branch graph without Graphite", "restack after squash merge".
 ---
 
 # gt2gh
@@ -82,10 +82,26 @@ description: |
 - `untrack` must never reparent the children it strands. Report them.
 - Do not record commit SHAs in the store: commits and force-pushes are content
   movement, not structural drift. Validate against Git at read time instead.
-- gt2gh does not rebase and must not gain a checkout. `needs restack` and
-  `parent missing` are reported, never repaired. If restack is ever
-  implemented, it goes in a detached temporary worktree so HEAD, the index,
-  and the user's working tree are untouched.
+- `restack` is the only code permitted to rewrite history, and only through
+  `internal/git`'s two engines. `git replay` previews exact object ids without
+  moving a ref and applies cleanly without touching the checkout; `git rebase
+  --update-refs` is used only once a preview has established the rewrite
+  conflicts, and it runs in the user's own working tree because resolving a
+  conflict needs a tree they can edit. Do not move it to a private worktree:
+  git refuses to check out a branch already checked out elsewhere, and the
+  `--detach` workaround silently splits the stack in two.
+- The replay range is `forkPoint..branch`, never `base..branch`. Before any
+  rewrite, the fork point must be an ancestor of the branch — a branch someone
+  rebased by hand fails that, and replaying anyway pulls the base's own commits
+  into the range. Refuse and tell the user to retrack.
+- A branch whose parent is being rewritten must be rewritten too, even when it
+  still sits exactly where its fork point says. Every range passed to an engine
+  starts at the topmost step's fork point, because the engines replay the union
+  onto one base.
+- restack is the only resumable operation. Every other mutating command must
+  refuse while its journal exists, `--continue` recomputes from the refs rather
+  than resuming a stored queue, and `--abort` restores tips the journal
+  recorded because git only rolls back the invocation it was running.
 - The store lives under the Git common directory and is located with
   `git rev-parse --path-format=absolute --git-common-dir`. The bare form is
   relative to the working directory and silently wrong from a subdirectory.

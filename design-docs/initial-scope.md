@@ -1,7 +1,7 @@
 # Initial scope
 
 **Status:** implemented through v0.7; later changes remain focused extensions.
-The graph/track/untrack commands are a separate project with its own document,
+The graph/track/untrack/restack commands are a separate project with its own document,
 [`g2g-owned-graphs.md`](g2g-owned-graphs.md); everything below concerns the
 Graphite-authoritative commands only.
 **Graphite display contract:** baseline-tested with Graphite CLI 1.8.6; see
@@ -117,6 +117,8 @@ gt2gh [--debug] unlink [--stack-number <github-stack-number>] [--branch <local-g
 gt2gh [--debug] graph [--branch <local-branch>] [--scope branch|path|subtree|graph]
 gt2gh [--debug] track [--branch <local-branch>] [--parent <local-branch>] [--apply]
 gt2gh [--debug] untrack [--branch <local-branch>] [--scope branch|subtree] [--apply]
+gt2gh [--debug] restack [--branch <local-branch>] [--scope branch|path|subtree|graph] [--onto <ref>] [--absorb] [--apply]
+gt2gh [--debug] restack --continue | --abort | --skip
 gt2gh completion bash|zsh|fish
 ```
 

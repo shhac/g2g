@@ -46,10 +46,20 @@ only process knowledge that is easy to miss.
   reports the children it strands rather than reparenting them. Both are the
   same fail-closed rule the Graphite commands follow, and both have tests that
   fail if the guess is reintroduced.
-- Ancestry is the one seam where a PATH fake proves nothing, because the fake
-  answers whatever it is asked and the question is what Git considers
-  reachable. Those cases build a throwaway local repository — synthetic branch
-  names, no remote, nothing that leaves the machine.
+- Ancestry and rewriting are the seams where a PATH fake proves nothing,
+  because the fake answers whatever it is asked and the question is what Git
+  considers reachable or actually produces. Those cases build a throwaway local
+  repository — synthetic branch names, no remote, nothing that leaves the
+  machine.
+- `internal/restack` is the only package allowed to rewrite history. The replay
+  range is `forkPoint..branch`; the fork point must be an ancestor of the
+  branch before any rewrite, or the range silently widens to include the base's
+  own commits. Every range handed to an engine starts at the topmost step's
+  fork point, and a branch whose parent is being rewritten is rewritten too.
+- restack is the only resumable operation, so every other mutating command
+  refuses while its journal exists. `--continue` recomputes from the refs
+  rather than resuming a stored queue, which is what makes the user's own
+  `git rebase --continue`/`--abort` harmless.
 
 ## Fixtures and data hygiene
 

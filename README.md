@@ -176,6 +176,9 @@ g2g graph --branch feature/login --scope graph   # the whole tree it belongs to
 # Remove edges. --scope subtree removes descendants too.
 g2g untrack --branch feature/auth --apply
 g2g untrack --branch feature/auth --scope subtree --apply
+
+# Replay commits so branch contents match that structure.
+g2g restack --scope graph --apply
 ```
 
 Parents are inferred from commit ancestry: the candidate parents of a branch
@@ -216,12 +219,71 @@ concurrent reader sees either the old graph or the new one. Its
 `storeSchemaVersion` is separate from the `--json` output's `schemaVersion`;
 an unrecognised store version fails closed rather than being rewritten.
 
-**gt2gh does not rebase.** It records structure and never repairs contents.
-Under squash merges this matters: when the bottom branch of a stack merges,
-GitHub retargets the child's pull request but the child still carries the
-original pre-squash commits, so its diff shows the parent's changes a second
-time. `g2g graph` reports the branches affected; something else has to fix
-them. See the design doc for the intended route when this changes.
+### Restacking
+
+`g2g restack` replays a stack's commits so its contents match that structure.
+This is what a squash merge upstream breaks: the child keeps its parent's
+pre-squash commits, so its pull request shows the parent's changes a second
+time and merging it reapplies work the trunk already has.
+
+```sh
+# Preview. Says exactly what will be replayed and whether it will conflict.
+g2g restack --scope graph
+
+# Replay.
+g2g restack --scope graph --apply
+
+# Move a fragment onto a different base instead of its recorded parent.
+g2g restack --branch feature/login --scope subtree --onto main --apply
+
+# Resume verbs, with the same meanings they have in git rebase.
+g2g restack --continue
+g2g restack --abort
+g2g restack --skip
+```
+
+**A clean replay never touches your working tree or checked-out branch.** The
+preview knows in advance whether the rewrite applies, so it can tell you
+before you commit to it:
+
+```
+Replays feature/auth and feature/login onto main.
+Applies without touching your working tree or checked-out branch.
+```
+
+When it cannot apply cleanly it says so *before* you apply, because rebasing
+then happens in your own working tree — resolving a conflict needs a tree you
+can edit with your own tools:
+
+```
+This will not apply cleanly. Applying rebases in your working tree and stops
+on the conflict for you to resolve, then g2g restack --continue.
+```
+
+Resolve the conflict, `git add` the files, and run `g2g restack --continue`.
+Using `git rebase --continue` or `git rebase --abort` yourself is fine too:
+`--continue` re-derives what is left from the refs rather than replaying a
+stored queue, so your own git commands simply change what remains to do.
+`g2g restack --abort` restores every branch to where it started, including
+ones an earlier step already moved.
+
+This is gt2gh's only resumable operation, so **every other command that
+changes anything refuses while a restack is unfinished** — mid-restack a
+branch may already have moved while the graph still records where it used to
+be.
+
+Two things a restack reports rather than doing quietly:
+
+- **A branch it empties.** If everything a branch carried is already upstream
+  it collapses onto its base and its pull request would show no changes.
+- **Commits the parent dropped.** They are dropped from the child too by
+  default. Where every one of them was genuinely removed rather than
+  rewritten, `--absorb` keeps them as the child's own instead — which rewrites
+  nothing and only re-records where the branch forks.
+
+A branch you rebased by hand is refused rather than replayed: its recorded
+fork point is no longer in its history, so the replay range would silently
+widen to include the base's own commits. Re-record it with `g2g track` first.
 
 ## Machine-readable output
 
@@ -369,6 +431,8 @@ declared trunk-to-selected path.
   PR seams.
 - `internal/graph`: the branch forest gt2gh owns itself — model, ancestry
   discovery, and the store under the Git common directory.
+- `internal/restack`: the only history-rewriting service, with the journal that
+  makes an interrupted rewrite resumable.
 - `internal/link`: Graphite-authoritative plan/apply orchestration.
 - `internal/push`: Git-only atomic stack-ref publication planning.
 - `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.

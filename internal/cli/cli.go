@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/gt2gh/internal/align"
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/githubstack"
@@ -46,6 +47,9 @@ type Options struct {
 	Restack restack.Service
 	// Sync brings a stack up to date with its remote by composing the others.
 	Sync syncer.Service
+	// Align keeps the gt2gh graph and Graphite's in step. It is the only
+	// service that writes Graphite.
+	Align align.Service
 
 	// Completions supplies branch and trunk candidates for shell completion.
 	Completions stack.Completions
@@ -105,6 +109,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Graph:       graphService,
 		Restack:     restackService,
 		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
+		Align:       align.Service{Graph: graphService, Graphite: graphiteClient, Configured: graphiteConfigured},
 		Unstacker:   githubClient,
 	})
 }
@@ -165,6 +170,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
 		root.AddCommand(newSync(options.Sync, presentation))
+	}
+	if options.Align.Graph.Store != nil && options.Align.Graphite != nil {
+		root.AddCommand(newMirror(options.Align, guard, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

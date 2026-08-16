@@ -224,6 +224,40 @@ func (c Client) ConflictedPaths(ctx context.Context) ([]string, error) {
 	return paths, nil
 }
 
+// FastForward advances a branch to a commit that already contains it.
+//
+// It refuses anything else. A trunk that has diverged — local commits, or an
+// upstream rewrite — is not something to merge or reset behind the user's
+// back, and the difference between "you are behind" and "you have diverged" is
+// exactly what they need to be told.
+func (c Client) FastForward(ctx context.Context, branch, to string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	if err := safeRef(to); err != nil {
+		return err
+	}
+	current, err := c.Resolve(ctx, branch)
+	if err != nil {
+		return err
+	}
+	target, err := c.Resolve(ctx, to)
+	if err != nil {
+		return err
+	}
+	if current == target {
+		return nil
+	}
+	contains, err := c.IsAncestor(ctx, branch, to)
+	if err != nil {
+		return err
+	}
+	if !contains {
+		return fmt.Errorf("%s has diverged from %s and cannot be fast-forwarded; reconcile it yourself", branch, to)
+	}
+	return c.UpdateBranch(ctx, branch, target)
+}
+
 // ResetKeep points the index and working tree at the current branch tip.
 //
 // A replay moves refs without touching the working tree, so a user standing on

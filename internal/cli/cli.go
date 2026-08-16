@@ -20,6 +20,7 @@ import (
 	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
+	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
 // Options are the dependencies a root command is built from.
@@ -43,6 +44,8 @@ type Options struct {
 	// Restack rewrites branch contents to match that structure. It is the only
 	// service allowed to change history.
 	Restack restack.Service
+	// Sync brings a stack up to date with its remote by composing the others.
+	Sync syncer.Service
 
 	// Completions supplies branch and trunk candidates for shell completion.
 	Completions stack.Completions
@@ -71,6 +74,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	// Precedence is declared here and nowhere else. Adopting a branch into
 	// gt2gh's own store is the user saying they want gt2gh to own it, so that
 	// is asked first; Graphite answers for everything it still tracks.
+	restackService := restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}}
 	selector := stack.Resolver{
 		Git: gitClient,
 		Selectors: []stack.Selector{
@@ -94,7 +98,8 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
 		Completions: stack.Completions{Git: gitClient, Graphite: graphiteClient},
 		Graph:       graphService,
-		Restack:     restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}},
+		Restack:     restackService,
+		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
 		Unstacker:   githubClient,
 	})
 }
@@ -152,6 +157,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Restack.Git != nil && options.Restack.Journal != nil {
 		root.AddCommand(newRestack(options.Restack, presentation))
+	}
+	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
+		root.AddCommand(newSync(options.Sync, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

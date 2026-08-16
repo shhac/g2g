@@ -1,8 +1,8 @@
 # Restack
 
-**Status:** designed, not implemented. Everything below was verified against
-real Git on local repository pairs; the observed behaviour is noted where it
-decided the design.
+**Status:** implemented in v0.10. Everything below was verified against real
+Git on local repository pairs; the observed behaviour is noted where it decided
+the design.
 
 ## Problem
 
@@ -46,6 +46,86 @@ trunk". Those coincide in a simple linear stack and diverge everywhere else —
 a branch rooted on `release-2x` must go back to `release-2x`, and a stack with
 an unmerged branch below the merged one reparents onto that branch. The rule
 needs no notion of a trunk at all.
+
+## Classifying a branch takes two checks, not one
+
+The fork point detects *"my parent moved"*. It cannot detect *"I moved"*, and
+relying on it alone reports a manually restacked branch as **aligned** — the
+fork point still equals the parent's tip because the parent never moved.
+
+Both probes are needed:
+
+| fork point == parent tip | parent is ancestor of branch | state |
+|---|---|---|
+| yes | yes | aligned |
+| no | yes | needs restack (the ordinary case) |
+| yes | no | moved off its recorded parent |
+| no | no | both moved |
+
+### The guard
+
+Before any rebase:
+
+> the fork point must be an ancestor of the branch, or refuse.
+
+This is a precondition, not a warning. When a branch has been manually
+restacked the recorded fork point is no longer an ancestor, and the range
+`forkPoint..branch` then silently widens to include the *new base's own
+commits* — observed replaying a trunk commit back onto the trunk. The failure
+is silent duplication, so it must be impossible rather than unlikely.
+
+The remedy for every "our record is behind" state is the same single command:
+`g2g track --branch <b> --parent <p>`, which re-records the parent and the fork
+point.
+
+### Keep the fork point reachable
+
+The fork point is stored as a ref under `refs/g2g/forkpoints/`, not only as a
+string in the graph file. Once a merged parent's branch is deleted its old tip
+is unreachable and eligible for garbage collection — precisely the moment the
+fork point becomes the only way to compute the range.
+
+## Commits the parent dropped
+
+When a parent is rewritten, the child still carries whatever the parent
+dropped. The **orphan set** is `newParentTip..forkPoint`, and `git cherry`
+separates two very different situations within it:
+
+- `+` — genuinely dropped: no equivalent content in the parent
+- `-` — rewritten: the same content exists in the parent under a new object id
+
+| Where the commit was removed | Orphan set | Ambiguous |
+|---|---|---|
+| tip of the parent | just the dropped commit, all `+` | yes |
+| tail or middle of the parent | the whole rewritten chain: one `+`, several `-` | no |
+
+**Default is to drop.** Removing a commit is far more commonly what was meant
+than moving it across a branch boundary, and dropping is the only correct
+answer whenever any orphan is `-`: absorbing then hands the child stale copies
+alongside the parent's rewritten ones. The `-` orphans need no special handling
+in the drop path, since the rebase already skips them by patch id.
+
+`--absorb` is offered **only when every orphan is `+`**, which in practice means
+the commit was removed from the parent's tip. It is a metadata-only operation:
+the parent's new tip is already an ancestor of the child, so nothing is
+rewritten and only the fork point is re-recorded. The costly option is the
+default one.
+
+A preview must always name dropped orphans. Silently changing what a branch
+contains is the one thing this command must never do.
+
+## Restack can empty a branch
+
+Rebase and replay both drop commits whose patch content is already upstream.
+That is exactly what makes squash-merge cleanup work — a fully merged branch
+correctly collapses onto its new base — but it means a restack can leave a
+branch identical to its parent, whose pull request would then show no changes.
+That is reported, not silent, and the suggested remedy is `g2g untrack`.
+
+The same mechanism can drop a commit whose content coincidentally matches
+something upstream. The preview counts what will be replayed and what will be
+skipped, which is possible because `git replay --ref-action=print` produces the
+result without mutating anything.
 
 ## Two engines
 

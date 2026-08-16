@@ -164,10 +164,14 @@ repository may have several roots. See
 model, the storage decisions, and what is deliberately left out.
 
 ```sh
-# Preview the candidate parents of the current branch. It refuses to choose.
+# Record the whole stack you are on, in one step. This is where to start.
+g2g track --stack
+g2g track --stack --trunk main --apply
+
+# Preview the candidate parents of one branch. It refuses to choose.
 g2g track
 
-# Record a parent. Preview first; --apply writes.
+# Record one parent. Preview first; --apply writes.
 g2g track --branch feature/login --parent feature/auth
 g2g track --branch feature/login --parent feature/auth --apply
 
@@ -183,6 +187,15 @@ g2g untrack --branch feature/auth --scope subtree --apply
 # Replay commits so branch contents match that structure.
 g2g restack --scope graph --apply
 ```
+
+`--stack` records a whole existing stack at once, which is almost always what a
+repository that predates gt2gh needs. You assert one thing — the trunk, and even
+that is inferred when only one recorded root is an ancestor — and the shape
+follows from commit ancestry. It records a **forest, not a chain**: branches
+hanging off the stack join it, and branches hanging off those join in turn,
+while a branch that merely shares the trunk is left alone, being a separate
+stack rather than part of this one. Where ancestry cannot order two branches it
+refuses and names them, exactly as `track` does.
 
 Parents are inferred from commit ancestry: the candidate parents of a branch
 are the local branches its commits sit on top of, ordered nearest first.

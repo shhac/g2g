@@ -17,7 +17,7 @@ import (
 
 func newSubmit(service submit.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	options := submitOptions{guard: guard}
-	cmd := &cobra.Command{Use: "submit", Short: "Publish a stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "submit", GroupID: groupPublish, Short: "Publish a stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return options.run(cmd, service, presentation.resolve(cmd))
 	}

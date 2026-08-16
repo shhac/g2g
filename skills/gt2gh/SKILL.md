@@ -91,7 +91,13 @@ description: |
   never observed.
 - `track` must never choose a parent. Preview the ordered candidates and block.
   Recording a structure every later command trusts is not a place for a good
-  guess.
+  guess. `track --stack` is not an exception: the user asserts the trunk and
+  ancestry supplies the rest, and it refuses wherever ancestry cannot order two
+  branches. It records a forest, never a chain — a branch whose only selected
+  ancestor is the trunk is a separate stack and must be left alone.
+- A trunk is a branch nothing sits under. `Graph.Adopt` owns both halves of that
+  invariant; do not pair `Track` with a hand-rolled promotion step, and never
+  take the trunk list from the graph as it was before the edge was recorded.
 - `untrack` must never reparent the children it strands. Report them.
 - `mirror` and `import` must never remove a branch from the gt2gh graph.
   Alignment keeps the two records in step; it does not transfer ownership.

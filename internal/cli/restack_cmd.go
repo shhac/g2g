@@ -27,9 +27,10 @@ func (o restackOptions) resuming() bool { return o.resume || o.abort || o.skip }
 func newRestack(service restack.Service, presentation Presentation) *cobra.Command {
 	var options restackOptions
 	cmd := &cobra.Command{
-		Use:   "restack",
-		Short: "Replay a stack's commits so its contents match its recorded structure",
-		Args:  cobra.NoArgs,
+		Use:     "restack",
+		GroupID: groupMaintain,
+		Short:   "Replay a stack's commits so its contents match its recorded structure (preview by default)",
+		Args:    cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)

@@ -12,10 +12,11 @@ import (
 func newImport(service align.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
-		Use:   "import",
-		Short: "Adopt the branches Graphite declares into the gt2gh graph",
-		Long: "Records what Graphite declares, so gt2gh can answer for those branches and restack them.\n\n" +
-			"Adoption is the authority claim, so gt2gh answers for every branch this adopts from then on, " +
+		Use:     "import",
+		GroupID: groupStructure,
+		Short:   "Adopt the branches Graphite declares into the g2g graph (preview by default)",
+		Long: "Records what Graphite declares, so g2g can answer for those branches and restack them.\n\n" +
+			"Adoption is the authority claim, so g2g answers for every branch this adopts from then on, " +
 			"and --from graphite becomes the only way to see Graphite's view of them. " +
 			"Nothing is written to Graphite and nothing is removed from either record.",
 		Args: cobra.NoArgs,
@@ -35,9 +36,9 @@ func newImport(service align.Service, guard func(context.Context) error, present
 			noOp:     importIsNoOp,
 			notices: flowNotices{
 				preview:  "Rerun with --apply to adopt them.",
-				noOp:     "Graphite declares nothing the gt2gh graph does not already record. Nothing to do.",
+				noOp:     "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
 				applied:  "Adopted.",
-				changed:  "Graphite still tracks these branches; gt2gh is what answers for them now.",
+				changed:  "Graphite still tracks these branches; g2g is what answers for them now.",
 				recovery: "The graph store may or may not have been written · rerun g2g import to see what is left.",
 			},
 		}

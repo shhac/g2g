@@ -104,7 +104,7 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 	}
 	repoOutput, err := c.Runner.Run(ctx, "gh", "repo", "view", "--json", "nameWithOwner")
 	if err != nil {
-		return nil, commandError("gh repo view", err, repoOutput)
+		return nil, repositoryError(err, repoOutput)
 	}
 	repo, err := parseRepositoryName(repoOutput)
 	if err != nil {
@@ -132,6 +132,26 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 		)
 	}
 	return prs, nil
+}
+
+// repositoryError explains why GitHub could not be reached, rather than
+// reporting the exit status of the process that found out.
+//
+// This is the first thing a reader sees in a repository that has no GitHub
+// remote, and "gh repo view failed: exit status 1" tells them nothing they can
+// act on. The commands that need a remote say so, and the ones that do not are
+// named, because "this tool needs GitHub" would be false.
+func repositoryError(err error, output []byte) error {
+	detail := strings.TrimSpace(string(output))
+	switch {
+	case strings.Contains(detail, "no git remotes found"):
+		return fmt.Errorf("this repository has no remote, so there are no pull requests to read · g2g graph, track, restack and mirror work without one")
+	case strings.Contains(detail, "not a git repository"):
+		return fmt.Errorf("this is not a Git repository")
+	case strings.Contains(strings.ToLower(detail), "authentication") || strings.Contains(detail, "gh auth login"):
+		return fmt.Errorf("GitHub rejected the request · run gh auth login, then rerun")
+	}
+	return commandError("gh repo view", err, output)
 }
 
 func parseRepositoryName(output []byte) (string, error) {

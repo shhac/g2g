@@ -37,7 +37,7 @@ func (o *graphOptions) registerScope(cmd *cobra.Command, scopes []graph.Scope, u
 
 func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 	var selection graphOptions
-	cmd := &cobra.Command{Use: "graph", Short: "Inspect the branch graph gt2gh owns, independently of Graphite", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "graph", GroupID: groupStructure, Short: "Inspect the branch graph g2g owns, independently of Graphite (read-only)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "graph", "read_only", selection.branch, ""))
@@ -60,8 +60,9 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 	var wholeStack bool
 	var apply bool
 	cmd := &cobra.Command{
-		Use:   "track",
-		Short: "Record a branch's parent in the g2g-owned graph (preview by default)",
+		Use:     "track",
+		GroupID: groupStructure,
+		Short:   "Record a branch's parent in the g2g-owned graph (preview by default)",
 		Long: "Records where a branch sits, so every other command knows the structure.\n\n" +
 			"--parent records one branch. --stack records the whole ancestry between a trunk and the " +
 			"selected branch in one go, which is usually what a stack that already exists needs: " +
@@ -92,7 +93,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 				preview:  "Rerun with --apply to record this edge.",
 				noOp:     "The graph already records this parent. Nothing to do.",
 				applied:  "Recorded.",
-				changed:  "The gt2gh-owned graph now records this parent.",
+				changed:  "The g2g-owned graph now records this parent.",
 				recovery: "The graph store may or may not have been written.",
 			},
 		}
@@ -148,7 +149,7 @@ func trackIsNoOp(plan graph.TrackPlan) bool {
 func newUntrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
-	cmd := &cobra.Command{Use: "untrack", Short: "Remove a branch from the gt2gh-owned graph", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "untrack", GroupID: groupStructure, Short: "Remove a branch from the g2g-owned graph (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		ctx := commandContext(cmd.Context(), cmd, "untrack", applyMode(apply), selection.branch, "")
@@ -170,7 +171,7 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 				preview:  "Rerun with --apply to remove these edges.",
 				noOp:     "No selected branch is tracked. Nothing to do.",
 				applied:  "Removed.",
-				changed:  "The gt2gh-owned graph no longer records these parents.",
+				changed:  "The g2g-owned graph no longer records these parents.",
 				recovery: "The graph store may or may not have been written.",
 			},
 		}

@@ -204,7 +204,7 @@ func TestImportBlocksAndNamesBothRecords(t *testing.T) {
 	if !strings.Contains(stdout, "Apply blocked") {
 		t.Errorf("preview is not blocked by the disagreement:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "gt2gh says") || !strings.Contains(stdout, "Graphite says") {
+	if !strings.Contains(stdout, "g2g says") || !strings.Contains(stdout, "Graphite says") {
 		t.Errorf("preview does not name both records:\n%s", stdout)
 	}
 

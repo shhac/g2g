@@ -214,7 +214,7 @@ func checkVersion(output []byte) (string, bool, error) {
 		values[index] = value
 	}
 	if values[0] != supportedMajor {
-		return "", false, fmt.Errorf("unsupported Graphite CLI major version %d; gt2gh supports major version %d", values[0], supportedMajor)
+		return "", false, fmt.Errorf("unsupported Graphite CLI major version %d; g2g supports major version %d", values[0], supportedMajor)
 	}
 	return version, version == KnownVersion, nil
 }

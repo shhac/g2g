@@ -99,3 +99,50 @@ func TestHelpContainsWhatTheFormulaAsserts(t *testing.T) {
 		t.Errorf("release.yml no longer asks for %q; the constant above and the workflow have to agree", helpMatch)
 	}
 }
+
+// The help is the first thing a newcomer reads, and thirteen verbs listed
+// alphabetically say nothing about where to start. Every command belongs to a
+// group, so a command added without one is visible rather than quietly landing
+// in "Additional Commands".
+func TestEveryCommandIsGroupedExceptTheBuiltIns(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	root := New("v0.0.0-test", &stdout, &stderr)
+
+	ungrouped := make([]string, 0)
+	for _, command := range root.Commands() {
+		switch command.Name() {
+		case "help", "completion":
+			continue
+		}
+		if command.GroupID == "" {
+			ungrouped = append(ungrouped, command.Name())
+		}
+	}
+	if len(ungrouped) != 0 {
+		t.Errorf("commands with no help group: %v", ungrouped)
+	}
+}
+
+// A mutating command previews by default and says so; a read-only one says
+// that instead. Getting this wrong is how a reader learns to distrust the
+// labels entirely.
+func TestCommandsSayWhetherTheyPreviewOrRead(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	root := New("v0.0.0-test", &stdout, &stderr)
+
+	for _, command := range root.Commands() {
+		switch command.Name() {
+		case "help", "completion":
+			continue
+		}
+		mutates := command.Flags().Lookup("apply") != nil
+		labelled := strings.Contains(command.Short, "(preview by default)")
+		readOnly := strings.Contains(command.Short, "(read-only)")
+		if mutates && !labelled {
+			t.Errorf("%s takes --apply but does not say it previews by default: %q", command.Name(), command.Short)
+		}
+		if !mutates && !readOnly {
+			t.Errorf("%s takes no --apply but does not say it is read-only: %q", command.Name(), command.Short)
+		}
+	}
+}

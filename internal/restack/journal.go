@@ -99,7 +99,7 @@ func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
 		return Record{}, false, fmt.Errorf("parse restack journal %s: %w", path, err)
 	}
 	if record.SchemaVersion != JournalSchemaVersion {
-		return Record{}, false, fmt.Errorf("restack journal %s has schema version %d, which this gt2gh does not support (expected %d)", path, record.SchemaVersion, JournalSchemaVersion)
+		return Record{}, false, fmt.Errorf("restack journal %s has schema version %d, which this g2g does not support (expected %d)", path, record.SchemaVersion, JournalSchemaVersion)
 	}
 	return record, true, nil
 }

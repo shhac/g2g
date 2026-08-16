@@ -78,7 +78,7 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 	plan := classify(adopted, forest, local)
 	plan.Updated = adopted
 	if len(plan.Conflicts) != 0 {
-		plan.Blocked = "the gt2gh graph already records a different parent · untrack to take Graphite's answer, or leave it as it is"
+		plan.Blocked = "the g2g graph already records a different parent · untrack to take Graphite's answer, or leave it as it is"
 		return plan, nil
 	}
 	if plan.Updated, plan.NewTrunks, err = s.adopt(ctx, adopted, plan.Adopt); err != nil {

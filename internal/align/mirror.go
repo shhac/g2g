@@ -40,7 +40,7 @@ type Service struct {
 	// repository that has never used it. A repository with no Graphite also has
 	// no trunk, so a mirror into it would be blocked for want of a root in any
 	// case. Refusing first reaches the same answer without the side effect, and
-	// keeps "no gt2gh command enrols a repository" true without exception.
+	// keeps "no g2g command enrols a repository" true without exception.
 	Configured func(ctx context.Context) (bool, error)
 }
 
@@ -129,7 +129,7 @@ func (s Service) PlanMirror(ctx context.Context, prune bool) (MirrorPlan, error)
 	// reads is composed in the presentation layer, and composing this one here
 	// meant one preview printed two different phrasings of the same idea.
 	if plan.UnknownRoots = unknownRoots(adopted, forest); len(plan.UnknownRoots) != 0 {
-		plan.Blocked = "Graphite does not track every root of the gt2gh graph, and cannot be told to without being given a parent"
+		plan.Blocked = "Graphite does not track every root of the g2g graph, and cannot be told to without being given a parent"
 		return plan, nil
 	}
 	plan.Writes = writes(adopted, forest)

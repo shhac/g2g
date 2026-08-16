@@ -13,7 +13,7 @@ import (
 
 func newStatus(service link.Service, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var selection stackOptions
-	cmd := &cobra.Command{Use: "status", Short: "Inspect a stack, its pull requests, and native GitHub membership", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "status", GroupID: groupPublish, Short: "Inspect a stack, its pull requests, and native GitHub membership (read-only)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, selection.trunk))

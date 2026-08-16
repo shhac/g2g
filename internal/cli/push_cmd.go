@@ -14,9 +14,10 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
-		Use:   "push",
-		Short: "Atomically push a stack's local refs (preview by default)",
-		Args:  cobra.NoArgs,
+		Use:     "push",
+		GroupID: groupPublish,
+		Short:   "Atomically push a stack's local refs (preview by default)",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
 			mode := "preview"

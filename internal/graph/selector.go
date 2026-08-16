@@ -65,7 +65,7 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 // base than the one asked for is how a stack gets pushed at the wrong thing.
 func selectBase(root, target, requested string) (string, string, error) {
 	if requested == "" {
-		return root, "gt2gh-owned graph", nil
+		return root, "g2g-owned graph", nil
 	}
 	if requested != root {
 		return "", "", fmt.Errorf("requested trunk %q is not the base of %q's recorded path (%s) · run g2g track to record a different parent", requested, target, root)

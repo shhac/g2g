@@ -22,11 +22,11 @@ func importView(plan align.ImportPlan) stackView {
 	if len(plan.Adopt) == 0 {
 		return agreementNote(view, plan)
 	}
-	view = view.note("Adopts "+branchList(plan.Claims())+" into the gt2gh graph.", severityOK)
-	view = view.note(fmt.Sprintf("gt2gh answers for %s from now on · run g2g status --from graphite to see Graphite's view of %s. Graphite keeps tracking %s.",
+	view = view.note("Adopts "+branchList(plan.Claims())+" into the g2g graph.", severityOK)
+	view = view.note(fmt.Sprintf("g2g answers for %s from now on · run g2g status --from graphite to see Graphite's view of %s. Graphite keeps tracking %s.",
 		pick(len(plan.Adopt), "it", "them"), pick(len(plan.Adopt), "it", "them"), pick(len(plan.Adopt), "it", "them")), severityWarn)
 	if len(plan.NewTrunks) != 0 {
-		view = view.note("Records "+branchList(plan.NewTrunks)+" as "+pick(len(plan.NewTrunks), "a trunk", "trunks")+" of the gt2gh forest.", severityNeutral)
+		view = view.note("Records "+branchList(plan.NewTrunks)+" as "+pick(len(plan.NewTrunks), "a trunk", "trunks")+" of the g2g forest.", severityNeutral)
 	}
 	return agreementNote(view, plan)
 }
@@ -43,7 +43,7 @@ func agreementNote(view stackView, plan align.ImportPlan) stackView {
 func conflictNote(plan align.ImportPlan) string {
 	note := "The two records disagree about " + branchList(conflictedBranches(plan)) + ":"
 	for _, conflict := range plan.Conflicts {
-		note += fmt.Sprintf("\n  %s · gt2gh says %s, Graphite says %s", conflict.Branch, conflict.Ours, conflict.Theirs)
+		note += fmt.Sprintf("\n  %s · g2g says %s, Graphite says %s", conflict.Branch, conflict.Ours, conflict.Theirs)
 	}
 	return note
 }

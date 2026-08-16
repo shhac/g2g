@@ -113,7 +113,7 @@ func decode(contents []byte, path string) (Graph, error) {
 	// store optimistically is how a newer gt2gh's structure gets silently
 	// rewritten by an older one.
 	if doc.StoreSchemaVersion != StoreSchemaVersion {
-		return Graph{}, fmt.Errorf("graph store %s has schema version %d, which this gt2gh does not support (expected %d)", path, doc.StoreSchemaVersion, StoreSchemaVersion)
+		return Graph{}, fmt.Errorf("graph store %s has schema version %d, which this g2g does not support (expected %d)", path, doc.StoreSchemaVersion, StoreSchemaVersion)
 	}
 	loaded := Graph{Edges: make(map[string]Edge, len(doc.Branches)), Trunks: doc.Trunks}
 	for branch, stored := range doc.Branches {

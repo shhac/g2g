@@ -20,7 +20,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	var selection stackOptions
 	var apply bool
 	var number int
-	cmd := &cobra.Command{Use: "unlink", Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "unlink", GroupID: groupPublish, Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		if cmd.Flags().Changed("stack-number") && number <= 0 {

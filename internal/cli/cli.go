@@ -24,6 +24,15 @@ import (
 	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
+// Command groups order the help by the job a reader is trying to do. Thirteen
+// verbs listed alphabetically say nothing about where to start; three headings
+// say most of it.
+const (
+	groupStructure = "structure"
+	groupPublish   = "publish"
+	groupMaintain  = "maintain"
+)
+
 // Options are the dependencies a root command is built from.
 //
 // A zero service means its command is not registered. That replaces four
@@ -131,8 +140,12 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 
 	root := &cobra.Command{
-		Use:               options.CommandName,
-		Short:             "Manage stacked branches and project them onto GitHub",
+		Use:   options.CommandName,
+		Short: "Manage stacked branches and project them onto GitHub",
+		Long: "Manage stacked branches and project them onto GitHub.\n\n" +
+			"Structure is recorded locally and needs no Graphite. Start with `" + options.CommandName +
+			" track --stack`, which records the stack you are on in one step, then `" + options.CommandName +
+			" graph` to see it.",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,
@@ -150,6 +163,11 @@ func NewWithOptions(options Options) *cobra.Command {
 
 	// Completion candidates come from the structure sources themselves, so no
 	// command has to depend on another to complete a flag.
+	root.AddGroup(
+		&cobra.Group{ID: groupStructure, Title: "Recording structure:"},
+		&cobra.Group{ID: groupPublish, Title: "Publishing to GitHub:"},
+		&cobra.Group{ID: groupMaintain, Title: "Keeping it true:"},
+	)
 	completions := options.Completions
 	root.AddCommand(newLink(options.Link, completions, guard, presentation))
 	root.AddCommand(newStatus(options.Link, completions, presentation))

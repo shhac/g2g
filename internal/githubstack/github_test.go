@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -242,5 +243,39 @@ exit 1`,
 	}
 	if _, statErr := os.Stat(string(path)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("body file %q still exists or could not be checked: %v", path, statErr)
+	}
+}
+
+// A subprocess exit status is not an explanation. These are the three failures
+// a reader actually hits, and each should say what to do about it.
+func TestRepositoryErrorExplainsRatherThanReportsExitStatus(t *testing.T) {
+	for name, test := range map[string]struct{ output, want string }{
+		"no remote":  {"no git remotes found", "no remote"},
+		"not a repo": {"fatal: not a git repository", "not a Git repository"},
+		"auth":       {"gh auth login required", "gh auth login"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := repositoryError(fmt.Errorf("exit status 1"), []byte(test.output))
+			if err == nil {
+				t.Fatal("repositoryError() = nil")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("error = %v, want it to contain %q", err, test.want)
+			}
+			if strings.Contains(err.Error(), "exit status") {
+				t.Errorf("error = %v, want no exit status in a user-facing message", err)
+			}
+		})
+	}
+}
+
+// An unrecognised failure still has to reach the user, with its command named.
+func TestAnUnrecognisedRepositoryFailureKeepsItsCommand(t *testing.T) {
+	err := repositoryError(fmt.Errorf("exit status 1"), []byte("synthetic unexplained failure"))
+	if err == nil {
+		t.Fatal("repositoryError() = nil")
+	}
+	if !strings.Contains(err.Error(), "gh repo view") {
+		t.Errorf("error = %v, want the command named", err)
 	}
 }

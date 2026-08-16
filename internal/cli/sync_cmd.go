@@ -15,9 +15,10 @@ func newSync(service syncer.Service, presentation Presentation) *cobra.Command {
 	var prune bool
 	var apply bool
 	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Bring a stack up to date with its remote: fetch, advance the base, replay",
-		Args:  cobra.NoArgs,
+		Use:     "sync",
+		GroupID: groupMaintain,
+		Short:   "Bring a stack up to date with its remote: fetch, advance the base, replay (preview by default)",
+		Args:    cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
@@ -42,7 +43,7 @@ func newSync(service syncer.Service, presentation Presentation) *cobra.Command {
 		return applySync(cmd, ctx, budgets, service, plan, prune, presentation)
 	}
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
-	cmd.Flags().BoolVar(&prune, "prune", true, "forget branches whose work has landed (the graph only; no branch is deleted)")
+	cmd.Flags().BoolVar(&prune, "prune", true, "forget branches whose work has landed, in the g2g graph only · no branch is deleted")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
 	selection.registerBranch(cmd, service.Graph)
 	return cmd

@@ -635,11 +635,11 @@ func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 	}
 }
 
-// Resuming into a second conflicting round must hand the engine a range from
-// the topmost fork point, exactly as the first round did. Using the last
-// step's own range replays only the top branch's commits and drops everything
-// below it.
-func TestContinuingIntoAnotherRoundReplaysFromTheTopmostForkPoint(t *testing.T) {
+// The resumable engine moves one line of descent per invocation, so a stack is
+// rebased one branch at a time onto the parent it now has. Handing it the whole
+// chain and asking --update-refs to carry the intermediate branches works on
+// some Git versions and not others.
+func TestContinuingIntoAnotherRoundRebasesEachBranchOnItsOwnParent(t *testing.T) {
 	git := stackGit()
 	git.previewClean = false
 	git.inProgress = true
@@ -651,14 +651,16 @@ func TestContinuingIntoAnotherRoundReplaysFromTheTopmostForkPoint(t *testing.T) 
 		t.Fatalf("Continue() error = %v", err)
 	}
 
-	if len(git.rebases) != 1 {
-		t.Fatalf("rebases = %d, want one more round", len(git.rebases))
+	// One rebase per branch, bottom-up, each replaying only its own commits
+	// onto the parent it now has.
+	if len(git.rebases) != 2 {
+		t.Fatalf("rebases = %v, want one per branch", git.rebases)
 	}
-	if got := git.rebases[0]; got.From != "trunk-old" {
-		t.Errorf("range starts at %q, want the topmost fork point trunk-old", got.From)
+	if got := git.rebases[0]; got.From != "trunk-old" || got.To != "synthetic-a" {
+		t.Errorf("first rebase = %v, want synthetic-a from its own fork point", got)
 	}
-	if got := git.rebases[0]; got.To != "synthetic-b" {
-		t.Errorf("range ends at %q, want the tip of the chain", got.To)
+	if got := git.rebases[1]; got.From != "a-old" || got.To != "synthetic-b" {
+		t.Errorf("second rebase = %v, want synthetic-b from its own fork point", got)
 	}
 }
 

@@ -145,13 +145,23 @@ func (c Client) Rebase(ctx context.Context, onto string, replayed Range) error {
 	if err := safeRef(replayed.To); err != nil {
 		return err
 	}
-	// --no-reapply-cherry-picks is not a preference, it is what makes this
-	// engine agree with the other one. A commit whose content is already in
-	// the new base must be dropped — that is precisely what repairs a stack
-	// after a squash merge — and older Git reapplies it by default, which
-	// conflicts every time on exactly the case this command exists for.
+	// Both flags exist to stop this depending on which Git is installed, and
+	// neither is a preference.
+	//
+	// --no-reapply-cherry-picks drops a commit whose content is already in the
+	// new base, which is precisely what repairs a stack after a squash merge;
+	// older Git reapplies it instead.
+	//
+	// --empty=drop decides what happens when a commit becomes empty as a
+	// result. Older Git stops and waits, which reads as a conflict but leaves
+	// no conflicted file and nothing for a person to resolve — the commit
+	// simply has nothing left to say. Newer Git drops it and carries on.
+	//
+	// --update-refs is deliberately absent: each branch is rebased on its own,
+	// so there are no intermediate refs to carry, and it is the part that
+	// behaved differently across versions.
 	_, err := c.run(ctx, "rebase", "--onto", onto, replayed.From, replayed.To,
-		"--update-refs", "--no-reapply-cherry-picks")
+		"--no-reapply-cherry-picks", "--empty=drop")
 	return err
 }
 

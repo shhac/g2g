@@ -99,17 +99,6 @@ func (p Plan) onto() string {
 	return rewriting[0].Base
 }
 
-// rebaseRange is what the resumable engine takes: one range covering the whole
-// chain, from the topmost fork point to the tip.
-//
-// There is deliberately no per-step range. A range built from a single step
-// replays only that branch's own commits and silently drops everything below
-// it, and having one available is how that mistake gets made.
-func (p Plan) rebaseRange() localgit.Range {
-	rewriting := p.rewriting()
-	return localgit.Range{From: rewriting[0].ForkPoint, To: rewriting[len(rewriting)-1].Branch}
-}
-
 // Replaying lists the branches whose commits are actually replayed, which is
 // not every branch in the plan: one that collapses only has its ref moved.
 func (p Plan) Replaying() []string {

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
+	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/graph"
 )
 
@@ -150,10 +151,35 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 		return err
 	}
 	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	if err := s.Git.Rebase(ctx, plan.onto(), plan.rebaseRange()); err != nil {
+	if err := s.rebaseEach(ctx, plan); err != nil {
 		return err
 	}
 	return s.finish(ctx, record)
+}
+
+// rebaseEach replays one branch at a time, bottom-up.
+//
+// The engines model the work differently and are given it differently. Replay
+// takes the whole set at once and needs one shared origin. Rebase moves a
+// single line of descent, so each branch is rebased onto the parent it now
+// has, re-resolved after that parent has itself moved. Handing rebase the
+// whole chain and asking --update-refs to carry the intermediate branches
+// works on some versions and not others, and buys nothing that sequencing
+// does not.
+//
+// Stopping part-way is the expected outcome, not a failure: the journal is
+// already written and --continue re-derives what is left.
+func (s Service) rebaseEach(ctx context.Context, plan Plan) error {
+	for _, step := range plan.rewriting() {
+		base, err := s.Git.Resolve(ctx, step.Parent)
+		if err != nil {
+			return err
+		}
+		if err := s.Git.Rebase(ctx, base, localgit.Range{From: step.ForkPoint, To: step.Branch}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // recordStructure writes back what the rewrite actually produced: any branch
@@ -270,7 +296,7 @@ func (s Service) finish(ctx context.Context, record Record) error {
 			}
 			return s.Journal.Clear(ctx)
 		}
-		return s.Git.Rebase(ctx, plan.onto(), plan.rebaseRange())
+		return s.rebaseEach(ctx, plan)
 	}
 	// The reparenting comes from the record rather than the fresh plan: once
 	// the rewrite has happened the branch no longer sits where the graph says,

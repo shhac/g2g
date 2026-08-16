@@ -154,6 +154,20 @@ so it exercises the resumable engine and never the preview one. The cases that
 can only hold with replay skip themselves by asking the same question the code
 does. Both engines are exercised by forcing the gate closed locally.
 
+**The engines are driven differently because they model the work
+differently.** Replay takes the whole set at once and needs one shared origin.
+Rebase moves a single line of descent, so each branch is rebased on its own,
+bottom-up, onto the parent it now has. Handing rebase the whole chain and
+asking `--update-refs` to carry the intermediate branches works on some
+versions and not others, and buys nothing sequencing does not.
+
+Two rebase flags exist only to stop behaviour depending on which Git is
+installed. `--no-reapply-cherry-picks` drops a commit whose content is already
+in the new base; older Git reapplies it. `--empty=drop` decides what happens
+when a commit becomes empty as a result; older Git stops and waits, which
+reads as a conflict but leaves no conflicted file and nothing to resolve — the
+commit simply has nothing left to say.
+
 **Neither engine is trusted with an already-upstream commit.** Whether a
 rewrite drops one or reapplies it varies by version — `git replay` changed
 between 2.54 and 2.55, and `git rebase` differs by backend — and it is exactly

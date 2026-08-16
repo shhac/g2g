@@ -98,11 +98,18 @@ requests left on a reused branch name are treated as history: they never block
 skipping the branch. Two or more open pull requests for one branch is the only
 ambiguity, and it fails closed.
 
-`gt2gh` never guesses a trunk from its name. It infers the only
-Graphite-declared trunk on the selected ancestry and shows it prominently. If
-that ancestry has multiple declared trunks, it fails closed and requires
-`--trunk <branch>`; an override must be both declared by Graphite and an
-ancestor of the selected branch.
+`gt2gh` never guesses a trunk from its name. On a Graphite-described stack it
+infers the only Graphite-declared trunk on the selected ancestry and shows it
+prominently. If that ancestry has multiple declared trunks, it fails closed and
+requires `--trunk <branch>`; an override must be both declared by Graphite and
+an ancestor of the selected branch. A g2g-owned path has exactly one root, so
+`--trunk` can only confirm it — naming any other branch is refused rather than
+ignored.
+
+Shell completion for `--branch` and `--trunk` draws on whichever sources
+describe the repository, so it works with no Graphite installed. It is
+read-only and checkout-free, and it never runs Graphite in a repository that
+does not already use it.
 
 Preview renders the selected stack graph once and always shows the exact
 `gh stack link` command it validated, including when apply is blocked: the

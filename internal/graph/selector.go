@@ -46,13 +46,71 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 	if err := validatePath(discovery.Branches, command); err != nil {
 		return stack.Snapshot{}, err
 	}
+	base, baseSource, err := selectBase(discovery.Branches[0], discovery.Target, selection.Trunk)
+	if err != nil {
+		return stack.Snapshot{}, err
+	}
 	return stack.Snapshot{
 		Target:       discovery.Target,
 		TargetSource: discovery.TargetSource,
-		Base:         discovery.Branches[0],
-		BaseSource:   "gt2gh-owned graph",
+		Base:         base,
+		BaseSource:   baseSource,
 		Branches:     append([]string(nil), discovery.Branches[1:]...),
 	}, nil
+}
+
+// selectBase applies --trunk to a recorded path. A path has exactly one root,
+// so the flag can only confirm the base gt2gh already derived; naming any other
+// branch is refused rather than ignored, because silently using a different
+// base than the one asked for is how a stack gets pushed at the wrong thing.
+func selectBase(root, target, requested string) (string, string, error) {
+	if requested == "" {
+		return root, "gt2gh-owned graph", nil
+	}
+	if requested != root {
+		return "", "", fmt.Errorf("requested trunk %q is not the base of %q's recorded path (%s) · run g2g track to record a different parent", requested, target, root)
+	}
+	return root, "--trunk", nil
+}
+
+// StoreCandidates completes from the branches gt2gh's own store records.
+//
+// It reads one small file and runs nothing, which is what makes it safe to ask
+// on a keystroke — and why it can answer in a repository that has no Graphite,
+// no GitHub remote, and no network.
+type StoreCandidates struct {
+	Service Service
+}
+
+// Branches names every adopted branch. Roots are deliberately absent: nothing
+// is recorded above them, so a command asked to act on one has no base.
+func (c StoreCandidates) Branches(ctx context.Context) ([]string, error) {
+	adopted, err := c.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return adopted.Branches(), nil
+}
+
+// Trunks names the base of the target's recorded path, which is the only base
+// a g2g-owned selection has.
+func (c StoreCandidates) Trunks(ctx context.Context, target string) ([]string, error) {
+	adopted, err := c.load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	path, err := adopted.Path(target)
+	if err != nil || len(path) < 2 {
+		return nil, nil
+	}
+	return path[:1], nil
+}
+
+func (c StoreCandidates) load(ctx context.Context) (Graph, error) {
+	if c.Service.Store == nil {
+		return New(), nil
+	}
+	return c.Service.Store.Load(ctx)
 }
 
 // validatePath applies the same safety the Graphite path has always had: a

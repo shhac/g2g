@@ -87,6 +87,38 @@ whichever source supplied each edge. Writing stops at the boundary.
 A Graphite-backed path must **refuse when the repository is not already
 Graphite-tracked** rather than invoking `gt` and enrolling it.
 
+### Completion is a question, and questions cost nothing
+
+Shell completion draws on the same sources, in the same order, so a flag never
+offers a branch the command would refuse and never reaches a source the command
+would not have reached either. It differs from selection in three ways, each
+following from the fact that a keystroke is not a request:
+
+- **Every source is merged rather than the first that answers.** Which source
+  owns a branch is decided per branch, so narrowing completion to one of them
+  would hide branches the command would accept.
+- **A source that cannot answer is skipped, not fatal.** One unusable source —
+  Graphite installed but broken — costs its own candidates and nothing else.
+  The user learns what is wrong from the command they are completing, which can
+  say it properly; a shell has nowhere good to put an error.
+- **The enrolment gate applies here too, and this is where it bites hardest.**
+  Completion used to run Graphite's discovery command unconditionally, so
+  pressing tab in a repository that had never used Graphite created Graphite
+  state in it — and then failed anyway, because there was nothing to report. A
+  side effect nobody asked for, from a keystroke nobody thinks of as a command.
+
+Only the g2g store answers in a repository with no Graphite, and it answers
+from one file read with no subprocess at all.
+
+### `--trunk` against a recorded path
+
+A Graphite ancestry can carry several declared trunks, which is what `--trunk`
+disambiguates. A recorded path has exactly one root, so the flag can only ever
+confirm the base gt2gh already derived. It is accepted when it names that root
+and **refused when it names anything else**, rather than ignored: silently using
+a different base than the one asked for is how a stack gets pushed at the wrong
+thing. Completion offers that single value, so the two agree.
+
 ## One operation, one name
 
 `link` and `sync` were the same operation. Both guarded the same way, both

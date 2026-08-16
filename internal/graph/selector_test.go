@@ -92,6 +92,56 @@ func TestSelectorRefusesOptionLikeBranchNames(t *testing.T) {
 	}
 }
 
+// A recorded path has one root, so --trunk can only confirm the base. Naming
+// anything else has to be refused: silently ignoring it would push the stack at
+// a different base than the one the user asked for.
+func TestSelectorAcceptsTheRootAsTrunkAndRefusesAnyOther(t *testing.T) {
+	selector := selectorService(chain())
+
+	snapshot, err := selector.Select(context.Background(), stack.Selection{Branch: "synthetic-b", Trunk: "synthetic-trunk"}, "g2g test")
+	if err != nil {
+		t.Fatalf("Select() with the root as --trunk error = %v", err)
+	}
+	if snapshot.BaseSource != "--trunk" {
+		t.Errorf("BaseSource = %q, want the flag to be credited", snapshot.BaseSource)
+	}
+
+	_, err = selector.Select(context.Background(), stack.Selection{Branch: "synthetic-b", Trunk: "synthetic-a"}, "g2g test")
+	if err == nil {
+		t.Fatal("Select() error = nil for a --trunk that is not the recorded base")
+	}
+	if !strings.Contains(err.Error(), "synthetic-trunk") {
+		t.Errorf("error = %v, want it to name the base it does have", err)
+	}
+}
+
+// Completion answers from the store alone: no ancestry probing, no subprocess,
+// and roots left out because a command cannot act on one.
+func TestStoreCandidatesOfferWhatSelectionWouldAccept(t *testing.T) {
+	candidates := StoreCandidates{Service: Service{Store: &memoryStore{graph: chain()}}}
+
+	branches, err := candidates.Branches(context.Background())
+	if err != nil {
+		t.Fatalf("Branches() error = %v", err)
+	}
+	if got := strings.Join(branches, ","); got != "synthetic-a,synthetic-b" {
+		t.Errorf("Branches() = %s, want the adopted branches without the root", got)
+	}
+
+	trunks, err := candidates.Trunks(context.Background(), "synthetic-b")
+	if err != nil {
+		t.Fatalf("Trunks() error = %v", err)
+	}
+	if got := strings.Join(trunks, ","); got != "synthetic-trunk" {
+		t.Errorf("Trunks() = %s, want the base of the recorded path", got)
+	}
+
+	untracked, err := candidates.Trunks(context.Background(), "synthetic-absent")
+	if err != nil || len(untracked) != 0 {
+		t.Errorf("Trunks(untracked) = %v, %v; want no candidates and no error", untracked, err)
+	}
+}
+
 func TestSelectorWithoutAStoreDescribesNothing(t *testing.T) {
 	describes, err := (Selector{}).Describes(context.Background(), "synthetic-b")
 	if err != nil || describes {

@@ -75,17 +75,22 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	// gt2gh's own store is the user saying they want gt2gh to own it, so that
 	// is asked first; Graphite answers for everything it still tracks.
 	restackService := restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}}
+	graphiteConfigured := func(ctx context.Context) (bool, error) { return graphite.Configured(ctx, gitClient) }
 	selector := stack.Resolver{
 		Git: gitClient,
 		Selectors: []stack.Selector{
 			graph.Selector{Service: graphService},
-			stack.GraphiteSelector{
-				Git:      gitClient,
-				Graphite: graphiteClient,
-				Configured: func(ctx context.Context) (bool, error) {
-					return graphite.Configured(ctx, gitClient)
-				},
-			},
+			stack.GraphiteSelector{Git: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
+		},
+	}
+	// Completion draws on the same sources, in the same order, so a flag never
+	// offers a branch the command would refuse — and never reaches a source the
+	// command would not have reached either.
+	completions := stack.Completions{
+		Git: gitClient,
+		Sources: []stack.Candidates{
+			graph.StoreCandidates{Service: graphService},
+			stack.GraphiteCandidates{Graphite: graphiteClient, Configured: graphiteConfigured},
 		},
 	}
 	return NewWithOptions(Options{
@@ -96,7 +101,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Link:        link.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
 		Push:        push.Service{Git: gitClient, Selector: selector},
 		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Completions: stack.Completions{Git: gitClient, Graphite: graphiteClient},
+		Completions: completions,
 		Graph:       graphService,
 		Restack:     restackService,
 		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
@@ -138,8 +143,8 @@ func NewWithOptions(options Options) *cobra.Command {
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")
 
-	// Completion candidates come from the same Git and Graphite clients the
-	// services use, so no command has to depend on another to complete a flag.
+	// Completion candidates come from the structure sources themselves, so no
+	// command has to depend on another to complete a flag.
 	completions := options.Completions
 	root.AddCommand(newLink(options.Link, completions, guard, presentation))
 	root.AddCommand(newStatus(options.Link, completions, presentation))

@@ -60,7 +60,9 @@ description: |
   or cause agents to enable Graphite's own `gt --debug`.
 - Never guess a Graphite trunk from its name. The selected ancestry determines
   the inferred trunk; multiple valid declared trunks require `--trunk`, whose
-  value must itself be declared and ancestral.
+  value must itself be declared and ancestral. A g2g-owned path has one root,
+  so `--trunk` may only confirm it and must refuse any other value rather than
+  ignoring it.
 - Read `design-docs/graphite-cli-contract.md` before changing discovery. Do not
   read Graphite internal metadata/configuration or use `gt --debug`: supported
   production discovery is strict, compatibility-gated noninteractive CLI
@@ -145,7 +147,10 @@ description: |
   Git considers reachable — so those cases build a throwaway local repository
   with synthetic branch names and no remote.
 - Preserve the `completion bash|zsh|fish` interface. Dynamic `--branch` and
-  `--trunk` completion must remain deterministic, read-only, and checkout-free.
+  `--trunk` completion must remain deterministic, read-only, and checkout-free —
+  and must reach no source the command itself would not reach. Completing a
+  flag must never be what enrols a repository into Graphite, and must keep
+  working with no Graphite installed.
 - Run `gofmt -w` on changed Go files and `go test ./...`. Use `go vet ./...`
   when changing Go code or preparing a release.
 - Use `git hunk` for any staging. Do not commit, tag, push, or invoke real

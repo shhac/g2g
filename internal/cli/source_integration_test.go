@@ -94,6 +94,93 @@ func TestNoGraphiteCommandRunsInARepositoryThatDoesNotUseIt(t *testing.T) {
 	}
 }
 
+// Completing a flag must work from the structure gt2gh records itself. It also
+// must not be what enrols a repository into Graphite: completion used to run
+// Graphite's discovery command, so pressing tab in a repository that had never
+// used Graphite created Graphite state in it — and then failed anyway.
+func TestFlagCompletionNeedsNoGraphite(t *testing.T) {
+	for _, test := range []struct {
+		flag string
+		want []string
+	}{
+		{flag: "--branch", want: []string{"synthetic-lower", "synthetic-top"}},
+		{flag: "--trunk", want: []string{"synthetic-trunk"}},
+	} {
+		t.Run(test.flag, func(t *testing.T) {
+			recorder, _ := g2gOwnedRepository(t, ownedGraph)
+
+			stdout, _, err := run(t, "__complete", "push", test.flag, "")
+			if err != nil {
+				t.Fatalf("__complete push %s: %v\n%s", test.flag, err, stdout)
+			}
+			if strings.Contains(stdout, "ShellCompDirectiveError") {
+				t.Errorf("completing %s failed:\n%s", test.flag, stdout)
+			}
+			for _, branch := range test.want {
+				if !strings.Contains(stdout, branch) {
+					t.Errorf("completing %s omits %s:\n%s", test.flag, branch, stdout)
+				}
+			}
+			recorder.AssertNone("gt ")
+		})
+	}
+}
+
+// graphiteRepository is a repository that does use Graphite, so the gate that
+// keeps Graphite out of the previous test must let it back in here.
+func graphiteRepository(t *testing.T) *testutil.Recorder {
+	t.Helper()
+
+	common := t.TempDir()
+	if err := os.WriteFile(filepath.Join(common, ".graphite_repo_config"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return testutil.FakeCLIs(t, map[string][]testutil.Route{
+		"git": {
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
+			{Prefix: "branch --show-current", Output: "synthetic-top"},
+			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-top", "synthetic-trunk"}},
+		},
+		"gt": {
+			{Prefix: "--version", Output: "1.8.6"},
+			{Prefix: "log", Lines: []string{"◯  synthetic-trunk", "◯  synthetic-lower", "◉  synthetic-top"}},
+		},
+	})
+}
+
+// The gate is not a way of switching Graphite off: where Graphite is in use,
+// completion still offers what it declares.
+func TestFlagCompletionStillReadsGraphiteWhereItIsUsed(t *testing.T) {
+	recorder := graphiteRepository(t)
+
+	stdout, _, err := run(t, "__complete", "push", "--branch", "")
+	if err != nil {
+		t.Fatalf("__complete: %v\n%s", err, stdout)
+	}
+	for _, branch := range []string{"synthetic-lower", "synthetic-top"} {
+		if !strings.Contains(stdout, branch) {
+			t.Errorf("completion omits Graphite-tracked %s:\n%s", branch, stdout)
+		}
+	}
+	if recorder.Find("gt log") == "" {
+		t.Error("Graphite was never consulted in a repository that uses it")
+	}
+}
+
+// A root is not offered for --branch: nothing is recorded above it, so a
+// command asked to act on one has no base and would only refuse.
+func TestBranchCompletionOffersOnlySelectableBranches(t *testing.T) {
+	g2gOwnedRepository(t, ownedGraph)
+
+	stdout, _, err := run(t, "__complete", "push", "--branch", "")
+	if err != nil {
+		t.Fatalf("__complete: %v", err)
+	}
+	if strings.Contains(stdout, "synthetic-trunk") {
+		t.Errorf("completion offers the root, which push cannot act on:\n%s", stdout)
+	}
+}
+
 // A branch nothing describes gets a refusal that names what to do, not a
 // Graphite error from a repository that does not use Graphite.
 func TestAnUndescribedBranchIsRefusedWithARemedy(t *testing.T) {

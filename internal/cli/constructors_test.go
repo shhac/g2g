@@ -27,8 +27,8 @@ func NewWithService(version string, stdout, stderr io.Writer, service link.Servi
 // client for it to be derived from, which is the point of the change.
 func testCompletions() stack.Completions {
 	return stack.Completions{
-		Git:      cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
-		Graphite: cliGraphite{},
+		Git:     cliGit{current: "beta", branches: []string{"main", "alpha", "beta"}},
+		Sources: []stack.Candidates{stack.GraphiteCandidates{Graphite: cliGraphite{}}},
 	}
 }
 

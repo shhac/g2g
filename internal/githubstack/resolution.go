@@ -80,3 +80,52 @@ func Along(base string, branches []string, prs []PullRequest) func(func(PathStep
 		}
 	}
 }
+
+// StepState is what one branch's pull request says about itself, once the
+// open-is-identity rule and the rolling base have both been applied.
+//
+// The classification is here rather than in each caller because link and submit
+// were each running the same four-way decision over Resolution and diverging
+// only in what they did with the answer. Deriving the answer twice is what let
+// the chain itself drift before Along existed; this is the same fix one level
+// down.
+type StepState int
+
+const (
+	// StepAligned is an open pull request already based where it belongs.
+	StepAligned StepState = iota
+	// StepAmbiguous is more than one open pull request for the branch, which
+	// nothing here resolves automatically.
+	StepAmbiguous
+	// StepBaseMismatch is an open pull request based on the wrong branch.
+	StepBaseMismatch
+	// StepSuperseded is a closed or merged pull request and no open one.
+	StepSuperseded
+	// StepMissing is no pull request at all.
+	StepMissing
+)
+
+// Classify answers what a step is. Callers apply their own policy to the
+// answer: link treats StepMissing as blocking because it can only link what
+// exists, and submit treats it as ordinary because it is about to create one.
+func (s PathStep) Classify() StepState {
+	switch {
+	case s.Resolution.Ambiguous():
+		return StepAmbiguous
+	case s.Resolution.Open != nil:
+		if s.Resolution.Open.Base != s.ExpectedBase {
+			return StepBaseMismatch
+		}
+		return StepAligned
+	case s.Resolution.Superseded():
+		return StepSuperseded
+	default:
+		return StepMissing
+	}
+}
+
+// Merged reports a superseded step whose latest pull request was merged rather
+// than closed. It is the one distinction callers draw beyond the state itself.
+func (s PathStep) Merged() bool {
+	return s.Resolution.Superseded() && s.Resolution.Latest.State == "MERGED"
+}

@@ -242,3 +242,39 @@ func TestAlongStopsWhenTheConsumerStops(t *testing.T) {
 		t.Errorf("visited %d steps after break, want 1", visited)
 	}
 }
+
+// The four-way decision lives here now because link and submit were each
+// running it and diverging only in the policy they applied to the answer.
+func TestClassifyAnswersWhatAStepIs(t *testing.T) {
+	open := PullRequest{Number: 1, Head: "synthetic-top", Base: "synthetic-lower", State: "OPEN"}
+	wrongBase := PullRequest{Number: 2, Head: "synthetic-top", Base: "synthetic-elsewhere", State: "OPEN"}
+	merged := PullRequest{Number: 3, Head: "synthetic-top", Base: "synthetic-lower", State: "MERGED"}
+	closed := PullRequest{Number: 4, Head: "synthetic-top", Base: "synthetic-lower", State: "CLOSED"}
+
+	for name, test := range map[string]struct {
+		prs        []PullRequest
+		want       StepState
+		wantMerged bool
+	}{
+		"aligned":       {prs: []PullRequest{open}, want: StepAligned},
+		"base mismatch": {prs: []PullRequest{wrongBase}, want: StepBaseMismatch},
+		"ambiguous":     {prs: []PullRequest{open, {Number: 5, Head: "synthetic-top", Base: "synthetic-lower", State: "OPEN"}}, want: StepAmbiguous},
+		"merged":        {prs: []PullRequest{merged}, want: StepSuperseded, wantMerged: true},
+		"closed":        {prs: []PullRequest{closed}, want: StepSuperseded},
+		"missing":       {prs: nil, want: StepMissing},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got StepState
+			var gotMerged bool
+			for step := range Along("synthetic-lower", []string{"synthetic-top"}, test.prs) {
+				got, gotMerged = step.Classify(), step.Merged()
+			}
+			if got != test.want {
+				t.Errorf("Classify() = %v, want %v", got, test.want)
+			}
+			if gotMerged != test.wantMerged {
+				t.Errorf("Merged() = %t, want %t", gotMerged, test.wantMerged)
+			}
+		})
+	}
+}

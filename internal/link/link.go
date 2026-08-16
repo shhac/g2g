@@ -214,20 +214,20 @@ func (left Plan) Equal(right Plan) bool {
 func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string) []Issue {
 	issues := make([]Issue, 0)
 	for step := range githubstack.Along(baseBranch, branches, prs) {
-		resolution := step.Resolution
-		switch {
-		case resolution.Ambiguous():
-			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueAmbiguous, Reason: fmt.Sprintf("%d open pull requests", resolution.OpenCount)})
-		case resolution.Open != nil:
-			if resolution.Open.Base != step.ExpectedBase {
-				issues = append(issues, Issue{Branch: step.Branch, Kind: IssueBase, Reason: fmt.Sprintf("PR #%d base %s, want %s", resolution.Open.Number, resolution.Open.Base, step.ExpectedBase)})
-			}
-		case resolution.Superseded():
+		// link can only project what exists, so a missing pull request blocks
+		// here where it would be ordinary for submit.
+		switch step.Classify() {
+		case githubstack.StepAligned:
+		case githubstack.StepAmbiguous:
+			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueAmbiguous, Reason: fmt.Sprintf("%d open pull requests", step.Resolution.OpenCount)})
+		case githubstack.StepBaseMismatch:
+			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueBase, Reason: fmt.Sprintf("PR #%d base %s, want %s", step.Resolution.Open.Number, step.Resolution.Open.Base, step.ExpectedBase)})
+		case githubstack.StepSuperseded:
 			kind := IssueClosed
-			if resolution.Latest.State == "MERGED" {
+			if step.Merged() {
 				kind = IssueMerged
 			}
-			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Reason: strings.ToLower(resolution.Latest.State) + " pull request"})
+			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Reason: strings.ToLower(step.Resolution.Latest.State) + " pull request"})
 		default:
 			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueMissing, Reason: "no open pull request"})
 		}

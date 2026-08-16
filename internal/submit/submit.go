@@ -168,16 +168,15 @@ func assessExisting(prs []githubstack.PullRequest, base string, branches []strin
 	issues := map[string]string{}
 	superseded := map[string]githubstack.PullRequest{}
 	for step := range githubstack.Along(base, branches, prs) {
-		resolution := step.Resolution
-		switch {
-		case resolution.Ambiguous():
-			issues[step.Branch] = fmt.Sprintf("%d open pull requests", resolution.OpenCount)
-		case resolution.Open != nil:
-			if resolution.Open.Base != step.ExpectedBase {
-				issues[step.Branch] = "PR base " + resolution.Open.Base + ", want " + step.ExpectedBase
-			}
-		case resolution.Superseded():
-			superseded[step.Branch] = *resolution.Latest
+		// A missing pull request is not an issue for submit: creating it is the
+		// job. That is the whole of submit's policy difference from link.
+		switch step.Classify() {
+		case githubstack.StepAmbiguous:
+			issues[step.Branch] = fmt.Sprintf("%d open pull requests", step.Resolution.OpenCount)
+		case githubstack.StepBaseMismatch:
+			issues[step.Branch] = "PR base " + step.Resolution.Open.Base + ", want " + step.ExpectedBase
+		case githubstack.StepSuperseded:
+			superseded[step.Branch] = *step.Resolution.Latest
 		}
 	}
 	return issues, superseded

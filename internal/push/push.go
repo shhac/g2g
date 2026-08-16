@@ -96,12 +96,7 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remo
 	if err != nil {
 		return Plan{}, err
 	}
-	if !plan.Equal(preview) {
-		diagnostic.Event(ctx, "push.revalidation", diagnostic.Field{Key: "match", Value: "false"})
-		return Plan{}, fmt.Errorf("push plan changed during revalidation; rerun without --apply to review the new plan")
-	}
-	diagnostic.Event(ctx, "push.revalidation", diagnostic.Field{Key: "match", Value: "true"})
-	return plan, nil
+	return plan, diagnostic.Revalidated(ctx, "push", "push plan", plan.Equal(preview))
 }
 
 func (s Service) Execute(ctx context.Context, plan Plan) error {

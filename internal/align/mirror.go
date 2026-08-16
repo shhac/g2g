@@ -175,8 +175,8 @@ func (s Service) RevalidateMirror(ctx context.Context, prune bool, preview Mirro
 	if err != nil {
 		return MirrorPlan{}, err
 	}
-	if !current.Equal(preview) {
-		return MirrorPlan{}, fmt.Errorf("the graphs changed between preview and apply · rerun to see the current plan")
+	if err := diagnostic.Revalidated(ctx, "mirror", "the graphs", current.Equal(preview)); err != nil {
+		return MirrorPlan{}, err
 	}
 	return current, nil
 }

@@ -186,8 +186,8 @@ func (s Service) RevalidateImport(ctx context.Context, preview ImportPlan) (Impo
 	if err != nil {
 		return ImportPlan{}, err
 	}
-	if !current.Equal(preview) {
-		return ImportPlan{}, fmt.Errorf("the graphs changed between preview and apply · rerun to see the current plan")
+	if err := diagnostic.Revalidated(ctx, "import", "the graphs", current.Equal(preview)); err != nil {
+		return ImportPlan{}, err
 	}
 	return current, nil
 }

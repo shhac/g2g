@@ -171,11 +171,9 @@ func (s Service) Revalidate(ctx context.Context, selection Selection, preview Pl
 	if err != nil {
 		return Plan{}, err
 	}
-	if !plan.Equal(preview) {
-		diagnostic.Event(ctx, "link.revalidation", diagnostic.Field{Key: "match", Value: "false"})
-		return Plan{}, fmt.Errorf("link plan changed during revalidation; rerun without --apply to review the new plan")
+	if err := diagnostic.Revalidated(ctx, "link", "link plan", plan.Equal(preview)); err != nil {
+		return Plan{}, err
 	}
-	diagnostic.Event(ctx, "link.revalidation", diagnostic.Field{Key: "match", Value: "true"})
 	if len(plan.Issues) != 0 {
 		return Plan{}, fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
 	}

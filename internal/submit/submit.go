@@ -105,12 +105,7 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remo
 	if err != nil {
 		return Plan{}, err
 	}
-	if !plan.Equal(preview) {
-		diagnostic.Event(ctx, "submit.revalidation", diagnostic.Field{Key: "match", Value: "false"})
-		return Plan{}, fmt.Errorf("submit plan changed during revalidation; rerun without --apply to review the new plan")
-	}
-	diagnostic.Event(ctx, "submit.revalidation", diagnostic.Field{Key: "match", Value: "true"})
-	return plan, nil
+	return plan, diagnostic.Revalidated(ctx, "submit", "submit plan", plan.Equal(preview))
 }
 
 // Apply publishes all refs atomically, creates only branches with no PR, then

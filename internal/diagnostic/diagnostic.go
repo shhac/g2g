@@ -141,13 +141,56 @@ func credentialFlag(argument string) bool {
 	}
 }
 
+// sensitiveMarkers are the substrings that make a whole line unsafe to print.
+// They are a list for the same reason credentialPrefixes above is: a security
+// check is easier to audit, extend and test when the thing being checked for is
+// data rather than a seven-clause condition.
+var sensitiveMarkers = []string{
+	"authorization:",
+	"token:",
+	"token=",
+	"cookie:",
+	"cookie=",
+	"--token",
+	"--header",
+}
+
 func redact(message string) string {
 	lines := strings.Split(message, "\n")
 	for index, line := range lines {
-		lower := strings.ToLower(strings.TrimSpace(line))
-		if strings.Contains(lower, "authorization:") || strings.Contains(lower, "token:") || strings.Contains(lower, "token=") || strings.Contains(lower, "cookie:") || strings.Contains(lower, "cookie=") || strings.Contains(lower, "--token") || strings.Contains(lower, "--header") {
+		if sensitive(strings.ToLower(strings.TrimSpace(line))) {
 			lines[index] = "[redacted sensitive diagnostic]"
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// sensitive reports a lowercased line that carries a credential.
+func sensitive(lower string) bool {
+	for _, marker := range sensitiveMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// Revalidated records the outcome of a preview/apply revalidation and reports a
+// mismatch as an error.
+//
+// Every mutating service re-reads the world immediately before writing and
+// refuses if anything moved. That check is the safety contract, and it was
+// written out six times across five packages — which is how internal/align came
+// to emit no diagnostic event at all while the other four did. Stating it once
+// means the event name, the field shape, and the wording cannot drift apart.
+//
+// subject names the operation in the refusal ("push plan", "the graphs"), and
+// event names it in the diagnostic stream.
+func Revalidated(ctx context.Context, event, subject string, equal bool) error {
+	if !equal {
+		Event(ctx, event+".revalidation", Field{Key: "match", Value: "false"})
+		return fmt.Errorf("%s changed during revalidation; rerun without --apply to review the new plan", subject)
+	}
+	Event(ctx, event+".revalidation", Field{Key: "match", Value: "true"})
+	return nil
 }

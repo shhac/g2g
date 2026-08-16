@@ -324,12 +324,7 @@ func (s Service) RevalidateUntrack(ctx context.Context, selection Selection, pre
 }
 
 func matched(ctx context.Context, event string, equal bool) error {
-	if !equal {
-		diagnostic.Event(ctx, event+".revalidation", diagnostic.Field{Key: "match", Value: "false"})
-		return fmt.Errorf("graph changed during revalidation; rerun without --apply to review the new plan")
-	}
-	diagnostic.Event(ctx, event+".revalidation", diagnostic.Field{Key: "match", Value: "true"})
-	return nil
+	return diagnostic.Revalidated(ctx, event, "graph", equal)
 }
 
 // ApplyTrack writes the adopted graph. It refuses a blocked plan rather than

@@ -63,3 +63,17 @@ func TestSafeCommandRedactsPrefixedCredentials(t *testing.T) {
 		}
 	}
 }
+
+// Every marker earns its place, and the list is the thing under test rather
+// than one representative of it.
+func TestEveryMarkerRedactsItsLine(t *testing.T) {
+	for _, marker := range sensitiveMarkers {
+		line := "some prefix " + strings.ToUpper(marker) + " synthetic-secret-value"
+		if got := redact(line); strings.Contains(got, "synthetic-secret-value") {
+			t.Errorf("redact(%q) = %q, want the value removed", line, got)
+		}
+	}
+	if got := redact("an ordinary diagnostic line"); got != "an ordinary diagnostic line" {
+		t.Errorf("redact() = %q, want an unrelated line left alone", got)
+	}
+}

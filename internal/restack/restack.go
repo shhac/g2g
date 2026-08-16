@@ -32,12 +32,7 @@ func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto
 	if err != nil {
 		return Plan{}, err
 	}
-	if !plan.Equal(preview) {
-		diagnostic.Event(ctx, "restack.revalidation", diagnostic.Field{Key: "match", Value: "false"})
-		return Plan{}, fmt.Errorf("restack plan changed during revalidation; rerun without --apply to review the new plan")
-	}
-	diagnostic.Event(ctx, "restack.revalidation", diagnostic.Field{Key: "match", Value: "true"})
-	return plan, nil
+	return plan, diagnostic.Revalidated(ctx, "restack", "restack plan", plan.Equal(preview))
 }
 
 // Apply performs the rewrite. A plan the preview said applies cleanly is

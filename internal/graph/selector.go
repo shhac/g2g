@@ -3,9 +3,10 @@ package graph
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/shhac/gt2gh/internal/stack"
+
+	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
 // Selector describes branches gt2gh's own store records, so the commands that
@@ -121,7 +122,7 @@ func validatePath(path []string, command string) error {
 		return fmt.Errorf("selected branch has no recorded parent that can be used as a base")
 	}
 	for _, branch := range path {
-		if strings.HasPrefix(branch, "-") {
+		if subprocess.OptionLike(branch) {
 			return fmt.Errorf("branch %q cannot be passed safely to %s", branch, command)
 		}
 	}

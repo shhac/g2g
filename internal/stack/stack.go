@@ -15,6 +15,8 @@ import (
 	"github.com/shhac/gt2gh/internal/diagnostic"
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/graphite"
+
+	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
 // Git supplies local repository facts without changing checkout state.
@@ -184,7 +186,7 @@ func validatePathLocalAndSafe(local map[string]bool, path []string, command stri
 		if !local[branch] {
 			return fmt.Errorf("Graphite ancestry branch %q is not a local branch", branch)
 		}
-		if strings.HasPrefix(branch, "-") {
+		if subprocess.OptionLike(branch) {
 			return fmt.Errorf("Graphite ancestry branch %q cannot be passed safely to %s", branch, command)
 		}
 	}

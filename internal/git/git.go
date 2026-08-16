@@ -333,13 +333,7 @@ func (c Client) CommonDir(ctx context.Context) (string, error) {
 // safeRef rejects the ref names that cannot be passed to Git as a positional
 // argument without being read as an option.
 func safeRef(ref string) error {
-	if ref == "" {
-		return fmt.Errorf("branch name must not be empty")
-	}
-	if strings.HasPrefix(ref, "-") {
-		return fmt.Errorf("branch name %q cannot be passed safely to git", ref)
-	}
-	return nil
+	return subprocess.CheckArgument("git", "branch name", ref)
 }
 
 func (c Client) Clean(ctx context.Context) error {
@@ -356,8 +350,8 @@ func (c Client) Clean(ctx context.Context) error {
 // Remote validates that name resolves to a configured remote without making
 // a network request.
 func (c Client) Remote(ctx context.Context, name string) error {
-	if name == "" || strings.HasPrefix(name, "-") {
-		return fmt.Errorf("remote name must be nonempty and must not start with '-'")
+	if err := subprocess.CheckArgument("git", "remote name", name); err != nil {
+		return err
 	}
 	_, err := c.run(ctx, "remote", "get-url", name)
 	return err

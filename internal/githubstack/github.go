@@ -96,7 +96,7 @@ func (e *CommandError) Summary() string {
 	}
 	return e.Command + " failed."
 }
-func (e *CommandError) Diagnostic() string { return boundedMessage(e.Output) }
+func (e *CommandError) Diagnostic() string { return diagnostic.BoundedOutput([]byte(e.Output)) }
 
 func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, error) {
 	if c.Runner == nil {
@@ -220,7 +220,7 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
 	}
 	if len(response.Errors) != 0 {
-		return nil, fmt.Errorf("gh api graphql returned errors: %s", boundedMessage(response.Errors[0].Message))
+		return nil, fmt.Errorf("gh api graphql returned errors: %s", diagnostic.BoundedOutput([]byte(response.Errors[0].Message)))
 	}
 	if response.Data.Repository == nil {
 		return nil, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
@@ -307,13 +307,4 @@ func (c Client) Unstack(ctx context.Context, number int) error {
 
 func commandError(command string, err error, output []byte) error {
 	return &CommandError{Command: command, Cause: err, Output: string(output)}
-}
-
-func boundedMessage(message string) string {
-	const limit = 500
-	message = strings.TrimSpace(message)
-	if len(message) <= limit {
-		return message
-	}
-	return message[:limit] + "…"
 }

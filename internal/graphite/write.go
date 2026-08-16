@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/shhac/gt2gh/internal/diagnostic"
+
+	"github.com/shhac/gt2gh/internal/subprocess"
 )
 
 // Forest is everything Graphite declares about the repository: each tracked
@@ -103,11 +104,8 @@ func (c Client) Untrack(ctx context.Context, branch string) error {
 // options. The read path validates the same way before passing a branch to gh.
 func safeArguments(names ...string) error {
 	for _, name := range names {
-		if name == "" {
-			return fmt.Errorf("branch name is empty")
-		}
-		if strings.HasPrefix(name, "-") {
-			return fmt.Errorf("branch %q cannot be passed safely to gt", name)
+		if err := subprocess.CheckArgument("gt", "branch", name); err != nil {
+			return err
 		}
 	}
 	return nil

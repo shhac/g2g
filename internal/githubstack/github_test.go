@@ -129,9 +129,26 @@ func TestParsePullRequestsRejectsIncompleteNativeStackMembership(t *testing.T) {
 	}
 }
 
+// A gh failure is printed on stderr unconditionally, not behind --debug, so
+// its output is a data-leak surface like every other subprocess diagnostic.
+// This package used to bound it with a private copy of diagnostic.BoundedOutput
+// that skipped the redaction step, and nothing noticed because the only test
+// measured length.
+func TestFailedCommandOutputIsRedactedNotJustTruncated(t *testing.T) {
+	err := &CommandError{Command: "gh repo view", Cause: errors.New("exit status 1"), Output: "Authorization: Bearer synthetic-secret-value"}
+
+	got := err.Diagnostic()
+	if strings.Contains(got, "synthetic-secret-value") {
+		t.Errorf("Diagnostic() = %q, want the credential removed", got)
+	}
+	if !strings.Contains(got, "[redacted") {
+		t.Errorf("Diagnostic() = %q, want it to say something was redacted", got)
+	}
+}
+
 func TestBoundedMessage(t *testing.T) {
-	if got := boundedMessage(strings.Repeat("x", 501)); !strings.HasSuffix(got, "…") || len(got) != 503 {
-		t.Errorf("boundedMessage() = %q", got)
+	if got := (&CommandError{Output: strings.Repeat("x", 501)}).Diagnostic(); !strings.HasSuffix(got, "…") || len(got) != 503 {
+		t.Errorf("Diagnostic() = %q", got)
 	}
 }
 

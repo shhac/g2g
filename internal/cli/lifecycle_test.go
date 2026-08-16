@@ -61,7 +61,6 @@ func TestEveryApplyRediscoversBeforeMutating(t *testing.T) {
 		spec     bool
 	}{
 		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
-		{name: "sync", args: []string{"sync", "--apply"}, mutation: "gh stack link"},
 		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic"},
 		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
 		{name: "submit", args: []string{"submit", "--apply"}, mutation: "git push --atomic", spec: true},
@@ -112,7 +111,6 @@ func TestEveryApplyMutatesExactlyOnce(t *testing.T) {
 		mutation string
 	}{
 		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
-		{name: "sync", args: []string{"sync", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
 		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --force-with-lease="},
 		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack 42"},
 	} {
@@ -138,7 +136,6 @@ func TestWorktreeIsCheckedBeforeCommittedStateChanges(t *testing.T) {
 		mutation string
 	}{
 		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
-		{name: "sync", args: []string{"sync", "--apply"}, mutation: "gh stack link"},
 		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

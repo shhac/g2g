@@ -1,9 +1,0 @@
-Target  synthetic-top
-
-  ○ synthetic-main  trunk
-  │
-  ● synthetic-a     #10  aligned
-  ● synthetic-b     #11  divergent: base synthetic-main, want synthetic-a
-
-Command to run
-gh stack link --base synthetic-main synthetic-a synthetic-b

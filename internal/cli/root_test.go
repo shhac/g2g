@@ -14,8 +14,10 @@ func TestBareCommandShowsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(output, "  link") || !strings.Contains(output, "  status") || !strings.Contains(output, "  unlink") || !strings.Contains(output, "  sync") || !strings.Contains(output, "  push") || !strings.Contains(output, "  submit") {
-		t.Errorf("help = %q", output)
+	for _, command := range []string{"link", "unlink", "status", "push", "submit", "graph", "track", "untrack", "restack"} {
+		if !strings.Contains(output, "  "+command) {
+			t.Errorf("help does not list %q:\n%s", command, output)
+		}
 	}
 }
 

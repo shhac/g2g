@@ -20,7 +20,6 @@ import (
 	"github.com/shhac/gt2gh/internal/stack"
 	"github.com/shhac/gt2gh/internal/submit"
 	"github.com/shhac/gt2gh/internal/subprocess"
-	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
 // Options are the dependencies a root command is built from.
@@ -36,7 +35,6 @@ type Options struct {
 	Stderr      io.Writer
 
 	Link   link.Service
-	Sync   syncer.Service
 	Push   push.Service
 	Submit submit.Service
 	// Graph owns the branch forest gt2gh keeps itself. It needs neither
@@ -73,7 +71,6 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Stdout:      stdout,
 		Stderr:      stderr,
 		Link:        link.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
-		Sync:        syncer.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
 		Push:        push.Service{Git: gitClient, Graphite: graphiteClient},
 		Submit:      submit.Service{Git: gitClient, Graphite: graphiteClient, GitHub: githubClient},
 		Graph:       graphService,
@@ -122,7 +119,6 @@ func NewWithOptions(options Options) *cobra.Command {
 	root.AddCommand(newLink(options.Link, completions, guard, presentation))
 	root.AddCommand(newStatus(options.Link, completions, presentation))
 	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
-	root.AddCommand(newSync(options.Sync, completions, guard, presentation))
 	if options.Push.Git != nil && options.Push.Graphite != nil {
 		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}

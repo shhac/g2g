@@ -12,7 +12,6 @@ import (
 	"github.com/shhac/gt2gh/internal/link"
 	"github.com/shhac/gt2gh/internal/push"
 	"github.com/shhac/gt2gh/internal/stack"
-	syncer "github.com/shhac/gt2gh/internal/sync"
 )
 
 func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
@@ -29,7 +28,7 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, pushService, Presentation{})
+			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, pushService, Presentation{})
 			command.SetArgs(test.args)
 			if err := command.Execute(); err != nil {
 				t.Fatal(err)
@@ -46,7 +45,7 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, pushService, Presentation{})
+	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, pushService, Presentation{})
 	command.SetArgs([]string{"push", "--apply"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
@@ -82,7 +81,7 @@ func TestPushApplyRendersAndFlushesBeforeMutation(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	git := &cliPushGit{events: &events, current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
-	command := newWithPresentation("v", "gt2gh", writer, writer, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+	command := newWithPresentation("v", "gt2gh", writer, writer, link.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
 	command.SetArgs([]string{"push", "--apply"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
@@ -103,7 +102,7 @@ func TestPushApplyDoesNotMutateWhenReadyOutputFails(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
-			command := newWithPresentation("v", "gt2gh", test.writer, test.writer, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+			command := newWithPresentation("v", "gt2gh", test.writer, test.writer, link.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
 			command.SetArgs([]string{"push", "--apply"})
 			if err := command.Execute(); err == nil {
 				t.Fatal("Execute() error = nil")
@@ -131,7 +130,7 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			service := push.Service{Git: test.git, Graphite: test.graphite}
-			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, service, Presentation{})
+			command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, service, Presentation{})
 			command.SetArgs(test.args)
 			err := command.Execute()
 			if test.want == "" {
@@ -156,7 +155,7 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 func TestPushDebugIsStderrOnly(t *testing.T) {
 	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
 	var stdout, stderr bytes.Buffer
-	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, syncer.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
+	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, link.Service{}, push.Service{Git: git, Graphite: cliPushGraphite{}}, Presentation{})
 	command.SetArgs([]string{"push", "--debug"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)

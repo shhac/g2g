@@ -120,7 +120,7 @@ func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 // The preview/apply split is a safety contract, so prove at the process
 // boundary that a bare command touches nothing.
 func TestPreviewsNeverInvokeAMutation(t *testing.T) {
-	for _, command := range []string{"link", "sync", "push", "status"} {
+	for _, command := range []string{"link", "push", "status"} {
 		t.Run(command, func(t *testing.T) {
 			recorder := fakeRepository(t, openTopPullRequest)
 

@@ -150,23 +150,33 @@ func (c Client) TrackedBranches(ctx context.Context) ([]string, error) {
 	return branches, nil
 }
 
-func (c Client) read(ctx context.Context) (graph, error) {
+// gate is the compatibility check every Graphite command passes through,
+// reads and writes alike. A version this build has not been tested against is
+// worth a warning before parsing output; it is worth the same warning before
+// writing, where the cost of a changed contract is someone else's metadata.
+func (c Client) gate(ctx context.Context) error {
 	if c.Runner == nil {
-		return graph{}, fmt.Errorf("Graphite runner is not configured")
+		return fmt.Errorf("Graphite runner is not configured")
 	}
 	version, err := c.Runner.Run(ctx, "gt", "--version")
 	if err != nil {
-		return graph{}, commandError("gt --version", err, version)
+		return commandError("gt --version", err, version)
 	}
 	got, known, err := checkVersion(version)
 	if err != nil {
-		return graph{}, err
+		return err
 	}
 	if !known {
 		diagnostic.Warn(ctx, "graphite-version", fmt.Sprintf("Graphite CLI version %s is not a known supported version; attempting compact display parsing and it will fail safely if the output changed", got))
 	}
 	diagnostic.Event(ctx, "graphite.version", diagnostic.Field{Key: "version", Value: got}, diagnostic.Field{Key: "known", Value: strconv.FormatBool(known)}, diagnostic.Field{Key: "compatible_major", Value: "true"})
+	return nil
+}
 
+func (c Client) read(ctx context.Context) (graph, error) {
+	if err := c.gate(ctx); err != nil {
+		return graph{}, err
+	}
 	output, err := c.Runner.Run(ctx, "gt", "log", "short", "--all", "--reverse", "--no-interactive")
 	if err != nil {
 		return graph{}, commandError("gt log short --all --reverse --no-interactive", err, output)

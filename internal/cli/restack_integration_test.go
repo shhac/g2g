@@ -532,3 +532,124 @@ func TestRestackOntoRecordsTheNewParent(t *testing.T) {
 		}
 	}
 }
+
+// chainedRestackRepo is a three-branch chain, so a conflict on the middle
+// branch leaves work still to do after --continue.
+//
+// Every other restack fixture is two branches where the lower one collapses,
+// so only one branch is ever rebased and a resumed restack always finds an
+// empty plan waiting for it. The branch of finish that carries on past the
+// resolved branch — the whole reason the journal exists — was never reached.
+func chainedRestackRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	env := syntheticEnv()
+	run := func(args ...string) {
+		t.Helper()
+		command := exec.Command("git", args...)
+		command.Dir, command.Env = dir, env
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+		}
+	}
+	write := func(name, contents string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	run("init", "-q", "--initial-branch=synthetic-trunk")
+	run("config", "user.name", "synthetic")
+	run("config", "user.email", "synthetic@example.test")
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
+	write("shared.txt", "base\n")
+	run("add", "-A")
+	run("commit", "-qm", "base")
+
+	run("checkout", "-qb", "synthetic-a")
+	write("shared.txt", "base\na\n")
+	run("add", "-A")
+	run("commit", "-qm", "a1")
+
+	// synthetic-b touches the same lines the trunk will rewrite, so its replay
+	// conflicts; synthetic-c touches a different file, so it replays cleanly
+	// once b is resolved — which is only reachable by carrying on.
+	run("checkout", "-qb", "synthetic-b")
+	write("shared.txt", "base\na\nb\n")
+	run("add", "-A")
+	run("commit", "-qm", "b1")
+
+	run("checkout", "-qb", "synthetic-c")
+	write("own.txt", "c\n")
+	run("add", "-A")
+	run("commit", "-qm", "c1")
+
+	t.Chdir(dir)
+	return dir
+}
+
+// A restack that stops mid-chain must, on --continue, carry on to the branches
+// above the one that conflicted — rebased onto their new parents, exactly once.
+//
+// It does not. --continue rewrites the branch that conflicted, reports "Restack
+// complete", and leaves everything above it on the abandoned history; running
+// restack again afterwards reports those branches as still needing one and
+// repairs them correctly.
+//
+// The cause is visible under --debug: once the interrupted branch is rewritten
+// its pinned fork point is no longer an ancestor of it, because only
+// recordStructure re-pins and the resumed path recomputes before reaching it.
+// The recomputed plan therefore cannot classify the chain and concludes there
+// is nothing left. Every other restack fixture is a two-branch stack whose
+// lower branch collapses, so this path had never been reached.
+//
+// Skipped rather than deleted: the scenario and the assertions are what the fix
+// has to satisfy, and the fix belongs in internal/restack with the fork-point
+// and replay-range rules in design-docs/restack.md, not in a structure sweep.
+func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
+	t.Skip("known defect: --continue stops after the interrupted branch and reports success")
+
+	dir := chainedRestackRepo(t)
+	for _, pair := range [][2]string{{"synthetic-a", "synthetic-trunk"}, {"synthetic-b", "synthetic-a"}, {"synthetic-c", "synthetic-b"}} {
+		if _, _, err := run(t, "track", "--branch", pair[0], "--parent", pair[1], "--apply"); err != nil {
+			t.Fatalf("track %s: %v", pair[0], err)
+		}
+	}
+
+	// Squash-merge synthetic-a into the trunk and rewrite the same lines, so
+	// synthetic-b's replay conflicts.
+	gitOutput(t, "checkout", "-q", "synthetic-trunk")
+	gitOutput(t, "merge", "--squash", "-q", "synthetic-a")
+	gitOutput(t, "commit", "-qm", "synthetic-a (#1)")
+	if err := os.WriteFile("shared.txt", []byte("base\nrewritten-upstream\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, "add", "-A")
+	gitOutput(t, "commit", "-qm", "trunk rewrites the same lines")
+	gitOutput(t, "checkout", "-q", "synthetic-c")
+
+	// A stop is reported in the output, not as a non-zero exit: the command did
+	// what it said it would and is waiting for the user.
+	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
+	if !strings.Contains(stdout, "Stopped on a conflict") {
+		t.Fatalf("apply did not stop on the conflict:\n%s", stdout)
+	}
+	resolveAndContinue(t, dir)
+
+	// synthetic-c must now sit on the rewritten synthetic-b, and its own commit
+	// must have survived exactly once.
+	parent := strings.TrimSpace(gitOutput(t, "rev-parse", "synthetic-c^"))
+	tipOfB := strings.TrimSpace(gitOutput(t, "rev-parse", "synthetic-b"))
+	if parent != tipOfB {
+		t.Errorf("synthetic-c sits on %s, want the rewritten synthetic-b %s", parent, tipOfB)
+	}
+	if got := strings.Count(gitOutput(t, "log", "--oneline", "synthetic-c"), "c1"); got != 1 {
+		t.Errorf("c1 appears %d times in synthetic-c, want exactly once", got)
+	}
+	if !strings.Contains(gitOutput(t, "log", "--oneline", "synthetic-c"), "b1") {
+		t.Error("synthetic-c lost the branch it sits on")
+	}
+}

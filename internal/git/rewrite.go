@@ -44,23 +44,36 @@ func (c Client) SupportsReplay(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	major, minor, err := parseGitVersion(output)
+	if err != nil {
+		return false, err
+	}
+	return major > 2 || (major == 2 && minor >= replayMinorVersion), nil
+}
+
+// parseGitVersion reads the major and minor from `git --version`.
+//
+// It is separate from the call that produces that output so the version matrix
+// is a table of strings rather than five spawned processes, which is what the
+// Graphite adapter's checkVersion already does one package over.
+func parseGitVersion(output []byte) (major, minor int, err error) {
 	fields := strings.Fields(strings.TrimSpace(string(output)))
 	if len(fields) < 3 {
-		return false, fmt.Errorf("parse git --version output")
+		return 0, 0, fmt.Errorf("parse git --version output")
 	}
 	parts := strings.Split(fields[2], ".")
 	if len(parts) < 2 {
-		return false, fmt.Errorf("parse git version %q", fields[2])
+		return 0, 0, fmt.Errorf("parse git version %q", fields[2])
 	}
-	major, err := strconv.Atoi(parts[0])
+	major, err = strconv.Atoi(parts[0])
 	if err != nil {
-		return false, fmt.Errorf("parse git version %q", fields[2])
+		return 0, 0, fmt.Errorf("parse git version %q", fields[2])
 	}
-	minor, err := strconv.Atoi(parts[1])
+	minor, err = strconv.Atoi(parts[1])
 	if err != nil {
-		return false, fmt.Errorf("parse git version %q", fields[2])
+		return 0, 0, fmt.Errorf("parse git version %q", fields[2])
 	}
-	return major > 2 || (major == 2 && minor >= replayMinorVersion), nil
+	return major, minor, nil
 }
 
 // PreviewReplay reports exactly which refs a rewrite would move, without

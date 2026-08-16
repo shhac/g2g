@@ -286,18 +286,21 @@ func (s Service) finish(ctx context.Context, record Record) error {
 	if err != nil {
 		return err
 	}
+	// More of the chain still to rewrite: a resumed restack carries on past the
+	// branch whose conflict was just resolved.
 	if len(plan.Steps) != 0 && plan.Blocked == "" {
-		if plan.Clean {
-			if err := s.replay(ctx, plan); err != nil {
-				return err
-			}
-			return s.Journal.Clear(ctx)
+		if !plan.Clean {
+			return s.rebaseEach(ctx, plan)
 		}
-		return s.rebaseEach(ctx, plan)
+		if err := s.replay(ctx, plan); err != nil {
+			return err
+		}
+		return s.Journal.Clear(ctx)
 	}
-	// The reparenting comes from the record rather than the fresh plan: once
-	// the rewrite has happened the branch no longer sits where the graph says,
-	// so the plan can no longer tell where it was headed.
+	// Nothing left to rewrite. The reparenting comes from the record rather
+	// than the fresh plan: once the rewrite has happened the branch no longer
+	// sits where the graph says, so the plan can no longer tell where it was
+	// headed.
 	if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
 		return err
 	}

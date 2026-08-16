@@ -108,13 +108,38 @@ func requireReplay(t *testing.T, client Client) {
 	}
 }
 
+// The matrix is a table of strings, not five spawned processes: what is under
+// test is the parsing, and a fake CLI answers whatever it is asked.
+func TestParseGitVersionReadsTheMatrix(t *testing.T) {
+	for version, want := range map[string][2]int{
+		"git version 2.55.0":       {2, 55},
+		"git version 2.44.0":       {2, 44},
+		"git version 2.43.9":       {2, 43},
+		"git version 3.0.0":        {3, 0},
+		"git version 2.39.5 (Foo)": {2, 39},
+	} {
+		major, minor, err := parseGitVersion([]byte(version))
+		if err != nil {
+			t.Errorf("parseGitVersion(%q) error = %v", version, err)
+			continue
+		}
+		if major != want[0] || minor != want[1] {
+			t.Errorf("parseGitVersion(%q) = %d.%d, want %d.%d", version, major, minor, want[0], want[1])
+		}
+	}
+	for _, malformed := range []string{"", "git", "git version", "git version x.y", "git version 2"} {
+		if _, _, err := parseGitVersion([]byte(malformed)); err == nil {
+			t.Errorf("parseGitVersion(%q) error = nil, want a refusal", malformed)
+		}
+	}
+}
+
+// One end-to-end case still runs the real adapter, because argv construction
+// and exit handling are what a fake CLI does prove.
 func TestSupportsReplayGatesOnTheVersionItParses(t *testing.T) {
 	for version, want := range map[string]bool{
-		"git version 2.55.0":       true,
-		"git version 2.44.0":       true,
-		"git version 2.43.9":       false,
-		"git version 3.0.0":        true,
-		"git version 2.39.5 (Foo)": false,
+		"git version 2.44.0": true,
+		"git version 2.43.9": false,
 	} {
 		t.Run(version, func(t *testing.T) {
 			testutil.FakeCLIs(t, map[string][]testutil.Route{
@@ -401,4 +426,106 @@ func gitExec(t *testing.T, args ...string) string {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// fastForwardRepo is a trunk and a branch that has moved past it, so a
+// fast-forward is legitimate — plus a way to make the two diverge.
+func fastForwardRepo(t *testing.T) (string, Client) {
+	t.Helper()
+
+	dir := t.TempDir()
+	run := func(args ...string) string {
+		t.Helper()
+		command := exec.Command("git", args...)
+		command.Dir = dir
+		command.Env = syntheticEnv()
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	commit := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name+".txt"), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		run("add", "-A")
+		run("commit", "-m", "synthetic "+name)
+	}
+
+	run("init", "--initial-branch=synthetic-trunk")
+	run("config", "user.name", "synthetic")
+	run("config", "user.email", "synthetic@example.test")
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
+	commit("root")
+	run("checkout", "-b", "synthetic-ahead")
+	commit("ahead")
+	run("checkout", "synthetic-trunk")
+	return dir, Client{Runner: subprocess.ExecRunner{}}
+}
+
+// The trunk-advance sync performs goes through here, and its only caller fakes
+// it, so nothing had ever run this against real git.
+func TestFastForwardAdvancesABranchThatIsBehind(t *testing.T) {
+	dir, client := fastForwardRepo(t)
+	t.Chdir(dir)
+
+	if err := client.FastForward(context.Background(), "synthetic-trunk", "synthetic-ahead"); err != nil {
+		t.Fatalf("FastForward() error = %v", err)
+	}
+
+	trunk, err := client.Resolve(context.Background(), "synthetic-trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ahead, err := client.Resolve(context.Background(), "synthetic-ahead")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trunk != ahead {
+		t.Errorf("trunk = %s, want it advanced to %s", trunk, ahead)
+	}
+}
+
+// "You are behind" and "you have diverged" want different responses, and only
+// the user can give the second. Advancing anyway would discard their commits.
+func TestFastForwardRefusesADivergedBranch(t *testing.T) {
+	dir, client := fastForwardRepo(t)
+	t.Chdir(dir)
+
+	// Give the trunk a commit of its own, so neither contains the other.
+	if err := os.WriteFile(filepath.Join(dir, "local.txt"), []byte("local"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitExec(t, "add", "-A")
+	gitExec(t, "commit", "-m", "synthetic local")
+	before, err := client.Resolve(context.Background(), "synthetic-trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = client.FastForward(context.Background(), "synthetic-trunk", "synthetic-ahead")
+	if err == nil {
+		t.Fatal("FastForward() error = nil for a diverged branch")
+	}
+	after, resolveErr := client.Resolve(context.Background(), "synthetic-trunk")
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
+	if after != before {
+		t.Errorf("a refused fast-forward moved the branch from %s to %s", before, after)
+	}
+}
+
+// Already level is a no-op, not an error: sync asks for this every time the
+// remote has not moved.
+func TestFastForwardIsANoOpWhenAlreadyLevel(t *testing.T) {
+	dir, client := fastForwardRepo(t)
+	t.Chdir(dir)
+
+	if err := client.FastForward(context.Background(), "synthetic-trunk", "synthetic-trunk"); err != nil {
+		t.Errorf("FastForward() error = %v for a branch already at the target", err)
+	}
 }

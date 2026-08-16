@@ -142,12 +142,24 @@ Graphite CLI is. Where it is absent there is no prediction at all, and that is
 reported as such: "we could not look" and "we looked and it will conflict" lead
 a reader to different actions, and only one of them would be true.
 
-**The two engines must be made to agree.** `git rebase` reapplies commits whose
-content is already in the new base on older Git and drops them on newer, and
-dropping them is exactly what repairs a stack after a squash merge — so
-`--no-reapply-cherry-picks` is passed explicitly rather than inherited. Without
-it the one case this command exists for conflicts on precisely the versions
-that lack the preview engine, which is also where nothing warned first.
+**Neither engine is trusted with an already-upstream commit.** Whether a
+rewrite drops one or reapplies it varies by version — `git replay` changed
+between 2.54 and 2.55, and `git rebase` differs by backend — and it is exactly
+the case a restack exists for, so relying on it would make correctness a
+property of the user's Git.
+
+Instead the plan asks, per branch, whether every commit it owns is already in
+its new base (`git cherry <base> <branch> <forkPoint>`). A branch where nothing
+is left **collapses**: its ref moves to the base and it is never handed to an
+engine at all. Its children are then measured against where it landed. What
+reaches an engine is only ever commits that genuinely have to be replayed, so
+both produce the same result everywhere.
+
+This also makes "which branches does this empty" exact and available from the
+plan, rather than inferred from a preview that some versions cannot produce.
+
+`--no-reapply-cherry-picks` is still passed to the rebase engine, as a second
+line rather than the first.
 
 **Preview** uses `git replay --ref-action=print`, which yields the exact
 resulting object ids and mutates nothing. Its exit status also predicts a

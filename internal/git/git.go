@@ -195,26 +195,49 @@ func (c Client) UnpinForkPoint(ctx context.Context, branch string) error {
 // parent no longer has: absorbing a rewritten commit would give the child a
 // stale duplicate of work the parent still carries under a new object id.
 func (c Client) CherryDropped(ctx context.Context, upstream, head string) ([]string, error) {
+	kept, _, err := c.Cherry(ctx, upstream, head, "")
+	return kept, err
+}
+
+// Cherry compares the commits in limit..head against upstream by content,
+// returning those with no equivalent there and those with one.
+//
+// limit is optional and narrows the comparison to a branch's own commits,
+// which is what distinguishes "this branch has nothing left to contribute"
+// from "some commit somewhere below it is already upstream".
+func (c Client) Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error) {
 	if err := safeRef(upstream); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := safeRef(head); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	output, err := c.run(ctx, "cherry", upstream, head)
+	args := []string{"cherry", upstream, head}
+	if limit != "" {
+		if err := safeRef(limit); err != nil {
+			return nil, nil, err
+		}
+		args = append(args, limit)
+	}
+	output, err := c.run(ctx, args...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	dropped := make([]string, 0)
+	absent, present = make([]string, 0), make([]string, 0)
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 		mark, object, found := strings.Cut(strings.TrimSpace(line), " ")
-		// A leading + means no equivalent content upstream: genuinely dropped.
-		// A leading - means it was rewritten and the content is still there.
-		if found && mark == "+" {
-			dropped = append(dropped, object)
+		if !found {
+			continue
 		}
+		// A leading + means no equivalent content upstream; a leading - means
+		// the same content is already there under another object id.
+		if mark == "+" {
+			absent = append(absent, object)
+			continue
+		}
+		present = append(present, object)
 	}
-	return dropped, nil
+	return absent, present, nil
 }
 
 // isolatedRemotePrefix namespaces the refs gt2gh fetches for itself.

@@ -20,6 +20,8 @@ type fakeGit struct {
 	ancestors map[string][]string
 	dropped   map[string][]string
 	behind    map[string]int
+	// collapses names branches whose own work is already in their new base.
+	collapses map[string]bool
 
 	replaySupported bool
 	previewClean    bool
@@ -120,6 +122,15 @@ func (f *fakeGit) ResetKeep(context.Context) error { f.resets++; return nil }
 
 func (f *fakeGit) CherryDropped(_ context.Context, upstream, head string) ([]string, error) {
 	return f.dropped[upstream+".."+head], nil
+}
+
+// Cherry answers what a branch still contributes. Unlisted means "one commit
+// of its own", which keeps cases that are not about collapsing free of noise.
+func (f *fakeGit) Cherry(_ context.Context, upstream, head, limit string) ([]string, []string, error) {
+	if f.collapses[head] {
+		return nil, []string{"already-upstream"}, nil
+	}
+	return []string{"own-" + head}, nil, nil
 }
 
 func (f *fakeGit) PinForkPoint(_ context.Context, branch, object string) error {
@@ -664,5 +675,62 @@ func TestPlanWithoutReplayReportsThatNothingWasPredicted(t *testing.T) {
 	}
 	if plan.Blocked != "" {
 		t.Errorf("Blocked = %q; an unpredictable rewrite is still allowed to run", plan.Blocked)
+	}
+}
+
+// Whether a rewrite engine drops an already-upstream commit or reapplies it
+// changed between Git 2.54 and 2.55, and it is exactly the case a restack
+// exists for. So such commits are never handed to an engine: the branch that
+// owns them has nothing left to contribute, and its ref simply moves.
+func TestACollapsedBranchIsMovedRatherThanReplayed(t *testing.T) {
+	git := stackGit()
+	// synthetic-a's work is already in the trunk, as it would be after a
+	// squash merge.
+	git.collapses = map[string]bool{"synthetic-a": true}
+	service, _, _ := newService(git, stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if want := "synthetic-a"; strings.Join(plan.Emptied(), ",") != want {
+		t.Errorf("Emptied() = %v, want %s", plan.Emptied(), want)
+	}
+
+	if err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if git.restored["synthetic-a"] == "" {
+		t.Error("the collapsed branch's ref was not moved directly")
+	}
+	if len(git.replays) != 1 {
+		t.Fatalf("replays = %d, want one", len(git.replays))
+	}
+	for _, replayed := range git.replays[0] {
+		if replayed.To == "synthetic-a" {
+			t.Errorf("the collapsed branch was handed to the engine: %v", git.replays[0])
+		}
+	}
+}
+
+// A selection where every branch has collapsed needs no engine at all.
+func TestAWhollyCollapsedSelectionRunsNoEngine(t *testing.T) {
+	git := stackGit()
+	git.collapses = map[string]bool{"synthetic-a": true, "synthetic-b": true}
+	service, _, _ := newService(git, stack())
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Clean {
+		t.Error("Clean = false when there is nothing that could conflict")
+	}
+	if err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if len(git.replays) != 0 || len(git.rebases) != 0 {
+		t.Errorf("an engine ran with nothing to replay: replays=%v rebases=%v", git.replays, git.rebases)
 	}
 }

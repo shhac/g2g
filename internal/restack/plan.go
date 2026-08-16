@@ -28,6 +28,7 @@ type Git interface {
 	RebaseInProgress(context.Context) (bool, error)
 	ResetKeep(context.Context) error
 	CherryDropped(context.Context, string, string) ([]string, error)
+	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	PinForkPoint(context.Context, string, string) error
 	UpdateBranch(context.Context, string, string) error
 }
@@ -55,6 +56,15 @@ type Step struct {
 	// dropped rather than rewritten.
 	Orphans    []string
 	Absorbable bool
+	// Collapses means every commit this branch owns is already in its new
+	// base by content, so it has nothing left to contribute and its ref simply
+	// moves there.
+	//
+	// Handling this here rather than leaving it to the engines is what makes
+	// them agree. Whether a rewrite drops an already-upstream commit or
+	// reapplies it changed between Git 2.54 and 2.55, and it is exactly the
+	// case a restack exists for, so the commits are never handed over at all.
+	Collapses bool
 }
 
 // ranges are what the rewrite engines are given.
@@ -66,15 +76,26 @@ type Step struct {
 // directly on the base independently, which conflicts as soon as a branch
 // depends on the one below it.
 func (p Plan) ranges() []localgit.Range {
-	if len(p.Steps) == 0 {
+	rewriting := p.rewriting()
+	if len(rewriting) == 0 {
 		return nil
 	}
-	origin := p.Steps[0].ForkPoint
-	ranges := make([]localgit.Range, 0, len(p.Steps))
-	for _, step := range p.Steps {
+	origin := rewriting[0].ForkPoint
+	ranges := make([]localgit.Range, 0, len(rewriting))
+	for _, step := range rewriting {
 		ranges = append(ranges, localgit.Range{From: origin, To: step.Branch})
 	}
 	return ranges
+}
+
+// onto is the object the rewrite lands on: the base of the first step that
+// still has commits, once any collapse below it has been accounted for.
+func (p Plan) onto() string {
+	rewriting := p.rewriting()
+	if len(rewriting) == 0 {
+		return ""
+	}
+	return rewriting[0].Base
 }
 
 // rebaseRange is what the resumable engine takes: one range covering the whole
@@ -84,7 +105,30 @@ func (p Plan) ranges() []localgit.Range {
 // replays only that branch's own commits and silently drops everything below
 // it, and having one available is how that mistake gets made.
 func (p Plan) rebaseRange() localgit.Range {
-	return localgit.Range{From: p.Steps[0].ForkPoint, To: p.Steps[len(p.Steps)-1].Branch}
+	rewriting := p.rewriting()
+	return localgit.Range{From: rewriting[0].ForkPoint, To: rewriting[len(rewriting)-1].Branch}
+}
+
+// rewriting is the steps that actually have commits to replay.
+func (p Plan) rewriting() []Step {
+	steps := make([]Step, 0, len(p.Steps))
+	for _, step := range p.Steps {
+		if !step.Collapses {
+			steps = append(steps, step)
+		}
+	}
+	return steps
+}
+
+// collapsing is the steps whose ref only has to move.
+func (p Plan) collapsing() []Step {
+	steps := make([]Step, 0)
+	for _, step := range p.Steps {
+		if step.Collapses {
+			steps = append(steps, step)
+		}
+	}
+	return steps
 }
 
 // reparenting is the branches this plan moves to a different parent, which is
@@ -102,11 +146,12 @@ func (p Plan) reparenting() map[string]string {
 // chain reports whether the steps form a single line of descent, which is the
 // only shape the resumable engine can rewrite in one invocation.
 func (p Plan) chain() bool {
-	for index, step := range p.Steps {
+	rewriting := p.rewriting()
+	for index, step := range rewriting {
 		if index == 0 {
 			continue
 		}
-		if step.Parent != p.Steps[index-1].Branch {
+		if step.Parent != rewriting[index-1].Branch {
 			return false
 		}
 	}
@@ -167,24 +212,14 @@ func (p Plan) Absorbable() bool {
 // The comparison is against where the parent ends up, not where it is now: in
 // a stack every branch above the bottom one is also being rewritten, so its
 // current tip says nothing about the result.
+// Emptied lists branches the rewrite leaves with no commits of their own,
+// because everything they carried is already in their new base. It is known
+// from the plan rather than inferred from a preview, so it is reported the
+// same way on every Git.
 func (p Plan) Emptied() []string {
-	resulting := make(map[string]string, len(p.Updates))
-	for _, update := range p.Updates {
-		resulting[update.Branch()] = update.New
-	}
 	emptied := make([]string, 0)
-	for _, step := range p.Steps {
-		tip, rewritten := resulting[step.Branch]
-		if !rewritten {
-			continue
-		}
-		base := step.Base
-		if parentTip, moved := resulting[step.Parent]; moved {
-			base = parentTip
-		}
-		if tip == base {
-			emptied = append(emptied, step.Branch)
-		}
+	for _, step := range p.collapsing() {
+		emptied = append(emptied, step.Branch)
 	}
 	return emptied
 }
@@ -275,6 +310,9 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 	// branch only against its parent's *current* tip restacks the bottom of a
 	// stack and silently strands everything above it.
 	rewriting := map[string]bool{}
+	// landing records where a collapsed branch ends up, so its children are
+	// measured against that rather than against a tip about to disappear.
+	landing := map[string]string{}
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
@@ -295,9 +333,24 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 			continue
 		}
 		rewriting[branch] = true
+		// A parent that collapsed onto its own base leaves this branch sitting
+		// on that base instead, so measure against where the parent ends up.
+		if landed, collapsed := landing[parent]; collapsed {
+			base = landed
+		}
 		step := Step{Branch: branch, Parent: parent, Base: base, ForkPoint: resolvedFork, Tip: tip}
 		if err := s.classifyOrphans(ctx, &step); err != nil {
 			return nil, err
+		}
+		own, _, err := s.Git.Cherry(ctx, step.Base, branch, step.ForkPoint)
+		if err != nil {
+			return nil, err
+		}
+		// Nothing of this branch's own is missing from its new base, so it has
+		// nothing left to replay and its ref simply moves there.
+		step.Collapses = len(own) == 0
+		if step.Collapses {
+			landing[branch] = step.Base
 		}
 		steps = append(steps, step)
 	}

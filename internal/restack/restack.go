@@ -52,10 +52,33 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Absorb {
 		return s.absorb(ctx, plan)
 	}
+	// Branches with nothing left to contribute move first: their children are
+	// planned against where they land, and neither engine ever sees a commit
+	// that is already upstream.
+	if err := s.collapse(ctx, plan); err != nil {
+		return err
+	}
+	if len(plan.rewriting()) == 0 {
+		return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
+	}
 	if plan.Clean {
 		return s.replay(ctx, plan)
 	}
 	return s.rebase(ctx, plan)
+}
+
+// collapse moves the branches whose work is entirely in their new base.
+func (s Service) collapse(ctx context.Context, plan Plan) error {
+	for _, step := range plan.collapsing() {
+		if step.Tip == step.Base {
+			continue
+		}
+		diagnostic.Event(ctx, "restack.collapse", diagnostic.Field{Key: "branch", Value: step.Branch})
+		if err := s.Git.UpdateBranch(ctx, step.Branch, step.Base); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // absorb keeps the commits a parent dropped by re-recording where the branch
@@ -69,7 +92,7 @@ func (s Service) absorb(ctx context.Context, plan Plan) error {
 func (s Service) replay(ctx context.Context, plan Plan) error {
 	ranges := plan.ranges()
 	diagnostic.Event(ctx, "restack.replay", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	if err := s.Git.Replay(ctx, plan.Steps[0].Base, ranges); err != nil {
+	if err := s.Git.Replay(ctx, plan.onto(), ranges); err != nil {
 		return err
 	}
 	// A replay moves refs without touching the index, so a user standing on a
@@ -100,7 +123,7 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 		return err
 	}
 	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	if err := s.Git.Rebase(ctx, plan.Steps[0].Base, plan.rebaseRange()); err != nil {
+	if err := s.Git.Rebase(ctx, plan.onto(), plan.rebaseRange()); err != nil {
 		return err
 	}
 	return s.finish(ctx, record)
@@ -220,7 +243,7 @@ func (s Service) finish(ctx context.Context, record Record) error {
 			}
 			return s.Journal.Clear(ctx)
 		}
-		return s.Git.Rebase(ctx, plan.Steps[0].Base, plan.rebaseRange())
+		return s.Git.Rebase(ctx, plan.onto(), plan.rebaseRange())
 	}
 	// The reparenting comes from the record rather than the fresh plan: once
 	// the rewrite has happened the branch no longer sits where the graph says,

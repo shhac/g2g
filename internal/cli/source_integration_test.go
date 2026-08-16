@@ -2,7 +2,9 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -321,7 +323,11 @@ func TestEveryCommandTakingTheStackFlagsIsCovered(t *testing.T) {
 	}
 
 	for _, command := range cli.New("v0.0.0-test", &stdout, &stderr).Commands() {
-		if command.Flags().Lookup("branch") == nil || command.Flags().Lookup("trunk") == nil {
+		// --from is what stackOptions registers and nothing else does, so it is
+		// the marker for "this command resolves a stack through a source".
+		// --trunk alone is not: track has one too, meaning where an adoption
+		// stops rather than which base a projection sits on.
+		if command.Flags().Lookup("branch") == nil || command.Flags().Lookup("from") == nil {
 			continue
 		}
 		if !covered[command.Name()] {
@@ -494,4 +500,131 @@ func TestLinkSelectsFromTheG2GOwnedGraph(t *testing.T) {
 		}
 	}
 	recorder.AssertNone("gt ")
+}
+
+// treeRepository is a real repository with a forked stack. Ancestry is the one
+// seam a PATH fake proves nothing about — the fake answers whatever it is
+// asked, and the question is what Git actually considers reachable — so this
+// builds a throwaway local repository with synthetic names and no remote.
+func treeRepository(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	script := strings.Join([]string{
+		"git init -q -b synthetic-trunk .",
+		"git config user.email synthetic@example.test",
+		"git config user.name Synthetic",
+		"git config gc.auto 0",
+		"git config maintenance.auto false",
+		"git commit -q --allow-empty -m root",
+		"git switch -q -c synthetic-a && git commit -q --allow-empty -m a",
+		"git switch -q -c synthetic-b && git commit -q --allow-empty -m b",
+		"git switch -q synthetic-a",
+		"git switch -q -c synthetic-c && git commit -q --allow-empty -m c",
+		"git switch -q synthetic-trunk",
+		"git switch -q -c synthetic-elsewhere && git commit -q --allow-empty -m elsewhere",
+		"git switch -q synthetic-b",
+	}, " && ")
+	out, err := exec.Command("sh", "-c", "cd "+dir+" && "+script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("build repository: %v\n%s", err, out)
+	}
+	return dir
+}
+
+func inRepository(t *testing.T, dir string, args ...string) (string, string, error) {
+	t.Helper()
+
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	return run(t, args...)
+}
+
+// A stack is a forest, so adopting one has to record a tree rather than a line.
+func TestTrackStackRecordsAWholeTree(t *testing.T) {
+	dir := treeRepository(t)
+
+	stdout, stderr, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply")
+	if err != nil {
+		t.Fatalf("track --stack --apply: %v\n%s%s", err, stdout, stderr)
+	}
+
+	graphOut, _, err := inRepository(t, dir, "graph", "--scope", "graph")
+	if err != nil {
+		t.Fatalf("graph: %v", err)
+	}
+	for _, branch := range []string{"synthetic-a", "synthetic-b", "synthetic-c"} {
+		if !strings.Contains(graphOut, branch) {
+			t.Errorf("graph omits %s:\n%s", branch, graphOut)
+		}
+	}
+	// A branch that only shares the trunk is a separate stack, not part of this
+	// one, and sweeping it in would adopt half the repository.
+	if strings.Contains(graphOut, "synthetic-elsewhere") {
+		t.Errorf("adoption swept in a branch that only shares the trunk:\n%s", graphOut)
+	}
+}
+
+// Adopting from the tip downwards must leave exactly one trunk. This is the
+// shape that used to promote every branch on the way past.
+func TestTrackStackLeavesOneTrunk(t *testing.T) {
+	dir := treeRepository(t)
+
+	if _, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply"); err != nil {
+		t.Fatalf("track --stack: %v", err)
+	}
+
+	stored, err := os.ReadFile(filepath.Join(dir, ".git", "g2g", "graph.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recorded struct {
+		Trunks   []string                     `json:"trunks"`
+		Branches map[string]map[string]string `json:"branches"`
+	}
+	if err := json.Unmarshal(stored, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(recorded.Trunks, ","); got != "synthetic-trunk" {
+		t.Errorf("trunks = %s, want only synthetic-trunk", got)
+	}
+	if parent := recorded.Branches["synthetic-b"]["parent"]; parent != "synthetic-a" {
+		t.Errorf("parent of synthetic-b = %q, want synthetic-a", parent)
+	}
+}
+
+// Re-running records nothing, which is what makes it safe to reach for.
+func TestTrackStackIsRepeatable(t *testing.T) {
+	dir := treeRepository(t)
+
+	if _, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply"); err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	stdout, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk")
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if !strings.Contains(stdout, "Nothing to do") {
+		t.Errorf("a second run does not report a no-op:\n%s", stdout)
+	}
+}
+
+// The candidate list is where a newcomer first meets the tool, so it has to
+// name the way out of doing this one branch at a time.
+func TestCandidateAdviceOffersWholeStackAdoption(t *testing.T) {
+	dir := treeRepository(t)
+
+	stdout, _, err := inRepository(t, dir, "track")
+	if err != nil {
+		t.Fatalf("track: %v", err)
+	}
+	if !strings.Contains(stdout, "--stack") {
+		t.Errorf("the candidate advice does not mention --stack:\n%s", stdout)
+	}
 }

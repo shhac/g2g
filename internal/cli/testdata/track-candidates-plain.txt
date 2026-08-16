@@ -4,7 +4,7 @@ Target  synthetic-login  · --branch
 
 Apply blocked: no parent chosen
 
-Candidate parents, nearest first: synthetic-auth (1 commit behind), synthetic-main (1 commit behind) · rerun with --parent <branch>.
+Candidate parents, nearest first: synthetic-auth (1 commit behind), synthetic-main (1 commit behind) · rerun with --parent <branch> for this one branch, or --stack to record the whole ancestry at once.
 Scope branch · 1 branch · /synthetic/repo/.git/g2g/graph.json
 
 No changes were made. Rerun with --apply to record this edge.

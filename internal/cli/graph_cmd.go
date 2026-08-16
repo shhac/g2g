@@ -56,11 +56,24 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 func newTrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var parent string
+	var trunk string
+	var wholeStack bool
 	var apply bool
-	cmd := &cobra.Command{Use: "track", Short: "Record a branch's parent in the gt2gh-owned graph", Args: cobra.NoArgs}
+	cmd := &cobra.Command{
+		Use:   "track",
+		Short: "Record a branch's parent in the g2g-owned graph (preview by default)",
+		Long: "Records where a branch sits, so every other command knows the structure.\n\n" +
+			"--parent records one branch. --stack records the whole ancestry between a trunk and the " +
+			"selected branch in one go, which is usually what a stack that already exists needs: " +
+			"the order comes from commit ancestry, and it refuses rather than guessing where that is ambiguous.",
+		Args: cobra.NoArgs,
+	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, trunk)
+		if wholeStack {
+			return trackStackFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		}
 		flow := applyFlow[graph.TrackPlan]{
 			plan: func(ctx context.Context) (graph.TrackPlan, error) {
 				return service.PlanTrack(ctx, selection.Selection(), parent)
@@ -87,9 +100,40 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 	}
 	cmd.Flags().StringVar(&parent, "parent", "", "branch to record as the parent (previewing the candidates when absent)")
 	_ = cmd.RegisterFlagCompletionFunc("parent", completionCallback(parentCompletions(service, &selection)))
+	cmd.Flags().BoolVar(&wholeStack, "stack", false, "record the whole ancestry between the trunk and the selected branch, not just one edge")
+	cmd.Flags().StringVar(&trunk, "trunk", "", "where --stack stops (defaults to the only recorded root on the ancestry)")
+	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(localBranchCompletions(service)))
+	cmd.MarkFlagsMutuallyExclusive("parent", "stack")
 	cmd.Flags().BoolVar(&apply, "apply", false, "write the recorded parent instead of previewing it")
 	selection.registerBranch(cmd, service)
 	return cmd
+}
+
+// trackStackFlow is the same safety sequence as every other mutating command,
+// over the whole-ancestry plan rather than a single edge.
+func trackStackFlow(service graph.Service, selection graphOptions, trunk string, guard func(context.Context) error) applyFlow[graph.StackPlan] {
+	return applyFlow[graph.StackPlan]{
+		plan: func(ctx context.Context) (graph.StackPlan, error) {
+			return service.PlanStack(ctx, selection.Selection(), trunk)
+		},
+		revalidate: func(ctx context.Context, preview graph.StackPlan) (graph.StackPlan, error) {
+			return service.RevalidateStack(ctx, selection.Selection(), trunk, preview)
+		},
+		render: func(writer io.Writer, plan graph.StackPlan, p Presentation) error {
+			return writeGraphView(writer, trackStackView(plan), plan.Discovery, p)
+		},
+		guard:    guard,
+		execute:  service.ApplyStack,
+		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
+		noOp:     func(plan graph.StackPlan) bool { return plan.Blocked == "" && len(plan.Record) == 0 },
+		notices: flowNotices{
+			preview:  "Rerun with --apply to record this stack.",
+			noOp:     "The graph already records this whole ancestry. Nothing to do.",
+			applied:  "Recorded.",
+			changed:  "The g2g-owned graph now records this stack.",
+			recovery: "The graph store may or may not have been written.",
+		},
+	}
 }
 
 // trackIsNoOp reports a plan that would rewrite the edge it already found.

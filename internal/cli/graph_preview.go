@@ -213,7 +213,31 @@ func candidateAdvice(plan graph.TrackPlan) string {
 	for _, candidate := range plan.Candidates {
 		described = append(described, candidate.Branch+describeCandidate(candidate))
 	}
-	return "Candidate parents, nearest first: " + strings.Join(described, ", ") + " · rerun with --parent <branch>."
+	return "Candidate parents, nearest first: " + strings.Join(described, ", ") +
+		" · rerun with --parent <branch> for this one branch, or --stack to record the whole ancestry at once."
+}
+
+// stackView renders a whole-stack adoption. It is the same graph view every
+// other structure command uses; only the notes differ.
+func trackStackView(plan graph.StackPlan) stackView {
+	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
+	if plan.Blocked != "" {
+		return view.block("Apply blocked: " + plan.Blocked)
+	}
+	if len(plan.Record) == 0 {
+		return view.note("The graph already records this whole ancestry.", severityNeutral)
+	}
+	view = view.note(fmt.Sprintf("Records %s, from %s upwards.", branchList(plan.Branches()), plan.Trunk), severityOK)
+	for _, adoption := range plan.Record {
+		view = view.note(fmt.Sprintf("  %s under %s", adoption.Branch, adoption.Parent), severityNeutral)
+	}
+	if plan.NewTrunk != "" {
+		view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
+	}
+	if len(plan.Already) != 0 {
+		view = view.note("Already recorded: "+branchList(plan.Already)+".", severityNeutral)
+	}
+	return view
 }
 
 func describeCandidate(candidate graph.Candidate) string {

@@ -359,3 +359,77 @@ func TestRestackResumeVerbsAreExclusive(t *testing.T) {
 		t.Error("--continue was accepted with no restack in progress")
 	}
 }
+
+// droppedCommitRepo records the stack while the parent still has two commits,
+// then removes the parent's tip. The child keeps carrying it, so it is an
+// orphan the restack has to decide about — and because it was removed rather
+// than rewritten, keeping it is a coherent choice.
+func droppedCommitRepo(t *testing.T) string {
+	t.Helper()
+	dir := restackRepo(t)
+	gitOutput(t, "checkout", "-q", "synthetic-a")
+	if err := os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("extra\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, "add", "-A")
+	gitOutput(t, "commit", "-qm", "a2")
+	// Rebuild synthetic-b on top of the two-commit parent, then adopt both, so
+	// the recorded fork point is the parent's tip at that moment.
+	gitOutput(t, "checkout", "-q", "synthetic-b")
+	gitOutput(t, "rebase", "-q", "--onto", "synthetic-a", "synthetic-a~1", "synthetic-b")
+	trackStack(t)
+	// The parent gives up its tip commit; synthetic-b still has it.
+	gitOutput(t, "checkout", "-q", "synthetic-a")
+	gitOutput(t, "reset", "-q", "--hard", "HEAD~1")
+	gitOutput(t, "checkout", "-q", "synthetic-b")
+	return dir
+}
+
+// A commit the parent dropped must never disappear from a child quietly, and
+// whether keeping it is even coherent has to be said too.
+func TestRestackReportsCommitsTheParentDropped(t *testing.T) {
+	droppedCommitRepo(t)
+
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path")
+	if err != nil {
+		t.Fatalf("restack: %v\n%s", err, stdout)
+	}
+
+	if !strings.Contains(stdout, "dropped") {
+		t.Errorf("output does not report the dropped commit:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "--absorb") {
+		t.Errorf("output does not offer to keep it:\n%s", stdout)
+	}
+}
+
+// Keeping them rewrites nothing: the parent's tip is already an ancestor.
+func TestRestackAbsorbRewritesNothing(t *testing.T) {
+	droppedCommitRepo(t)
+	before := gitOutput(t, "rev-parse", "synthetic-b")
+
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path", "--absorb", "--apply")
+	if err != nil {
+		t.Fatalf("restack --absorb: %v\n%s", err, stdout)
+	}
+
+	if now := gitOutput(t, "rev-parse", "synthetic-b"); now != before {
+		t.Errorf("--absorb rewrote synthetic-b (%s -> %s); it only re-records the fork point", before, now)
+	}
+	if !strings.Contains(stdout, "Nothing is rewritten") {
+		t.Errorf("output does not say nothing was rewritten:\n%s", stdout)
+	}
+}
+
+// Dropping is the default, and the commit really does go.
+func TestRestackDropsOrphansByDefault(t *testing.T) {
+	droppedCommitRepo(t)
+
+	if stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path", "--apply"); err != nil {
+		t.Fatalf("restack --apply: %v\n%s", err, stdout)
+	}
+
+	if commits := gitOutput(t, "log", "--oneline", "synthetic-a..synthetic-b"); strings.Contains(commits, "a2") {
+		t.Errorf("the dropped commit survived in synthetic-b:\n%s", commits)
+	}
+}

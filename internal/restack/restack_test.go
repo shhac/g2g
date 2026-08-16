@@ -616,3 +616,30 @@ func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 		t.Fatal("Revalidate() error = nil after a branch moved")
 	}
 }
+
+// Resuming into a second conflicting round must hand the engine a range from
+// the topmost fork point, exactly as the first round did. Using the last
+// step's own range replays only the top branch's commits and drops everything
+// below it.
+func TestContinuingIntoAnotherRoundReplaysFromTheTopmostForkPoint(t *testing.T) {
+	git := stackGit()
+	git.previewClean = false
+	git.inProgress = true
+	service, _, journal := newService(git, stack())
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.present = true
+
+	if err := service.Continue(context.Background()); err != nil {
+		t.Fatalf("Continue() error = %v", err)
+	}
+
+	if len(git.rebases) != 1 {
+		t.Fatalf("rebases = %d, want one more round", len(git.rebases))
+	}
+	if got := git.rebases[0]; got.From != "trunk-old" {
+		t.Errorf("range starts at %q, want the topmost fork point trunk-old", got.From)
+	}
+	if got := git.rebases[0]; got.To != "synthetic-b" {
+		t.Errorf("range ends at %q, want the tip of the chain", got.To)
+	}
+}

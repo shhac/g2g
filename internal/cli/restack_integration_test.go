@@ -15,15 +15,23 @@ import (
 //
 // Nothing leaves the machine: no remote is configured and every name is
 // invented.
-func restackRepo(t *testing.T) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	env := append(os.Environ(),
+// syntheticEnv is the whole environment a throwaway repository needs: an
+// identity to commit with, and no user configuration at all. Relying on the
+// machine's own identity works on a developer's box and fails on a runner that
+// has none, which is a difference between environments rather than in the code.
+func syntheticEnv() []string {
+	return append(os.Environ(),
 		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
 		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
 		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 	)
+}
+
+func restackRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	env := syntheticEnv()
 	run := func(args ...string) string {
 		t.Helper()
 		command := exec.Command("git", args...)
@@ -42,6 +50,11 @@ func restackRepo(t *testing.T) string {
 	}
 
 	run("init", "-q", "--initial-branch=synthetic-trunk")
+	// Background maintenance writes into .git after a commit, which races the
+	// temporary directory's cleanup. Disabling it in the repository covers
+	// every invocation, including the ones the code under test makes.
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
 	write("base\n")
 	run("add", "-A")
 	run("commit", "-qm", "base")
@@ -137,7 +150,7 @@ func keepBothSides(contents string) string {
 func gitOutput(t *testing.T, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", args...)
-	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	command.Env = syntheticEnv()
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
@@ -148,7 +161,7 @@ func gitOutput(t *testing.T, args ...string) string {
 func isAncestor(t *testing.T, ancestor, descendant string) bool {
 	t.Helper()
 	command := exec.Command("git", "merge-base", "--is-ancestor", ancestor, descendant)
-	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	command.Env = syntheticEnv()
 	return command.Run() == nil
 }
 
@@ -431,5 +444,43 @@ func TestRestackDropsOrphansByDefault(t *testing.T) {
 
 	if commits := gitOutput(t, "log", "--oneline", "synthetic-a..synthetic-b"); strings.Contains(commits, "a2") {
 		t.Errorf("the dropped commit survived in synthetic-b:\n%s", commits)
+	}
+}
+
+// Moving a fragment onto a different base has to record the move, not just
+// perform it. Leaving the recorded parent naming the old base would make the
+// graph describe a structure that no longer exists.
+func TestRestackOntoRecordsTheNewParent(t *testing.T) {
+	dir := restackRepo(t)
+	gitOutput(t, "checkout", "-q", "synthetic-trunk")
+	gitOutput(t, "checkout", "-qb", "synthetic-release")
+	if err := os.WriteFile(filepath.Join(dir, "release.txt"), []byte("release\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, "add", "-A")
+	gitOutput(t, "commit", "-qm", "release work")
+	gitOutput(t, "checkout", "-q", "synthetic-b")
+	trackStack(t)
+
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "path", "--onto", "synthetic-release", "--apply")
+	if err != nil {
+		t.Fatalf("restack --onto: %v\n%s", err, stdout)
+	}
+
+	if !isAncestor(t, "synthetic-release", "synthetic-a") {
+		t.Fatal("synthetic-a was not moved onto the new base")
+	}
+	// The graph must now agree, so a later command measures against reality.
+	graph, _, err := run(t, "graph", "--branch", "synthetic-b", "--scope", "graph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(graph, "synthetic-release") {
+		t.Errorf("the graph does not record the new base:\n%s", graph)
+	}
+	for _, stale := range []string{"needs restack", "moved off parent"} {
+		if strings.Contains(graph, stale) {
+			t.Errorf("the graph reports %q after a completed restack:\n%s", stale, graph)
+		}
 	}
 }

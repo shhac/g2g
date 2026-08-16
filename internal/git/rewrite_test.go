@@ -12,6 +12,18 @@ import (
 	"github.com/shhac/gt2gh/internal/testutil"
 )
 
+// syntheticEnv is the whole environment a throwaway repository needs: an
+// identity to commit with, and no user configuration at all. Relying on the
+// machine's own identity works on a developer's box and fails on a runner that
+// has none, which is a difference between environments rather than in the code.
+func syntheticEnv() []string {
+	return append(os.Environ(),
+		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
+		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+	)
+}
+
 // stackRepo builds synthetic-trunk <- synthetic-a <- synthetic-b, where the
 // trunk has since absorbed synthetic-a's work as one squashed commit and moved
 // on. That is the shape every restack exists to repair, and a rewrite is the
@@ -21,11 +33,7 @@ func stackRepo(t *testing.T, overlap bool) (Client, map[string]string) {
 	t.Helper()
 
 	dir := t.TempDir()
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
+	env := syntheticEnv()
 	run := func(args ...string) string {
 		t.Helper()
 		command := exec.Command("git", args...)
@@ -48,6 +56,11 @@ func stackRepo(t *testing.T, overlap bool) (Client, map[string]string) {
 	}
 
 	run("init", "-q", "--initial-branch=synthetic-trunk")
+	// Background maintenance writes into .git after a commit, which races the
+	// temporary directory's cleanup. Disabling it in the repository covers
+	// every invocation, including the ones the code under test makes.
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
 	write("shared.txt", "base\n")
 	commit("base")
 	run("checkout", "-qb", "synthetic-a")
@@ -369,11 +382,7 @@ func stage(t *testing.T, path string) {
 func gitExec(t *testing.T, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", args...)
-	command.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
+	command.Env = syntheticEnv()
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)

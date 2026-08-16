@@ -21,11 +21,7 @@ func syntheticRemote(t *testing.T) (upstream string, client Client) {
 	root := t.TempDir()
 	upstream = filepath.Join(root, "upstream.git")
 	clone := filepath.Join(root, "clone")
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
+	env := syntheticEnv()
 	run := func(dir string, args ...string) {
 		t.Helper()
 		command := exec.Command("git", args...)
@@ -36,6 +32,11 @@ func syntheticRemote(t *testing.T) (upstream string, client Client) {
 	}
 	run(root, "init", "-q", "--bare", "--initial-branch=synthetic-trunk", upstream)
 	run(root, "init", "-q", "--initial-branch=synthetic-trunk", clone)
+	// Background maintenance writes into .git after a commit, which races the
+	// temporary directory's cleanup. Disabling it in the repository covers
+	// every invocation, including the ones the code under test makes.
+	run(clone, "config", "gc.auto", "0")
+	run(clone, "config", "maintenance.auto", "false")
 	if err := os.WriteFile(filepath.Join(clone, "base.txt"), []byte("base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -54,11 +55,7 @@ func advanceUpstream(t *testing.T, upstream, branch, file string) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	env := append(os.Environ(),
-		"GIT_AUTHOR_NAME=other", "GIT_AUTHOR_EMAIL=other@example.test",
-		"GIT_COMMITTER_NAME=other", "GIT_COMMITTER_EMAIL=other@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
+	env := syntheticEnv()
 	run := func(args ...string) []byte {
 		t.Helper()
 		command := exec.Command("git", args...)

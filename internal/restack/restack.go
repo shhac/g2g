@@ -63,7 +63,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // ancestor of the branch.
 func (s Service) absorb(ctx context.Context, plan Plan) error {
 	diagnostic.Event(ctx, "restack.absorb", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	return s.recordForkPoints(ctx, plan.Discovery.Branches)
+	return s.recordStructure(ctx, plan)
 }
 
 func (s Service) replay(ctx context.Context, plan Plan) error {
@@ -77,7 +77,7 @@ func (s Service) replay(ctx context.Context, plan Plan) error {
 	if err := s.Git.ResetKeep(ctx); err != nil {
 		return err
 	}
-	return s.recordForkPoints(ctx, plan.Discovery.Branches)
+	return s.recordStructure(ctx, plan)
 }
 
 // rebase runs the resumable engine and journals enough to undo the whole
@@ -105,8 +105,14 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 	return s.finish(ctx, graph.Selection{Branch: plan.Target, Scope: plan.Scope})
 }
 
-// recordForkPoints re-reads where each branch now forks and writes that back,
-// so the next command measures against what the rewrite actually produced.
+// recordStructure writes back what the rewrite actually produced: any branch
+// it reparented, and where every branch now forks.
+//
+// Reparenting has to be recorded here rather than by the caller. A rewrite
+// with --onto moves a fragment onto a different base, and leaving the recorded
+// parent naming the old one would make the graph describe a structure that no
+// longer exists — which every later command, including the next restack, would
+// then measure against.
 //
 // It walks the whole selection rather than the plan's steps. Once a rewrite
 // succeeds the re-derived plan has no steps left, so recording only those
@@ -115,13 +121,26 @@ func (s Service) rebase(ctx context.Context, plan Plan) error {
 //
 // A branch that is not actually built on its parent is skipped: writing its
 // parent's tip as a fork point would assert a range that does not exist.
-func (s Service) recordForkPoints(ctx context.Context, branches []string) error {
+func (s Service) recordStructure(ctx context.Context, plan Plan) error {
 	adopted, err := s.Graph.Store.Load(ctx)
 	if err != nil {
 		return err
 	}
 	updated := adopted.Clone()
-	for _, branch := range branches {
+	for _, step := range plan.Steps {
+		edge, tracked := updated.Edges[step.Branch]
+		if !tracked || edge.Parent == step.Parent {
+			continue
+		}
+		edge.Parent = step.Parent
+		updated.Edges[step.Branch] = edge
+		// A new base that nothing else hangs from is a root of the forest, and
+		// recording it is what lets the next branch find it as a candidate.
+		if !updated.Tracked(step.Parent) && !updated.IsTrunk(step.Parent) {
+			updated = updated.WithTrunks(append(slices.Clone(updated.Trunks), step.Parent)...)
+		}
+	}
+	for _, branch := range plan.Discovery.Branches {
 		edge, tracked := updated.Edges[branch]
 		if !tracked {
 			continue
@@ -201,7 +220,7 @@ func (s Service) finish(ctx context.Context, selection graph.Selection) error {
 		}
 		return s.Git.Rebase(ctx, plan.Steps[0].Base, plan.rebaseRange())
 	}
-	if err := s.recordForkPoints(ctx, plan.Discovery.Branches); err != nil {
+	if err := s.recordStructure(ctx, plan); err != nil {
 		return err
 	}
 	return s.Journal.Clear(ctx)

@@ -24,11 +24,7 @@ func syntheticRepo(t *testing.T) (string, Client) {
 		t.Helper()
 		command := exec.Command("git", args...)
 		command.Dir = dir
-		command.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-			"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-		)
+		command.Env = syntheticEnv()
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 		}
@@ -43,6 +39,11 @@ func syntheticRepo(t *testing.T) (string, Client) {
 	}
 
 	run("init", "--initial-branch=synthetic-main")
+	// Background maintenance writes into .git after a commit, which races the
+	// temporary directory's cleanup. Disabling it in the repository covers
+	// every invocation, including the ones the code under test makes.
+	run("config", "gc.auto", "0")
+	run("config", "maintenance.auto", "false")
 	commit("root")
 	run("checkout", "-b", "synthetic-auth")
 	commit("auth")

@@ -20,11 +20,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
-			mode := "preview"
-			if apply {
-				mode = "apply"
-			}
-			root := commandContext(cmd.Context(), cmd, "push", mode, selection.branch, selection.trunk)
+			root := commandContext(cmd.Context(), cmd, "push", applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[push.Plan]{
 				plan: func(ctx context.Context) (push.Plan, error) { return service.Plan(ctx, selection.Selection(), remote) },
 				revalidate: func(ctx context.Context, preview push.Plan) (push.Plan, error) {

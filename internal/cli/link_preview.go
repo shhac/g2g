@@ -44,7 +44,7 @@ func linkView(plan link.Plan) stackView {
 		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
 	if len(plan.Issues) != 0 {
-		return view.block(blockedReason(plan))
+		return view.blockedBy(blockedReason(plan))
 	}
 	if len(view.Action) == 0 {
 		return view.note("Nothing to link — this stack has one pull request.", severityNeutral)
@@ -56,20 +56,25 @@ func linkView(plan link.Plan) stackView {
 // preview that only says "resolve the mappings" leaves the reader to work out
 // which of five commands — or which Graphite command — applies, and the plan
 // already knows.
+//
+// It returns the reason without a label. status wants the same sentence under a
+// different heading, and it used to get one by string-replacing the prefix back
+// out of a rendered line — which quietly tied one command's output to a literal
+// six other files typed by hand.
 func blockedReason(plan link.Plan) string {
 	// Merged branches come first: they are the only case no gt2gh command
 	// fixes. The stack itself is stale, and Graphite has to restack around
 	// them before anything here can help.
 	if merged := plan.MergedBranches(); len(merged) != 0 {
-		return fmt.Sprintf("Apply blocked: %s already merged. Run gt sync in Graphite to restack, then re-run.", branchList(merged))
+		return fmt.Sprintf("%s already merged. Run gt sync in Graphite to restack, then re-run.", branchList(merged))
 	}
 	if plan.SyncRepairable() {
-		return "Apply blocked: every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
+		return "every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
 	}
 	if plan.SubmitRepairable() {
-		return "Apply blocked: " + submitAdvice(plan) + " Run g2g submit to create " + object(len(plan.Issues)) + "."
+		return submitAdvice(plan) + " Run g2g submit to create " + object(len(plan.Issues)) + "."
 	}
-	return "Apply blocked: resolve every unresolved GitHub PR mapping first."
+	return "resolve every unresolved GitHub PR mapping first."
 }
 
 func submitAdvice(plan link.Plan) string {

@@ -16,7 +16,7 @@ func importView(plan align.ImportPlan) stackView {
 	view := stackView{Operation: "import", Target: "graphite", TargetSource: "source"}
 	if plan.Blocked != "" {
 		view = view.note(conflictNote(plan), severityBad)
-		return view.block("Apply blocked: " + plan.Blocked)
+		return view.blockedBy(plan.Blocked)
 	}
 	// Nothing-to-adopt is applyFlow's line to say, not this view's.
 	if len(plan.Adopt) == 0 {

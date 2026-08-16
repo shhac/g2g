@@ -7,7 +7,7 @@ import (
 func restackView(plan restack.Plan) stackView {
 	view := graphView(plan.Discovery, "restack")
 	if plan.Blocked != "" {
-		return view.block("Apply blocked: " + plan.Blocked)
+		return view.blockedBy(plan.Blocked)
 	}
 	if len(plan.Steps) == 0 {
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)

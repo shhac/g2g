@@ -11,7 +11,7 @@ import (
 func syncView(plan syncer.Plan, prune bool) stackView {
 	view := graphView(plan.Restack.Discovery, "sync")
 	if plan.Blocked != "" {
-		return view.block("Apply blocked: " + plan.Blocked)
+		return view.blockedBy(plan.Blocked)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
 	view = view.note(replayNote(plan), severityNeutral)

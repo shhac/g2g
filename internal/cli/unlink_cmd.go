@@ -26,11 +26,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		if cmd.Flags().Changed("stack-number") && number <= 0 {
 			return fmt.Errorf("--stack-number must be a positive GitHub stack number")
 		}
-		mode := "preview"
-		if apply {
-			mode = "apply"
-		}
-		root := commandContext(cmd.Context(), cmd, "unlink", mode, selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, "unlink", applyMode(apply), selection.branch, selection.trunk)
 
 		// Resolving the stack number is part of planning: it reads the same
 		// discovery, and an unresolvable one must stop the command before

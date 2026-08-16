@@ -180,7 +180,7 @@ func trackView(plan graph.TrackPlan) stackView {
 		}
 		return view.note(confirmation(plan), severityFor(plan))
 	}
-	view = view.block("Apply blocked: " + plan.Blocked)
+	view = view.blockedBy(plan.Blocked)
 	return view.note(candidateAdvice(plan), severityNeutral)
 }
 
@@ -222,7 +222,7 @@ func candidateAdvice(plan graph.TrackPlan) string {
 func trackStackView(plan graph.StackPlan) stackView {
 	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
 	if plan.Blocked != "" {
-		return view.block("Apply blocked: " + plan.Blocked)
+		return view.blockedBy(plan.Blocked)
 	}
 	if len(plan.Record) == 0 {
 		return view.note("The graph already records this whole ancestry.", severityNeutral)

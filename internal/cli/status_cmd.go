@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/shhac/gt2gh/internal/githubstack"
 	"github.com/shhac/gt2gh/internal/link"
@@ -66,7 +65,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 // statusAdvice reuses the blocked-reason logic so triage and the command that
 // fixes it never disagree, phrased for a read-only report.
 func statusAdvice(plan link.Plan) string {
-	return strings.Replace(blockedReason(plan), "Apply blocked: ", "Safe next action: ", 1)
+	return "Safe next action: " + blockedReason(plan)
 }
 
 func statusView(plan link.Plan) stackView {

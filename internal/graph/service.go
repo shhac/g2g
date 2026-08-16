@@ -493,7 +493,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	for grew := true; grew; {
 		grew = false
 		for _, branch := range local {
-			if branch == trunk || contains(selected, branch) {
+			if branch == trunk || slices.Contains(selected, branch) {
 				continue
 			}
 			candidates, err := Candidates(ctx, s.Git, branch, s.knownRoots(adopted))

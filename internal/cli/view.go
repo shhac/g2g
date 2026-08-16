@@ -68,6 +68,11 @@ func (v stackView) block(reason string) stackView {
 	return v
 }
 
+// blockedBy labels a refusal. The label lived as a literal in six preview files
+// and a seventh command string-replaced it back out, so changing the wording
+// meant finding all seven and keeping them in step.
+func (v stackView) blockedBy(reason string) stackView { return v.block("Apply blocked: " + reason) }
+
 // commandHeading labels the command for what it currently is. The command is
 // still shown when apply would refuse it, so the heading has to say so rather
 // than inviting a copy that will not work yet.

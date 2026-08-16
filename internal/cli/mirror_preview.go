@@ -19,7 +19,7 @@ func mirrorView(plan align.MirrorPlan, prune bool) stackView {
 			view = view.note(fmt.Sprintf("Graphite does not track %s · track %s in Graphite first, or run gt init if it has no trunk.",
 				branchList(plan.UnknownRoots), pick(len(plan.UnknownRoots), "it", "them")), severityBad)
 		}
-		return view.block("Apply blocked: " + plan.Blocked)
+		return view.blockedBy(plan.Blocked)
 	}
 	// Nothing-to-do is applyFlow's line to say, not this view's: saying it here
 	// too printed it twice.

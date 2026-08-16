@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -68,7 +69,7 @@ func tied(candidates []Candidate) string {
 func TrunkFor(candidates []Candidate, known []string) (string, error) {
 	roots := make([]string, 0)
 	for _, candidate := range candidates {
-		if candidate.Ancestor && contains(known, candidate.Branch) {
+		if candidate.Ancestor && slices.Contains(known, candidate.Branch) {
 			roots = append(roots, candidate.Branch)
 		}
 	}
@@ -82,15 +83,6 @@ func TrunkFor(candidates []Candidate, known []string) (string, error) {
 	}
 }
 
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
 // Attach picks the parent for a branch that hangs off an already-selected one.
 //
 // This is what makes a whole-stack adoption forest-shaped rather than linear.
@@ -102,13 +94,13 @@ func contains(values []string, want string) bool {
 // in because it is technically a descendant would adopt half the repository.
 func Attach(candidates []Candidate, selected []string) (string, bool, error) {
 	for index, candidate := range candidates {
-		if !candidate.Ancestor || !contains(selected, candidate.Branch) {
+		if !candidate.Ancestor || !slices.Contains(selected, candidate.Branch) {
 			continue
 		}
 		// A tie at the nearest position means two possible parents and no way
 		// to choose, which is the guess this refuses to make.
 		if index+1 < len(candidates) && candidates[index+1].Ancestor &&
-			candidates[index+1].Distance == candidate.Distance && contains(selected, candidates[index+1].Branch) {
+			candidates[index+1].Distance == candidate.Distance && slices.Contains(selected, candidates[index+1].Branch) {
 			return "", false, fmt.Errorf("%q and %q are the same distance below this branch, so its parent cannot be derived · record it with g2g track --parent", candidate.Branch, candidates[index+1].Branch)
 		}
 		return candidate.Branch, true, nil

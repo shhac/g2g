@@ -24,11 +24,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
-			mode := "preview"
-			if apply {
-				mode = "apply"
-			}
-			root := commandContext(cmd.Context(), cmd, "link", mode, selection.branch, selection.trunk)
+			root := commandContext(cmd.Context(), cmd, "link", applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[link.Plan]{
 				plan: func(ctx context.Context) (link.Plan, error) { return service.Plan(ctx, selection.Selection()) },
 				revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {

@@ -49,7 +49,11 @@ jobs:
     secrets: inherit
     with:
       name: gt2gh
-      desc: "Bridge Graphite-managed linear stacks to GitHub native stacks"
+      desc: "Manage stacked branches and project them onto GitHub native stacks"
       formula_class: Gt2gh
-      help_match: "Link a linear Graphite stack to GitHub"
+      # help_match is asserted by the generated formula's brew test against the
+      # installed binary's --help, so it has to track the command's own wording.
+      # Changing a command description without this publishes a formula whose
+      # test fails.
+      help_match: "Link a stack to GitHub"
       installed_binary_name: g2g

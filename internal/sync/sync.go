@@ -19,7 +19,6 @@ import (
 
 // Git is the boundary for the steps sync performs itself.
 type Git interface {
-	RemoteTips(ctx context.Context, remote string, branches []string) (map[string]string, error)
 	FetchIsolated(ctx context.Context, remote string, branches []string) error
 	FastForward(ctx context.Context, branch, to string) error
 	Resolve(ctx context.Context, revision string) (string, error)
@@ -62,6 +61,16 @@ type Plan struct {
 	Blocked string
 }
 
+// onto names the base the replay should land on. Until the base branch is
+// advanced it is still where it was, so the fetched ref is what the replay has
+// to target; when it is already level, the recorded structure already says.
+func (p Plan) onto() string {
+	if !p.Advance {
+		return ""
+	}
+	return localgit.IsolatedRef(p.Remote, p.Base)
+}
+
 // Plan works out the whole sequence without performing any of it. The fetch is
 // the one step that reaches the network, and it writes only into gt2gh's own
 // ref namespace, so previewing costs the repository nothing.
@@ -97,12 +106,12 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 
 	// The replay is planned against the base as it will be, which is why the
 	// fetch and the fast-forward assessment come first.
-	plan.Restack, err = s.Restack.Plan(ctx, selection, s.onto(plan), false)
+	plan.Restack, err = s.Restack.Plan(ctx, selection, plan.onto(), false)
 	if err != nil {
 		return Plan{}, err
 	}
 	plan.Blocked = plan.Restack.Blocked
-	plan.Prunable = prunable(plan.Restack)
+	plan.Prunable = plan.Restack.Emptied()
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
 		diagnostic.Field{Key: "advance", Value: fmt.Sprintf("%t", plan.Advance)},
@@ -110,16 +119,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		diagnostic.Field{Key: "prunable", Value: strings.Join(plan.Prunable, ",")},
 	)
 	return plan, nil
-}
-
-// onto names the base the replay should land on. Until the base branch is
-// advanced it is still where it was, so the fetched ref is what the replay
-// has to target.
-func (s Service) onto(plan Plan) string {
-	if !plan.Advance {
-		return ""
-	}
-	return localgit.IsolatedRef(plan.Remote, plan.Base)
 }
 
 // compare asks how the base stands against the remote without changing it.
@@ -143,12 +142,6 @@ func (s Service) compare(ctx context.Context, base, remote string) (advance, div
 		return false, false, err
 	}
 	return behind, !behind, nil
-}
-
-// prunable is the branches a replay leaves with nothing of their own, which is
-// what a landed branch looks like once its work is in its parent.
-func prunable(plan restack.Plan) []string {
-	return append([]string(nil), plan.Emptied()...)
 }
 
 // Apply performs the sequence and stops at the first step that cannot finish.

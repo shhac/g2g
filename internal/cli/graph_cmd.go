@@ -21,13 +21,17 @@ func (o graphOptions) Selection() graph.Selection {
 	return graph.Selection{Branch: o.branch, Scope: graph.Scope(o.scope)}
 }
 
-func (o *graphOptions) register(cmd *cobra.Command, service graph.Service, scopes []graph.Scope, scopeUsage string) {
+// registerBranch adds the selector every graph command shares.
+func (o *graphOptions) registerBranch(cmd *cobra.Command, service graph.Service) {
 	cmd.Flags().StringVar(&o.branch, "branch", "", "branch to select (defaults to current branch)")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(localBranchCompletions(service)))
-	if len(scopes) == 0 {
-		return
-	}
-	cmd.Flags().StringVar(&o.scope, "scope", "", scopeUsage)
+}
+
+// registerScope adds the scope flag for the commands that have one. It is a
+// separate call rather than an empty argument, because a command without a
+// scope should say so by not asking for one.
+func (o *graphOptions) registerScope(cmd *cobra.Command, scopes []graph.Scope, usage string) {
+	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
 	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(staticCompletions(scopes)))
 }
 
@@ -44,7 +48,8 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 		}
 		return writeGraphView(cmd.OutOrStdout(), graphStatusView(discovery), discovery, presentation)
 	}
-	selection.register(cmd, service, graph.Scopes, "how much of the graph to show: branch, path, subtree, or graph")
+	selection.registerBranch(cmd, service)
+	selection.registerScope(cmd, graph.Scopes, "how much of the graph to show: branch, path, subtree, or graph")
 	return cmd
 }
 
@@ -83,7 +88,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 	cmd.Flags().StringVar(&parent, "parent", "", "branch to record as the parent (previewing the candidates when absent)")
 	_ = cmd.RegisterFlagCompletionFunc("parent", completionCallback(parentCompletions(service, &selection)))
 	cmd.Flags().BoolVar(&apply, "apply", false, "write the recorded parent instead of previewing it")
-	selection.register(cmd, service, nil, "")
+	selection.registerBranch(cmd, service)
 	return cmd
 }
 
@@ -128,7 +133,8 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "remove the recorded parents instead of previewing the removal")
-	selection.register(cmd, service, []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, "how much to remove: branch or subtree")
+	selection.registerBranch(cmd, service)
+	selection.registerScope(cmd, []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, "how much to remove: branch or subtree")
 	return cmd
 }
 

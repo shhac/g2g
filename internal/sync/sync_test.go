@@ -264,3 +264,98 @@ func TestUnconfiguredServiceRefuses(t *testing.T) {
 		t.Fatal("Plan() error = nil for an unconfigured service")
 	}
 }
+
+// The order is the whole contract: the base moves before the replay, because
+// the replay is planned to land on where the base ends up.
+func TestApplyAdvancesTheBaseBeforeReplaying(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
+	service, _ := newService(git, restacker)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Apply(context.Background(), plan, false); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if len(git.fastForwards) != 1 || git.fastForwards[0] != "synthetic-trunk" {
+		t.Errorf("fast-forwards = %v, want the base once", git.fastForwards)
+	}
+	if restacker.applied != 1 {
+		t.Errorf("replays = %d, want one", restacker.applied)
+	}
+	// The replay must target the fetched ref, because the base branch has not
+	// moved at the moment the plan is built.
+	if len(restacker.onto) == 0 || restacker.onto[0] != localgit.IsolatedRef("origin", "synthetic-trunk") {
+		t.Errorf("replayed onto %v, want the fetched base", restacker.onto)
+	}
+}
+
+// Pruning forgets a landed branch in the recorded graph. Deleting the branch
+// is a separate, deliberate act and never the tail of another command.
+func TestPruneForgetsLandedBranchesWithoutDeletingThem(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{
+		Steps: []restack.Step{{Branch: "synthetic-a", Collapses: true}, {Branch: "synthetic-b"}},
+	}}
+	service, store := newService(git, restacker)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(plan.Prunable, ",") != "synthetic-a" {
+		t.Fatalf("Prunable = %v, want the landed branch", plan.Prunable)
+	}
+
+	if err := service.Apply(context.Background(), plan, true); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if store.graph.Tracked("synthetic-a") {
+		t.Error("the landed branch is still recorded")
+	}
+	if !store.graph.Tracked("synthetic-b") {
+		t.Error("pruning removed a branch that had not landed")
+	}
+}
+
+func TestPruneIsSkippedWhenNotAskedFor(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{
+		Steps: []restack.Step{{Branch: "synthetic-a", Collapses: true}},
+	}}
+	service, store := newService(git, restacker)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Apply(context.Background(), plan, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if !store.graph.Tracked("synthetic-a") {
+		t.Error("a landed branch was forgotten without being asked for")
+	}
+}
+
+// A base already level with its remote is left alone rather than moved to
+// where it already is.
+func TestApplyDoesNotTouchALevelBase(t *testing.T) {
+	git := behindGit()
+	git.objects[localgit.IsolatedRef("origin", "synthetic-trunk")] = "trunk-old"
+	service, _ := newService(git, nil)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.Apply(context.Background(), plan, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(git.fastForwards) != 0 {
+		t.Errorf("fast-forwards = %v, want none for a level base", git.fastForwards)
+	}
+}

@@ -48,7 +48,8 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 	cmd.Flags().StringVar(&options.onto, "onto", "", "move the selection onto a different base instead of its recorded parent")
 	cmd.Flags().BoolVar(&options.absorb, "absorb", false, "keep commits the parent dropped instead of dropping them too")
 	cmd.Flags().BoolVar(&options.apply, "apply", false, "perform the replay instead of previewing it")
-	options.selector.register(cmd, service.Graph, graph.Scopes, "how much of the graph to replay: branch, path, subtree, or graph")
+	options.selector.registerBranch(cmd, service.Graph)
+	options.selector.registerScope(cmd, graph.Scopes, "how much of the graph to replay: branch, path, subtree, or graph")
 	return cmd
 }
 

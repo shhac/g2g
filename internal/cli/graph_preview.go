@@ -131,10 +131,16 @@ func writeGraphView(writer io.Writer, view stackView, discovery graph.Discovery,
 }
 
 func count(total int, singular, plural string) string {
+	return fmt.Sprintf("%d %s", total, pick(total, singular, plural))
+}
+
+// pick chooses the form that agrees with a count. Two helpers were doing this,
+// one counting and one not, which is one idea wearing two names.
+func pick(total int, one, many string) string {
 	if total == 1 {
-		return "1 " + singular
+		return one
 	}
-	return fmt.Sprintf("%d %s", total, plural)
+	return many
 }
 
 // driftNotes report what gt2gh can see and deliberately will not repair.

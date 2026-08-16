@@ -46,19 +46,9 @@ func pruneNote(view stackView, plan syncer.Plan, prune bool) stackView {
 	if len(plan.Prunable) == 0 {
 		return view
 	}
-	landed := branchList(plan.Prunable) + " has landed"
-	if len(plan.Prunable) > 1 {
-		landed = branchList(plan.Prunable) + " have landed"
-	}
+	landed := branchList(plan.Prunable) + " " + pick(len(plan.Prunable), "has", "have") + " landed"
 	if !prune {
-		return view.note(landed+" · --prune would forget "+plural(len(plan.Prunable), "it", "them")+".", severityNeutral)
+		return view.note(landed+" · --prune would forget "+pick(len(plan.Prunable), "it", "them")+".", severityNeutral)
 	}
 	return view.note("Forgets "+branchList(plan.Prunable)+" · "+landed+". No branch is deleted.", severityWarn)
-}
-
-func plural(total int, one, many string) string {
-	if total == 1 {
-		return one
-	}
-	return many
 }

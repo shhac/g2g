@@ -44,7 +44,7 @@ func newSync(service syncer.Service, presentation Presentation) *cobra.Command {
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
 	cmd.Flags().BoolVar(&prune, "prune", true, "forget branches whose work has landed (the graph only; no branch is deleted)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
-	selection.register(cmd, service.Graph, nil, "")
+	selection.registerBranch(cmd, service.Graph)
 	return cmd
 }
 

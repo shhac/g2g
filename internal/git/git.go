@@ -132,6 +132,79 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 	return false, err
 }
 
+// isolatedRemotePrefix namespaces the refs gt2gh fetches for itself.
+//
+// gt2gh must never move the user's remote-tracking refs. Doing so is not just
+// cosmetic noise in "git status": a bare --force-with-lease uses the
+// remote-tracking ref as its lease baseline, so refreshing it behind the
+// user's back silently disarms the one check that stops a force push
+// destroying work that landed in the meantime.
+const isolatedRemotePrefix = "refs/g2g/remotes/"
+
+// RemoteTips reads the remote's current branch tips without writing anything
+// at all — no refs, no objects, no FETCH_HEAD.
+//
+// This is how a preview learns that a trunk has moved without touching the
+// repository. Branches with no remote counterpart are simply absent from the
+// result rather than being an error, because "not pushed yet" is ordinary.
+func (c Client) RemoteTips(ctx context.Context, remote string, branches []string) (map[string]string, error) {
+	if err := c.Remote(ctx, remote); err != nil {
+		return nil, err
+	}
+	args := []string{"ls-remote", "--heads", remote}
+	for _, branch := range branches {
+		if err := safeRef(branch); err != nil {
+			return nil, err
+		}
+		args = append(args, "refs/heads/"+branch)
+	}
+	output, err := c.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	tips := make(map[string]string, len(branches))
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		object, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
+		if !found {
+			continue
+		}
+		tips[strings.TrimPrefix(strings.TrimSpace(ref), "refs/heads/")] = object
+	}
+	return tips, nil
+}
+
+// FetchIsolated downloads the named branches into gt2gh's own ref namespace,
+// leaving every ref the user relies on exactly where it was.
+//
+// Both flags are load-bearing. --refmap= suppresses git's opportunistic update
+// of the remote-tracking ref that the configured refspec would otherwise
+// match, which a private destination refspec alone does not prevent.
+// --no-write-fetch-head keeps FETCH_HEAD intact for whatever the user was
+// doing.
+func (c Client) FetchIsolated(ctx context.Context, remote string, branches []string) error {
+	if err := c.Remote(ctx, remote); err != nil {
+		return err
+	}
+	if len(branches) == 0 {
+		return fmt.Errorf("no branches selected for fetch")
+	}
+	args := []string{"fetch", "--refmap=", "--no-write-fetch-head", "--no-tags", remote}
+	for _, branch := range branches {
+		if err := safeRef(branch); err != nil {
+			return err
+		}
+		args = append(args, "refs/heads/"+branch+":"+IsolatedRef(remote, branch))
+	}
+	_, err := c.run(ctx, args...)
+	return err
+}
+
+// IsolatedRef names the ref FetchIsolated writes for one remote branch. It is
+// a normal commit-ish, so it can be used as a rebase target directly.
+func IsolatedRef(remote, branch string) string {
+	return isolatedRemotePrefix + remote + "/" + branch
+}
+
 // CommonDir returns the absolute Git common directory, which linked worktrees
 // share. --path-format=absolute is required: the bare form is resolved against
 // the current working directory, so it answers ".git" from the repository root

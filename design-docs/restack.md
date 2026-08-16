@@ -137,8 +137,17 @@ result without mutating anything.
 | Resolvable | no `--continue` | `--continue` / `--abort` |
 | Preview without mutating | `--ref-action=print` | — |
 
-`git replay` is EXPERIMENTAL (Git 2.44+), so it needs the same
-compatibility gate the Graphite CLI has.
+`git replay` is EXPERIMENTAL (Git 2.44+), so it is gated the same way the
+Graphite CLI is. Where it is absent there is no prediction at all, and that is
+reported as such: "we could not look" and "we looked and it will conflict" lead
+a reader to different actions, and only one of them would be true.
+
+**The two engines must be made to agree.** `git rebase` reapplies commits whose
+content is already in the new base on older Git and drops them on newer, and
+dropping them is exactly what repairs a stack after a squash merge — so
+`--no-reapply-cherry-picks` is passed explicitly rather than inherited. Without
+it the one case this command exists for conflicts on precisely the versions
+that lack the preview engine, which is also where nothing warned first.
 
 **Preview** uses `git replay --ref-action=print`, which yields the exact
 resulting object ids and mutates nothing. Its exit status also predicts a
@@ -183,12 +192,18 @@ through `git status`.
 So gt2gh's journal only needs what spans *several* invocations, which is a tree
 (one rebase per root-to-leaf path). At `$GIT_COMMON_DIR/g2g/restack.json`:
 
-- the remaining queue of branches
 - the `--onto` for the in-flight rebase
 - the branch the user was on, to restore afterwards
 - **every branch's tip at operation start**, so `--abort` can roll back paths
   that already completed — which git cannot do, because it only knows about the
   current invocation
+- **the reparenting the operation intends**, because once the rewrite has moved
+  a branch a fresh plan can no longer tell where it was headed: it reports the
+  branch as moved off its parent, which is true and useless
+
+The remaining queue is deliberately absent. It is re-derived from the refs on
+every invocation, which is what makes a user's own `git rebase --continue` or
+`--abort` change what work remains rather than something to detect.
 
 Graphite solves the same problem the same way: `.gtcontinue` holds the queue,
 the in-flight base and the branch to return to, and a start-of-operation

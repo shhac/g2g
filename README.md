@@ -314,6 +314,55 @@ gt2gh's own store records. It refuses a Graphite-owned branch and says to
 `g2g track` it first. Authority governs what may be changed, not what may be
 read.
 
+Authority is about which source answers, **not** about exclusivity. A branch can
+sit in gt2gh's graph, be tracked by Graphite, and appear in a GitHub stack all at
+once, and nothing here removes it from any of them.
+
+### Seeing the other source
+
+```sh
+g2g status --from graphite    # what does Graphite think this stack is?
+g2g push --from g2g
+```
+
+`--from` pins the source for one command. Once a branch is adopted there is
+otherwise no way to ask Graphite what it thinks of it, and comparing the two
+views is exactly what you want before reconciling them. Nothing is recorded, so
+there is still nothing that can go stale.
+
+## Keeping Graphite in step
+
+Adopting a branch used to strand Graphite: gt2gh stopped asking it, and nothing
+put it back in step, so `gt log` kept showing a structure that was quietly
+wrong.
+
+```sh
+g2g mirror              # what would it take for Graphite to agree?
+g2g mirror --apply
+g2g mirror --prune --apply   # also untrack, in Graphite, what gt2gh does not record
+
+g2g import              # adopt what Graphite declares into gt2gh's graph
+g2g import --apply
+```
+
+**Neither command ever removes a branch from gt2gh's graph.** This keeps the two
+records in step; it does not hand ownership over.
+
+`mirror` writes only Graphite. `--prune` is opt-in, unlike `sync --prune`,
+because "this branch's work has landed" is certain and "Graphite knows a branch
+we do not" is not — it is just as likely to be one you tracked in `gt` on
+purpose. A prune also refuses a branch whose child gt2gh *does* know, because
+`gt untrack` takes the whole subtree with it.
+
+`import` writes only gt2gh's graph, and it is additive: it refuses a branch
+gt2gh already records under a different parent rather than silently reverting a
+deliberate change. Adoption is the authority claim, so afterwards gt2gh answers
+for everything it adopted — and `--from graphite` is how you see Graphite's view
+of them again.
+
+Both refuse outright in a repository that does not already use Graphite. Reading
+Graphite's forest is what enrols you, so even a preview has to stop first.
+
 ## Staying up to date
 
 ```sh

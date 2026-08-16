@@ -84,6 +84,22 @@ two graphs:
 Scope is the **forest**, and the unit is the **branch**. Neither requires a
 pull request, a push, or a network.
 
+### Three properties Graphite's CLI decides, not preference
+
+Each was read from `gt track --help` / `gt untrack --help` rather than assumed,
+and each shows up as an ordering rule or a refusal:
+
+- **`--parent` must already be tracked.** Writes go parents before children, and
+  a g2g root Graphite has never heard of **blocks** rather than being invented:
+  only `gt init` establishes a trunk, and enrolling a repository is not this
+  command's business.
+- **`gt untrack` cascades to the subtree.** A prune refuses a stranger with a
+  surviving child — untracking it would take a branch the mirror had just
+  aligned — and orders the rest deepest first.
+- **Both commands take an explicit branch argument.** That is what keeps
+  mirroring checkout-free. A mirror that checked out every branch in a forest
+  would be a worse thing than the drift it fixes.
+
 ### Removal is not default-on
 
 `sync --prune` defaults to true, and is right to, because its trigger is
@@ -140,6 +156,16 @@ reverting a deliberate g2g change.
 It is not guessing. Graphite declares each parent, so the rule that `track`
 blocks rather than choosing is not being relaxed — the declaration is the
 answer.
+
+Two details the implementation settled:
+
+- **`Origin` is assessed against Git, not set to a Graphite value.** The field
+  records how far Git agrees with an edge, not which tool supplied it, so an
+  imported edge is judged exactly as a tracked one is. Graphite declaring a
+  relationship does not make the commits line up, and adding an `OriginGraphite`
+  would have replaced a fact about the repository with a fact about provenance.
+- **Branches Graphite names that the checkout lacks are skipped.** Recording an
+  edge for one would put a branch in the graph that no command could act on.
 
 ### Import takes authority, and must say so
 
@@ -204,17 +230,22 @@ The claim that gt2gh "reads Graphite and never writes it back" becomes false and
 must be rewritten here and in the repository skill, and the tests asserting no
 `gt` invocation need re-scoping to the commands that legitimately make none.
 
-**The enrolment gate must be bypassed, deliberately.** `gt track` creates
-Graphite metadata — the enrolment that `graphite.Configured` exists to prevent.
-`mirror --to graphite` is explicit consent, so the gate does not apply on that
-path. This is a **narrow, named exception**, not a loosening: every other
-command keeps the gate, and a repository never acquires Graphite state without
-the user having typed the word.
+**The enrolment gate needs no exception after all.** The proposal expected one:
+`mirror` is explicit consent to write Graphite, so the gate would not apply.
+Building it showed the exception is unnecessary and worse. A mirror has to read
+Graphite's forest to compute its diff, and reading runs the discovery command —
+so a *preview* would have been what enrolled the repository, which is the same
+bug as the one shell completion had. A repository with no Graphite also has no
+trunk, so a mirror into it is blocked for want of a root in any case. Refusing
+first reaches the identical answer with no side effect.
 
-**`gt track`'s contract needs pinning.** Only `gt log`'s output grammar is
-covered by `design-docs/graphite-cli-contract.md` today. The write commands and
-their exit behaviour belong there before anything depends on them, under the
-same compatibility gate.
+**"No gt2gh command enrols a repository" therefore holds without exception**,
+including for the commands that write Graphite. That is a stronger invariant
+than the one this document originally proposed, and it is worth keeping.
+
+**`gt track`'s contract is now pinned** in
+[`graphite-cli-contract.md`](graphite-cli-contract.md), alongside `gt log`'s
+grammar and under the same version gate.
 
 ## Rejected
 
@@ -254,14 +285,15 @@ edge it will overwrite, and that is enough.
 
 ## Milestones
 
+All four are built, in this order and for these reasons:
+
 1. **`--from`.** Smallest, independently useful, and a prerequisite for
    trusting either of the others: it is the only way to see both views. Pure
    read path, no new external command.
-2. **`mirror` without `--prune`.** Adds the first Graphite write. Needs the
-   `gt track` contract pinned and the gate exception written down.
+2. **The gated Graphite write surface**, then **`mirror` without `--prune`**.
 3. **`import`.** Needs fork-point derivation and the conflict refusal, and is
-   the one that shifts authority, so it goes last where it can be judged
-   against a `--from` view of what it is about to claim.
+   the one that shifts authority, so it went after a `--from` view existed to
+   judge what it is about to claim.
 4. **`mirror --prune`.** Separable, and the only destructive piece.
 
 ## Deferred

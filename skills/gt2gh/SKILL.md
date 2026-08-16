@@ -67,6 +67,16 @@ description: |
   read Graphite internal metadata/configuration or use `gt --debug`: supported
   production discovery is strict, compatibility-gated noninteractive CLI
   parsing.
+- `mirror` is the **only** command that writes Graphite, through exactly
+  `gt track <branch> --parent <p> --no-interactive` and
+  `gt untrack <branch> --force --no-interactive`, both behind the same version
+  gate as discovery. Every other command's Graphite use stays read-only. Read
+  `design-docs/source-alignment.md` before touching `internal/align`.
+- No gt2gh command may enrol a repository into Graphite — **including the ones
+  that write it**. Reading Graphite's forest is what creates state, so `mirror`
+  and `import` check `graphite.Configured` and refuse before reading. A
+  repository with no Graphite has no trunk and could not be mirrored into
+  anyway, so nothing is lost by refusing first.
 
 ## g2g-owned graphs
 
@@ -83,6 +93,15 @@ description: |
   Recording a structure every later command trusts is not a place for a good
   guess.
 - `untrack` must never reparent the children it strands. Report them.
+- `mirror` and `import` must never remove a branch from the gt2gh graph.
+  Alignment keeps the two records in step; it does not transfer ownership.
+  `mirror` writes Graphite only, `import` writes the gt2gh graph only, and
+  `import` refuses a branch the gt2gh graph already records under a different
+  parent rather than resolving the disagreement.
+- Mirror ordering is dictated by Graphite's CLI, not by taste: writes go
+  parents before children because `gt track --parent` requires a tracked
+  parent, and prunes go deepest first — refusing any stranger with a surviving
+  child — because `gt untrack` cascades to the subtree.
 - Do not record commit SHAs in the store: commits and force-pushes are content
   movement, not structural drift. Validate against Git at read time instead.
 - `restack` is the only code permitted to rewrite history, and only through

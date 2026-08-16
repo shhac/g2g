@@ -38,10 +38,14 @@ func (f *fakeGraphite) Untrack(_ context.Context, branch string) error {
 
 func (f *fakeGraphite) recorded() string { return strings.Join(f.calls, "; ") }
 
-type memoryStore struct{ graph graph.Graph }
+type memoryStore struct {
+	graph  graph.Graph
+	writes []graph.Graph
+}
 
 func (m *memoryStore) Load(context.Context) (graph.Graph, error) { return m.graph, nil }
 func (m *memoryStore) Save(_ context.Context, g graph.Graph) error {
+	m.writes = append(m.writes, g.Clone())
 	m.graph = g
 	return nil
 }
@@ -320,5 +324,37 @@ func TestAFailingGraphiteIsReported(t *testing.T) {
 
 	if _, err := svc.PlanMirror(context.Background(), false); err == nil {
 		t.Error("PlanMirror() error = nil when Graphite could not be read")
+	}
+}
+
+// The invariant the whole project rests on: alignment is not ownership
+// transfer. A mirror — prune and all — must leave the gt2gh graph byte for byte
+// as it found it.
+func TestMirrorNeverChangesTheG2GGraph(t *testing.T) {
+	store := &memoryStore{graph: chain()}
+	before := store.graph.Clone()
+	client := &fakeGraphite{forest: forestOf(map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-top":   "synthetic-trunk",
+		"synthetic-stale": "synthetic-trunk",
+	}, "synthetic-trunk")}
+	svc := Service{Graph: graph.Service{Store: store}, Graphite: client}
+
+	plan, err := svc.PlanMirror(context.Background(), true)
+	if err != nil {
+		t.Fatalf("PlanMirror() error = %v", err)
+	}
+	if len(plan.Writes) == 0 || len(plan.Prunes) == 0 {
+		t.Fatalf("plan does nothing, so the test proves nothing: %+v", plan)
+	}
+	if err := svc.ApplyMirror(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyMirror() error = %v", err)
+	}
+
+	if !store.graph.Equal(before) {
+		t.Errorf("mirror changed the gt2gh graph: %+v, want %+v", store.graph, before)
+	}
+	if len(store.writes) != 0 {
+		t.Errorf("mirror wrote to the gt2gh store %d times, want none", len(store.writes))
 	}
 }

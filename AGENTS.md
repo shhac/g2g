@@ -88,7 +88,26 @@ only process knowledge that is easy to miss.
   transient evidence and must be abstracted before writing a regression case.
 - Treat error and debug-output tests as data-leak tests too: exercise the
   bounded/redacted path in `internal/diagnostic`, never a real token, header,
-  repository identifier, or credential-bearing command argument.
+  repository identifier, or credential-bearing command argument. Bound a failed
+  command's output with `diagnostic.BoundedOutput` and nothing else — a private
+  copy of it once truncated without redacting, and only the length was tested.
+
+## Shared seams
+
+Four things exist once and must not be reimplemented locally. Each was found as
+several diverging copies, and in two cases the copies had already lost a
+property the original had.
+
+- `subprocess.CheckArgument` / `OptionLike` — refusing a value a process would
+  read as an option. Callers keep their own wording, because which tool refused
+  is what a reader acts on; only the rule is shared.
+- `diagnostic.BoundedOutput` — bounding *and redacting* a failed command's
+  output.
+- `diagnostic.Revalidated` — the preview/apply revalidation check and its
+  diagnostic event. `graph`'s `matched` delegates to it.
+- `githubstack.PathStep.Classify` — what one branch's pull request is. `link`
+  and `submit` apply different policy to the same answer; only the policy
+  differs.
 
 ## Change and verification workflow
 

@@ -59,6 +59,13 @@ description: |
   siblings; reject a descendant fork rather than guessing. `--no-stack` is the
   explicit opt-out for only the trunk-to-selected path, and `--from` pins which
   source answers for one invocation.
+- Linking has two halves and they must stay apart: `Presentation.hyperlink` is
+  the capability (may this output carry a link), and `internal/cli/links.go` is
+  the policy (what does a thing point at, and which service wins). A render site
+  never builds a URL. Add a destination by adding a resolver to an ordered list;
+  add a linkable thing by adding a subject type and its own list. GitHub
+  outranks Graphite for a pull request because its address was reported rather
+  than assembled.
 - `--debug` is a persistent, stderr-only diagnostic flag on every command. It is
   safe for local investigation but must not alter command behavior or cause
   agents to enable Graphite's own `gt --debug`.

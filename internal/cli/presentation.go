@@ -19,12 +19,26 @@ const (
 	ansiProblem   = "\x1b[1;31m"
 	ansiCommand   = "\x1b[1;97;48;5;236m"
 	ansiSubdued   = "\x1b[2m"
+
+	// OSC 8 wraps text in a hyperlink: ESC ]8;;URL ST text ESC ]8;; ST. A
+	// terminal that does not implement it swallows the escape and prints the
+	// text, which is why this is safe to emit whenever a human is reading.
+	osc8Open  = "\x1b]8;;"
+	osc8Close = "\x1b\\"
 )
 
-// Presentation carries the two output decisions: whether to decorate with
-// ANSI, and which renderer consumes the view. A machine format never colours.
+// Presentation carries the output decisions: whether to decorate with ANSI,
+// whether text may carry a hyperlink, and which renderer consumes the view. A
+// machine format never colours and never links.
 type Presentation struct {
-	Color  bool
+	Color bool
+	// Links enables OSC 8 hyperlinks. It is separate from Color because they
+	// are different capabilities answering to different things: NO_COLOR is a
+	// statement about colour, and a terminal that cannot draw a link renders
+	// its escape as nothing rather than as garbage. They are detected together
+	// today only because the same question — is a human reading this on a
+	// terminal — decides both.
+	Links  bool
 	Format outputFormat
 }
 
@@ -40,6 +54,9 @@ func (p Presentation) resolve(cmd *cobra.Command) Presentation {
 	if usePorcelain, _ := cmd.Flags().GetBool("porcelain"); usePorcelain {
 		return Presentation{Format: formatPorcelain}
 	}
+	if noLinks, _ := cmd.Flags().GetBool("no-links"); noLinks {
+		p.Links = false
+	}
 	return p
 }
 
@@ -49,7 +66,18 @@ func detectPresentation(writer io.Writer) Presentation {
 		return Presentation{}
 	}
 	info, err := file.Stat()
-	return Presentation{Color: colorEnabled(os.Getenv("NO_COLOR") != "", os.Getenv("TERM"), os.Getenv("CI") != "", err == nil && info.Mode()&os.ModeCharDevice != 0)}
+	terminal := err == nil && info.Mode()&os.ModeCharDevice != 0
+	return Presentation{
+		Color: colorEnabled(os.Getenv("NO_COLOR") != "", os.Getenv("TERM"), os.Getenv("CI") != "", terminal),
+		Links: linksEnabled(os.Getenv("TERM"), os.Getenv("CI") != "", terminal),
+	}
+}
+
+// linksEnabled deliberately does not consult NO_COLOR. That variable asks for
+// output without colour, and a hyperlink is not colour: it adds no visible
+// decoration and the text reads identically without it.
+func linksEnabled(term string, ci, terminal bool) bool {
+	return term != "dumb" && !ci && terminal
 }
 
 func colorEnabled(noColor bool, term string, ci bool, terminal bool) bool {
@@ -65,6 +93,17 @@ func (p Presentation) divergent(text string) string { return p.style(ansiDiverge
 func (p Presentation) problem(text string) string   { return p.style(ansiProblem, text) }
 func (p Presentation) command(text string) string   { return p.style(ansiCommand, text) }
 func (p Presentation) subdued(text string) string   { return p.style(ansiSubdued, text) }
+
+// hyperlink points text at url. An empty url, a machine format, or a
+// non-terminal all render the text exactly as it would have been, so a caller
+// can ask for a link unconditionally and let presentation decide.
+func (p Presentation) hyperlink(url, text string) string {
+	if !p.Links || url == "" {
+		return text
+	}
+	return osc8Open + url + osc8Close + text + osc8Open + osc8Close
+}
+
 func (p Presentation) style(code, text string) string {
 	if !p.Color {
 		return text

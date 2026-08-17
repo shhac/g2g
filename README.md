@@ -145,6 +145,20 @@ for scripts. In color output, headers, trunks, branches, PR numbers, unresolved
 state, and success use distinct restrained roles; the renderer keeps plan data
 separate from ANSI decoration.
 
+Pull request numbers are hyperlinks where the terminal supports them. The text
+is unchanged — `#42` reads as `#42` either way — so a terminal without OSC 8
+support loses nothing. Links follow the same interactive-terminal rule as color
+but deliberately ignore `NO_COLOR`, which asks for output without color and a
+hyperlink is not color. `--no-links` turns them off; `--json` and `--porcelain`
+never emit them.
+
+A number points at GitHub when GitHub reported an address for it, and at
+Graphite's view of the same pull request
+(`https://app.graphite.com/github/pr/<owner>/<name>/<number>`) only when it did
+not. GitHub wins because its address came back from the API rather than being
+assembled, so it cannot be wrong about the repository. A repository that does
+not use Graphite simply never produces the second kind.
+
 Nothing but whitespace ever shares the line holding a copyable command: no
 prompt character, border, or annotation, so a loose, wrapped, or whole-line
 selection can only pick up spaces, which a shell ignores. In color output the

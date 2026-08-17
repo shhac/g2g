@@ -136,6 +136,7 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 
 func graphLines(view stackView, p Presentation) []string {
 	prefixes := treePrefixes(view.Nodes)
+	repository := viewRepository(view)
 	width := 0
 	for index, node := range view.Nodes {
 		if size := utf8.RuneCountInString(prefixes[index] + node.Branch); size > width {
@@ -162,9 +163,25 @@ func graphLines(view stackView, p Presentation) []string {
 			prefix = p.subdued(prefix)
 		}
 		line := indent + prefix + glyph + " " + name + padding
-		lines = append(lines, strings.TrimRight(line+"  "+annotation(node, p), " "))
+		lines = append(lines, strings.TrimRight(line+"  "+annotation(node, repository, p), " "))
 	}
 	return lines
+}
+
+// viewRepository is the repository this view's pull requests live in, read back
+// from the first address GitHub gave us.
+//
+// Every node in one view belongs to the same repository, so one address answers
+// for all of them. Reading it back here rather than threading it through every
+// plan keeps a fallback link from becoming a field on types that otherwise have
+// no interest in where a pull request is hosted.
+func viewRepository(view stackView) string {
+	for _, node := range view.Nodes {
+		if repository := repositoryFromPullRequestURL(node.PRURL); repository != "" {
+			return repository
+		}
+	}
+	return ""
 }
 
 // treeDepths returns each node's indent depth, keyed by branch, for a selection
@@ -264,13 +281,15 @@ func continues(nodes []stackNode, from, depth int) bool {
 	return false
 }
 
-func annotation(node stackNode, p Presentation) string {
+func annotation(node stackNode, repository string, p Presentation) string {
 	if node.Trunk {
 		return p.subdued("trunk")
 	}
 	parts := make([]string, 0, 3)
 	if node.PRNumber > 0 {
-		parts = append(parts, p.pr(fmt.Sprintf("#%d", node.PRNumber)))
+		number := p.pr(fmt.Sprintf("#%d", node.PRNumber))
+		url := pullRequestURL(pullRequestRef{Number: node.PRNumber, URL: node.PRURL, Repository: repository})
+		parts = append(parts, p.hyperlink(url, number))
 	}
 	if node.State != "" {
 		parts = append(parts, styleBySeverity(p, node.Severity, node.State))

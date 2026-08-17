@@ -165,6 +165,10 @@ func NewWithOptions(options Options) *cobra.Command {
 	root.PersistentFlags().Bool("json", false, "emit one JSON document instead of the human-readable preview")
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")
+	// Links are detected, so the flag only ever turns them off. Terminals that
+	// cannot draw one already render the text unchanged; this is for the case
+	// where a person would rather have plain output than a correct guess.
+	root.PersistentFlags().Bool("no-links", false, "do not attach hyperlinks to pull request numbers")
 
 	// Completion candidates come from the structure sources themselves, so no
 	// command has to depend on another to complete a flag.

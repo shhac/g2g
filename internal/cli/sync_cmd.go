@@ -9,7 +9,7 @@ import (
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
-func newSync(service syncer.Service, presentation Presentation) *cobra.Command {
+func newSync(service syncer.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var remote string
 	var prune bool
@@ -27,6 +27,17 @@ func newSync(service syncer.Service, presentation Presentation) *cobra.Command {
 
 		discoveryCtx, cancel := budgets.discovery(ctx)
 		defer cancel()
+		// sync replays through restack, and restack's journal holds the only
+		// record of where the branches were. Saving a second record over an
+		// unfinished one destroys the tips --abort would have restored, so this
+		// refuses for the same reason every other mutating command does, at the
+		// same point in the sequence applyFlow refuses: before planning, and
+		// for the preview too.
+		if guard != nil {
+			if err := guard(discoveryCtx); err != nil {
+				return err
+			}
+		}
 		plan, err := service.Plan(discoveryCtx, selection.Selection(), remote)
 		if err != nil {
 			return err

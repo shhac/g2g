@@ -196,7 +196,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newRestack(options.Restack, presentation))
 	}
 	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
-		root.AddCommand(newSync(options.Sync, presentation))
+		root.AddCommand(newSync(options.Sync, guard, presentation))
 	}
 	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))

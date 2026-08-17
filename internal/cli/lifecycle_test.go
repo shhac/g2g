@@ -19,17 +19,27 @@ const stackedPullRequests = `{"number":102,"url":"https://example.test/102","hea
 
 func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder {
 	t.Helper()
+	recorder, _ := lifecycleRepositoryIn(t, topPullRequest)
+	return recorder
+}
+
+// lifecycleRepositoryIn also returns the Git common directory, which is where
+// an interrupted restack leaves its journal. A test that needs to stand one up
+// needs to know where it goes.
+func lifecycleRepositoryIn(t *testing.T, topPullRequest string) (*testutil.Recorder, string) {
+	t.Helper()
 
 	logPath := filepath.Join(t.TempDir(), "graphite-log.txt")
 	if err := os.WriteFile(logPath, []byte(graphiteLog), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	lower := `{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":1}}`
+	common := testutil.GraphiteRepository(t)
 	return testutil.FakeCLIs(t, map[string][]testutil.Route{
 		"git": {
 			// The common directory serves two questions: whether a restack is
 			// in flight, and whether this repository uses Graphite at all.
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
@@ -48,7 +58,7 @@ func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder
 			{Prefix: "stack link"},
 			{Prefix: "stack unstack"},
 		},
-	})
+	}), common
 }
 
 // Every mutating command must discover twice — once for the preview it renders
@@ -167,4 +177,62 @@ func indexOfPrefix(t *testing.T, calls []string, prefix string) int {
 	}
 	t.Fatalf("no %q in:\n%s", prefix, strings.Join(calls, "\n"))
 	return -1
+}
+
+// An unfinished restack holds the only record of where the branches were, and
+// its journal is overwritten rather than merged. A second mutation while it
+// exists therefore does not merely interleave — it destroys the tips
+// --abort would have restored.
+//
+// This is a table over every mutating command rather than a spot check on one,
+// because the failure it exists to catch is a command registered without the
+// guard. Checking one command cannot see that; sync was wired without it and
+// nothing noticed.
+func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		args     []string
+		mutation string
+	}{
+		{name: "link", args: []string{"link", "--apply"}, mutation: "stack link"},
+		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "stack unstack"},
+		{name: "push", args: []string{"push", "--apply"}, mutation: "push --atomic"},
+		{name: "track", args: []string{"track", "--branch", "synthetic-top", "--parent", "synthetic-lower", "--apply"}, mutation: "update-ref"},
+		{name: "untrack", args: []string{"untrack", "--branch", "synthetic-top", "--apply"}, mutation: "update-ref"},
+		{name: "retarget", args: []string{"retarget", "--apply"}, mutation: "pr edit"},
+		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "track"},
+		{name: "import", args: []string{"import", "--apply"}, mutation: "update-ref"},
+		{name: "sync", args: []string{"sync", "--apply"}, mutation: "push"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder, common := lifecycleRepositoryIn(t, stackedPullRequests)
+			plantRestackJournal(t, common)
+
+			_, _, err := run(t, test.args...)
+			if err == nil {
+				t.Fatalf("%s --apply was allowed during an interrupted restack", test.name)
+			}
+			if !strings.Contains(err.Error(), "restack") {
+				t.Errorf("refusal does not mention the restack that caused it: %v", err)
+			}
+			recorder.AssertNone(test.mutation)
+		})
+	}
+}
+
+// plantRestackJournal leaves the record an interrupted restack would have left.
+// Its exact contents do not matter to the guard, which refuses on the file
+// existing at all — that is the point, since a half-written record is exactly
+// the state worth refusing on.
+func plantRestackJournal(t *testing.T, common string) {
+	t.Helper()
+
+	dir := filepath.Join(common, "g2g")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	journal := `{"schemaVersion":1,"branch":"synthetic-top","scope":"path","original":{"synthetic-top":"0000000000000000000000000000000000000000"}}`
+	if err := os.WriteFile(filepath.Join(dir, "restack.json"), []byte(journal), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

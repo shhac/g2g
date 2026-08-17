@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil/forest"
 )
 
 func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
@@ -231,7 +232,7 @@ func (cliPushGraphite) TrackedBranches(context.Context) ([]string, error) {
 // what it is: reading one is ordinary, and only a linear projection cannot
 // represent it.
 func (f cliPushGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	forest := forestOf("synthetic-main", []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"})
+	forest := forest.Of([]string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"})
 	if f.stackErr != nil {
 		forest.Parents["synthetic-side"] = "synthetic-middle"
 	}

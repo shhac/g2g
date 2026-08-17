@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"github.com/shhac/g2g/internal/stack"
-	"sort"
 	"strings"
 	"testing"
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/testutil/forest"
 )
 
 func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
@@ -301,33 +301,7 @@ func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSe
 // ReadForest states the same shape the configured paths describe. Selection
 // reads the forest, so a fake whose answers disagree tests nothing.
 func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return forestOfPaths(f.paths, f.stackPaths), nil
-}
-
-func forestOfPaths(sets ...map[string]graphite.Stack) graphite.Forest {
-	forest := graphite.Forest{Parents: map[string]string{}}
-	roots := map[string]bool{}
-	for _, set := range sets {
-		for _, declared := range set {
-			for index, branch := range declared.Path {
-				if index == 0 {
-					if _, seen := forest.Parents[branch]; !seen {
-						forest.Parents[branch] = ""
-					}
-					continue
-				}
-				forest.Parents[branch] = declared.Path[index-1]
-			}
-			for _, trunk := range declared.Trunks {
-				roots[trunk] = true
-			}
-		}
-	}
-	for trunk := range roots {
-		forest.Roots = append(forest.Roots, trunk)
-	}
-	sort.Strings(forest.Roots)
-	return forest
+	return forest.OfStacks(f.paths, f.stackPaths), nil
 }
 
 // changingGraphite answers differently on the second read, which is what
@@ -338,5 +312,5 @@ func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) 
 		declared = f.next
 	}
 	f.calls++
-	return forestOfPaths(map[string]graphite.Stack{"middle": declared}), nil
+	return forest.OfStacks(map[string]graphite.Stack{"middle": declared}), nil
 }

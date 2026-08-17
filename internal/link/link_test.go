@@ -5,12 +5,12 @@ import (
 	"errors"
 	"github.com/shhac/g2g/internal/stack"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/testutil/forest"
 )
 
 func TestPlanUsesCurrentBranchAndSelectedForkPath(t *testing.T) {
@@ -444,33 +444,7 @@ func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
 	if f.discoverErr != nil {
 		return graphite.Forest{}, f.discoverErr
 	}
-	return forestOfPaths(f.paths, f.stackPaths), nil
-}
-
-func forestOfPaths(sets ...map[string]graphite.Stack) graphite.Forest {
-	forest := graphite.Forest{Parents: map[string]string{}}
-	roots := map[string]bool{}
-	for _, set := range sets {
-		for _, declared := range set {
-			for index, branch := range declared.Path {
-				if index == 0 {
-					if _, seen := forest.Parents[branch]; !seen {
-						forest.Parents[branch] = ""
-					}
-					continue
-				}
-				forest.Parents[branch] = declared.Path[index-1]
-			}
-			for _, trunk := range declared.Trunks {
-				roots[trunk] = true
-			}
-		}
-	}
-	for trunk := range roots {
-		forest.Roots = append(forest.Roots, trunk)
-	}
-	sort.Strings(forest.Roots)
-	return forest
+	return forest.OfStacks(f.paths, f.stackPaths), nil
 }
 
 // The second read describes a different shape, which is what revalidation

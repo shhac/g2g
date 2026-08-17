@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil/forest"
 )
 
 // Fakes and helpers shared by every test in this package. They live apart from
@@ -134,7 +135,7 @@ func (cliGit) Clean(context.Context) error                       { return nil }
 // reads the forest now: a fake whose two answers disagree is a fake that tests
 // nothing about the code between them.
 func (cliGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return forestOf("main", []string{"main", "alpha", "beta"}), nil
+	return forest.Of([]string{"main", "alpha", "beta"}), nil
 }
 
 func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
@@ -142,7 +143,7 @@ func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 }
 
 func (cliSingleBranchGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return forestOf("main", []string{"main", "alpha"}), nil
+	return forest.Of([]string{"main", "alpha"}), nil
 }
 
 func (cliSingleBranchGraphite) TrackedBranches(context.Context) ([]string, error) {
@@ -197,20 +198,4 @@ func (f *cliGitHubMissing) Link(context.Context, string, []string) error { f.lin
 
 func (f *cliGitHubPRs) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
 	return f.prs, nil
-}
-
-// forestOf turns an ordered chain into the forest a Graphite read would return,
-// so a fake states its shape once instead of once per question asked of it.
-func forestOf(root string, chain ...[]string) graphite.Forest {
-	forest := graphite.Forest{Parents: map[string]string{}, Roots: []string{root}}
-	for _, line := range chain {
-		for index, branch := range line {
-			if index == 0 {
-				forest.Parents[branch] = ""
-				continue
-			}
-			forest.Parents[branch] = line[index-1]
-		}
-	}
-	return forest
 }

@@ -120,13 +120,22 @@ func resumeError(cmd *cobra.Command, ctx context.Context, service restack.Servic
 	return stopped(cmd, ctx, service, err, p)
 }
 
+// conflictReporter is the one thing stopped needs from the restack service.
+// Naming it here rather than taking the whole service is the same
+// consumer-defined-interface rule the rest of the repository follows, and it is
+// what lets the no-conflict branch be exercised without standing up a
+// seventeen-method Git.
+type conflictReporter interface {
+	Conflicted(context.Context) ([]string, error)
+}
+
 // stopped reports an interrupted rewrite.
 //
 // A rewrite that stops with no unmerged file has not hit a conflict, and
 // saying it has sends the reader looking for something that is not there. In
 // that case what Git said is the only useful thing we have.
-func stopped(cmd *cobra.Command, ctx context.Context, service restack.Service, cause error, p Presentation) error {
-	paths, err := service.Conflicted(ctx)
+func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter, cause error, p Presentation) error {
+	paths, err := conflicts.Conflicted(ctx)
 	if err != nil || len(paths) == 0 {
 		_ = prose(cmd.OutOrStdout(), p, p.problem("The rewrite stopped part-way, with nothing left unmerged."))
 		if cause != nil {

@@ -47,7 +47,7 @@ g2g link --branch feature/top --trunk main
 g2g link --branch feature/top --apply
 
 # Stop at the selected branch instead of resolving its full linear stack.
-g2g link --branch feature/middle --no-stack
+g2g link --branch feature/middle --scope path
 
 # Preview an atomic, lease-protected publication of Graphite-selected local
 # refs. It reads Graphite but never submits/restacks or invokes GitHub.
@@ -194,15 +194,15 @@ g2g track --branch feature/login --parent feature/auth --apply
 # Inspect the graph. Scope widens from one branch to every stack.
 g2g graph                                    # root to the selected branch
 g2g graph --scope subtree                    # the branch and its descendants
-g2g graph --branch feature/login --scope graph   # the whole tree it belongs to
-g2g graph --scope forest                     # every root, including stacks this branch cannot reach
+g2g graph --branch feature/login --scope trunk   # every stack on that trunk
+g2g graph --scope all                        # every stack in the repository
 
 # Remove edges. --scope subtree removes descendants too.
 g2g untrack --branch feature/auth --apply
 g2g untrack --branch feature/auth --scope subtree --apply
 
 # Replay commits so branch contents match that structure.
-g2g restack --scope graph --apply
+g2g restack --branch main --scope stack --apply
 ```
 
 `--stack` records a whole existing stack at once, which is almost always what a
@@ -261,10 +261,10 @@ time and merging it reapplies work the trunk already has.
 
 ```sh
 # Preview. Says exactly what will be replayed and whether it will conflict.
-g2g restack --scope graph
+g2g restack --branch main --scope stack
 
 # Replay.
-g2g restack --scope graph --apply
+g2g restack --branch main --scope stack --apply
 
 # Move a fragment onto a different base instead of its recorded parent.
 g2g restack --branch feature/login --scope subtree --onto main --apply
@@ -378,7 +378,7 @@ g2g import --apply
 **Neither command ever removes a branch from g2g's graph.** This keeps the two
 records in step; it does not hand ownership over.
 
-`mirror` writes only Graphite. `--prune` is opt-in, unlike `sync --prune`,
+`mirror` writes only Graphite. Its `--prune` is opt-in,
 because "this branch's work has landed" is certain and "Graphite knows a branch
 we do not" is not — it is just as likely to be one you tracked in `gt` on
 purpose. A prune also refuses a branch whose child g2g *does* know, because
@@ -565,28 +565,46 @@ refs because GitHub native-stack restrictions intervene. After a successful
 atomic push, return to Graphite for stack management and submission; `g2g`
 does not retarget pull requests or repair Graphite state.
 
-All three commands resolve the full declared linear stack by default: they treat
-the selected branch as a pivot and extend through a unique downward child chain
-to its tip. They do not checkout a branch, include no siblings, and fail rather
-than guessing when a descendant fork makes the extension ambiguous. `--no-stack`
-is the explicit safe opt-out: it stops at the selected branch and uses only its
-declared trunk-to-selected path.
+## Scope: how much of the stack
 
-That ambiguity is a property of *projection*, not of looking. A GitHub native
-stack is linear, so a command that links, submits, pushes or rewrites has to
-refuse a fork. Reading does not:
+One flag says how much of the structure a command means, and it means the same
+thing whichever record describes the branch. The values form a lattice rather
+than a list — two halves, toward the trunk and toward the tips, taken separately
+or together:
+
+| `--scope` | selects |
+|---|---|
+| `branch` | just this branch |
+| `path` | the trunk down to this branch |
+| `subtree` | this branch and everything above it |
+| `stack` | this whole stack, trunk to tips |
+| `trunk` | every stack on this trunk |
+| `all` | every stack in the repository (`graph` only) |
+
+Defaults differ because the commands differ. `status` and `graph` default to
+`stack` — reading is free, so show where you are, ancestors and descendants
+both. `restack` defaults to `subtree`, because rewriting is not free: a conflict
+below you may be one you are deliberately deferring, and replaying it uninvited
+is how restacking from the middle walks into it every time.
 
 ```sh
-g2g status --scope subtree   # the branch and everything under it, forks and all
-g2g status --scope graph     # the whole tree, from its root
+g2g status                   # where am I: the trunk, me, and everything above
+g2g status --scope path      # just the trunk down to me
+g2g restack --apply          # me and what depends on me
+g2g graph --scope all        # every stack in the repository
 ```
 
-Standing on a trunk with nine stacks hanging off it, the default scope is not
-wrong so much as narrow — it answers "which path am I on" when the question was
-"what is here". `status` reports each branch against **its own parent** rather
-than against whichever sibling happens to sort first, and says which record
-described the structure, because that is resolved per branch and per invocation
-rather than stored.
+A GitHub native stack is linear, so `link`, `submit`, `push` and `retarget`
+take `stack` or `path` only, and refuse a selection that forks — naming the
+remedy rather than choosing a line. Selecting a leaf is that remedy and needs no
+flag: a leaf has no descendants, so `stack` collapses to an ordered path by
+itself.
+
+`status` reports each branch against **its own parent** rather than against
+whichever sibling happens to sort first, marks which branches belong to the
+GitHub native stack running through the tree, and says which record described
+the structure — that is resolved per branch and per invocation rather than
+stored.
 
 ## Structure
 

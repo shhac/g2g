@@ -98,8 +98,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 ## Source resolution
 
 - Read `design-docs/source-resolution.md` before changing how a command selects
-  a stack. Precedence is declared once, in the root command's wiring, and
-  nowhere else.
+  a stack, and `design-docs/stack-scope.md` before changing how much of one it
+  selects. Precedence is declared once, in the root command's wiring; the scope
+  vocabulary and its traversal live once, in `internal/stack`.
+- A scope means the same thing whichever record answered. The parity table in
+  `internal/stack/parity_test.go` is what keeps that true — it asks both records
+  the same question and compares, which is the only shape that finds a
+  divergence where each side is internally consistent.
 - `Describes` must be free of side effects. Graphite's discovery creates state
   in a repository that has never used it, so asking whether Graphite applies is
   answered from the repository rather than by running `gt`. A test fixture that

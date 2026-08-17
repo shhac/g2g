@@ -46,19 +46,20 @@ description: |
   invocation prints help.
 - `sync` has nothing to do with pull requests. It brings a stack up to date with
   its remote: fetch into g2g's own ref namespace, fast-forward the base or
-  refuse if it has diverged, replay, and forget what has landed. It never calls
-  `gh`.
+  refuse if it has diverged, and replay. It never calls `gh`.
+- `prune` forgets branches whose work has landed. It is its own command rather
+  than sync's tail because it answers a different question on the same
+  boundary, it edits the recorded graph and deletes no branch, and it refuses to
+  strand a branch recorded under a landed one rather than reparenting around it.
 - `push` is a preview-first publication escape hatch. It selects a path through
   source resolution, must never submit or restack, and must never call `gh`;
   only `--apply` may run exactly one
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode.
-- By default, a stack command treats the selected branch as a pivot and extends
-  through a unique downward child chain. This remains no-checkout and excludes
-  siblings; reject a descendant fork rather than guessing. `--no-stack` is the
-  explicit opt-out for only the trunk-to-selected path, and `--from` pins which
-  source answers for one invocation.
+- How much of the structure a command means is `--scope`, and it means the same
+  thing whichever record answered. Read `design-docs/stack-scope.md` before
+  changing it. `--from` pins which source answers for one invocation.
 - Linking has two halves and they must stay apart: `Presentation.hyperlink` is
   the capability (may this output carry a link), and `internal/cli/links.go` is
   the policy (what does a thing point at, and which service wins). A render site
@@ -146,19 +147,23 @@ description: |
   relative to the working directory and silently wrong from a subdirectory.
   Writes are temp-file plus rename. `storeSchemaVersion` is separate from the
   `--json` `schemaVersion`; an unrecognised store version fails closed.
-- `--scope branch|path|subtree|graph` is selection, not projection policy.
-  Displaying a subtree does not imply a subtree can be linked on GitHub. The
-  type lives in `stack` because both records answer it now, and `--no-stack`
-  is exactly `--scope branch` — translated once, so nothing downstream knows
-  both spellings exist.
-- **A command must refuse any scope it did not offer.** The services parse the
-  wider read set, which is right for a read-only discovery and would otherwise
-  let a command that rewrites history replay another root's work. Each command
-  registers its accepted set and gates on it; `graph` and `status` are the only
-  ones offering `forest`, and only `graph` can, since nothing projects a forest.
-- `graph` is the tree the selected branch is in; `forest` is every root. Do not
-  redefine `graph` to mean everything — `sync` and `restack` already accept it,
-  and widening it silently widens them.
+- `--scope branch|path|subtree|stack|trunk|all` is selection, not projection
+  policy. Displaying a subtree does not imply a subtree can be linked on GitHub.
+  The type and the traversal live in `stack` because both records answer them.
+- **A command must refuse any scope it did not offer, and name its own
+  default.** They genuinely differ: `status` and `graph` default to `stack`
+  because reading is free, `restack` to `subtree` because rewriting is not, and
+  only a read-only command offers `all`. `ParseScope` takes both the accepted
+  set and the fallback; there is no global default left to inherit.
+- Projection is a capability, not a scope. `link`, `submit`, `push` and
+  `retarget` take `stack|path` and refuse a forked selection through
+  `Snapshot.RequireLinear`, which names the remedy instead of choosing a line.
+- Selected from a trunk, `stack` is the whole tree under it — a trunk's path is
+  itself. That is how a rewrite asks for an entire shape without being handed a
+  scope that could reach another trunk.
+- `trunk` and `all` are deliberately absent from `RewriteScopes`. A wide rewrite
+  is far likelier to reach a branch checked out in another worktree, and Git
+  refuses to check out a branch already checked out elsewhere.
 
 ## Source resolution
 

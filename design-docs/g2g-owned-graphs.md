@@ -217,7 +217,7 @@ working on one sub-stack of a larger tree.
 policy. Selecting a subtree for display does not imply that a subtree can be
 projected onto a GitHub native stack.
 
-The existing `--no-stack` flag on the Graphite-backed commands is the same axis
+The `--no-stack` flag on the Graphite-backed commands was the same axis
 as `--scope branch`. Unifying them is a user-visible change to six shipped
 commands and is deliberately left to its own change; `--scope` is introduced
 only on the new commands.

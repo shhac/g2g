@@ -1,4 +1,4 @@
-// Package graph is the branch forest gt2gh owns itself, independent of
+// Package graph is the branch forest g2g owns itself, independent of
 // Graphite.
 //
 // The model is a forest of trees over branch names: every branch has at most

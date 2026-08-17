@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // The preview/apply sequence is this tool's core safety contract: discover,

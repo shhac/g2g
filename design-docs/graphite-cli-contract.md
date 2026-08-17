@@ -1,6 +1,6 @@
 # Graphite CLI contract
 
-`gt2gh` reaches Graphite only through its supported, noninteractive CLI. It
+`g2g` reaches Graphite only through its supported, noninteractive CLI. It
 never reads Graphite's private metadata database or configuration and never
 enables `--debug`.
 

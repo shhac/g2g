@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 func untrackView(plan graph.UntrackPlan) stackView {

@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 type Git interface {

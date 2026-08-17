@@ -4,17 +4,17 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/stack"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
-// Selector describes branches gt2gh's own store records, so the commands that
+// Selector describes branches g2g's own store records, so the commands that
 // project a stack onto GitHub can act on one.
 //
 // Adoption into the store is the authority claim, which is why this is
 // consulted before Graphite: recording an edge is the user saying they want
-// gt2gh to own the branch, and there is nothing else to say it with.
+// g2g to own the branch, and there is nothing else to say it with.
 type Selector struct {
 	Service Service
 }
@@ -61,7 +61,7 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 }
 
 // selectBase applies --trunk to a recorded path. A path has exactly one root,
-// so the flag can only confirm the base gt2gh already derived; naming any other
+// so the flag can only confirm the base g2g already derived; naming any other
 // branch is refused rather than ignored, because silently using a different
 // base than the one asked for is how a stack gets pushed at the wrong thing.
 func selectBase(root, target, requested string) (string, string, error) {
@@ -74,7 +74,7 @@ func selectBase(root, target, requested string) (string, string, error) {
 	return root, "--trunk", nil
 }
 
-// StoreCandidates completes from the branches gt2gh's own store records.
+// StoreCandidates completes from the branches g2g's own store records.
 //
 // It reads one small file and runs nothing, which is what makes it safe to ask
 // on a keystroke — and why it can answer in a repository that has no Graphite,

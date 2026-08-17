@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // Removing a middle branch must show what it strands rather than reparenting.

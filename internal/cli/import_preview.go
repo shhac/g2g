@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 
-	"github.com/shhac/gt2gh/internal/align"
+	"github.com/shhac/g2g/internal/align"
 )
 
 // importView leads with the authority claim rather than the branch count.
 //
-// Listing what would be adopted understates what happens: afterwards gt2gh
+// Listing what would be adopted understates what happens: afterwards g2g
 // decides for every one of those branches, and --from graphite is the only way
 // to see Graphite's answer again. That is the part worth reading before typing
 // --apply.

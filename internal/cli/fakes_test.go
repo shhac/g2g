@@ -5,10 +5,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graphite"
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // Fakes and helpers shared by every test in this package. They live apart from

@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/restack"
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // Git is the boundary for the steps sync performs itself.
@@ -72,7 +72,7 @@ func (p Plan) onto() string {
 }
 
 // Plan works out the whole sequence without performing any of it. The fetch is
-// the one step that reaches the network, and it writes only into gt2gh's own
+// the one step that reaches the network, and it writes only into g2g's own
 // ref namespace, so previewing costs the repository nothing.
 func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string) (Plan, error) {
 	if s.Git == nil || s.Restack == nil {

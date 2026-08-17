@@ -191,7 +191,7 @@ func (c Client) rebaseStep(ctx context.Context, step string) error {
 }
 
 // RebaseInProgress reports whether this worktree is part-way through a rebase,
-// whether or not gt2gh is the one that started it.
+// whether or not g2g is the one that started it.
 func (c Client) RebaseInProgress(ctx context.Context) (bool, error) {
 	for _, name := range []string{"rebase-merge", "rebase-apply"} {
 		output, err := c.run(ctx, "rev-parse", "--git-path", name)

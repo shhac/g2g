@@ -1,4 +1,4 @@
-// Package cli defines the gt2gh command-line interface.
+// Package cli defines the g2g command-line interface.
 package cli
 
 import (
@@ -9,20 +9,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/align"
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/graphite"
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/push"
-	"github.com/shhac/gt2gh/internal/restack"
-	"github.com/shhac/gt2gh/internal/retarget"
-	"github.com/shhac/gt2gh/internal/stack"
-	"github.com/shhac/gt2gh/internal/submit"
-	"github.com/shhac/gt2gh/internal/subprocess"
-	syncer "github.com/shhac/gt2gh/internal/sync"
+	"github.com/shhac/g2g/internal/align"
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/retarget"
+	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/submit"
+	"github.com/shhac/g2g/internal/subprocess"
+	syncer "github.com/shhac/g2g/internal/sync"
 )
 
 // Command groups order the help by the job a reader is trying to do. Thirteen
@@ -49,7 +49,7 @@ type Options struct {
 	Link   link.Service
 	Push   push.Service
 	Submit submit.Service
-	// Graph owns the branch forest gt2gh keeps itself. It needs neither
+	// Graph owns the branch forest g2g keeps itself. It needs neither
 	// Graphite nor GitHub, which is the whole point of it.
 	Graph graph.Service
 	// Restack rewrites branch contents to match that structure. It is the only
@@ -60,7 +60,7 @@ type Options struct {
 	// Retarget reconciles GitHub's pull request bases with the resolved stack.
 	// It is the only command that changes what a merge will do.
 	Retarget retarget.Service
-	// Align keeps the gt2gh graph and Graphite's in step. It is the only
+	// Align keeps the g2g graph and Graphite's in step. It is the only
 	// service that writes Graphite.
 	Align align.Service
 
@@ -74,10 +74,10 @@ type Options struct {
 	Presentation *Presentation
 }
 
-// New creates the canonical gt2gh root command. version is injected by main at
+// New creates the canonical g2g root command. version is injected by main at
 // build time.
 func New(version string, stdout, stderr io.Writer) *cobra.Command {
-	return NewNamed(version, "gt2gh", stdout, stderr)
+	return NewNamed(version, "g2g", stdout, stderr)
 }
 
 // NewNamed creates the root command for the executable name used to invoke it.
@@ -89,7 +89,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	graphiteClient := graphite.Client{Runner: runner}
 	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient}
 	// Precedence is declared here and nowhere else. Adopting a branch into
-	// gt2gh's own store is the user saying they want gt2gh to own it, so that
+	// g2g's own store is the user saying they want g2g to own it, so that
 	// is asked first; Graphite answers for everything it still tracks.
 	restackService := restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}}
 	graphiteConfigured := func(ctx context.Context) (bool, error) { return graphite.Configured(ctx, gitClient) }
@@ -131,7 +131,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 // NewWithOptions builds the root command from an explicit set of dependencies.
 func NewWithOptions(options Options) *cobra.Command {
 	if options.CommandName == "" {
-		options.CommandName = "gt2gh"
+		options.CommandName = "g2g"
 	}
 	if options.Unstacker == nil {
 		if configured, ok := options.Link.GitHub.(Unstacker); ok {

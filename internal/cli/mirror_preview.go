@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/shhac/gt2gh/internal/align"
+	"github.com/shhac/g2g/internal/align"
 )
 
 // mirrorView shows the reconciliation in the order it runs, so a reader can see
@@ -37,7 +37,7 @@ func writeNotes(view stackView, plan align.MirrorPlan) stackView {
 	return view
 }
 
-// strangerNotes always names what Graphite has that gt2gh does not, whether or
+// strangerNotes always names what Graphite has that g2g does not, whether or
 // not a prune was asked for: a branch this command could remove is worth seeing
 // before it can remove it.
 func strangerNotes(view stackView, plan align.MirrorPlan, prune bool) stackView {

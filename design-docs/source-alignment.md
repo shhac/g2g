@@ -7,8 +7,8 @@ the other's work away.
 
 ## Problem
 
-gt2gh can read Graphite and can never write it. That was the right call while
-Graphite was the only source, and it became a gap the moment gt2gh grew its own
+g2g can read Graphite and can never write it. That was the right call while
+Graphite was the only source, and it became a gap the moment g2g grew its own
 graph. Two symptoms:
 
 - **Adoption silently strands Graphite.** Once a branch is in the g2g store,
@@ -206,7 +206,7 @@ Two obvious names are unavailable, both by collision:
 
 ## Two tools, one word
 
-`g2g untrack` removes a branch from the gt2gh-owned graph. `gt untrack` removes
+`g2g untrack` removes a branch from the g2g-owned graph. `gt untrack` removes
 it from Graphite. A preview line reading `untrack synthetic-x` is ambiguous
 about which store is losing the edge.
 
@@ -223,10 +223,10 @@ about which store is losing the edge.
 
 ## What this costs elsewhere
 
-**The read-only invariant changes.** gt2gh's entire Graphite surface today is
+**The read-only invariant changes.** g2g's entire Graphite surface today is
 two read commands, `gt --version` and `gt log short --all --reverse
 --no-interactive`. `mirror` adds `gt track` and, under `--prune`, `gt untrack`.
-The claim that gt2gh "reads Graphite and never writes it back" becomes false and
+The claim that g2g "reads Graphite and never writes it back" becomes false and
 must be rewritten here and in the repository skill, and the tests asserting no
 `gt` invocation need re-scoping to the commands that legitimately make none.
 
@@ -239,7 +239,7 @@ bug as the one shell completion had. A repository with no Graphite also has no
 trunk, so a mirror into it is blocked for want of a root in any case. Refusing
 first reaches the identical answer with no side effect.
 
-**"No gt2gh command enrols a repository" therefore holds without exception**,
+**"No g2g command enrols a repository" therefore holds without exception**,
 including for the commands that write Graphite. That is a stronger invariant
 than the one this document originally proposed, and it is worth keeping.
 
@@ -256,7 +256,7 @@ stored answer would be one that cannot be kept true.
 
 
 **Stored per-stack authority.** Rejected in `source-resolution.md` and not
-reopened by anything here. A stored owner goes stale through actions gt2gh never
+reopened by anything here. A stored owner goes stale through actions g2g never
 sees, and the presence of an edge in the g2g store already *is* the claim — the
 former `Authority` field was written once and never read for a decision. Mirror
 does not undermine this, because mirror never writes the g2g store.

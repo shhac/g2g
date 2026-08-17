@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // The graph commands run through the real Git adapter here: real argv, a real
@@ -197,7 +197,7 @@ func TestUntrackApplyRewritesTheStore(t *testing.T) {
 	}
 }
 
-// A store written by a newer gt2gh must not be silently rewritten by an older
+// A store written by a newer g2g must not be silently rewritten by an older
 // one, so an unrecognised version is an error rather than an empty graph.
 func TestGraphFailsClosedOnAnUnsupportedStoreVersion(t *testing.T) {
 	graphRepository(t, `{"storeSchemaVersion":99,"branches":{}}`)

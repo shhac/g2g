@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/push"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
@@ -246,7 +246,7 @@ func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), push.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -267,7 +267,7 @@ func TestLinkApplyDoesNotRenderReadyPlanWhenRevalidationIsCanceled(t *testing.T)
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, inspectErrAt: 2, inspectErr: context.Canceled}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), push.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
@@ -282,7 +282,7 @@ func TestLinkApplyReportsCancellationWithoutSuccess(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, linkErr: context.Canceled}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), push.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	err := command.Execute()
 	if err == nil {
@@ -327,7 +327,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events, flushErr: context.Canceled}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), push.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
@@ -341,7 +341,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
 	events := []string{}
 	writer := &recordingWriter{events: &events, writeErr: context.Canceled}
 	github := &cliGitHub{events: &events}
-	command := newWithPresentation("v0.2.4", "gt2gh", writer, writer, cliService(github), push.Service{}, Presentation{})
+	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
 	command.SetArgs([]string{"link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")

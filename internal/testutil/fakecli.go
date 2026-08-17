@@ -45,7 +45,7 @@ type Route struct {
 }
 
 // Recorder captures every fake CLI invocation in order, so a test can assert
-// what gt2gh actually ran rather than what a stub was asked for.
+// what g2g actually ran rather than what a stub was asked for.
 type Recorder struct {
 	t    *testing.T
 	path string
@@ -54,7 +54,7 @@ type Recorder struct {
 // FakeCLIs installs fixture-driven fakes for the named tools and returns a
 // recorder of their invocations.
 //
-// This exercises gt2gh exactly as it runs for real: the production adapters
+// This exercises g2g exactly as it runs for real: the production adapters
 // build real argv, spawn real processes, and parse real bytes. Dependency
 // injection at the service seam cannot catch a malformed argument, a changed
 // response shape, or a mishandled exit status, because it replaces the code
@@ -161,7 +161,7 @@ func (r *Recorder) Count(prefix string) int {
 
 // Find returns the first invocation beginning with prefix, failing if there
 // is none. Asserting on the request matters because a fake answers from its
-// routes regardless of what was asked: only the recorded argv proves gt2gh
+// routes regardless of what was asked: only the recorded argv proves g2g
 // built the call correctly.
 func (r *Recorder) Find(prefix string) string {
 	r.t.Helper()
@@ -212,7 +212,7 @@ func (r *Recorder) AssertOrder(prefixes ...string) {
 // GraphiteRepository returns a common directory that looks like a repository
 // already using Graphite.
 //
-// The marker matters because gt2gh checks for it before running Graphite at
+// The marker matters because g2g checks for it before running Graphite at
 // all: Graphite's discovery command creates state in a repository that has
 // never used it, so a fixture that omits this is asserting the opposite —
 // that Graphite should not be consulted here.

@@ -14,12 +14,12 @@ behaviour, which is unchanged.
 ## Problem
 
 Teams using Graphite keep a linear branch stack there, while GitHub's native
-stack feature needs that same ordering linked explicitly. `gt2gh` will bridge
+stack feature needs that same ordering linked explicitly. `g2g` will bridge
 those systems without becoming a second stack manager.
 
 ## Initial scope
 
-The first workflow is `gt2gh link`. It discovers the declared-trunk-to-selected
+The first workflow is `g2g link`. It discovers the declared-trunk-to-selected
 branch Graphite path, preserves its bottom-to-top order, and calls `gh stack
 link` only with explicit `--apply`. A bare `link` is a read-only preview. It
 defaults to the checked-out Git branch and prominently prints that selection;
@@ -44,7 +44,7 @@ Graphite trunk components are never joined into an invented edge.
 
 ## Non-goals
 
-`gt2gh` will not create, reorder, rebase, submit, merge, or otherwise manage
+`g2g` will not create, reorder, rebase, submit, merge, or otherwise manage
 Graphite stacks. It will not replace Graphite as the source of truth, infer
 repository policy, or require a hosted service. It does not link an entire
 forked/tree stack: v0.1 selects one declared trunk-to-leaf path. Tree-wide
@@ -104,26 +104,26 @@ or a rejected lease is an error with no weaker fallback.
 
 ## CLI shape
 
-`gt2gh link` is an explicit subcommand rather than a default action. This
+`g2g link` is an explicit subcommand rather than a default action. This
 leaves room for future, separately designed workflows without making a bare
-invocation mutate state. Bare `gt2gh` shows help. The first implemented command
+invocation mutate state. Bare `g2g` shows help. The first implemented command
 surface will use Cobra for parsing and native shell-completion support.
 
 The implemented surface is:
 
 ```text
-gt2gh [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
-gt2gh [--debug] sync [--branch <local-branch>] [--remote <name>] [--prune] [--apply]
-gt2gh [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--apply]
-gt2gh [--debug] submit [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--spec <submission.json> | --write-spec <private-temp-dir>] [--template <name> | --no-template] [--draft | --ready] [--apply]
-gt2gh [--debug] status [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack]
-gt2gh [--debug] unlink [--stack-number <github-stack-number>] [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
-gt2gh [--debug] graph [--branch <local-branch>] [--scope branch|path|subtree|graph]
-gt2gh [--debug] track [--branch <local-branch>] [--parent <local-branch>] [--apply]
-gt2gh [--debug] untrack [--branch <local-branch>] [--scope branch|subtree] [--apply]
-gt2gh [--debug] restack [--branch <local-branch>] [--scope branch|path|subtree|graph] [--onto <ref>] [--absorb] [--apply]
-gt2gh [--debug] restack --continue | --abort | --skip
-gt2gh completion bash|zsh|fish
+g2g [--debug] link [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+g2g [--debug] sync [--branch <local-branch>] [--remote <name>] [--prune] [--apply]
+g2g [--debug] push [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--apply]
+g2g [--debug] submit [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--remote <name>] [--spec <submission.json> | --write-spec <private-temp-dir>] [--template <name> | --no-template] [--draft | --ready] [--apply]
+g2g [--debug] status [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack]
+g2g [--debug] unlink [--stack-number <github-stack-number>] [--branch <local-graphite-branch>] [--trunk <graphite-trunk>] [--no-stack] [--apply]
+g2g [--debug] graph [--branch <local-branch>] [--scope branch|path|subtree|graph]
+g2g [--debug] track [--branch <local-branch>] [--parent <local-branch>] [--apply]
+g2g [--debug] untrack [--branch <local-branch>] [--scope branch|subtree] [--apply]
+g2g [--debug] restack [--branch <local-branch>] [--scope branch|path|subtree|graph] [--onto <ref>] [--absorb] [--apply]
+g2g [--debug] restack --continue | --abort | --skip
+g2g completion bash|zsh|fish
 ```
 
 Every command also accepts the root `--timeout <duration>` phase ceiling and
@@ -152,7 +152,7 @@ GitHub's native-stack relationship encoded by open PR bases, compares branches
 tracked by both systems, identifies divergence, and makes GitHub match
 Graphite only through explicit `--apply`. Graphite remains authoritative.
 
-Discovery is read-only and produces a dry-run report. `gt2gh sync` shares the
+Discovery is read-only and produces a dry-run report. `g2g sync` shares the
 optional no-checkout `--branch` selector with `link`; absent it prominently
 reports the current Git branch target. It classifies each selected-path branch
 as aligned, divergent, missing (no PR), or unsafe (non-open PR). Apply requires
@@ -216,7 +216,7 @@ small.
 
 ### v0.1.0: linear linking
 
-1. Implement actual `gt2gh link` with Cobra, a read-only preview by default,
+1. Implement actual `g2g link` with Cobra, a read-only preview by default,
    and an explicit apply opt-in for mutation. `--branch <branch>` is optional:
    absent it resolves the current branch and prints that target prominently;
    present it selects a Graphite-tracked branch without checking it out. The
@@ -224,7 +224,7 @@ small.
    path, inspect the corresponding GitHub PR/native-stack state as supported
    without checkout, and keep Graphite authoritative. A selected leaf under a
    fork is supported only by selecting its own trunk-to-leaf path.
-2. Add static and dynamic Cobra shell completion. `gt2gh completion
+2. Add static and dynamic Cobra shell completion. `g2g completion
    bash|zsh|fish` must emit release-compatible scripts. Completion for the
    optional target-branch flag must list deterministically discoverable,
    Graphite-tracked local branches without checkout or mutation.

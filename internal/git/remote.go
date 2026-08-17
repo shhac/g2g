@@ -1,7 +1,7 @@
 // Everything that writes a ref or reaches the network.
 //
 // These are grouped by the safety property they hold rather than by the object
-// they act on: fetching writes only under gt2gh's own namespace, pushing is
+// they act on: fetching writes only under g2g's own namespace, pushing is
 // atomic and lease-pinned, and pinning a fork point is what keeps it reachable.
 // Interleaving them with the read-only queries hid which was which.
 package git
@@ -26,7 +26,7 @@ func (c Client) PinForkPoint(ctx context.Context, branch, object string) error {
 	return err
 }
 
-// UnpinForkPoint drops the ref for a branch gt2gh no longer records.
+// UnpinForkPoint drops the ref for a branch g2g no longer records.
 func (c Client) UnpinForkPoint(ctx context.Context, branch string) error {
 	if err := safeRef(branch); err != nil {
 		return err
@@ -75,7 +75,7 @@ func (c Client) RemoteTips(ctx context.Context, remote string, branches []string
 	return tips, nil
 }
 
-// FetchIsolated downloads the named branches into gt2gh's own ref namespace,
+// FetchIsolated downloads the named branches into g2g's own ref namespace,
 // leaving every ref the user relies on exactly where it was.
 //
 // Both flags are load-bearing. --refmap= suppresses git's opportunistic update

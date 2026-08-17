@@ -19,7 +19,7 @@ const StoreSchemaVersion = 1
 
 // storeDirName is the subdirectory of the Git common directory that holds the
 // graph. Keeping it out of the common directory's root leaves room for other
-// gt2gh state without colliding with Git's own names.
+// g2g state without colliding with Git's own names.
 const storeDirName = "g2g"
 
 // storeFileName is the whole store: one flat file, because graph identity is
@@ -110,7 +110,7 @@ func decode(contents []byte, path string) (Graph, error) {
 		return Graph{}, fmt.Errorf("parse graph store %s: %w", path, err)
 	}
 	// Fail closed on a version this build does not know. Reading a future
-	// store optimistically is how a newer gt2gh's structure gets silently
+	// store optimistically is how a newer g2g's structure gets silently
 	// rewritten by an older one.
 	if doc.StoreSchemaVersion != StoreSchemaVersion {
 		return Graph{}, fmt.Errorf("graph store %s has schema version %d, which this g2g does not support (expected %d)", path, doc.StoreSchemaVersion, StoreSchemaVersion)

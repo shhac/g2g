@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // Forest is everything Graphite declares about the repository: each tracked

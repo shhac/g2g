@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/link"
 )
 
 func linkView(plan link.Plan) stackView {
@@ -62,7 +62,7 @@ func linkView(plan link.Plan) stackView {
 // out of a rendered line — which quietly tied one command's output to a literal
 // six other files typed by hand.
 func blockedReason(plan link.Plan) string {
-	// Merged branches come first: they are the only case no gt2gh command
+	// Merged branches come first: they are the only case no g2g command
 	// fixes. The stack itself is stale, and Graphite has to restack around
 	// them before anything here can help.
 	if merged := plan.MergedBranches(); len(merged) != 0 {

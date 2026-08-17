@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graphite"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // Git provides the read-only local repository facts needed for a plan.
@@ -63,7 +63,7 @@ const (
 	// IssueClosed is a branch whose pull requests were closed without merging.
 	// A replacement can be created, so submit resolves it.
 	IssueClosed IssueKind = "closed"
-	// IssueMerged is a branch whose work has landed. Nothing gt2gh does fixes
+	// IssueMerged is a branch whose work has landed. Nothing g2g does fixes
 	// this: the branch no longer belongs in the stack, and only Graphite can
 	// restack around it.
 	IssueMerged IssueKind = "merged"
@@ -79,7 +79,7 @@ type Issue struct {
 }
 
 // MergedBranches lists branches whose pull requests have landed. They are
-// reported first, because no gt2gh command resolves them — the stack itself is
+// reported first, because no g2g command resolves them — the stack itself is
 // stale and Graphite has to restack around them.
 func (p Plan) MergedBranches() []string {
 	var merged []string

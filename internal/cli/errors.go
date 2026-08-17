@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/g2g/internal/githubstack"
 )
 
 // ghAuthExitCode is the exit status the GitHub CLI uses for an authentication
-// failure. Recognizing it lets gt2gh add the remediation without spending an
+// failure. Recognizing it lets g2g add the remediation without spending an
 // extra API call on a separate `gh auth status` probe.
 const ghAuthExitCode = 4
 
@@ -57,7 +57,7 @@ func commandDiagnostic(err error) string {
 }
 
 // remediationHint turns a recognized external-CLI failure into one actionable
-// line. It only reads the error already returned by a call gt2gh had to make.
+// line. It only reads the error already returned by a call g2g had to make.
 func remediationHint(err error) string {
 	var commandErr *githubstack.CommandError
 	if !errors.As(err, &commandErr) || !strings.HasPrefix(commandErr.Command, "gh ") {

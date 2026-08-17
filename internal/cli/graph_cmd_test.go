@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // graphGit answers the ancestry questions without a repository. The forest
@@ -269,7 +269,7 @@ func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
 	}
 }
 
-// The three things gt2gh can see and deliberately will not repair each need to
+// The three things g2g can see and deliberately will not repair each need to
 // reach the reader, because nothing else is going to tell them.
 func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
 	git := graphGitFixture()

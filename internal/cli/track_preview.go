@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 func trackView(plan graph.TrackPlan) stackView {

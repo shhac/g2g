@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // The README promises the submission spec survives every failure — validation,

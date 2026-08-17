@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // Runner executes programs by name. Future Graphite and GitHub adapters will

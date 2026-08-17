@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/push"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // These constructors exist only for tests, which is why they live here. They

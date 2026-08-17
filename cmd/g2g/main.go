@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shhac/gt2gh/internal/cli"
+	"github.com/shhac/g2g/internal/cli"
 )
 
 // version is overridden by release builds with -ldflags.

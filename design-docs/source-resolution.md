@@ -7,13 +7,13 @@ of scope; see [Deferred](#deferred).
 
 Every command that selects a stack asks Graphite, and only Graphite.
 `stack.Resolve` requires a Graphite client, so `push`, `link`, and `submit`
-cannot serve a branch graph gt2gh owns — the thing the previous release built.
+cannot serve a branch graph g2g owns — the thing the previous release built.
 
 It fails badly rather than cleanly. Running `g2g push` on a g2g-owned stack in
 a repository that has never used Graphite invokes `gt`, fails with a Graphite
 error, and leaves `.graphite_metadata.db` and `.graphite_pr_info` behind in
 `.git`. A repository that deliberately has no Graphite is enrolled into it by
-running a gt2gh command.
+running a g2g command.
 
 ## The question
 
@@ -31,7 +31,7 @@ Per branch, never per tree, and never stored.
 
 ### Why not stored
 
-A stored owner goes stale through actions gt2gh never sees. `gt track` on a
+A stored owner goes stale through actions g2g never sees. `gt track` on a
 branch that bridges two trees merges them, and a whole-tree rule then has to
 invalidate both. Deriving the answer each time removes the entire class:
 nothing to migrate, nothing to reconcile, and no way for the record to be
@@ -114,7 +114,7 @@ from one file read with no subprocess at all.
 
 A Graphite ancestry can carry several declared trunks, which is what `--trunk`
 disambiguates. A recorded path has exactly one root, so the flag can only ever
-confirm the base gt2gh already derived. It is accepted when it names that root
+confirm the base g2g already derived. It is accepted when it names that root
 and **refused when it names anything else**, rather than ignored: silently using
 a different base than the one asked for is how a stack gets pushed at the wrong
 thing. Completion offers that single value, so the two agree.

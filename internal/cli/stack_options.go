@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // stackOptions owns the common target-selection flags shared by stack commands.

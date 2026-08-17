@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // fakeGit answers the two questions an import asks about a branch: is it here,
@@ -143,7 +143,7 @@ func TestImportAssessesEachEdgeAgainstGit(t *testing.T) {
 }
 
 // The one thing an additive command must not do is silently undo a deliberate
-// gt2gh change, so a disagreement blocks and names both answers.
+// g2g change, so a disagreement blocks and names both answers.
 func TestImportBlocksOnADisagreement(t *testing.T) {
 	ours := graph.Graph{
 		Edges:  map[string]graph.Edge{"synthetic-top": {Parent: "synthetic-trunk"}},
@@ -166,7 +166,7 @@ func TestImportBlocksOnADisagreement(t *testing.T) {
 		t.Error("ApplyImport() error = nil for a blocked plan")
 	}
 	if store.graph.Edges["synthetic-top"].Parent != "synthetic-trunk" {
-		t.Error("a blocked import changed the gt2gh graph")
+		t.Error("a blocked import changed the g2g graph")
 	}
 }
 
@@ -217,7 +217,7 @@ func TestImportSkipsBranchesThatAreNotLocal(t *testing.T) {
 	}
 }
 
-// Import writes the gt2gh graph and nothing else. Graphite keeps every branch
+// Import writes the g2g graph and nothing else. Graphite keeps every branch
 // it had; the only change is which record answers.
 func TestImportWritesNothingToGraphite(t *testing.T) {
 	client := &fakeGraphite{forest: declaredChain()}

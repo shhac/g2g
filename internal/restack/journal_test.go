@@ -87,7 +87,7 @@ func TestJournalClearIsHarmlessWhenNothingIsInFlight(t *testing.T) {
 	}
 }
 
-// A journal written by a newer gt2gh must not be acted on by an older one: it
+// A journal written by a newer g2g must not be acted on by an older one: it
 // describes a rewrite this build may not know how to finish.
 func TestJournalFailsClosedOnAnUnsupportedSchema(t *testing.T) {
 	journal, common := newJournal(t)

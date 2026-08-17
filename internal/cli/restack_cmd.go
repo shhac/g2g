@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/restack"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // restackOptions are the resume verbs, which mirror git rebase because the

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func selectorService(adopted Graph) Selector {

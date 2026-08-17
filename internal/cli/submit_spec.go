@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/submit"
+	"github.com/shhac/g2g/internal/submit"
 )
 
 // The submission spec is a document the user edits by hand, so its lifecycle —

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/align"
+	"github.com/shhac/g2g/internal/align"
 )
 
 func newMirror(service align.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {

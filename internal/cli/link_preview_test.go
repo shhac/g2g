@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // link refuses a wrong base but sync reconciles exactly that, so a path
@@ -75,7 +75,7 @@ func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 		want   string
 	}{
 		{
-			name:   "merged branch needs Graphite, not gt2gh",
+			name:   "merged branch needs Graphite, not g2g",
 			issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"}},
 			want:   "feat-a already merged. Run gt sync in Graphite to restack",
 		},

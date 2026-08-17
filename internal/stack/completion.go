@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // CompletionGraphite adds the read-only lookups shell completion needs on top

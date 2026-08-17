@@ -5,7 +5,7 @@
 
 ## Problem
 
-Everything gt2gh does today starts by asking Graphite for a linear path. That
+Everything g2g does today starts by asking Graphite for a linear path. That
 makes Graphite a hard runtime dependency for commands that otherwise only need
 Git and GitHub, and it means the tool has nothing to say in a repository where
 Graphite was never installed.
@@ -49,12 +49,12 @@ Authority is recorded **per branch**, not per graph:
 
 | Authority | Meaning |
 |---|---|
-| `graphite` | Graphite declares this branch's parent. gt2gh reads, never writes. |
+| `graphite` | Graphite declares this branch's parent. g2g reads, never writes. |
 | `g2g` | The user adopted this edge into the local store. |
 
 Per-branch authority is what makes the rule locally checkable. A whole-graph
 rule cannot survive `gt track` on a branch that bridges two previously separate
-components, because that merges them through an action gt2gh never observed.
+components, because that merges them through an action g2g never observed.
 The per-branch rule instead says: **an edge whose endpoints disagree about
 authority is a conflict**, which localises the report to the offending edge and
 never invalidates a component.
@@ -72,7 +72,7 @@ Precedence when several sources describe one branch:
 4. unknown
 
 A lower source disagreeing with a higher one is reported, never silently
-merged. gt2gh does not write Graphite's metadata under any circumstances.
+merged. g2g does not write Graphite's metadata under any circumstances.
 
 ## Deriving edges from Git
 
@@ -225,7 +225,7 @@ only on the new commands.
 ## Known limits
 
 **No restack yet.** The operation is designed in
-[restack.md](restack.md) but not implemented. gt2gh does not rebase today, and
+[restack.md](restack.md) but not implemented. g2g does not rebase today, and
 does not check out branches. It can
 repair a tree's parent edges but cannot repair a branch's contents.
 
@@ -235,7 +235,7 @@ the child still carries the original pre-squash commits. Its merge base is
 unchanged, so its pull request then shows the parent's changes a second time,
 and merging it will try to reapply changes the trunk already has.
 
-The consequence is stated rather than discovered: **until gt2gh owns restack, a
+The consequence is stated rather than discovered: **until g2g owns restack, a
 g2g-owned graph needs something else to repair branch contents after a merge.**
 The graph is safe to build and safe to inspect; it goes stale in content, not
 in structure, and `g2g graph` reports the branches affected.
@@ -246,8 +246,8 @@ HEAD, the index, and the user's working tree are never touched and the
 no-checkout property survives intact. Conflicts abort and report rather than
 leaving a half-finished state.
 
-**No Graphite writes.** Graphite has no supported mutation contract that gt2gh
-can rely on, so adoption is one-way: gt2gh can read Graphite structure but
+**No Graphite writes.** Graphite has no supported mutation contract that g2g
+can rely on, so adoption is one-way: g2g can read Graphite structure but
 never writes it back.
 
 **No automatic adoption.** Nothing is written to the store without an explicit

@@ -3,13 +3,13 @@ package push
 import (
 	"context"
 	"errors"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/stack"
 	"strings"
 	"testing"
 
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graphite"
-	"github.com/shhac/gt2gh/internal/link"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/link"
 )
 
 func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {

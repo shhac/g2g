@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	syncer "github.com/shhac/gt2gh/internal/sync"
+	syncer "github.com/shhac/g2g/internal/sync"
 )
 
 func newSync(service syncer.Service, presentation Presentation) *cobra.Command {

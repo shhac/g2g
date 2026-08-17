@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 func newUntrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {

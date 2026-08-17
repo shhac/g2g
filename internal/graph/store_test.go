@@ -66,7 +66,7 @@ func TestStorePathIsUnderTheGitCommonDirectory(t *testing.T) {
 	}
 }
 
-// Reading a newer store optimistically is how an older gt2gh silently
+// Reading a newer store optimistically is how an older g2g silently
 // rewrites structure it did not understand.
 func TestLoadFailsClosedOnAnUnsupportedSchemaVersion(t *testing.T) {
 	store, common := newStore(t)

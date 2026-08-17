@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // Service reads and adopts g2g-owned graphs. It needs Git and a store, and
@@ -73,7 +73,7 @@ func (d Discovery) Orphans() []string {
 }
 
 // NeedsRestack reports selected branches whose parent moved underneath them.
-// gt2gh does not rebase, so this is reported and never repaired.
+// g2g does not rebase, so this is reported and never repaired.
 func (d Discovery) NeedsRestack() []string {
 	return d.branchesInState(StateNeedsRestack)
 }

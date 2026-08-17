@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/subprocess"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestClientUsesSupportedReadOnlyCommands(t *testing.T) {

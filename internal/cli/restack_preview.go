@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/shhac/gt2gh/internal/restack"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 func restackView(plan restack.Plan) stackView {

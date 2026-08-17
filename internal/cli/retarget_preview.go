@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/shhac/gt2gh/internal/retarget"
+	"github.com/shhac/g2g/internal/retarget"
 )
 
 // retargetView names every base it would move, and where from.

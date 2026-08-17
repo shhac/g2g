@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
-// mirrorRepository is described by both sources. The gt2gh graph is fixed and
+// mirrorRepository is described by both sources. The g2g graph is fixed and
 // the Graphite display varies per test, because what a mirror does is entirely
 // a function of how the two disagree.
 func mirrorRepository(t *testing.T, graphJSON string, graphiteLog []string) *testutil.Recorder {
@@ -49,7 +49,7 @@ const mirrorGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-trunk"],"branc
 	"synthetic-lower":{"parent":"synthetic-trunk","origin":"user"},
 	"synthetic-top":{"parent":"synthetic-lower","origin":"user"}}}`
 
-// Graphite has the two branches in the opposite order to the gt2gh graph, which
+// Graphite has the two branches in the opposite order to the g2g graph, which
 // is a disagreement about both of them and needs no fork to express.
 var invertedGraphiteLog = []string{
 	"◯  synthetic-trunk",
@@ -58,7 +58,7 @@ var invertedGraphiteLog = []string{
 }
 
 // Graphite agrees about the recorded stack and carries one extra branch on top
-// that the gt2gh graph says nothing about.
+// that the g2g graph says nothing about.
 var strangerGraphiteLog = []string{
 	"◯  synthetic-trunk",
 	"◯  synthetic-lower",
@@ -81,7 +81,7 @@ func TestMirrorPreviewWritesNothing(t *testing.T) {
 	recorder.AssertNone("gt untrack")
 }
 
-// The whole point: Graphite ends up recording what gt2gh records.
+// The whole point: Graphite ends up recording what g2g records.
 func TestMirrorApplyMovesTheDisagreeingBranch(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, invertedGraphiteLog)
 
@@ -100,7 +100,7 @@ func TestMirrorApplyMovesTheDisagreeingBranch(t *testing.T) {
 	recorder.AssertNone("gt untrack")
 }
 
-// Without --prune, a branch gt2gh does not record is reported and left alone.
+// Without --prune, a branch g2g does not record is reported and left alone.
 func TestMirrorLeavesStrangersAloneWithoutPrune(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, strangerGraphiteLog)
 
@@ -158,7 +158,7 @@ func TestMirrorRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	}
 }
 
-// import is the other direction: it writes the gt2gh graph and never Graphite.
+// import is the other direction: it writes the g2g graph and never Graphite.
 func TestImportAdoptsIntoTheG2GGraphOnly(t *testing.T) {
 	recorder := mirrorRepository(t, "", strangerGraphiteLog)
 
@@ -186,7 +186,7 @@ func TestImportPreviewNamesTheAuthorityShift(t *testing.T) {
 		t.Fatalf("import: %v\n%s", err, stdout)
 	}
 	if !strings.Contains(stdout, "answers for") {
-		t.Errorf("preview does not say gt2gh takes over answering:\n%s", stdout)
+		t.Errorf("preview does not say g2g takes over answering:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "--from graphite") {
 		t.Errorf("preview does not say how to see Graphite's view afterwards:\n%s", stdout)
@@ -299,7 +299,7 @@ func TestAlignedMirrorReportsNothingToDo(t *testing.T) {
 // "Nothing to do" and "this cannot be done" are opposite answers that happen to
 // produce the same empty list.
 func TestBlockedMirrorIsNotReportedAsNothingToDo(t *testing.T) {
-	// Graphite has never heard of the gt2gh graph's root, and cannot be told
+	// Graphite has never heard of the g2g graph's root, and cannot be told
 	// about it without being given a parent.
 	mirrorRepository(t, mirrorGraph, []string{"◯  synthetic-other", "◉  synthetic-elsewhere"})
 

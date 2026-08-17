@@ -49,6 +49,11 @@ jobs:
     secrets: inherit
     with:
       name: gt2gh
+      # The formula, asset and repository keep their name for now; only the
+      # source directory has moved, so the build path is stated explicitly.
+      # Renaming the formula needs formula_renames.json in the tap first, or
+      # every existing install silently stops updating.
+      cmd_path: ./cmd/g2g
       desc: "Manage stacked branches and project them onto GitHub native stacks"
       formula_class: Gt2gh
       # help_match is asserted by the generated formula's brew test against the

@@ -1,9 +1,9 @@
-// Package align keeps gt2gh's graph and Graphite's in step.
+// Package align keeps g2g's graph and Graphite's in step.
 //
 // Source resolution decided which source answers for a branch and left them
 // free to disagree. This is the other half, in both directions: mirror makes
-// Graphite agree with gt2gh, import adopts what Graphite declares. Neither ever
-// removes a branch from the gt2gh graph — alignment is not ownership transfer.
+// Graphite agree with g2g, import adopts what Graphite declares. Neither ever
+// removes a branch from the g2g graph — alignment is not ownership transfer.
 package align
 
 import (
@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // Graphite is the whole Graphite surface alignment needs. It is an interface
@@ -29,7 +29,7 @@ type Graphite interface {
 
 // Service compares the two graphs and reconciles one into the other.
 //
-// The gt2gh side is three narrow dependencies rather than the whole
+// The g2g side is three narrow dependencies rather than the whole
 // graph.Service, because alignment never asks that service to do anything — it
 // reads ancestry, reads and writes the store, and pins a fork point. Naming
 // them is what makes that legible from the type instead of from every call
@@ -71,14 +71,14 @@ type MirrorPlan struct {
 	// Writes are ordered parents before children, because Graphite refuses a
 	// parent it does not already track.
 	Writes []Change
-	// Strangers is what Graphite tracks that the gt2gh graph says nothing
+	// Strangers is what Graphite tracks that the g2g graph says nothing
 	// about. It is filled in whether or not --prune was asked for: a branch
 	// this command could remove is worth seeing before it can remove it.
 	Strangers []string
 	// Prunes are the strangers being removed, ordered deepest first because
 	// untracking cascades. Empty unless --prune was asked for.
 	Prunes []string
-	// UnknownRoots are the roots of the gt2gh forest Graphite has never heard
+	// UnknownRoots are the roots of the g2g forest Graphite has never heard
 	// of. They are what Blocked is about when it is set.
 	UnknownRoots []string
 	// Blocked is why an apply would refuse, empty when it would proceed.
@@ -86,7 +86,7 @@ type MirrorPlan struct {
 }
 
 // Shielded returns the strangers a prune leaves alone because untracking them
-// would cascade into branches gt2gh does know. It is meaningful only when a
+// would cascade into branches g2g does know. It is meaningful only when a
 // prune was asked for; without one, every stranger is simply untouched.
 func (p MirrorPlan) Shielded() []string {
 	pruning := map[string]bool{}
@@ -120,7 +120,7 @@ func (p MirrorPlan) branches(moves bool) []string {
 	return names
 }
 
-// PlanMirror works out how to make Graphite agree with the gt2gh graph, without
+// PlanMirror works out how to make Graphite agree with the g2g graph, without
 // performing any of it.
 //
 // The comparison is over the whole forest rather than one path. A path is what
@@ -238,7 +238,7 @@ func (s Service) requireGraphite(ctx context.Context) error {
 	return nil
 }
 
-// unknownRoots names the roots of the gt2gh forest that Graphite has never
+// unknownRoots names the roots of the g2g forest that Graphite has never
 // heard of. Graphite can only track a branch under a parent it already tracks,
 // so a root it does not know cannot be created — only `gt init` establishes a
 // trunk, and enrolling a repository is not this command's business.
@@ -253,7 +253,7 @@ func unknownRoots(adopted graph.Graph, forest graphite.Forest) []string {
 	return missing
 }
 
-// writes walks the gt2gh forest from its roots down, so every parent is written
+// writes walks the g2g forest from its roots down, so every parent is written
 // before the children that name it.
 func writes(adopted graph.Graph, forest graphite.Forest) []Change {
 	changes := make([]Change, 0)
@@ -274,7 +274,7 @@ func writes(adopted graph.Graph, forest graphite.Forest) []Change {
 	return changes
 }
 
-// strangers are the branches Graphite tracks that the gt2gh graph says nothing
+// strangers are the branches Graphite tracks that the g2g graph says nothing
 // about. Trunks and roots count as known: they anchor the forest even though no
 // edge records them.
 func strangers(adopted graph.Graph, forest graphite.Forest) []string {
@@ -300,7 +300,7 @@ func strangers(adopted graph.Graph, forest graphite.Forest) []string {
 // prunable decides which strangers can be removed safely.
 //
 // Untracking cascades to a branch's whole subtree, so removing one stranger
-// whose child gt2gh does know would silently untrack the branch the mirror just
+// whose child g2g does know would silently untrack the branch the mirror just
 // aligned. A stranger with a surviving child is therefore kept, not pruned, and
 // the rest are ordered deepest first so a parent never takes its children with
 // it.

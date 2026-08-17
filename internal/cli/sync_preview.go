@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	syncer "github.com/shhac/gt2gh/internal/sync"
+	syncer "github.com/shhac/g2g/internal/sync"
 )
 
 // syncView shows the sequence in the order it runs, so a reader can see where

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/subprocess"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // restackRepo builds a real stack and moves its trunk on, which is the shape
@@ -151,7 +151,7 @@ func isAncestor(t *testing.T, ancestor, descendant string) bool {
 // asserting it anyway would be asserting the environment.
 //
 // It asks the same question the code does, rather than probing Git itself:
-// what matters is whether gt2gh will use that engine, not whether the
+// what matters is whether g2g will use that engine, not whether the
 // subcommand happens to exist.
 func requireReplay(t *testing.T) {
 	t.Helper()

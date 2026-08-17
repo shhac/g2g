@@ -19,7 +19,7 @@ type Resolution struct {
 	OpenCount int
 }
 
-// Ambiguous reports the only case gt2gh refuses to interpret.
+// Ambiguous reports the only case g2g refuses to interpret.
 func (r Resolution) Ambiguous() bool { return r.OpenCount > 1 }
 
 // Superseded reports a branch whose pull requests are all closed or merged.

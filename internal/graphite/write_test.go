@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // writingClient installs a gt whose every invocation is recorded, so a test can

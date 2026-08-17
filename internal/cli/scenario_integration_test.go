@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // These drive whole restack scenarios against real Git, from the simplest

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 func TestBareCommandShowsHelp(t *testing.T) {
@@ -28,7 +28,7 @@ func TestVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if output != "gt2gh version v0.1.0\n" {
+	if output != "g2g version v0.1.0\n" {
 		t.Errorf("version = %q", output)
 	}
 }
@@ -40,7 +40,7 @@ func TestCompletionScripts(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Execute() error = %v", err)
 			}
-			if !strings.Contains(output, "gt2gh") {
+			if !strings.Contains(output, "g2g") {
 				t.Errorf("completion script does not name command")
 			}
 		})

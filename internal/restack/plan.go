@@ -8,12 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
 )
 
-// Git is the rewrite boundary. It is the only interface in gt2gh permitted to
+// Git is the rewrite boundary. It is the only interface in g2g permitted to
 // change commit history, and only through the two engines below.
 type Git interface {
 	graph.Ancestry

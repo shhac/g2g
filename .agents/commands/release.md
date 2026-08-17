@@ -5,7 +5,7 @@ argument-hint: <patch|minor|major>
 
 # Release
 
-Releasing `gt2gh` is automated. Pushing a `v*` tag triggers
+Releasing `g2g` is automated. Pushing a `v*` tag triggers
 `.github/workflows/release.yml`, whose `verify` job runs `gofmt`, `go vet`, and
 `go test` and gates the release job. That job calls the shared `go-release`
 workflow in `shhac/homebrew-tap` to cross-build every platform, publish the
@@ -26,7 +26,7 @@ bash, zsh, and fish completions generated from that installed executable.
    - Format, tests, and vet pass: `gofmt -d $(rg --files -g '*.go')`,
      `go test ./...`, and `go vet ./...`. The version is injected from the tag
      (`-ldflags -X main.version=…`) — there is no version file to edit
-     (`cmd/gt2gh/main.go::version` stays `"dev"`).
+     (`cmd/g2g/main.go::version` stays `"dev"`).
 3. Compute the new version by bumping the latest tag
    (`git describe --tags --abbrev=0`): patch → x.y.(z+1), minor → x.(y+1).0,
    major → (x+1).0.0.

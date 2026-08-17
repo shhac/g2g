@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestExecRunnerUsesFakeGraphiteCLIOnPATH(t *testing.T) {

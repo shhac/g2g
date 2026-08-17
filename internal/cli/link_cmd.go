@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/link"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func newLink(service link.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {

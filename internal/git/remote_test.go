@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // syntheticRemote builds a bare repository and a clone of it. A local path is
@@ -129,7 +129,7 @@ func TestRemoteTipsOmitsBranchesTheRemoteDoesNotHave(t *testing.T) {
 	}
 }
 
-// The whole point of the isolated fetch: gt2gh gets the objects, and every ref
+// The whole point of the isolated fetch: g2g gets the objects, and every ref
 // the user relies on stays exactly where it was.
 func TestFetchIsolatedLeavesRemoteTrackingRefsAlone(t *testing.T) {
 	upstream, client := syntheticRemote(t)

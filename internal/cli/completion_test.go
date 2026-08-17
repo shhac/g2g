@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/push"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
@@ -21,7 +21,7 @@ func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 
 func TestPushBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	command := newWithPresentation("v", "gt2gh", &stdout, &stderr, cliService(&cliGitHub{}), push.Service{Git: &cliPushGit{}, Selector: stack.GraphiteSelector{Git: &cliPushGit{}, Graphite: cliPushGraphite{}}}, Presentation{})
+	command := newWithPresentation("v", "g2g", &stdout, &stderr, cliService(&cliGitHub{}), push.Service{Git: &cliPushGit{}, Selector: stack.GraphiteSelector{Git: &cliPushGit{}, Graphite: cliPushGraphite{}}}, Presentation{})
 	command.SetArgs([]string{"__complete", "push", "--branch", "be"})
 	err := command.Execute()
 	output := stdout.String()

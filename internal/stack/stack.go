@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graphite"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // Git supplies local repository facts without changing checkout state.

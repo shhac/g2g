@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // KnownVersion is the Graphite CLI version whose compact display grammar has
@@ -235,7 +235,7 @@ const repoConfigName = ".graphite_repo_config"
 
 // Configured reports whether this repository already uses Graphite.
 //
-// This is the one place gt2gh looks at a Graphite-owned path, and it is a
+// This is the one place g2g looks at a Graphite-owned path, and it is a
 // deliberate, narrow exception to reading none of them. The alternative is
 // worse: Graphite's discovery command creates state in a repository that has
 // never used it, so merely asking "does Graphite describe this branch?" would

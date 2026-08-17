@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/cli"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/cli"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // g2gOwnedRepository is a repository that has never used Graphite and whose
-// structure gt2gh records itself. Every route here is a Git one: if a command
+// structure g2g records itself. Every route here is a Git one: if a command
 // reaches for Graphite the fake will refuse, which is the point.
 func g2gOwnedRepository(t *testing.T, graph string) (*testutil.Recorder, string) {
 	t.Helper()
@@ -81,7 +81,7 @@ var (
 )
 
 // The whole point of resolution: a command that used to require Graphite now
-// works from the structure gt2gh records itself.
+// works from the structure g2g records itself.
 func TestPushSelectsFromTheG2GOwnedGraph(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
@@ -119,12 +119,12 @@ func TestNoGraphiteCommandRunsInARepositoryThatDoesNotUseIt(t *testing.T) {
 	}
 	for _, entry := range entries {
 		if strings.Contains(strings.ToLower(entry.Name()), "graphite") {
-			t.Errorf("running a gt2gh command left Graphite state behind: %s", entry.Name())
+			t.Errorf("running a g2g command left Graphite state behind: %s", entry.Name())
 		}
 	}
 }
 
-// Completing a flag must work from the structure gt2gh records itself. It also
+// Completing a flag must work from the structure g2g records itself. It also
 // must not be what enrols a repository into Graphite: completion used to run
 // Graphite's discovery command, so pressing tab in a repository that had never
 // used Graphite created Graphite state in it — and then failed anyway.

@@ -12,7 +12,7 @@ parent's pre-squash commits, so its merge base is unchanged and its pull
 request shows the parent's changes a second time. Merging it then tries to
 reapply work the trunk already has.
 
-gt2gh currently repairs structure and not contents, so the stack rots on the
+g2g currently repairs structure and not contents, so the stack rots on the
 first merge. Restack is the operation that fixes the contents.
 
 ## What Git can and cannot tell us
@@ -232,7 +232,7 @@ todo list, `onto`, `orig-head`, `head-name`, and an `update-refs` file of
 invocation touched**, verified. Another process sees the interrupted state
 through `git status`.
 
-So gt2gh's journal only needs what spans *several* invocations, which is a tree
+So g2g's journal only needs what spans *several* invocations, which is a tree
 (one rebase per root-to-leaf path). At `$GIT_COMMON_DIR/g2g/restack.json`:
 
 - the `--onto` for the in-flight rebase
@@ -274,7 +274,7 @@ precedent.
 
 ## Consequences for the rest of the tool
 
-Restack is gt2gh's **first resumable operation**. Everything else is one-shot.
+Restack is g2g's **first resumable operation**. Everything else is one-shot.
 
 - Every other command must refuse while a restack is in progress. Mid-restack a
   branch's ref may have moved while the graph still records its old parent, so
@@ -304,5 +304,5 @@ between. Leases are now pinned to the tips the plan observed.
 ## Out of scope
 
 Conflict resolution assistance beyond handing the user the conflict.
-Reordering (until `--interactive`). Any rewrite of a branch gt2gh does not
+Reordering (until `--interactive`). Any rewrite of a branch g2g does not
 record. Restacking onto a ref the user has not named, inferred or otherwise.

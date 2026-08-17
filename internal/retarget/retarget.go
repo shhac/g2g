@@ -11,9 +11,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // GitHub is the surface retargeting needs: read the pull requests on a path,

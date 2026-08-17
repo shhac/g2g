@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // graphNodes projects a discovery onto the shared view.
@@ -142,7 +142,7 @@ func pick(total int, one, many string) string {
 	return many
 }
 
-// driftNotes report what gt2gh can see and deliberately will not repair.
+// driftNotes report what g2g can see and deliberately will not repair.
 func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if stale := discovery.NeedsRestack(); len(stale) != 0 {
 		view = view.note("Parent moved under "+branchList(stale)+" · run g2g restack.", severityWarn)

@@ -1,4 +1,4 @@
-module github.com/shhac/gt2gh
+module github.com/shhac/g2g
 
 go 1.26.2
 

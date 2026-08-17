@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // recordingSelector is an injected source. Precedence is a decision matrix, so

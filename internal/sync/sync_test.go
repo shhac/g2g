@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/restack"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // fakeGit answers the remote and ancestry questions sync asks. Whether the
@@ -155,7 +155,7 @@ func (s stubAncestry) Resolve(ctx context.Context, revision string) (string, err
 }
 
 // Previewing reaches the network but must cost the repository nothing: the
-// fetch writes only into gt2gh's own namespace.
+// fetch writes only into g2g's own namespace.
 func TestPlanFetchesButAdvancesNothing(t *testing.T) {
 	git := behindGit()
 	service, _ := newService(git, nil)

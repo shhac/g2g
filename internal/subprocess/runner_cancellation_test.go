@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestExecRunnerReturnsContextCancellation(t *testing.T) {

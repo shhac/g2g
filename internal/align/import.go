@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
-// Adoption is one edge an import would record in the gt2gh graph.
+// Adoption is one edge an import would record in the g2g graph.
 type Adoption struct {
 	Branch string
 	Parent string
@@ -25,7 +25,7 @@ type Adoption struct {
 // Conflict is a branch both graphs describe, differently.
 type Conflict struct {
 	Branch string
-	// Ours is the parent the gt2gh graph records; Theirs is Graphite's.
+	// Ours is the parent the g2g graph records; Theirs is Graphite's.
 	Ours   string
 	Theirs string
 }
@@ -35,13 +35,13 @@ type ImportPlan struct {
 	// Adopt is ordered roots first, so a parent is recorded before the branches
 	// that name it.
 	Adopt []Adoption
-	// Conflicts are branches the gt2gh graph already records under a different
+	// Conflicts are branches the g2g graph already records under a different
 	// parent. They block: overwriting them would silently undo a deliberate
-	// gt2gh change, which is the one thing an additive command must not do.
+	// g2g change, which is the one thing an additive command must not do.
 	Conflicts []Conflict
 	// Agreed is what both graphs already say the same thing about.
 	Agreed []string
-	// NewTrunks are parents about to become roots of the gt2gh forest.
+	// NewTrunks are parents about to become roots of the g2g forest.
 	NewTrunks []string
 	Updated   graph.Graph
 	Blocked   string
@@ -49,7 +49,7 @@ type ImportPlan struct {
 
 // Claims returns the branches this import would start answering for. Adoption
 // is the authority claim, so this is the list that matters most in a preview:
-// afterwards gt2gh decides for every one of them, and --from graphite is the
+// afterwards g2g decides for every one of them, and --from graphite is the
 // only way to see Graphite's view again.
 func (p ImportPlan) Claims() []string {
 	names := make([]string, 0, len(p.Adopt))
@@ -59,10 +59,10 @@ func (p ImportPlan) Claims() []string {
 	return names
 }
 
-// PlanImport works out what Graphite declares that the gt2gh graph does not.
+// PlanImport works out what Graphite declares that the g2g graph does not.
 //
 // It is additive by construction. Graphite declares each parent, so this is not
-// the guess `track` refuses to make — but a branch gt2gh already records
+// the guess `track` refuses to make — but a branch g2g already records
 // differently is a disagreement, not a gap, and gets refused rather than
 // resolved.
 func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
@@ -102,7 +102,7 @@ func classify(adopted graph.Graph, forest graphite.Forest, local []string) Impor
 		parent := forest.Parents[branch]
 		switch {
 		case parent == "":
-			// A Graphite root has no edge to import. It becomes a gt2gh trunk
+			// A Graphite root has no edge to import. It becomes a g2g trunk
 			// only if something is adopted onto it.
 		case !slices.Contains(local, branch) || !slices.Contains(local, parent):
 			// Graphite can name a branch this checkout does not have.
@@ -157,7 +157,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 // ApplyImport writes the adopted graph and pins each fork point.
 //
 // Nothing is removed and nothing is written to Graphite. Graphite keeps
-// tracking every branch it tracked; the only change is which record gt2gh reads
+// tracking every branch it tracked; the only change is which record g2g reads
 // when asked about them.
 func (s Service) ApplyImport(ctx context.Context, plan ImportPlan) error {
 	if plan.Blocked != "" {

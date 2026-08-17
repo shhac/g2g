@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 type completionGit struct {
@@ -38,7 +38,7 @@ func (g completionGraphite) Discover(_ context.Context, selected string) (graphi
 	return g.paths[selected], nil
 }
 
-// storedCandidates stands in for the branches gt2gh records itself. The real
+// storedCandidates stands in for the branches g2g records itself. The real
 // one lives in the graph package, which depends on this one.
 type storedCandidates struct {
 	branches []string

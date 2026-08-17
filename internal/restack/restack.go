@@ -1,7 +1,7 @@
 // Package restack rewrites a stack's contents so they match its recorded
 // structure.
 //
-// It is gt2gh's only resumable operation. Everything else is one-shot:
+// It is g2g's only resumable operation. Everything else is one-shot:
 // preview, apply, done. A rewrite can stop half-way on a conflict that only a
 // person can resolve, so it leaves a record behind and every other command has
 // to notice.
@@ -18,9 +18,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graph"
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // Revalidate re-reads the world and refuses if anything moved since preview.

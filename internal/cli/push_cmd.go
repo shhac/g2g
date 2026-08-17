@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/gt2gh/internal/push"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func newPush(service push.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/subprocess"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // syntheticRepo builds a throwaway local repository. Ancestry is the one thing

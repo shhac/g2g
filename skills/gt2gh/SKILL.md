@@ -1,10 +1,10 @@
 ---
 name: gt2gh
 description: |
-  Develop, test, or safely use the gt2gh Go CLI, which records stacked branches
+  Develop, test, or safely use the g2g Go CLI, which records stacked branches
   itself and projects them onto GitHub. Graphite is an optional source it can
   read, mirror to, and import from — not a requirement. Use when working on
-  gt2gh commands, stack structure or linking, restacking, alignment with
+  g2g commands, stack structure or linking, restacking, alignment with
   Graphite, CLI tests, or release readiness. Triggers: "gt2gh", "g2g",
   "gh stack link", "g2g link", "g2g sync", "g2g push", "g2g submit",
   "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g mirror",
@@ -13,37 +13,39 @@ description: |
   "source resolution", "source alignment", "retarget pull request base".
 ---
 
-# gt2gh
+# g2g
 
 ## Command identity and discovery
 
-- Keep `gt2gh` as the project, repository, skill, release-asset, and Homebrew
-  formula name. Homebrew installs the executable as `g2g`; source builds and
-  unrenamed release archives use `gt2gh`.
+- The command and the project are `g2g`. Three names still lag and are being
+  retired in order, each because renaming it strands something: the GitHub
+  repository (the Go module path must move with it), the Homebrew formula (the
+  tap needs `formula_renames.json` first, or existing installs stop updating),
+  and this skill's own directory (renaming publishes a second skill and leaves
+  the first stale). Do not "fix" those three ahead of their migration step.
 - At the start of a task, reuse a usable command already resolved in the task
-  context. Otherwise, discover it once locally: try `g2g --version` first, then
-  `gt2gh --version`. Select the first command that succeeds. If neither works,
-  state that the user must install `brew install shhac/tap/gt2gh` or provide a
-  source/release-archive `gt2gh` binary; do not assume either command exists.
-- Record the selected command as the task's `GT2GH_CMD` and use it for every
-  later invocation. Do not re-detect it unless it fails or the environment
-  changes. Use `g2g` in Homebrew examples and `gt2gh` in source/archive examples.
+  context. Otherwise discover it once locally: try `g2g --version`, then
+  `gt2gh --version` for an older install. Select the first that succeeds. If
+  neither works, say the user must run `brew install shhac/tap/gt2gh` — still
+  the formula name — or provide a built binary; do not assume either exists.
+- Record the selected command and use it for every later invocation. Do not
+  re-detect unless it fails or the environment changes.
 
 ## Work in this repository
 
 - Read `README.md` and `design-docs/initial-scope.md` before changing behavior.
-  For anything touching the gt2gh-owned branch forest, read
+  For anything touching the g2g-owned branch forest, read
   `design-docs/g2g-owned-graphs.md` first.
 - **Graphite is not authoritative.** Structure is resolved per invocation, and a
-  branch the gt2gh graph records wins over anything Graphite declares; Graphite
-  answers for whatever gt2gh has not adopted. Read
+  branch the g2g graph records wins over anything Graphite declares; Graphite
+  answers for whatever g2g has not adopted. Read
   `design-docs/source-resolution.md` before changing how a command selects a
   stack, and never reintroduce the assumption that Graphite decides.
 - `link` previews by default. Its optional `--branch` target must work without
   checkout; `--apply` is the only path that may invoke `gh stack link`. Bare
   invocation prints help.
 - `sync` has nothing to do with pull requests. It brings a stack up to date with
-  its remote: fetch into gt2gh's own ref namespace, fast-forward the base or
+  its remote: fetch into g2g's own ref namespace, fast-forward the base or
   refuse if it has diverged, replay, and forget what has landed. It never calls
   `gh`.
 - `push` is a preview-first publication escape hatch. It selects a path through
@@ -74,7 +76,7 @@ description: |
   `gt untrack <branch> --force --no-interactive`, both behind the same version
   gate as discovery. Every other command's Graphite use stays read-only. Read
   `design-docs/source-alignment.md` before touching `internal/align`.
-- No gt2gh command may enrol a repository into Graphite — **including the ones
+- No g2g command may enrol a repository into Graphite — **including the ones
   that write it**. Reading Graphite's forest is what creates state, so `mirror`
   and `import` check `graphite.Configured` and refuse before reading. A
   repository with no Graphite has no trunk and could not be mirrored into
@@ -82,14 +84,14 @@ description: |
 
 ## g2g-owned graphs
 
-- `graph`, `track`, and `untrack` operate on a branch forest gt2gh owns
+- `graph`, `track`, and `untrack` operate on a branch forest g2g owns
   itself. They read Git only: never call Graphite or GitHub from these paths,
   and never make them require a network. That independence is the feature.
 - The model is a forest: at most one parent per branch, many children per
   parent, several roots. Do not reintroduce a linear assumption. Graph identity
   is derived from the edges, never stored; do not add graph IDs.
 - Authority is per branch (`g2g` or `graphite`), never per graph. A whole-graph
-  rule cannot survive two components becoming connected by an action gt2gh
+  rule cannot survive two components becoming connected by an action g2g
   never observed.
 - `track` must never choose a parent. Preview the ordered candidates and block.
   Recording a structure every later command trusts is not a place for a good
@@ -101,10 +103,10 @@ description: |
   invariant; do not pair `Track` with a hand-rolled promotion step, and never
   take the trunk list from the graph as it was before the edge was recorded.
 - `untrack` must never reparent the children it strands. Report them.
-- `mirror` and `import` must never remove a branch from the gt2gh graph.
+- `mirror` and `import` must never remove a branch from the g2g graph.
   Alignment keeps the two records in step; it does not transfer ownership.
-  `mirror` writes Graphite only, `import` writes the gt2gh graph only, and
-  `import` refuses a branch the gt2gh graph already records under a different
+  `mirror` writes Graphite only, `import` writes the g2g graph only, and
+  `import` refuses a branch the g2g graph already records under a different
   parent rather than resolving the disagreement.
 - Mirror ordering is dictated by Graphite's CLI, not by taste: writes go
   parents before children because `gt track --parent` requires a tracked
@@ -145,9 +147,9 @@ description: |
 ## Source resolution
 
 - Every stack-selecting command resolves which source describes the branch:
-  gt2gh's own store first (adoption is the claim), then Graphite. The answer is
+  g2g's own store first (adoption is the claim), then Graphite. The answer is
   derived per branch on every run and never stored — there is no owner field,
-  and adding one reintroduces state that goes stale through actions gt2gh never
+  and adding one reintroduces state that goes stale through actions g2g never
   observes.
 - **Never run Graphite in a repository that does not already use it.** Its
   discovery command creates state, so `Describes` is answered from the
@@ -212,7 +214,7 @@ description: |
   human-facing line, and `schemaVersion` signals breaking changes. Never scrape
   the pretty graph.
 - A blocked preview names the repairing command: merged pull requests point at
-  `gt sync` (Graphite owns restacking; no gt2gh command helps), missing or
+  `gt sync` (Graphite owns restacking; no g2g command helps), missing or
   closed ones at `g2g submit`, a wrong base at `g2g sync`. Two open pull
   requests for one branch is deliberately unadvised — a person must choose.
 - `status` is the read-only triage entry point. It renders one selected

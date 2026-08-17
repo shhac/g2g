@@ -3,13 +3,13 @@ package link
 import (
 	"context"
 	"errors"
-	"github.com/shhac/gt2gh/internal/stack"
+	"github.com/shhac/g2g/internal/stack"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 func TestPlanUsesCurrentBranchAndSelectedForkPath(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	localgit "github.com/shhac/gt2gh/internal/git"
-	"github.com/shhac/gt2gh/internal/graph"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // fakeGit is an injected rewrite boundary. The decision matrix below is about

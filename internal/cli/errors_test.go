@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/githubstack"
+	"github.com/shhac/g2g/internal/githubstack"
 )
 
 // exitError builds a real *exec.ExitError with the requested status so the

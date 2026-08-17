@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/cli"
-	"github.com/shhac/gt2gh/internal/testutil"
+	"github.com/shhac/g2g/internal/cli"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // These tests drive the real root command with fixture-backed gt, gh, and git
@@ -95,7 +95,7 @@ func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 
 	// The fake answers any graphql call from its routes, so the response alone
 	// proves nothing about the request. Assert the recorded argv: this is what
-	// catches gt2gh asking GitHub the wrong question.
+	// catches g2g asking GitHub the wrong question.
 	query := recorder.Find("gh api graphql")
 	for _, want := range []string{
 		`repository(owner: "example", name: "synthetic")`,

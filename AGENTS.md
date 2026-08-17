@@ -1,4 +1,4 @@
-# gt2gh agent notes
+# g2g agent notes
 
 Start with the repository skill at `skills/gt2gh/SKILL.md`, then use the
 README and `design-docs/initial-scope.md` for product behavior. This file keeps
@@ -121,6 +121,28 @@ property the original had.
   a changed repository skill with the active `skill-creator` quick validator
   (using its environment-provided path; install PyYAML transiently if needed).
 
+## The rename, and what is left of it
+
+The project, module path, command directory, binary and prose are `g2g`. Three
+things deliberately still say `gt2gh`, each because renaming it strands
+something:
+
+- **The GitHub repository.** Renaming redirects web and git permanently, but the
+  Go module path must change in the same step — it is recorded inside `go.mod`,
+  so no redirect can rescue a mismatch. The module path here is already
+  `github.com/shhac/g2g`, which means remote `go install` does not resolve until
+  the repository is renamed. Do not cut a release expecting `go install` to work
+  before then; Homebrew is unaffected because it builds from a checkout.
+- **The Homebrew formula.** Needs `formula_renames.json` in `shhac/homebrew-tap`
+  mapping `{"gt2gh": "g2g"}` *before* any release under the new formula name,
+  then `Formula/gt2gh.rb` deleted once the new one publishes.
+- **The published skill directory.** `skills/gt2gh` is published to
+  `shhac/agent-skills` on tag; renaming it publishes a second skill and leaves
+  the first stale, so it wants the same kind of migration step.
+
+`release.yml` therefore keeps `name: gt2gh` and `formula_class: Gt2gh`, and
+states `cmd_path: ./cmd/g2g` explicitly because only the source directory moved.
+
 ## Release and distribution
 
 - Follow `.agents/commands/release.md` literally: a version tag is the release
@@ -129,7 +151,9 @@ property the original had.
 - The shared release generator lives in `shhac/homebrew-tap`; this repository's
   durable distribution knobs are `.github/workflows/release.yml` (not a formula
   edit). `installed_binary_name: g2g` is deliberate: the project, asset, and
-  formula remain `gt2gh`, while Homebrew installs `g2g`. Check the generated
+  formula remain `gt2gh` until the tap carries a rename mapping, while Homebrew
+  installs `g2g`. Renaming the formula without that mapping strands every
+  existing install. Check the generated
   formula's alias and completion/test lines after a release.
 - `CLAUDE.md` is a symlink to this file, so keep instructions harness-neutral
   and edit `AGENTS.md` only.

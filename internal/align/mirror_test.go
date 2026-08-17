@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shhac/gt2gh/internal/graph"
-	"github.com/shhac/gt2gh/internal/graphite"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // fakeGraphite records what alignment asked Graphite to do, in order. Ordering
@@ -76,7 +76,7 @@ func forestOf(parents map[string]string, roots ...string) graphite.Forest {
 	return graphite.Forest{Parents: parents, Roots: roots}
 }
 
-// chain is the gt2gh graph under test: trunk <- lower <- top.
+// chain is the g2g graph under test: trunk <- lower <- top.
 func chain() graph.Graph {
 	return graph.Graph{
 		Edges: map[string]graph.Edge{
@@ -188,7 +188,7 @@ func TestMirrorBlocksOnARootGraphiteDoesNotKnow(t *testing.T) {
 	}
 }
 
-// Branches gt2gh says nothing about are reported but untouched without --prune.
+// Branches g2g says nothing about are reported but untouched without --prune.
 func TestMirrorLeavesStrangersAloneWithoutPrune(t *testing.T) {
 	withStranger := forestOf(map[string]string{
 		"synthetic-trunk":   "",
@@ -245,7 +245,7 @@ func TestPruneRemovesDeepestFirst(t *testing.T) {
 }
 
 // The hazard the whole prune design exists for: untracking a stranger whose
-// child gt2gh does know would silently untrack the branch the mirror just
+// child g2g does know would silently untrack the branch the mirror just
 // aligned. It is shielded instead.
 func TestPruneRefusesToTakeAKnownBranchWithIt(t *testing.T) {
 	adopted := graph.Graph{
@@ -255,8 +255,8 @@ func TestPruneRefusesToTakeAKnownBranchWithIt(t *testing.T) {
 		},
 		Trunks: []string{"synthetic-trunk"},
 	}
-	// Graphite has synthetic-bridge, which gt2gh does not know, and it is the
-	// declared parent of synthetic-top, which gt2gh does.
+	// Graphite has synthetic-bridge, which g2g does not know, and it is the
+	// declared parent of synthetic-top, which g2g does.
 	bridged := forestOf(map[string]string{
 		"synthetic-trunk":  "",
 		"synthetic-lower":  "synthetic-trunk",
@@ -285,7 +285,7 @@ func TestPruneRefusesToTakeAKnownBranchWithIt(t *testing.T) {
 }
 
 // A stranger whose only children are also being pruned is removed, deepest
-// first, because nothing gt2gh knows goes with it.
+// first, because nothing g2g knows goes with it.
 func TestPruneRemovesAWholeStrangerSubtree(t *testing.T) {
 	svc, _ := service(chain(), forestOf(map[string]string{
 		"synthetic-trunk": "",
@@ -354,7 +354,7 @@ func TestAFailingGraphiteIsReported(t *testing.T) {
 }
 
 // The invariant the whole project rests on: alignment is not ownership
-// transfer. A mirror — prune and all — must leave the gt2gh graph byte for byte
+// transfer. A mirror — prune and all — must leave the g2g graph byte for byte
 // as it found it.
 func TestMirrorNeverChangesTheG2GGraph(t *testing.T) {
 	store := &memoryStore{graph: chain()}
@@ -378,10 +378,10 @@ func TestMirrorNeverChangesTheG2GGraph(t *testing.T) {
 	}
 
 	if !store.graph.Equal(before) {
-		t.Errorf("mirror changed the gt2gh graph: %+v, want %+v", store.graph, before)
+		t.Errorf("mirror changed the g2g graph: %+v, want %+v", store.graph, before)
 	}
 	if len(store.writes) != 0 {
-		t.Errorf("mirror wrote to the gt2gh store %d times, want none", len(store.writes))
+		t.Errorf("mirror wrote to the g2g store %d times, want none", len(store.writes))
 	}
 }
 

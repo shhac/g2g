@@ -1,18 +1,20 @@
-# gt2gh
+# g2g
 
-`gt2gh` is a lightweight Go CLI intended to bridge a Graphite-managed linear
+`g2g` is a lightweight Go CLI intended to bridge a Graphite-managed linear
 branch stack into GitHub's native stack feature. Graphite remains the source of
 truth; `link` discovers a single ordered Graphite stack and, only with an
 explicit `--apply`, passes its branches to `gh stack link` from bottom to top.
 
-`gt2gh` can also keep a branch graph of its own, which needs neither Graphite
+`g2g` can also keep a branch graph of its own, which needs neither Graphite
 nor GitHub. See [g2g-owned graphs](#g2g-owned-graphs).
 
 ## Command names
 
-`gt2gh` remains the project, repository, release-asset, and Homebrew formula
-name. Homebrew installs its executable as `g2g`; the examples below therefore
-use `g2g`. A source build or unrenamed release archive uses `gt2gh` instead.
+The command is `g2g`, and so is the project. Two names still lag behind and are
+being retired in order: the GitHub repository, and the Homebrew formula, which
+cannot be renamed until the tap carries a rename mapping or every existing
+install silently stops updating. Release assets from tags before the rename keep
+the old name, as they should.
 
 The stable v1 command shape is:
 
@@ -98,7 +100,7 @@ requests left on a reused branch name are treated as history: they never block
 skipping the branch. Two or more open pull requests for one branch is the only
 ambiguity, and it fails closed.
 
-`gt2gh` never guesses a trunk from its name. On a Graphite-described stack it
+`g2g` never guesses a trunk from its name. On a Graphite-described stack it
 infers the only Graphite-declared trunk on the selected ancestry and shows it
 prominently. If that ancestry has multiple declared trunks, it fails closed and
 requires `--trunk <branch>`; an override must be both declared by Graphite and
@@ -119,14 +121,14 @@ states the reason above the command and heads it `Command to run once
 unblocked` rather than presenting it as the next step. The only command never
 shown is one that cannot be constructed — `gh stack link` needs at least two
 branches, so a single-branch path prints `Nothing to link` instead.
-Every stack gt2gh projects onto GitHub is linear, so this graph is
+Every stack g2g projects onto GitHub is linear, so this graph is
 a fixed-indent column rather than an escalating tree: the trunk is marked, the
 branches stacked on it follow bottom-to-top, and pull-request numbers and state
 line up in their own column. Blank lines bound the graph and each block below
 it. `--apply` re-discovers and revalidates before it prints one `Ready to
 apply` graph and command, flushes that output, and invokes the command. On success it prints a concise confirmation; on
 failure it never claims that changes were made. Manually copying the displayed
-command is a separate, deliberate snapshot action and does not cause `gt2gh`
+command is a separate, deliberate snapshot action and does not cause `g2g`
 to re-resolve anything.
 
 A blocked preview names the command that repairs the state rather than leaving
@@ -151,7 +153,7 @@ target.
 
 ## g2g-owned graphs
 
-`g2g graph`, `g2g track`, and `g2g untrack` maintain a branch forest gt2gh
+`g2g graph`, `g2g track`, and `g2g untrack` maintain a branch forest g2g
 owns itself. They read Git and nothing else: no Graphite, no GitHub, no
 network. This is the structure that exists for branches you have not pushed
 yet, and it is the only place a fork can live — GitHub native stacks are
@@ -189,7 +191,7 @@ g2g restack --scope graph --apply
 ```
 
 `--stack` records a whole existing stack at once, which is almost always what a
-repository that predates gt2gh needs. You assert one thing — the trunk, and even
+repository that predates g2g needs. You assert one thing — the trunk, and even
 that is inferred when only one recorded root is an ancestor — and the shape
 follows from commit ancestry. It records a **forest, not a chain**: branches
 hanging off the stack join it, and branches hanging off those join in turn,
@@ -283,7 +285,7 @@ stored queue, so your own git commands simply change what remains to do.
 `g2g restack --abort` restores every branch to where it started, including
 ones an earlier step already moved.
 
-This is gt2gh's only resumable operation, so **every other command that
+This is g2g's only resumable operation, so **every other command that
 changes anything refuses while a restack is unfinished** — mid-restack a
 branch may already have moved while the graph still records where it used to
 be.
@@ -307,28 +309,28 @@ Every command that selects a stack asks one question first: which source
 describes this branch?
 
 ```
-adopted into gt2gh's store  →  gt2gh's own graph
+adopted into g2g's store  →  g2g's own graph
 tracked by Graphite         →  Graphite
 neither                     →  refused, with the remedy
 ```
 
-Adoption wins because recording an edge is you saying you want gt2gh to own
+Adoption wins because recording an edge is you saying you want g2g to own
 the branch. The answer is worked out per branch, every time, and never stored —
 so moving a branch between sources is just `g2g track` or `g2g untrack`, in
 either direction, and there is no record to go stale.
 
-`link`, `push`, and `submit` therefore work on a stack gt2gh owns, with no
-Graphite installed. And **gt2gh will not run Graphite in a repository that does
+`link`, `push`, and `submit` therefore work on a stack g2g owns, with no
+Graphite installed. And **g2g will not run Graphite in a repository that does
 not already use it** — Graphite's discovery creates state, so being asked
 whether it applies must not be what enrols you.
 
 `restack` is the exception, and deliberately: it needs a fork point, which only
-gt2gh's own store records. It refuses a Graphite-owned branch and says to
+g2g's own store records. It refuses a Graphite-owned branch and says to
 `g2g track` it first. Authority governs what may be changed, not what may be
 read.
 
 Authority is about which source answers, **not** about exclusivity. A branch can
-sit in gt2gh's graph, be tracked by Graphite, and appear in a GitHub stack all at
+sit in g2g's graph, be tracked by Graphite, and appear in a GitHub stack all at
 once, and nothing here removes it from any of them.
 
 ### Seeing the other source
@@ -345,31 +347,31 @@ there is still nothing that can go stale.
 
 ## Keeping Graphite in step
 
-Adopting a branch used to strand Graphite: gt2gh stopped asking it, and nothing
+Adopting a branch used to strand Graphite: g2g stopped asking it, and nothing
 put it back in step, so `gt log` kept showing a structure that was quietly
 wrong.
 
 ```sh
 g2g mirror              # what would it take for Graphite to agree?
 g2g mirror --apply
-g2g mirror --prune --apply   # also untrack, in Graphite, what gt2gh does not record
+g2g mirror --prune --apply   # also untrack, in Graphite, what g2g does not record
 
-g2g import              # adopt what Graphite declares into gt2gh's graph
+g2g import              # adopt what Graphite declares into g2g's graph
 g2g import --apply
 ```
 
-**Neither command ever removes a branch from gt2gh's graph.** This keeps the two
+**Neither command ever removes a branch from g2g's graph.** This keeps the two
 records in step; it does not hand ownership over.
 
 `mirror` writes only Graphite. `--prune` is opt-in, unlike `sync --prune`,
 because "this branch's work has landed" is certain and "Graphite knows a branch
 we do not" is not — it is just as likely to be one you tracked in `gt` on
-purpose. A prune also refuses a branch whose child gt2gh *does* know, because
+purpose. A prune also refuses a branch whose child g2g *does* know, because
 `gt untrack` takes the whole subtree with it.
 
-`import` writes only gt2gh's graph, and it is additive: it refuses a branch
-gt2gh already records under a different parent rather than silently reverting a
-deliberate change. Adoption is the authority claim, so afterwards gt2gh answers
+`import` writes only g2g's graph, and it is additive: it refuses a branch
+g2g already records under a different parent rather than silently reverting a
+deliberate change. Adoption is the authority claim, so afterwards g2g answers
 for everything it adopted — and `--from graphite` is how you see Graphite's view
 of them again.
 
@@ -512,15 +514,16 @@ the spec win over templates.
 
 ## Homebrew
 
-Homebrew keeps the formula name as `gt2gh` but installs the executable as
-`g2g`:
+The Homebrew formula is still named `gt2gh`, and installs the executable as
+`g2g`. Renaming it needs a rename mapping in the tap first, so that an existing
+install migrates rather than quietly stopping at the last version:
 
 ```sh
 brew install shhac/tap/gt2gh
 g2g link
 ```
 
-A source build or unrenamed release archive keeps the release-asset name:
+A release archive from a tag before the rename keeps the old asset name:
 
 ```sh
 gt2gh link
@@ -552,12 +555,12 @@ declared trunk-to-selected path.
 
 ## Structure
 
-- `cmd/gt2gh`: executable entry point.
+- `cmd/g2g`: executable entry point.
 - `internal/cli`: Cobra command parsing, preview output, and completion.
 - `internal/graphite`: strict, compatibility-gated read-only Graphite display parser.
 - `internal/git`, `internal/githubstack`: narrow repository, publication, and
   PR seams.
-- `internal/graph`: the branch forest gt2gh owns itself — model, ancestry
+- `internal/graph`: the branch forest g2g owns itself — model, ancestry
   discovery, and the store under the Git common directory.
 - `internal/restack`: the only history-rewriting service, with the journal that
   makes an interrupted rewrite resumable.

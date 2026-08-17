@@ -3,7 +3,7 @@ package cli
 import (
 	"io"
 
-	"github.com/shhac/gt2gh/internal/push"
+	"github.com/shhac/g2g/internal/push"
 )
 
 func pushView(plan push.Plan) stackView {

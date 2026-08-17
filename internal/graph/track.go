@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // TrackPlan records one branch under one parent.

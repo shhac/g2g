@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // Source names where a branch's structure came from.
 type Source string
 
 const (
-	// SourceG2G is an edge the user adopted into gt2gh's own store. Adoption
+	// SourceG2G is an edge the user adopted into g2g's own store. Adoption
 	// is the claim, so it takes precedence over anything inferred.
 	SourceG2G Source = "g2g"
-	// SourceGraphite is a branch Graphite declares. gt2gh reads it and never
+	// SourceGraphite is a branch Graphite declares. g2g reads it and never
 	// writes it back.
 	SourceGraphite Source = "graphite"
 )
@@ -35,7 +35,7 @@ type Selector interface {
 // Resolver picks the first source that describes the selected branch.
 //
 // Resolution is per branch and never stored. A recorded owner goes stale
-// through actions gt2gh never sees — tracking a branch in Graphite can join
+// through actions g2g never sees — tracking a branch in Graphite can join
 // two previously separate trees — so the answer is derived each time and there
 // is nothing to migrate or reconcile.
 type Resolver struct {

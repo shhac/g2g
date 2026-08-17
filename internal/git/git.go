@@ -1,4 +1,4 @@
-// Package git provides the small Git boundary used by gt2gh.
+// Package git provides the small Git boundary used by g2g.
 package git
 
 import (
@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/shhac/gt2gh/internal/diagnostic"
-	"github.com/shhac/gt2gh/internal/subprocess"
+	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
-// Client runs the narrow Git command set required by gt2gh.
+// Client runs the narrow Git command set required by g2g.
 type Client struct {
 	Runner subprocess.Runner
 }
@@ -25,9 +25,9 @@ var errCounts = errors.New("parse git rev-list --left-right --count output")
 // deleted. Naming it with a ref stops garbage collection taking it.
 const forkPointPrefix = "refs/g2g/forkpoints/"
 
-// isolatedRemotePrefix namespaces the refs gt2gh fetches for itself.
+// isolatedRemotePrefix namespaces the refs g2g fetches for itself.
 //
-// gt2gh must never move the user's remote-tracking refs. Doing so is not just
+// g2g must never move the user's remote-tracking refs. Doing so is not just
 // cosmetic noise in "git status": a bare --force-with-lease uses the
 // remote-tracking ref as its lease baseline, so refreshing it behind the
 // user's back silently disarms the one check that stops a force push

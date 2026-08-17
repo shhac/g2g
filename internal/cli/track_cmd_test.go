@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -20,8 +21,13 @@ func TestTrackWithoutAParentPreviewsCandidatesAndBlocks(t *testing.T) {
 	if !strings.Contains(out, "Apply blocked") {
 		t.Errorf("output does not block:\n%s", out)
 	}
-	if !strings.Contains(out, "Candidate parents, nearest first: synthetic-auth") {
+	if !strings.Contains(out, "Nearest ancestor: synthetic-auth") {
 		t.Errorf("output does not offer the nearest ancestor:\n%s", out)
+	}
+	// The command that decides sits on its own line rather than trailing a
+	// paragraph of candidates, because it is the thing being asked for.
+	if !strings.Contains(out, "g2g track --parent synthetic-auth") {
+		t.Errorf("output does not name the command that records it:\n%s", out)
 	}
 	if store.writes != 0 {
 		t.Error("a blocked preview wrote to the store")
@@ -122,4 +128,88 @@ func TestTrackConfirmsAnEdgeGitAlreadyAgreesWith(t *testing.T) {
 	if !strings.Contains(out, "Commit ancestry confirms synthetic-auth is already below synthetic-login") {
 		t.Errorf("output does not confirm the edge:\n%s", out)
 	}
+}
+
+// When another record already describes the repository, a blocked adoption
+// names the command that can read it. track cannot: reading Git alone is what
+// lets it work with no Graphite, no GitHub, and no network. Saying so costs
+// nothing and is usually the shorter road.
+func TestTrackNamesImportWhenGraphiteDescribesTheRepository(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		uses    bool
+		wantHit bool
+	}{
+		{"graphite in use", true, true},
+		{"no graphite", false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			view := trackView(graph.TrackPlan{
+				Discovery: graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
+				Blocked:   "no parent chosen",
+				Candidates: []graph.Candidate{
+					{Branch: "synthetic-auth", Distance: 1},
+				},
+			}, test.uses)
+
+			var mentioned bool
+			for _, note := range view.Notes {
+				if strings.Contains(note.Text, "g2g import") {
+					mentioned = true
+				}
+			}
+			if mentioned != test.wantHit {
+				t.Errorf("mentions import = %v, want %v", mentioned, test.wantHit)
+			}
+		})
+	}
+}
+
+// The suggestion belongs to a blocked adoption. Once a parent is chosen there
+// is nothing to defer to, and offering another command would read as doubt
+// about the one the user just gave.
+func TestTrackDoesNotSuggestImportOnceAParentIsChosen(t *testing.T) {
+	view := trackView(graph.TrackPlan{
+		Discovery: graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
+		Parent:    "synthetic-auth",
+	}, true)
+
+	for _, note := range view.Notes {
+		if strings.Contains(note.Text, "g2g import") {
+			t.Errorf("suggested import for an adoption that already has a parent: %q", note.Text)
+		}
+	}
+}
+
+// Every ancestor is a candidate, so a long-lived repository offers dozens and
+// listing them all buries the two that matter.
+func TestTrackCapsTheCandidateTailAndCountsTheRest(t *testing.T) {
+	candidates := []graph.Candidate{{Branch: "synthetic-near", Distance: 1}}
+	for i := 0; i < 9; i++ {
+		candidates = append(candidates, graph.Candidate{Branch: fmt.Sprintf("synthetic-far-%d", i), Distance: 30000 + i})
+	}
+	view := trackView(graph.TrackPlan{
+		Discovery:  graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
+		Blocked:    "no parent chosen",
+		Candidates: candidates,
+	}, false)
+
+	joined := strings.Join(noteTexts(view), "\n")
+	if !strings.Contains(joined, "Nearest ancestor: synthetic-near") {
+		t.Errorf("the likeliest parent is not surfaced:\n%s", joined)
+	}
+	if !strings.Contains(joined, "further back") {
+		t.Errorf("the tail is neither shown nor counted:\n%s", joined)
+	}
+	if strings.Contains(joined, "synthetic-far-8") {
+		t.Errorf("a candidate 30k commits behind was listed in full:\n%s", joined)
+	}
+}
+
+func noteTexts(view stackView) []string {
+	texts := make([]string, 0, len(view.Notes))
+	for _, note := range view.Notes {
+		texts = append(texts, note.Text)
+	}
+	return texts
 }

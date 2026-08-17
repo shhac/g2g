@@ -74,6 +74,10 @@ type Options struct {
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
 	Unstacker Unstacker
+	// GraphiteConfigured reports whether this repository already uses Graphite.
+	// It is one file check and never runs Graphite, which is what makes it safe
+	// to consult from a command whose independence from Graphite is the point.
+	GraphiteConfigured func(context.Context) (bool, error)
 	// Presentation overrides what Stdout would otherwise imply.
 	Presentation *Presentation
 }
@@ -115,21 +119,22 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		},
 	}
 	return NewWithOptions(Options{
-		Version:     version,
-		CommandName: commandName,
-		Stdout:      stdout,
-		Stderr:      stderr,
-		Link:        link.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Push:        push.Service{Git: gitClient, Selector: selector},
-		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Completions: completions,
-		Graph:       graphService,
-		Restack:     restackService,
-		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
-		Prune:       prune.Service{Git: gitClient, Graph: graphService},
-		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
-		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Unstacker:   githubClient,
+		Version:            version,
+		CommandName:        commandName,
+		Stdout:             stdout,
+		Stderr:             stderr,
+		Link:               link.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Push:               push.Service{Git: gitClient, Selector: selector},
+		Submit:             submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Completions:        completions,
+		Graph:              graphService,
+		Restack:            restackService,
+		Sync:               syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
+		Prune:              prune.Service{Git: gitClient, Graph: graphService},
+		Align:              align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
+		Retarget:           retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Unstacker:          githubClient,
+		GraphiteConfigured: graphiteConfigured,
 	})
 }
 
@@ -194,7 +199,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Graph.Git != nil && options.Graph.Store != nil {
 		root.AddCommand(newGraph(options.Graph, presentation))
-		root.AddCommand(newTrack(options.Graph, guard, presentation))
+		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
 	}
 	if options.Restack.Git != nil && options.Restack.Journal != nil {

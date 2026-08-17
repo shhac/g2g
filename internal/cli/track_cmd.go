@@ -9,7 +9,15 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 )
 
-func newTrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+// newTrack takes describesElsewhere so a blocked adoption can name the command
+// that already knows the answer.
+//
+// It is a predicate rather than a reader on purpose: track reads Git alone, and
+// the one thing it consults about Graphite is whether this repository uses it —
+// a single file check, which is the documented exception to reading none of
+// Graphite's paths. Asking Graphite what it records would run Graphite from a
+// path whose independence from it is the feature.
+func newTrack(service graph.Service, guard func(context.Context) error, describesElsewhere func(context.Context) (bool, error), presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var parent string
 	var trunk string
@@ -28,6 +36,15 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, trunk)
+		// Whether another record already describes this repository. A failure to
+		// answer is not worth reporting: the consequence is one missing
+		// suggestion on a preview that already says what to do.
+		elsewhere := false
+		if describesElsewhere != nil {
+			if described, err := describesElsewhere(ctx); err == nil {
+				elsewhere = described
+			}
+		}
 		if wholeStack {
 			return trackStackFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 		}
@@ -39,7 +56,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, presenta
 				return service.RevalidateTrack(ctx, selection.Selection(), parent, preview)
 			},
 			render: func(writer io.Writer, plan graph.TrackPlan, p Presentation) error {
-				return writeGraphView(writer, trackView(plan), plan.Discovery, p)
+				return writeGraphView(writer, trackView(plan, elsewhere), plan.Discovery, p)
 			},
 			guard:    guard,
 			execute:  service.ApplyTrack,

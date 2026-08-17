@@ -95,7 +95,7 @@ func TestTrackBuildsItsCandidateQueryFromGitAncestry(t *testing.T) {
 
 	recorder.Find("git for-each-ref --format=%(refname:short) --merged synthetic-login refs/heads/")
 	recorder.Find("git rev-list --left-right --count synthetic-auth...synthetic-login")
-	if !strings.Contains(stdout, "Candidate parents") {
+	if !strings.Contains(stdout, "Nearest ancestor") {
 		t.Errorf("output does not offer candidates:\n%s", stdout)
 	}
 }

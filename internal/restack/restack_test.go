@@ -240,7 +240,7 @@ func newService(git *fakeGit, adopted graph.Graph) (Service, *memoryStore, *memo
 }
 
 func selection() graph.Selection {
-	return graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeGraph}
+	return graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeTrunk}
 }
 
 // A branch whose parent is being rewritten has to be rewritten too, even
@@ -390,7 +390,7 @@ func TestContinueRecomputesRatherThanResumingAQueue(t *testing.T) {
 	// and every branch now sits where the graph says it should.
 	git.objects["synthetic-trunk"] = "trunk-old"
 	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
 	journal.present = true
 
 	if err := service.Continue(context.Background()); err != nil {
@@ -420,7 +420,7 @@ func TestFinishingRecordsForkPointsWhenNoStepsRemain(t *testing.T) {
 	stale.Edges["synthetic-b"] = graph.Edge{Parent: "synthetic-a", ForkPoint: "stale-fork"}
 	git.objects["stale-fork"] = "stale-fork"
 	service, store, journal := newService(git, stale)
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
 	journal.present = true
 
 	if err := service.Continue(context.Background()); err != nil {
@@ -613,7 +613,7 @@ func TestSkipAdvancesTheInterruptedRewrite(t *testing.T) {
 	git.inProgress = true
 	git.objects["synthetic-trunk"] = "trunk-old"
 	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
 	journal.present = true
 
 	if err := service.Skip(context.Background()); err != nil {
@@ -659,7 +659,7 @@ func TestContinuingIntoAnotherRoundRebasesEachBranchOnItsOwnParent(t *testing.T)
 	git.previewClean = false
 	git.inProgress = true
 	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeGraph), Original: map[string]string{}}
+	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
 	journal.present = true
 
 	if err := service.Continue(context.Background()); err != nil {
@@ -837,7 +837,7 @@ func TestContinueCarriesOnToTheRestOfTheChain(t *testing.T) {
 	service, _, journal := newService(git, chainStack())
 	journal.record = Record{
 		Branch:   "synthetic-c",
-		Scope:    string(graph.ScopeGraph),
+		Scope:    string(graph.ScopeTrunk),
 		ReturnTo: "synthetic-c",
 		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
 		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
@@ -895,7 +895,7 @@ func TestResumeCollapsesBranchesWithNothingLeftToContribute(t *testing.T) {
 	service, _, journal := newService(git, chainStack())
 	journal.record = Record{
 		Branch:   "synthetic-c",
-		Scope:    string(graph.ScopeGraph),
+		Scope:    string(graph.ScopeTrunk),
 		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
 		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
 	}

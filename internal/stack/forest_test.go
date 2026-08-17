@@ -6,8 +6,9 @@ import (
 )
 
 // syntheticForest is two stacks that share nothing, one of which forks. It is
-// the smallest shape that can tell the four scopes apart: a subtree that is not
-// the whole tree, a tree that is not the whole forest.
+// the smallest shape that tells every scope apart: a subtree that is not the
+// whole stack, a stack that is not the whole trunk, a trunk that is not
+// everything.
 //
 //	synthetic-trunk
 //	├─ synthetic-a
@@ -38,10 +39,13 @@ func TestScopeSelectsWhatItNames(t *testing.T) {
 		{ScopeBranch, "synthetic-a", "synthetic-a"},
 		{ScopePath, "synthetic-a-one", "synthetic-trunk,synthetic-a,synthetic-a-one"},
 		{ScopeSubtree, "synthetic-a", "synthetic-a,synthetic-a-one,synthetic-a-two"},
-		{ScopeGraph, "synthetic-a-one", "synthetic-trunk,synthetic-a,synthetic-a-one,synthetic-a-two,synthetic-b"},
+		// stack is the two halves together: down to the trunk and up to the
+		// tips, without the cousin that merely shares the trunk.
+		{ScopeStack, "synthetic-a", "synthetic-trunk,synthetic-a,synthetic-a-one,synthetic-a-two"},
+		{ScopeTrunk, "synthetic-a-one", "synthetic-trunk,synthetic-a,synthetic-a-one,synthetic-a-two,synthetic-b"},
 		// The whole point of forest: it reaches a stack the selected branch
 		// cannot, which every other scope stops short of by design.
-		{ScopeForest, "synthetic-a", "synthetic-other,synthetic-other-child,synthetic-trunk,synthetic-a,synthetic-a-one,synthetic-a-two,synthetic-b"},
+		{ScopeAll, "synthetic-a", "synthetic-other,synthetic-other-child,synthetic-trunk,synthetic-a,synthetic-a-one,synthetic-a-two,synthetic-b"},
 	} {
 		t.Run(string(test.scope), func(t *testing.T) {
 			selected, err := forest.Select(test.from, test.scope)
@@ -55,16 +59,16 @@ func TestScopeSelectsWhatItNames(t *testing.T) {
 	}
 }
 
-// A scope narrower than the whole forest must not reach another root. This is
-// the property that lets a mutating command accept graph and never forest.
-func TestGraphScopeStopsAtItsOwnRoot(t *testing.T) {
-	selected, err := syntheticForest().Select("synthetic-a", ScopeGraph)
+// A scope narrower than all must not reach another trunk. This is the property
+// that lets a mutating command accept trunk and never all.
+func TestTrunkScopeStopsAtItsOwnRoot(t *testing.T) {
+	selected, err := syntheticForest().Select("synthetic-a", ScopeTrunk)
 	if err != nil {
 		t.Fatalf("Select() error = %v", err)
 	}
 	for _, branch := range selected {
 		if strings.HasPrefix(branch, "synthetic-other") {
-			t.Errorf("scope graph reached %q, which belongs to a different root", branch)
+			t.Errorf("scope trunk reached %q, which belongs to a different trunk", branch)
 		}
 	}
 }
@@ -83,6 +87,18 @@ func TestRestrictDropsEdgesLeavingTheSelection(t *testing.T) {
 	}
 	if got := edges["synthetic-a-one"]; got != "synthetic-a" {
 		t.Errorf("edges[synthetic-a-one] = %q, want synthetic-a", got)
+	}
+}
+
+// stack excludes the cousins that merely share a trunk. That exclusion is the
+// only thing separating it from trunk, so it is worth asserting directly.
+func TestStackExcludesCousins(t *testing.T) {
+	selected, err := syntheticForest().Select("synthetic-a-one", ScopeStack)
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if got, want := strings.Join(selected, ","), "synthetic-trunk,synthetic-a,synthetic-a-one"; got != want {
+		t.Errorf("Select(stack) = %q, want %q; synthetic-b shares the trunk but not the stack", got, want)
 	}
 }
 
@@ -129,7 +145,7 @@ func TestOnlyBranchAndPathAreLinear(t *testing.T) {
 			t.Errorf("%q must be linear: a projection onto a GitHub stack consumes it", scope)
 		}
 	}
-	for _, scope := range []Scope{ScopeSubtree, ScopeGraph, ScopeForest} {
+	for _, scope := range []Scope{ScopeSubtree, ScopeTrunk, ScopeAll} {
 		if scope.Linear() {
 			t.Errorf("%q can fork, so nothing may project or rewrite from it", scope)
 		}
@@ -139,14 +155,32 @@ func TestOnlyBranchAndPathAreLinear(t *testing.T) {
 // A command offering a narrow set must refuse a value another command allows,
 // and say what it does take.
 func TestParseScopeRefusesAValueThisCommandDoesNotOffer(t *testing.T) {
-	if _, err := ParseScope(string(ScopeForest), ReadScopes); err != nil {
-		t.Fatalf("ParseScope(forest, ReadScopes) error = %v", err)
+	if _, err := ParseScope(string(ScopeAll), ReadScopes, ScopeStack); err != nil {
+		t.Fatalf("ParseScope(all, ReadScopes) error = %v", err)
 	}
-	_, err := ParseScope(string(ScopeForest), Scopes)
+	_, err := ParseScope(string(ScopeAll), RewriteScopes, ScopeSubtree)
 	if err == nil {
-		t.Fatal("ParseScope(forest, Scopes) error = nil; a command that never offered forest must refuse it")
+		t.Fatal("ParseScope(all, RewriteScopes) error = nil; a command that rewrites must refuse it")
 	}
-	if !strings.Contains(err.Error(), string(ScopeGraph)) {
+	if !strings.Contains(err.Error(), string(ScopeSubtree)) {
 		t.Errorf("refusal %q does not list the scopes this command accepts", err)
+	}
+}
+
+// Each command names its own default, because they genuinely differ: reading is
+// free and rewriting is not.
+func TestAnAbsentScopeTakesTheCommandsOwnDefault(t *testing.T) {
+	for name, test := range map[string]struct {
+		accepted []Scope
+		fallback Scope
+	}{
+		"read":    {ReadScopes, ScopeStack},
+		"rewrite": {RewriteScopes, ScopeSubtree},
+		"project": {ProjectScopes, ScopeStack},
+	} {
+		got, err := ParseScope("", test.accepted, test.fallback)
+		if err != nil || got != test.fallback {
+			t.Errorf("%s: ParseScope(\"\") = %q, %v; want %q", name, got, err, test.fallback)
+		}
 	}
 }

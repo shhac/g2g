@@ -30,39 +30,58 @@ const (
 	ScopePath Scope = "path"
 	// ScopeSubtree is the selected branch and every descendant.
 	ScopeSubtree Scope = "subtree"
-	// ScopeGraph is the one tree the selected branch belongs to. It stops at
-	// that tree's root: a repository with several roots has several graphs, and
-	// widening this value to mean all of them would silently widen every
-	// mutating command that already accepts it.
-	ScopeGraph Scope = "graph"
-	// ScopeForest is every root and everything under it, whether or not the
-	// selected branch can reach it. It is the only scope that can answer "show
-	// me everything", and it is offered by read-only commands alone.
-	ScopeForest Scope = "forest"
+	// ScopeStack is the trunk, the selected branch, and everything above it —
+	// what a person means by "my stack". It excludes the cousins that merely
+	// share a trunk, which is what separates it from ScopeTrunk.
+	ScopeStack Scope = "stack"
+	// ScopeTrunk is the selected branch's trunk and everything under it,
+	// cousins included. "The trunk moved, bring everything on it up to date."
+	ScopeTrunk Scope = "trunk"
+	// ScopeAll is every trunk's stacks. It exists so a repository with several
+	// trunks can be seen whole, which is a reading problem: nothing that
+	// mutates offers it.
+	ScopeAll Scope = "all"
 )
 
-// Scopes lists the scopes every selecting command accepts, in the order they
-// widen, which is also the order shell completion offers them. ScopeForest is
-// deliberately absent: it is added per command by the read-only ones.
-var Scopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeGraph}
+// Scopes lists the scopes a command may offer, in the order they widen, which
+// is also the order shell completion offers them. ScopeAll is deliberately
+// absent: it is added per command by the read-only ones.
+var Scopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk}
 
-// ReadScopes is Scopes plus ScopeForest, for commands that only ever display.
-var ReadScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeGraph, ScopeForest}
+// ReadScopes is Scopes plus ScopeAll, for commands that only ever display.
+var ReadScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk, ScopeAll}
 
-// Linear reports whether a scope can only ever produce one ordered path.
-// Projection onto a GitHub native stack and any history rewrite require it.
+// RewriteScopes is what a command that rewrites history may offer. trunk and
+// all wait for deliberate worktree handling: a wide rewrite is far more likely
+// to reach a branch checked out in another worktree, and Git refuses to check
+// out a branch that is already checked out elsewhere.
+var RewriteScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack}
+
+// ProjectScopes is what a command that projects onto a GitHub native stack may
+// offer. A native stack is linear, so these are the two that can produce one —
+// and stack still refuses when it forks.
+var ProjectScopes = []Scope{ScopeStack, ScopePath}
+
+// Linear reports whether a scope can only ever produce one ordered path
+// regardless of the shape it is asked about. ScopeStack can produce one too,
+// but only when the selection happens not to fork, which is a property of the
+// repository rather than of the scope.
 func (s Scope) Linear() bool { return s == ScopeBranch || s == ScopePath }
 
-// ParseScope validates a flag value against the scopes a command accepts. An
-// empty value is the default. Passing the accepted set rather than consulting a
-// global is what lets one command offer forest and another refuse it, with the
-// refusal naming what that command actually takes.
-func ParseScope(value string, accepted []Scope) (Scope, error) {
+// ParseScope validates a flag value against the scopes a command accepts,
+// falling back to that command's own default when none was given.
+//
+// Both the accepted set and the default are arguments rather than globals,
+// because they genuinely differ: status defaults to stack because reading is
+// free, restack defaults to subtree because rewriting is not, and only a
+// read-only command offers all. A shared default is how one of those silently
+// becomes another.
+func ParseScope(value string, accepted []Scope, fallback Scope) (Scope, error) {
 	if len(accepted) == 0 {
 		accepted = Scopes
 	}
 	if value == "" {
-		return ScopePath, nil
+		return fallback, nil
 	}
 	names := make([]string, 0, len(accepted))
 	for _, scope := range accepted {

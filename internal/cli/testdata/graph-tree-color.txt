@@ -6,4 +6,4 @@
   [2m│ └─[0m[2m●[0m [1;37msynthetic-session[0m
   [2m└─[0m[2m●[0m [1;37msynthetic-billing[0m
 
-[2mScope graph · 5 branches · /synthetic/repo/.git/g2g/graph.json[0m
+[2mScope trunk · 5 branches · /synthetic/repo/.git/g2g/graph.json[0m

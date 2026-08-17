@@ -149,13 +149,31 @@ func (f Forest) Select(branch string, scope Scope) ([]string, error) {
 		return f.Path(branch)
 	case ScopeSubtree:
 		return f.Subtree(branch), nil
-	case ScopeGraph:
+	case ScopeStack:
+		return f.Stack(branch)
+	case ScopeTrunk:
 		return f.Component(branch)
-	case ScopeForest:
+	case ScopeAll:
 		return f.All(), nil
 	default:
 		return nil, fmt.Errorf("unsupported scope %q", scope)
 	}
+}
+
+// Stack is the trunk, the branch, and everything above it: what a person means
+// by "my stack". The cousins that merely share a trunk are excluded, which is
+// the only thing separating it from Component.
+//
+// Ordered trunk-first so a parent always precedes its children, which is what
+// every renderer and every replay assumes.
+func (f Forest) Stack(branch string) ([]string, error) {
+	path, err := f.Path(branch)
+	if err != nil {
+		return nil, err
+	}
+	// Path ends at branch and Subtree starts at it, so one of the two copies is
+	// dropped rather than deduplicated after the fact.
+	return append(path, f.Subtree(branch)[1:]...), nil
 }
 
 // Restrict returns the edges among the selected branches only. A parent outside

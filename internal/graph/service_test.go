@@ -293,7 +293,7 @@ func TestDiscoveryReportsDriftSeparatelyFromStructure(t *testing.T) {
 	git.local = []string{"synthetic-auth", "synthetic-login", "synthetic-session", "synthetic-billing"}
 	service, _ := newService(t, git, forest())
 
-	discovery, err := service.Discover(context.Background(), Selection{Branch: "synthetic-auth", Scope: ScopeGraph})
+	discovery, err := service.Discover(context.Background(), Selection{Branch: "synthetic-auth", Scope: ScopeTrunk})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}

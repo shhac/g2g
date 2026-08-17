@@ -123,7 +123,7 @@ func TestGraphRendersAForkedTreeWithConnectors(t *testing.T) {
 		color bool
 	}{{name: "graph-tree-plain"}, {name: "graph-tree-color", color: true}} {
 		t.Run(test.name, func(t *testing.T) {
-			out, _, err := runGraph(t, graphFixture(), test.color, "graph", "--branch", "synthetic-login", "--scope", "graph")
+			out, _, err := runGraph(t, graphFixture(), test.color, "graph", "--branch", "synthetic-login", "--scope", "trunk")
 			if err != nil {
 				t.Fatalf("graph: %v\n%s", err, out)
 			}
@@ -171,7 +171,7 @@ func TestGraphRejectsAnUnknownScope(t *testing.T) {
 }
 
 func TestGraphIsReadOnly(t *testing.T) {
-	_, store, err := runGraph(t, graphFixture(), false, "graph", "--scope", "graph")
+	_, store, err := runGraph(t, graphFixture(), false, "graph", "--scope", "trunk")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestGraphCommandsAreAbsentWithoutAConfiguredService(t *testing.T) {
 }
 
 func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
-	jsonOut, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "graph", "--json")
+	jsonOut, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "trunk", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
 		t.Errorf("JSON does not carry the parent edge:\n%s", jsonOut)
 	}
 
-	porcelain, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "graph", "--porcelain")
+	porcelain, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "trunk", "--porcelain")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(completed, ",") != "branch,path,subtree,graph" {
+	if strings.Join(completed, ",") != "branch,path,subtree,stack,trunk" {
 		t.Errorf("scope completion = %v", completed)
 	}
 	for _, value := range completed {
@@ -312,7 +312,7 @@ func TestGraphReportsBranchesWithNoTrackedParent(t *testing.T) {
 		Graph:        graph.Service{Git: graphGitFixture(), Store: store},
 		Presentation: &Presentation{},
 	})
-	command.SetArgs([]string{"graph", "--branch", "synthetic-login", "--scope", "graph"})
+	command.SetArgs([]string{"graph", "--branch", "synthetic-login", "--scope", "trunk"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout.String())
 	}
@@ -333,10 +333,10 @@ func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 		scope    string
 		wantErr  bool
 	}{
-		{"replay refuses forest", graph.Scopes, string(graph.ScopeForest), true},
-		{"replay allows graph", graph.Scopes, string(graph.ScopeGraph), false},
-		{"display allows forest", graph.ReadScopes, string(graph.ScopeForest), false},
-		{"removal refuses graph", []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, string(graph.ScopeGraph), true},
+		{"replay refuses forest", graph.Scopes, string(graph.ScopeAll), true},
+		{"replay allows graph", graph.Scopes, string(graph.ScopeTrunk), false},
+		{"display allows forest", graph.ReadScopes, string(graph.ScopeAll), false},
+		{"removal refuses graph", []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, string(graph.ScopeTrunk), true},
 		{"an empty scope is the default", graph.Scopes, "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 // repository.
 func TestOnlyReadOnlyCommandsOfferForest(t *testing.T) {
 	for _, scope := range graph.Scopes {
-		if scope == graph.ScopeForest {
+		if scope == graph.ScopeAll {
 			t.Fatal("graph.Scopes contains forest; it is the set handed to commands that mutate")
 		}
 	}

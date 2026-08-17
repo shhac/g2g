@@ -374,7 +374,11 @@ func (s scenario) land(r repo) {
 func (r repo) restackToCompletion(t *testing.T) {
 	t.Helper()
 
-	stdout, _, err := run(t, "restack", "--scope", "graph", "--apply")
+	// Selected from the trunk, "my stack" is the whole tree: a trunk's path is
+	// itself, so the scope reduces to everything under it. That is how these
+	// scenarios ask for the entire shape without a scope that reaches other
+	// trunks, which is exactly what a rewrite must not be handed.
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-trunk", "--scope", "stack", "--apply")
 	if err == nil {
 		r.settle(t, stdout)
 		return

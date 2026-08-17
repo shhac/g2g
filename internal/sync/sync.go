@@ -81,7 +81,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	discovery, err := s.Graph.Discover(ctx, graph.Selection{Branch: selection.Branch, Scope: graph.ScopeGraph})
+	// The stack being synced: its trunk, so there is a base to advance, and
+	// everything above the target, so the replay covers what depends on it.
+	// Cousins that merely share the trunk are somebody else's stack.
+	discovery, err := s.Graph.Discover(ctx, graph.Selection{Branch: selection.Branch, Scope: graph.ScopeStack})
 	if err != nil {
 		return Plan{}, err
 	}

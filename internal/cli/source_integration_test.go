@@ -549,7 +549,10 @@ func TestTrackStackRecordsAWholeTree(t *testing.T) {
 		t.Fatalf("track --stack --apply: %v\n%s%s", err, stdout, stderr)
 	}
 
-	graphOut, _, err := inRepository(t, dir, "graph", "--scope", "graph")
+	// Selected from synthetic-a, "my stack" is the trunk beneath it and both
+	// branches above it. Selected from synthetic-b it would not be: synthetic-c
+	// is a cousin there, which is the distinction the scope exists to make.
+	graphOut, _, err := inRepository(t, dir, "graph", "--branch", "synthetic-a", "--scope", "stack")
 	if err != nil {
 		t.Fatalf("graph: %v", err)
 	}

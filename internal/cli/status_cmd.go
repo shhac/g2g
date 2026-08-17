@@ -27,10 +27,11 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
 	}
 	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
-	// status is read-only, so it is the one stack command that can show a shape
-	// rather than a path. It stops short of forest: a repository's other stacks
-	// are not what someone triaging this one is asking about.
-	selection.registerScope(cmd, stack.Scopes, "how much to show: branch, path, subtree, or graph (the tree this branch is in)")
+	// status reads, so it defaults to the whole stack: ancestors, descendants,
+	// and where the target sits between them. It stops short of all, because a
+	// repository's other trunks are not what someone triaging this one asked
+	// about.
+	selection.registerScope(cmd, stack.Scopes, stack.ScopeStack, scopeUsage("show", stack.Scopes))
 	return cmd
 }
 

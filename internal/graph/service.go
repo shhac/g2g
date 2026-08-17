@@ -108,10 +108,11 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 	if err != nil {
 		return Discovery{}, err
 	}
-	// Discover never writes, so it parses the read set. Which scopes a command
-	// offers is that command's own gate: forest is safe to display and unsafe to
-	// hand something that rewrites.
-	scope, err := stack.ParseScope(string(selection.Scope), stack.ReadScopes)
+	// Discover never writes, so it parses the read set and defaults to the whole
+	// stack — ancestors, descendants, and where the target sits between them.
+	// Which scopes a command offers is that command's own gate: all is safe to
+	// display and unsafe to hand something that rewrites.
+	scope, err := stack.ParseScope(string(selection.Scope), stack.ReadScopes, stack.ScopeStack)
 	if err != nil {
 		return Discovery{}, err
 	}

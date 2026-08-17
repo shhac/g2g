@@ -54,7 +54,7 @@ const adoptedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-main"],"branc
 func TestGraphReadsTheStoreThroughRealAdapters(t *testing.T) {
 	recorder, _ := graphRepository(t, adoptedGraph)
 
-	stdout, _, err := run(t, "graph", "--scope", "graph")
+	stdout, _, err := run(t, "graph", "--scope", "trunk")
 	if err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout)
 	}

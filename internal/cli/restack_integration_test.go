@@ -173,7 +173,7 @@ func TestRestackReplaysTheStackWithoutTouchingTheCheckout(t *testing.T) {
 	advanceTrunk(t, false)
 	head := gitOutput(t, "branch", "--show-current")
 
-	stdout, _, err := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
 	if err != nil {
 		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
@@ -203,7 +203,7 @@ func TestRestackCarriesDescendantsNotJustTheBottomBranch(t *testing.T) {
 	advanceTrunk(t, false)
 	before := gitOutput(t, "rev-parse", "synthetic-b")
 
-	stdout, _, err := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
 	if err != nil {
 		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
@@ -229,7 +229,7 @@ func TestRestackReportsABranchItEmpties(t *testing.T) {
 	trackStack(t)
 	advanceTrunk(t, false)
 
-	stdout, _, err := run(t, "restack", "--scope", "graph")
+	stdout, _, err := run(t, "restack", "--scope", "stack")
 	if err != nil {
 		t.Fatalf("restack: %v\n%s", err, stdout)
 	}
@@ -248,7 +248,7 @@ func TestRestackPreviewChangesNothing(t *testing.T) {
 	advanceTrunk(t, false)
 	before := gitOutput(t, "rev-parse", "synthetic-b")
 
-	stdout, _, err := run(t, "restack", "--scope", "graph")
+	stdout, _, err := run(t, "restack", "--scope", "stack")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestRestackWarnsBeforeItTakesOverTheWorkingTree(t *testing.T) {
 	trackStack(t)
 	advanceTrunk(t, true)
 
-	stdout, _, err := run(t, "restack", "--scope", "graph")
+	stdout, _, err := run(t, "restack", "--scope", "stack")
 	if err != nil {
 		t.Fatalf("restack: %v\n%s", err, stdout)
 	}
@@ -289,7 +289,7 @@ func TestRestackStopsOnConflictThenContinues(t *testing.T) {
 	trackStack(t)
 	advanceTrunk(t, true)
 
-	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, _ := run(t, "restack", "--scope", "stack", "--apply")
 	if !strings.Contains(stdout, "Stopped on a conflict") {
 		t.Fatalf("apply did not stop on the conflict:\n%s\n--- status ---\n%s", stdout, gitOutput(t, "status", "--porcelain"))
 	}
@@ -325,7 +325,7 @@ func TestRestackAbortRestoresEveryBranch(t *testing.T) {
 		"synthetic-b": gitOutput(t, "rev-parse", "synthetic-b"),
 	}
 
-	if stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply"); !strings.Contains(stdout, "Stopped on a conflict") {
+	if stdout, _, _ := run(t, "restack", "--scope", "stack", "--apply"); !strings.Contains(stdout, "Stopped on a conflict") {
 		t.Fatalf("apply did not stop:\n%s", stdout)
 	}
 
@@ -357,7 +357,7 @@ func TestRestackRefusesABranchThatMovedOffItsRecordedParent(t *testing.T) {
 	// Rebase synthetic-b by hand, exactly as a user might.
 	gitOutput(t, "rebase", "--onto", "synthetic-trunk", "synthetic-a", "synthetic-b")
 
-	stdout, _, err := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
 	if err == nil && !strings.Contains(stdout, "blocked") {
 		t.Fatalf("restack did not refuse a branch that moved off its parent:\n%s", stdout)
 	}
@@ -481,7 +481,7 @@ func TestRestackOntoRecordsTheNewParent(t *testing.T) {
 			stdout, gitOutput(t, "log", "--oneline", "--graph", "--all"))
 	}
 	// The graph must now agree, so a later command measures against reality.
-	graph, _, err := run(t, "graph", "--branch", "synthetic-b", "--scope", "graph")
+	graph, _, err := run(t, "graph", "--branch", "synthetic-b", "--scope", "stack")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +576,7 @@ func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
 
 	// A stop is reported in the output, not as a non-zero exit: the command did
 	// what it said it would and is waiting for the user.
-	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, _ := run(t, "restack", "--scope", "stack", "--apply")
 	if !strings.Contains(stdout, "Stopped on a conflict") {
 		t.Fatalf("apply did not stop on the conflict:\n%s", stdout)
 	}
@@ -609,7 +609,7 @@ func TestRestackSkipAbandonsTheConflictingCommitAndFinishes(t *testing.T) {
 	trackStack(t)
 	advanceTrunk(t, true)
 
-	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
+	stdout, _, _ := run(t, "restack", "--scope", "stack", "--apply")
 	if !strings.Contains(stdout, "Stopped on a conflict") {
 		t.Fatalf("apply did not stop on the conflict:\n%s", stdout)
 	}

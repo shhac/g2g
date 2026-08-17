@@ -45,6 +45,7 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "remove the recorded parents instead of previewing the removal")
 	selection.registerBranch(cmd, service)
-	selection.registerScope(cmd, []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, "how much to remove: branch or subtree")
+	removable := []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}
+	selection.registerScope(cmd, removable, graph.ScopeBranch, scopeUsage("remove", removable))
 	return cmd
 }

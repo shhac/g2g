@@ -6,4 +6,4 @@ Target  synthetic-login  · --branch
   │ └─● synthetic-session
   └─● synthetic-billing
 
-Scope graph · 5 branches · /synthetic/repo/.git/g2g/graph.json
+Scope trunk · 5 branches · /synthetic/repo/.git/g2g/graph.json

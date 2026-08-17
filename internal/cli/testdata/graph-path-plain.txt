@@ -5,4 +5,4 @@ Target  synthetic-login  · --branch
   ● synthetic-auth
   ● synthetic-login  ← target
 
-Scope path · 3 branches · /synthetic/repo/.git/g2g/graph.json
+Scope stack · 3 branches · /synthetic/repo/.git/g2g/graph.json

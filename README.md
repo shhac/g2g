@@ -514,20 +514,16 @@ the spec win over templates.
 
 ## Homebrew
 
-The Homebrew formula is still named `gt2gh`, and installs the executable as
-`g2g`. Renaming it needs a rename mapping in the tap first, so that an existing
-install migrates rather than quietly stopping at the last version:
-
 ```sh
-brew install shhac/tap/gt2gh
+brew install shhac/tap/g2g
 g2g link
 ```
 
-A release archive from a tag before the rename keeps the old asset name:
-
-```sh
-gt2gh link
-```
+The formula was once named `gt2gh`. The tap maps the old name to the new one,
+so an existing install migrates on `brew update` rather than quietly stopping
+at the last version published under it. Release archives from tags before the
+rename keep the old asset name, which is why a download from one of those
+unpacks a binary called `gt2gh`.
 
 `g2g push` is a deliberately narrow publication escape hatch for a
 Graphite-managed linear path. It reads Graphite to discover that path, but never

@@ -8,6 +8,6 @@ jobs:
   publish-skill:
     uses: shhac/agent-skills/.github/workflows/sync-skill.yml@main
     with:
-      skill_name: gt2gh
+      skill_name: g2g
     secrets:
       SKILLS_DEPLOY_KEY: ${{ secrets.SKILLS_DEPLOY_KEY }}

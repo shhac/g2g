@@ -1,5 +1,5 @@
 ---
-name: gt2gh
+name: g2g
 description: |
   Develop, test, or safely use the g2g Go CLI, which records stacked branches
   itself and projects them onto GitHub. Graphite is an optional source it can
@@ -17,17 +17,17 @@ description: |
 
 ## Command identity and discovery
 
-- The command and the project are `g2g`. Three names still lag and are being
-  retired in order, each because renaming it strands something: the GitHub
-  repository (the Go module path must move with it), the Homebrew formula (the
-  tap needs `formula_renames.json` first, or existing installs stop updating),
-  and this skill's own directory (renaming publishes a second skill and leaves
-  the first stale). Do not "fix" those three ahead of their migration step.
+- The command, project, module, repository, formula and this skill are all
+  `g2g`. The tool was once called `gt2gh`, and that name survives only where it
+  is a historical fact: tags and release assets published under it, and the
+  tap's `formula_renames.json`, which is what migrates installs made under the
+  old name. Do not reintroduce it anywhere else.
 - At the start of a task, reuse a usable command already resolved in the task
   context. Otherwise discover it once locally: try `g2g --version`, then
-  `gt2gh --version` for an older install. Select the first that succeeds. If
-  neither works, say the user must run `brew install shhac/tap/gt2gh` — still
-  the formula name — or provide a built binary; do not assume either exists.
+  `gt2gh --version`, which is worth one attempt only for an install predating
+  the rename. Select the first that succeeds. If neither works, say the user
+  must run `brew install shhac/tap/g2g` or provide a built binary; do not
+  assume either exists.
 - Record the selected command and use it for every later invocation. Do not
   re-detect unless it fails or the environment changes.
 

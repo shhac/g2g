@@ -48,17 +48,15 @@ jobs:
       contents: write
     secrets: inherit
     with:
-      name: gt2gh
-      # The formula, asset and repository keep their name for now; only the
-      # source directory has moved, so the build path is stated explicitly.
-      # Renaming the formula needs formula_renames.json in the tap first, or
-      # every existing install silently stops updating.
-      cmd_path: ./cmd/g2g
+      # The command, module, asset, formula and repository are all g2g now, so
+      # cmd_path and installed_binary_name are left at their defaults
+      # (./cmd/<name> and <name>). The tap carries formula_renames.json mapping
+      # gt2gh to g2g, which is what migrates installs made under the old name.
+      name: g2g
       desc: "Manage stacked branches and project them onto GitHub native stacks"
-      formula_class: Gt2gh
+      formula_class: G2g
       # help_match is asserted by the generated formula's brew test against the
       # installed binary's --help, so it has to track the command's own wording.
       # Changing a command description without this publishes a formula whose
       # test fails.
       help_match: "Link a stack to GitHub"
-      installed_binary_name: g2g

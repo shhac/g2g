@@ -1,6 +1,6 @@
 # g2g agent notes
 
-Start with the repository skill at `skills/gt2gh/SKILL.md`, then use the
+Start with the repository skill at `skills/g2g/SKILL.md`, then use the
 README and `design-docs/initial-scope.md` for product behavior. This file keeps
 only process knowledge that is easy to miss.
 
@@ -121,27 +121,29 @@ property the original had.
   a changed repository skill with the active `skill-creator` quick validator
   (using its environment-provided path; install PyYAML transiently if needed).
 
-## The rename, and what is left of it
+## The rename
 
-The project, module path, command directory, binary and prose are `g2g`. Three
-things deliberately still say `gt2gh`, each because renaming it strands
-something:
+The project was called `gt2gh`, which meant "Graphite to GitHub" and stopped
+being true once the tool recorded its own structure. Everything is `g2g` now:
+project, module path, command, repository, formula, skill and prose.
 
-- **The GitHub repository.** Renaming redirects web and git permanently, but the
-  Go module path must change in the same step — it is recorded inside `go.mod`,
-  so no redirect can rescue a mismatch. The module path here is already
-  `github.com/shhac/g2g`, which means remote `go install` does not resolve until
-  the repository is renamed. Do not cut a release expecting `go install` to work
-  before then; Homebrew is unaffected because it builds from a checkout.
-- **The Homebrew formula.** Needs `formula_renames.json` in `shhac/homebrew-tap`
-  mapping `{"gt2gh": "g2g"}` *before* any release under the new formula name,
-  then `Formula/gt2gh.rb` deleted once the new one publishes.
-- **The published skill directory.** `skills/gt2gh` is published to
-  `shhac/agent-skills` on tag; renaming it publishes a second skill and leaves
-  the first stale, so it wants the same kind of migration step.
+`gt2gh` survives in exactly three places, all of them statements about the past
+rather than names still in use. Do not "tidy" any of them away:
 
-`release.yml` therefore keeps `name: gt2gh` and `formula_class: Gt2gh`, and
-states `cmd_path: ./cmd/g2g` explicitly because only the source directory moved.
+- **Tags and their release assets.** A tag published `gt2gh-darwin-arm64.tar.gz`
+  and always will; those archives are immutable and their checksums are
+  published. This is also why a download from an old tag unpacks a binary named
+  `gt2gh`.
+- **`formula_renames.json` in `shhac/homebrew-tap`.** The `{"gt2gh": "g2g"}`
+  mapping is what migrates an install made under the old name. Deleting it does
+  not clean anything up; it strands every install that has not yet updated.
+- **History.** Commit messages and design-doc passages describing the old name
+  were accurate when written.
+
+The ordering constraint that made this a migration rather than a rename is worth
+keeping in mind for any future one: the rename mapping and the renamed formula
+must land *together*. A mapping pointing at a formula that does not exist yet is
+as broken as a renamed formula with no mapping.
 
 ## Release and distribution
 
@@ -150,10 +152,9 @@ states `cmd_path: ./cmd/g2g` explicitly because only the source directory moved.
   Verify both the `Release` and `Publish skill` tag workflows afterwards.
 - The shared release generator lives in `shhac/homebrew-tap`; this repository's
   durable distribution knobs are `.github/workflows/release.yml` (not a formula
-  edit). `installed_binary_name: g2g` is deliberate: the project, asset, and
-  formula remain `gt2gh` until the tap carries a rename mapping, while Homebrew
-  installs `g2g`. Renaming the formula without that mapping strands every
-  existing install. Check the generated
-  formula's alias and completion/test lines after a release.
+  edit). Name-derived inputs are left at their defaults now that everything is
+  `g2g`, so `cmd_path` and `installed_binary_name` are deliberately absent
+  rather than forgotten. Check the generated formula's alias and
+  completion/test lines after a release.
 - `CLAUDE.md` is a symlink to this file, so keep instructions harness-neutral
   and edit `AGENTS.md` only.

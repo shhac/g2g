@@ -49,7 +49,7 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 	if err := validatePath(discovery.Branches, command); err != nil {
 		return stack.Snapshot{}, err
 	}
-	shape := shapeOf(discovery.Graph)
+	shape := discovery.Graph.shape()
 	hangsFrom, within, err := shape.Hangs(discovery.Branches, discovery.Target, scope)
 	if err != nil {
 		return stack.Snapshot{}, err
@@ -77,10 +77,6 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 		Parents: shape.Restrict(discovery.Branches),
 	}, nil
 }
-
-// shapeOf exposes a graph's edges as the shared forest, so a selector can
-// describe a selection's shape without reimplementing the walk.
-func shapeOf(g Graph) stack.Forest { return g.shape() }
 
 // selectBase applies --trunk to a recorded path. A path has exactly one root,
 // so the flag can only confirm the base g2g already derived; naming any other

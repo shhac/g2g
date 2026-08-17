@@ -122,7 +122,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Graph:       graphService,
 		Restack:     restackService,
 		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
-		Align:       align.Service{Graph: graphService, Graphite: graphiteClient, Configured: graphiteConfigured},
+		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
 		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
 		Unstacker:   githubClient,
 	})
@@ -197,7 +197,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
 	}
-	if options.Align.Graph.Store != nil && options.Align.Graph.Git != nil && options.Align.Graphite != nil {
+	if options.Align.Store != nil && options.Align.Git != nil && options.Align.Graphite != nil {
 		root.AddCommand(newMirror(options.Align, guard, presentation))
 		root.AddCommand(newImport(options.Align, guard, presentation))
 	}

@@ -28,8 +28,16 @@ type Graphite interface {
 }
 
 // Service compares the two graphs and reconciles one into the other.
+//
+// The gt2gh side is three narrow dependencies rather than the whole
+// graph.Service, because alignment never asks that service to do anything — it
+// reads ancestry, reads and writes the store, and pins a fork point. Naming
+// them is what makes that legible from the type instead of from every call
+// site. restack embeds the whole service because it genuinely calls Discover.
 type Service struct {
-	Graph    graph.Service
+	Git      graph.Ancestry
+	Store    graph.Store
+	Refs     graph.Pinner
 	Graphite Graphite
 	// Configured reports whether this repository already uses Graphite.
 	//
@@ -197,13 +205,13 @@ func (p MirrorPlan) Equal(other MirrorPlan) bool {
 }
 
 func (s Service) both(ctx context.Context) (graph.Graph, graphite.Forest, error) {
-	if s.Graph.Store == nil || s.Graphite == nil {
+	if s.Store == nil || s.Graphite == nil {
 		return graph.Graph{}, graphite.Forest{}, fmt.Errorf("alignment service is not fully configured")
 	}
 	if err := s.requireGraphite(ctx); err != nil {
 		return graph.Graph{}, graphite.Forest{}, err
 	}
-	adopted, err := s.Graph.Store.Load(ctx)
+	adopted, err := s.Store.Load(ctx)
 	if err != nil {
 		return graph.Graph{}, graphite.Forest{}, err
 	}

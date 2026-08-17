@@ -47,7 +47,7 @@ func (g fakeGit) Resolve(_ context.Context, revision string) (string, error) {
 func importService(adopted graph.Graph, forest graphite.Forest, git fakeGit) (Service, *memoryStore) {
 	store := &memoryStore{graph: adopted}
 	return Service{
-		Graph:    graph.Service{Git: git, Store: store},
+		Git: git, Store: store,
 		Graphite: &fakeGraphite{forest: forest},
 	}, store
 }
@@ -222,7 +222,7 @@ func TestImportSkipsBranchesThatAreNotLocal(t *testing.T) {
 func TestImportWritesNothingToGraphite(t *testing.T) {
 	client := &fakeGraphite{forest: declaredChain()}
 	svc := Service{
-		Graph:    graph.Service{Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()}},
+		Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()},
 		Graphite: client,
 	}
 
@@ -280,7 +280,7 @@ func TestImportPinsEachForkPointItRecords(t *testing.T) {
 	refs := &fakeRefs{}
 	store := &memoryStore{graph: graph.New()}
 	svc := Service{
-		Graph:    graph.Service{Git: everyBranchLocal(), Store: store, Refs: refs},
+		Git: everyBranchLocal(), Store: store, Refs: refs,
 		Graphite: &fakeGraphite{forest: declaredChain()},
 	}
 
@@ -313,11 +313,9 @@ func TestImportPinsEachForkPointItRecords(t *testing.T) {
 // the fork point is not protected, and the user needs to know.
 func TestImportReportsAFailedPin(t *testing.T) {
 	svc := Service{
-		Graph: graph.Service{
-			Git:   everyBranchLocal(),
-			Store: &memoryStore{graph: graph.New()},
-			Refs:  &fakeRefs{err: fmt.Errorf("synthetic ref failure")},
-		},
+		Git:      everyBranchLocal(),
+		Store:    &memoryStore{graph: graph.New()},
+		Refs:     &fakeRefs{err: fmt.Errorf("synthetic ref failure")},
 		Graphite: &fakeGraphite{forest: declaredChain()},
 	}
 
@@ -340,7 +338,7 @@ func TestImportFailsClosedWhenGitCannotAnswer(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			store := &memoryStore{graph: graph.New()}
 			svc := Service{
-				Graph:    graph.Service{Git: git, Store: store},
+				Git: git, Store: store,
 				Graphite: &fakeGraphite{forest: declaredChain()},
 			}
 
@@ -362,7 +360,7 @@ func TestRevalidateImportCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-trunk": "",
 		"synthetic-lower": "synthetic-trunk",
 	}, "synthetic-trunk")}
-	svc := Service{Graph: graph.Service{Git: everyBranchLocal(), Store: store}, Graphite: client}
+	svc := Service{Git: everyBranchLocal(), Store: store, Graphite: client}
 
 	preview, err := svc.PlanImport(context.Background())
 	if err != nil {
@@ -389,7 +387,7 @@ func TestRevalidateImportCatchesAChangedParentAtTheSameCount(t *testing.T) {
 func TestImportRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 	asked := false
 	svc := Service{
-		Graph:      graph.Service{Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()}},
+		Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()},
 		Graphite:   &fakeGraphite{forest: declaredChain(), asked: &asked},
 		Configured: func(context.Context) (bool, error) { return false, nil },
 	}

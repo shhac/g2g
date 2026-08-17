@@ -83,7 +83,7 @@ func chain() graph.Graph {
 
 func service(adopted graph.Graph, forest graphite.Forest) (Service, *fakeGraphite) {
 	client := &fakeGraphite{forest: forest}
-	return Service{Graph: graph.Service{Store: &memoryStore{graph: adopted}}, Graphite: client}, client
+	return Service{Store: &memoryStore{graph: adopted}, Graphite: client}, client
 }
 
 // Graphite refuses a parent it does not already track, so a chain has to be
@@ -305,7 +305,7 @@ func TestPruneRemovesAWholeStrangerSubtree(t *testing.T) {
 func TestRevalidateRefusesAChangedGraph(t *testing.T) {
 	store := &memoryStore{graph: chain()}
 	client := &fakeGraphite{forest: forestOf(map[string]string{"synthetic-trunk": ""}, "synthetic-trunk")}
-	svc := Service{Graph: graph.Service{Store: store}, Graphite: client}
+	svc := Service{Store: store, Graphite: client}
 
 	preview, err := svc.PlanMirror(context.Background(), false)
 	if err != nil {
@@ -338,7 +338,7 @@ func TestAnUnconfiguredServiceRefuses(t *testing.T) {
 
 func TestAFailingGraphiteIsReported(t *testing.T) {
 	svc := Service{
-		Graph:    graph.Service{Store: &memoryStore{graph: chain()}},
+		Store:    &memoryStore{graph: chain()},
 		Graphite: &fakeGraphite{err: fmt.Errorf("synthetic Graphite failure")},
 	}
 
@@ -358,7 +358,7 @@ func TestMirrorNeverChangesTheG2GGraph(t *testing.T) {
 		"synthetic-top":   "synthetic-trunk",
 		"synthetic-stale": "synthetic-trunk",
 	}, "synthetic-trunk")}
-	svc := Service{Graph: graph.Service{Store: store}, Graphite: client}
+	svc := Service{Store: store, Graphite: client}
 
 	plan, err := svc.PlanMirror(context.Background(), true)
 	if err != nil {
@@ -388,7 +388,7 @@ func TestMirrorStopsAtTheFirstWriteGraphiteRefuses(t *testing.T) {
 		failAfter: 1,
 		writeErr:  fmt.Errorf("synthetic Graphite refusal"),
 	}
-	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+	svc := Service{Store: &memoryStore{graph: chain()}, Graphite: client}
 
 	plan, err := svc.PlanMirror(context.Background(), false)
 	if err != nil {
@@ -422,7 +422,7 @@ func TestMirrorStopsWhenAPruneFails(t *testing.T) {
 		}, "synthetic-trunk"),
 		writeErr: fmt.Errorf("synthetic Graphite refusal"),
 	}
-	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+	svc := Service{Store: &memoryStore{graph: chain()}, Graphite: client}
 
 	plan, err := svc.PlanMirror(context.Background(), true)
 	if err != nil {
@@ -449,7 +449,7 @@ func TestRevalidateMirrorCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-lower": "synthetic-trunk",
 		"synthetic-top":   "synthetic-trunk",
 	}, "synthetic-trunk")}
-	svc := Service{Graph: graph.Service{Store: &memoryStore{graph: chain()}}, Graphite: client}
+	svc := Service{Store: &memoryStore{graph: chain()}, Graphite: client}
 
 	preview, err := svc.PlanMirror(context.Background(), false)
 	if err != nil {

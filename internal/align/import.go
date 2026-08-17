@@ -70,7 +70,7 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 	if err != nil {
 		return ImportPlan{}, err
 	}
-	local, err := s.Graph.Git.LocalBranches(ctx)
+	local, err := s.Git.LocalBranches(ctx)
 	if err != nil {
 		return ImportPlan{}, err
 	}
@@ -124,7 +124,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 	updated := adopted
 	trunks := make([]string, 0)
 	for index, adoption := range adoptions {
-		forkPoint, err := s.Graph.Git.Resolve(ctx, adoption.Parent)
+		forkPoint, err := s.Git.Resolve(ctx, adoption.Parent)
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
@@ -133,7 +133,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		// supplied it, so an imported edge is assessed exactly as a tracked one
 		// is. Graphite declaring a relationship does not make the commits line
 		// up, and that difference is worth keeping visible.
-		confirmed, err := s.Graph.Git.IsAncestor(ctx, adoption.Parent, adoption.Branch)
+		confirmed, err := s.Git.IsAncestor(ctx, adoption.Parent, adoption.Branch)
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
@@ -166,14 +166,14 @@ func (s Service) ApplyImport(ctx context.Context, plan ImportPlan) error {
 	if len(plan.Adopt) == 0 {
 		return nil
 	}
-	if err := s.Graph.Store.Save(ctx, plan.Updated); err != nil {
+	if err := s.Store.Save(ctx, plan.Updated); err != nil {
 		return err
 	}
-	if s.Graph.Refs == nil {
+	if s.Refs == nil {
 		return nil
 	}
 	for _, adoption := range plan.Adopt {
-		if err := s.Graph.Refs.PinForkPoint(ctx, adoption.Branch, adoption.ForkPoint); err != nil {
+		if err := s.Refs.PinForkPoint(ctx, adoption.Branch, adoption.ForkPoint); err != nil {
 			return err
 		}
 	}

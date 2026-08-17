@@ -92,13 +92,6 @@ func (r GitRepo) Revision(revision string) string {
 	return r.Run("rev-parse", revision)
 }
 
-// RunIn executes git in a directory other than this repository's, for the
-// tests that need a second one to push to.
-func RunIn(t *testing.T, dir string, args ...string) string {
-	t.Helper()
-	return runGit(t, dir, args...)
-}
-
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", args...)

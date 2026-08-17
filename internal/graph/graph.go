@@ -17,6 +17,8 @@ import (
 	"maps"
 	"slices"
 	"sort"
+
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // Origin records how much Git agrees with an edge at the moment it was
@@ -104,75 +106,39 @@ func (g Graph) Branches() []string {
 // IsTrunk reports whether branch is a recorded trunk.
 func (g Graph) IsTrunk(branch string) bool { return slices.Contains(g.Trunks, branch) }
 
+// shape is this graph with the edge payload removed.
+//
+// Fork points and origins matter to restack and to nothing that merely walks
+// the structure, so the walking lives once in stack.Forest and both records
+// answer a scope the same way. Keeping a second copy here is how the two came
+// to differ in the small ways that only show up under an unusual shape.
+func (g Graph) shape() stack.Forest {
+	parents := make(map[string]string, len(g.Edges))
+	for branch, edge := range g.Edges {
+		parents[branch] = edge.Parent
+	}
+	return stack.Forest{Parents: parents}
+}
+
 // Children returns the branches whose parent is branch, sorted so every
 // rendering and every walk of the same graph produces the same order.
-func (g Graph) Children(branch string) []string {
-	children := make([]string, 0)
-	for child, edge := range g.Edges {
-		if edge.Parent == branch {
-			children = append(children, child)
-		}
-	}
-	sort.Strings(children)
-	return children
-}
+func (g Graph) Children(branch string) []string { return g.shape().Children(branch) }
 
 // Roots returns the tracked branches whose parent is not itself tracked,
 // together with any trunk that has tracked children. These are where a render
 // of the whole forest starts.
-func (g Graph) Roots() []string {
-	seen := map[string]bool{}
-	roots := make([]string, 0)
-	for _, edge := range g.Edges {
-		if g.Tracked(edge.Parent) || seen[edge.Parent] {
-			continue
-		}
-		seen[edge.Parent] = true
-		roots = append(roots, edge.Parent)
-	}
-	sort.Strings(roots)
-	return roots
-}
+func (g Graph) Roots() []string { return g.shape().Roots() }
 
 // Path returns the root-to-branch chain, inclusive of both ends. It is the
 // selection a linear GitHub projection consumes.
-func (g Graph) Path(branch string) ([]string, error) {
-	path := []string{branch}
-	seen := map[string]bool{branch: true}
-	for current := branch; ; {
-		edge, tracked := g.Edges[current]
-		if !tracked {
-			break
-		}
-		if seen[edge.Parent] {
-			return nil, fmt.Errorf("branch %q is part of a parent cycle", branch)
-		}
-		seen[edge.Parent] = true
-		path = append(path, edge.Parent)
-		current = edge.Parent
-	}
-	slices.Reverse(path)
-	return path, nil
-}
+func (g Graph) Path(branch string) ([]string, error) { return g.shape().Path(branch) }
 
 // Subtree returns branch and every descendant in a stable pre-order: a parent
 // always precedes its children and siblings come in sorted order.
-func (g Graph) Subtree(branch string) []string {
-	subtree := []string{branch}
-	for _, child := range g.Children(branch) {
-		subtree = append(subtree, g.Subtree(child)...)
-	}
-	return subtree
-}
+func (g Graph) Subtree(branch string) []string { return g.shape().Subtree(branch) }
 
 // Component returns the whole tree branch belongs to, starting from its root.
-func (g Graph) Component(branch string) ([]string, error) {
-	path, err := g.Path(branch)
-	if err != nil {
-		return nil, err
-	}
-	return g.Subtree(path[0]), nil
-}
+func (g Graph) Component(branch string) ([]string, error) { return g.shape().Component(branch) }
 
 // Track records parent for branch, returning a new graph. It refuses a branch
 // that is its own parent and any edge that would close a cycle, because a

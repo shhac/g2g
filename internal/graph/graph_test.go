@@ -250,3 +250,36 @@ func TestAdoptingAChainFromTheTipLeavesOneTrunk(t *testing.T) {
 		t.Errorf("Roots() = %s, want the trunk set to agree with the derived roots", got)
 	}
 }
+
+// Roots and Branches answer different questions and must keep doing so. Roots
+// is where a render of the forest starts, so it names the trunks the graph
+// hangs from even though nothing records an edge for them; Branches is what the
+// graph actually records. Sharing the traversal with stack.Forest must not
+// quietly merge the two — mirror reads both and would strand a stack if it did.
+func TestRootsNamesUntrackedTrunksAndBranchesDoesNot(t *testing.T) {
+	adopted := New()
+	for _, edge := range []struct{ branch, parent string }{
+		{"synthetic-a", "synthetic-trunk"},
+		{"synthetic-b", "synthetic-trunk"},
+		{"synthetic-a-one", "synthetic-a"},
+		{"synthetic-other-child", "synthetic-other"},
+	} {
+		updated, err := adopted.Track(edge.branch, Edge{Parent: edge.parent})
+		if err != nil {
+			t.Fatalf("Track(%q) error = %v", edge.branch, err)
+		}
+		adopted = updated
+	}
+
+	if got, want := strings.Join(adopted.Roots(), ","), "synthetic-other,synthetic-trunk"; got != want {
+		t.Errorf("Roots() = %q, want %q", got, want)
+	}
+	for _, trunk := range adopted.Roots() {
+		if adopted.Tracked(trunk) {
+			t.Errorf("Roots() returned %q, which the graph records an edge for", trunk)
+		}
+	}
+	if got, want := strings.Join(adopted.Branches(), ","), "synthetic-a,synthetic-a-one,synthetic-b,synthetic-other-child"; got != want {
+		t.Errorf("Branches() = %q, want %q; a trunk is not a recorded branch", got, want)
+	}
+}

@@ -65,7 +65,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		pr := native.Branches[branch]
 		node.PRNumber, node.PRURL = pr.Number, pr.URL
 		node.State, node.Severity = "aligned", severityOK
-		if marker, markerSeverity := membershipStyle(native, branch); marker != "" {
+		if marker, markerSeverity := membershipStyle(native, branch, plan.Forks()); marker != "" {
 			node.State, node.Severity = marker, markerSeverity
 		}
 		view.Nodes = append(view.Nodes, node)
@@ -112,7 +112,7 @@ func writeStatus(writer io.Writer, plan link.Plan, p Presentation) error {
 // native-stack membership in a single place. Three functions switching on the
 // same state meant its presentation was spread across three switches that had
 // to agree.
-func membershipStyle(membership githubstack.Membership, branch string) (marker string, nodeSeverity severity) {
+func membershipStyle(membership githubstack.Membership, branch string, forked bool) (marker string, nodeSeverity severity) {
 	pr := membership.Branches[branch]
 	switch membership.State {
 	case githubstack.Partial:
@@ -124,6 +124,13 @@ func membershipStyle(membership githubstack.Membership, branch string) (marker s
 			return "not linked", severityBad
 		}
 		return fmt.Sprintf("stack #%d, position %d", pr.StackNumber, pr.StackPosition), severityBad
+	}
+	// A GitHub stack is linear and a selection need not be, so where the two
+	// overlap the members are marked inside the tree. Without it the reader is
+	// shown a shape and told a stack number, and has to work out for themselves
+	// which branches the number covers.
+	if forked && pr.StackNumber != 0 {
+		return fmt.Sprintf("stack #%d · %d/%d", pr.StackNumber, pr.StackPosition, membership.StackSize), severityOK
 	}
 	return "", severityNeutral
 }

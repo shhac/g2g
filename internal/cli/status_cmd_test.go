@@ -212,3 +212,58 @@ func lookup(edges map[string]string) func(string) (string, bool) {
 		return parent, ok && parent != ""
 	}
 }
+
+// A GitHub stack is linear and a selection need not be. Where they overlap the
+// members are marked inside the tree, so the reader can see which part of the
+// shape the stack number covers rather than being shown a shape and a number
+// and left to work out the relationship.
+func TestStatusMarksTheNativeStackInsideAForkedTree(t *testing.T) {
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
+		Target: "synthetic-trunk", Base: "synthetic-trunk", Scope: stack.ScopeStack, Source: stack.SourceGraphite,
+		Branches: []string{"synthetic-a", "synthetic-a-one", "synthetic-b"},
+		Parents: map[string]string{
+			"synthetic-a":     "synthetic-trunk",
+			"synthetic-a-one": "synthetic-a",
+			"synthetic-b":     "synthetic-trunk",
+		},
+	}, PullRequests: []githubstack.PullRequest{
+		{Head: "synthetic-a", Number: 11, State: "OPEN", Base: "synthetic-trunk", StackNumber: 7, StackSize: 2, StackPosition: 1},
+		{Head: "synthetic-a-one", Number: 12, State: "OPEN", Base: "synthetic-a", StackNumber: 7, StackSize: 2, StackPosition: 2},
+		{Head: "synthetic-b", Number: 13, State: "OPEN", Base: "synthetic-trunk"},
+	}}}
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{"stack #7 · 1/2", "stack #7 · 2/2", "├─", "└─"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in the forked status:\n%s", want, got)
+		}
+	}
+	// The branch outside the native stack must not claim membership in it.
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "synthetic-b") && strings.Contains(line, "stack #7") {
+			t.Errorf("a branch outside the native stack was marked as in it: %q", line)
+		}
+	}
+}
+
+// A linear selection keeps the compact summary it always had: the whole path is
+// the stack, so marking every node with the same number says nothing.
+func TestStatusLeavesALinearSelectionUnmarked(t *testing.T) {
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
+		Target: "synthetic-top", Base: "synthetic-trunk", Scope: stack.ScopePath,
+		Branches: []string{"synthetic-lower", "synthetic-top"},
+	}, PullRequests: []githubstack.PullRequest{
+		{Head: "synthetic-lower", Number: 11, State: "OPEN", StackNumber: 7, StackSize: 2, StackPosition: 1},
+		{Head: "synthetic-top", Number: 12, State: "OPEN", StackNumber: 7, StackSize: 2, StackPosition: 2},
+	}}}
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "stack #7 · 1/2") {
+		t.Errorf("a linear selection repeated the stack number per node:\n%s", out.String())
+	}
+}

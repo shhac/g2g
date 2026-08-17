@@ -19,10 +19,6 @@ type Git interface {
 	PushAtomic(context.Context, string, []localgit.Lease) error
 }
 
-type Graphite interface {
-	stack.Graphite
-}
-
 type Service struct {
 	Git Git
 	// Selector supplies the ordered path, from whichever source describes the

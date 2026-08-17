@@ -72,7 +72,7 @@ func blockedReason(plan link.Plan) string {
 		return "every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
 	}
 	if plan.SubmitRepairable() {
-		return submitAdvice(plan) + " Run g2g submit to create " + object(len(plan.Issues)) + "."
+		return submitAdvice(plan) + " Run g2g submit to create " + pick(len(plan.Issues), "it", "them") + "."
 	}
 	return "resolve every unresolved GitHub PR mapping first."
 }
@@ -88,27 +88,12 @@ func submitAdvice(plan link.Plan) string {
 	}
 	switch {
 	case len(closed) == 0:
-		return branchList(missing) + has(missing) + " no pull request."
+		return branchList(missing) + pick(len(missing), " has", " have") + " no pull request."
 	case len(missing) == 0:
 		return branchList(closed) + " had its pull request closed."
 	default:
-		return branchList(missing) + has(missing) + " no pull request, and " + branchList(closed) + " had one closed."
+		return branchList(missing) + pick(len(missing), " has", " have") + " no pull request, and " + branchList(closed) + " had one closed."
 	}
-}
-
-// object keeps the closing sentence agreeing with the subject before it.
-func object(count int) string {
-	if count == 1 {
-		return "it"
-	}
-	return "them"
-}
-
-func has(branches []string) string {
-	if len(branches) == 1 {
-		return " has"
-	}
-	return " have"
 }
 
 // branchList renders one or more branch names as a readable subject.

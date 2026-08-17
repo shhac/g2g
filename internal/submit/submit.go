@@ -22,8 +22,6 @@ type Git interface {
 	PushAtomic(context.Context, string, []localgit.Lease) error
 }
 
-type Graphite interface{ stack.Graphite }
-
 type GitHub interface {
 	stack.GitHub
 	Create(context.Context, string, string, string, string, bool, []string) error

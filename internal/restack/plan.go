@@ -211,11 +211,8 @@ func (p Plan) Absorbable() bool {
 //
 // The comparison is against where the parent ends up, not where it is now: in
 // a stack every branch above the bottom one is also being rewritten, so its
-// current tip says nothing about the result.
-// Emptied lists branches the rewrite leaves with no commits of their own,
-// because everything they carried is already in their new base. It is known
-// from the plan rather than inferred from a preview, so it is reported the
-// same way on every Git.
+// current tip says nothing about the result. It is known from the plan rather
+// than inferred from a preview, so it reads the same way on every Git.
 func (p Plan) Emptied() []string {
 	emptied := make([]string, 0)
 	for _, step := range p.collapsing() {

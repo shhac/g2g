@@ -158,6 +158,16 @@ func (f *fakeGit) UpdateBranch(_ context.Context, branch, object string) error {
 		f.restored = map[string]string{}
 	}
 	f.restored[branch] = object
+	// Model what moving a ref does to the repository, not just that it was
+	// asked for, exactly as Replay and Rebase do: the branch now points at the
+	// object it was moved to, and a later plan measures against that.
+	resolved := object
+	if listed, ok := f.objects[object]; ok {
+		resolved = listed
+	}
+	f.objects[branch] = resolved
+	f.ancestors[branch] = append(f.ancestors[branch], resolved)
+	delete(f.collapses, branch)
 	return nil
 }
 
@@ -867,4 +877,40 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// A branch that becomes collapsible while a resume is in flight has to be
+// moved, not driven through an engine that skips it.
+//
+// finish once drove the engine without collapsing first, so such a branch was
+// never moved, the next pass computed an identical plan, and the loop hit its
+// own non-convergence guard — a hard failure for a case the design has an
+// answer to. Apply had always collapsed first; only the resumable path had
+// half the sequence.
+func TestResumeCollapsesBranchesWithNothingLeftToContribute(t *testing.T) {
+	git := chainGitMidResume()
+	git.previewClean = false
+	git.collapses = map[string]bool{"synthetic-c": true}
+	git.inProgress = true
+	service, _, journal := newService(git, chainStack())
+	journal.record = Record{
+		Branch:   "synthetic-c",
+		Scope:    string(graph.ScopeGraph),
+		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
+		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
+	}
+	journal.present = true
+
+	if err := service.Continue(context.Background()); err != nil {
+		t.Fatalf("Continue() error = %v", err)
+	}
+
+	// Moved rather than replayed: the engine never sees a commit already in
+	// the base.
+	if git.restored["synthetic-c"] == "" {
+		t.Errorf("synthetic-c was not moved to its base; engine calls were %v", git.rebases)
+	}
+	if journal.cleared != 1 {
+		t.Errorf("journal cleared %d times, want once", journal.cleared)
+	}
 }

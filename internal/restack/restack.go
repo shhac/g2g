@@ -48,19 +48,34 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Absorb {
 		return s.absorb(ctx, plan)
 	}
-	// Branches with nothing left to contribute move first: their children are
-	// planned against where they land, and neither engine ever sees a commit
-	// that is already upstream.
-	if err := s.collapse(ctx, plan); err != nil {
+	needed, err := s.settleCollapses(ctx, plan)
+	if err != nil {
 		return err
 	}
-	if len(plan.rewriting()) == 0 {
+	if !needed {
 		return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
 	}
 	if plan.Clean {
 		return s.replay(ctx, plan)
 	}
 	return s.rebase(ctx, plan)
+}
+
+// settleCollapses moves the branches with nothing left to contribute and
+// reports whether any branch still needs an engine.
+//
+// Branches that collapse move first so their children are planned against where
+// they land, and neither engine ever sees a commit that is already upstream.
+// Apply and finish both have to do this, and finish once did only half of it:
+// it drove the engine without collapsing first, so a branch that became
+// collapsible while a resume was in flight was never moved, the next pass
+// computed an identical plan, and the loop hit its own non-convergence guard
+// and failed for a case the design has an answer to.
+func (s Service) settleCollapses(ctx context.Context, plan Plan) (bool, error) {
+	if err := s.collapse(ctx, plan); err != nil {
+		return false, err
+	}
+	return len(plan.rewriting()) != 0, nil
 }
 
 // verify checks that the engine did what the plan said, rather than reporting
@@ -316,6 +331,15 @@ func (s Service) finish(ctx context.Context, record Record) error {
 		// more passes than there are branches means it is not converging.
 		if pass > len(plan.Discovery.Branches) {
 			return fmt.Errorf("restack did not settle after %d passes · run g2g restack to see the current state", pass)
+		}
+		needed, err := s.settleCollapses(ctx, plan)
+		if err != nil {
+			return err
+		}
+		// Collapsing was the whole of this pass's work: the next one re-plans
+		// against where those branches landed and finds nothing left.
+		if !needed {
+			continue
 		}
 		if plan.Clean {
 			if err := s.replay(ctx, plan); err != nil {

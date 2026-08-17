@@ -25,9 +25,14 @@ type Git interface {
 	LocalBranches(context.Context) ([]string, error)
 }
 
-// Graphite discovers a declared path without checking out a branch.
+// Graphite discovers declared structure without checking out a branch.
+//
+// Two reads rather than one, because the questions genuinely differ: a linear
+// scope wants the one ancestry a projection consumes, and a forked scope wants
+// the shape, which no ordered path can express.
 type Graphite interface {
 	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
+	ReadForest(context.Context) (graphite.Forest, error)
 }
 
 // GitHub reads the pull requests on a discovered path. Inspect is read-only.
@@ -53,6 +58,8 @@ func (s Snapshot) Equal(other Snapshot) bool {
 		s.Source == other.Source &&
 		s.Base == other.Base &&
 		s.BaseSource == other.BaseSource &&
+		s.Scope == other.Scope &&
+		maps.Equal(s.Parents, other.Parents) &&
 		slices.Equal(s.GraphitePath, other.GraphitePath) &&
 		slices.Equal(s.Branches, other.Branches)
 }
@@ -91,9 +98,15 @@ func Discover(ctx context.Context, selector PathSelector, github GitHub, selecti
 
 // Selection captures every no-checkout path selector shared by stack commands.
 type Selection struct {
-	Branch  string
-	Trunk   string
+	Branch string
+	Trunk  string
+	// NoStack is the original binary form of Scope, kept because it is a
+	// published flag. It means ScopeBranch and nothing else.
 	NoStack bool
+	// Scope is how much of the structure to select. Empty means the default,
+	// which is the linear path every projection consumes, so a command that
+	// never sets it behaves exactly as it did before scopes existed.
+	Scope Scope
 	// From pins which source answers, for this invocation only. Empty means
 	// precedence decides, which is the normal case. Nothing is recorded: once
 	// a branch is in the g2g store there is otherwise no way to ask Graphite
@@ -113,9 +126,22 @@ type Snapshot struct {
 	Base         string
 	BaseSource   string
 	Branches     []string
+	// Parents carries the shape that Branches alone cannot express, restricted
+	// to the selection: a branch whose parent lies outside it is absent, which
+	// is how a renderer knows the selection's own roots.
+	//
+	// A linear selection leaves this nil. Every consumer that predates forked
+	// selection reads Branches and is unaffected.
+	Parents map[string]string
+	// Scope is what was actually selected, so a renderer can say how much of
+	// the structure it is showing.
+	Scope Scope
 	// Source names where the structure came from, so a preview can say.
 	Source Source
 }
+
+// Forked reports whether the selection is a shape rather than a path.
+func (s Snapshot) Forked() bool { return len(s.Parents) != 0 }
 
 // Resolve selects a local Graphite path without checkout. command names the
 // consumer's action in an option-like branch safety error.
@@ -138,7 +164,12 @@ func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Se
 		return Snapshot{}, fmt.Errorf("selected branch %q is not a local branch", target)
 	}
 
-	declared, err := graphiteClient.DiscoverStack(ctx, target, !selection.NoStack)
+	scope := selection.scope()
+	if !scope.Linear() {
+		return resolveForked(ctx, graphiteClient, target, source, scope, local, command)
+	}
+
+	declared, err := graphiteClient.DiscoverStack(ctx, target, scope != ScopeBranch)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -156,6 +187,60 @@ func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Se
 		Base:         base,
 		BaseSource:   baseSource,
 		Branches:     branches,
+		Scope:        scope,
+	}, nil
+}
+
+// scope reconciles the scope flag with the older boolean. --no-stack predates
+// scopes and means exactly ScopeBranch, so it is translated rather than
+// consulted separately; nothing downstream should have to know both exist.
+func (s Selection) scope() Scope {
+	if s.Scope != "" {
+		return s.Scope
+	}
+	if s.NoStack {
+		return ScopeBranch
+	}
+	return ScopePath
+}
+
+// resolveForked answers a scope that can fork, from Graphite's whole declared
+// forest rather than one walk down it.
+//
+// The base here is the selection's own root, not a declared trunk. A subtree
+// taken from halfway up a stack legitimately hangs from a branch that is nobody's
+// trunk, and demanding a declared trunk would refuse exactly the selection the
+// user asked for.
+func resolveForked(ctx context.Context, graphiteClient Graphite, target, source string, scope Scope, local map[string]bool, command string) (Snapshot, error) {
+	declared, err := graphiteClient.ReadForest(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if _, known := declared.Parents[target]; !known {
+		return Snapshot{}, fmt.Errorf("Graphite does not track local branch %q", target)
+	}
+	forest := Forest{Parents: declared.Parents}
+	selected, err := forest.Select(target, scope)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := validateBranchesLocalAndSafe(local, selected, command); err != nil {
+		return Snapshot{}, err
+	}
+	ancestry, err := forest.Path(target)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	base, branches := selected[0], append([]string(nil), selected[1:]...)
+	return Snapshot{
+		Target:       target,
+		TargetSource: source,
+		GraphitePath: ancestry,
+		Base:         base,
+		BaseSource:   "selection root",
+		Branches:     branches,
+		Parents:      forest.Restrict(selected),
+		Scope:        scope,
 	}, nil
 }
 
@@ -179,10 +264,17 @@ func branchSet(branches []string) map[string]bool {
 }
 
 func validatePathLocalAndSafe(local map[string]bool, path []string, command string) error {
+	// A path needs a branch above its base to be a link base at all. A forked
+	// selection has no such requirement: one branch with no descendants is a
+	// legitimate subtree, and refusing it here would refuse the honest answer.
 	if len(path) < 2 {
 		return fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
 	}
-	for _, branch := range path {
+	return validateBranchesLocalAndSafe(local, path, command)
+}
+
+func validateBranchesLocalAndSafe(local map[string]bool, branches []string, command string) error {
+	for _, branch := range branches {
 		if !local[branch] {
 			return fmt.Errorf("Graphite ancestry branch %q is not a local branch", branch)
 		}

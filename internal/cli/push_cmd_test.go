@@ -224,3 +224,7 @@ func (f cliPushGraphite) DiscoverStack(_ context.Context, branch string, stack b
 func (cliPushGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, nil
 }
+
+func (f cliPushGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}

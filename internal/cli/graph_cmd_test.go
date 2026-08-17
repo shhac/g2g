@@ -321,3 +321,47 @@ func TestGraphReportsBranchesWithNoTrackedParent(t *testing.T) {
 		t.Errorf("output does not report the orphan:\n%s", out)
 	}
 }
+
+// A command that rewrites history or projects onto GitHub must refuse a scope
+// it never offered. The services deliberately parse the wider read set, so this
+// gate is the only thing standing between "restack this stack" and "restack
+// every root in the repository".
+func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		accepted []graph.Scope
+		scope    string
+		wantErr  bool
+	}{
+		{"replay refuses forest", graph.Scopes, string(graph.ScopeForest), true},
+		{"replay allows graph", graph.Scopes, string(graph.ScopeGraph), false},
+		{"display allows forest", graph.ReadScopes, string(graph.ScopeForest), false},
+		{"removal refuses graph", []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, string(graph.ScopeGraph), true},
+		{"an empty scope is the default", graph.Scopes, "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			options := graphOptions{scope: test.scope, accepted: test.accepted}
+			err := options.validateScope()
+			if test.wantErr && err == nil {
+				t.Errorf("validateScope() error = nil for scope %q", test.scope)
+			}
+			if !test.wantErr && err != nil {
+				t.Errorf("validateScope() error = %v for scope %q", err, test.scope)
+			}
+		})
+	}
+}
+
+// Every mutating command registers the narrow set. A future command that wires
+// ReadScopes into something that writes should fail here rather than in a
+// repository.
+func TestOnlyReadOnlyCommandsOfferForest(t *testing.T) {
+	for _, scope := range graph.Scopes {
+		if scope == graph.ScopeForest {
+			t.Fatal("graph.Scopes contains forest; it is the set handed to commands that mutate")
+		}
+	}
+	if len(graph.ReadScopes) != len(graph.Scopes)+1 {
+		t.Errorf("ReadScopes = %v, want exactly Scopes plus forest", graph.ReadScopes)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // graphOptions owns the selection flags the graph commands share. Scope is a
@@ -14,10 +15,23 @@ import (
 type graphOptions struct {
 	branch string
 	scope  string
+	// accepted is the scope set this command registered. It is kept so the
+	// refusal can name what this command takes, rather than what some other
+	// command would have allowed: forest is a legitimate value to offer a
+	// read-only view and a dangerous one to hand a command that rewrites.
+	accepted []graph.Scope
 }
 
 func (o graphOptions) Selection() graph.Selection {
 	return graph.Selection{Branch: o.branch, Scope: graph.Scope(o.scope)}
+}
+
+// validateScope rejects a scope this command does not offer. Cobra validates a
+// flag's syntax, never its vocabulary, so without this a command silently
+// accepts any scope the service happens to parse.
+func (o graphOptions) validateScope() error {
+	_, err := stack.ParseScope(o.scope, o.accepted)
+	return err
 }
 
 // registerBranch adds the selector every graph command shares.
@@ -30,6 +44,7 @@ func (o *graphOptions) registerBranch(cmd *cobra.Command, service graph.Service)
 // separate call rather than an empty argument, because a command without a
 // scope should say so by not asking for one.
 func (o *graphOptions) registerScope(cmd *cobra.Command, scopes []graph.Scope, usage string) {
+	o.accepted = scopes
 	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
 	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(staticCompletions(scopes)))
 }
@@ -39,6 +54,9 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 	cmd := &cobra.Command{Use: "graph", GroupID: groupStructure, Short: "Inspect the branch graph g2g owns, independently of Graphite (read-only)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validateScope(); err != nil {
+			return err
+		}
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "graph", "read_only", selection.branch, ""))
 		defer cancel()
 		discovery, err := service.Discover(ctx, selection.Selection())
@@ -48,7 +66,7 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 		return writeGraphView(cmd.OutOrStdout(), graphStatusView(discovery), discovery, presentation)
 	}
 	selection.registerBranch(cmd, service)
-	selection.registerScope(cmd, graph.Scopes, "how much of the graph to show: branch, path, subtree, or graph")
+	selection.registerScope(cmd, graph.ReadScopes, "how much to show: branch, path, subtree, graph (the tree this branch is in), or forest (every stack)")
 	return cmd
 }
 

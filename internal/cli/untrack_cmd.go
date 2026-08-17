@@ -15,6 +15,9 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 	cmd := &cobra.Command{Use: "untrack", GroupID: groupStructure, Short: "Remove a branch from the g2g-owned graph (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validateScope(); err != nil {
+			return err
+		}
 		ctx := commandContext(cmd.Context(), cmd, "untrack", applyMode(apply), selection.branch, "")
 		flow := applyFlow[graph.UntrackPlan]{
 			plan: func(ctx context.Context) (graph.UntrackPlan, error) {

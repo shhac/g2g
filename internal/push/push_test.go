@@ -280,3 +280,11 @@ func TestUnpushedBranchesLeaseTheAbsentValue(t *testing.T) {
 func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSelector {
 	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }
+
+func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}
+
+func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}

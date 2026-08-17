@@ -368,7 +368,7 @@ func TestAssessedIssuesCarryTheirKind(t *testing.T) {
 	branches := []string{"wrong-base", "closed-only", "ambiguous", "missing"}
 
 	kinds := map[string]IssueKind{}
-	for _, issue := range assessPRs(prs, "main", branches) {
+	for _, issue := range assessPRs(prs, "main", branches, nil) {
 		kinds[issue.Branch] = issue.Kind
 	}
 
@@ -415,4 +415,12 @@ func applyPlan(t *testing.T, service Service, selection Selection, preview Plan)
 // must not have changed.
 func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSelector {
 	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
+}
+
+func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}
+
+func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
 }

@@ -181,3 +181,7 @@ func (g refusingGraphite) DiscoverStack(context.Context, string, bool) (graphite
 	}
 	return graphite.Stack{}, errors.New("Graphite should not have been consulted")
 }
+
+func (g refusingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, errors.New("synthetic Graphite refusal")
+}

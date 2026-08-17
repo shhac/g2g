@@ -144,7 +144,7 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches)
+	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches, plan.Parents)
 	if len(plan.Issues) != 0 {
 		diagnostic.Event(ctx, "link.plan", diagnostic.Field{Key: "decision", Value: "blocked"}, diagnostic.Field{Key: "reasons", Value: issueSummary(plan.Issues)})
 	} else if plan.NothingToLink() {
@@ -211,9 +211,9 @@ func (left Plan) Equal(right Plan) bool {
 	return left.Discovery.Equal(right.Discovery) && slices.Equal(left.Issues, right.Issues)
 }
 
-func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string) []Issue {
+func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string, parents map[string]string) []Issue {
 	issues := make([]Issue, 0)
-	for step := range githubstack.Along(baseBranch, branches, prs) {
+	for step := range steps(prs, baseBranch, branches, parents) {
 		// link can only project what exists, so a missing pull request blocks
 		// here where it would be ordinary for submit.
 		switch step.Classify() {
@@ -233,4 +233,14 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		}
 	}
 	return issues
+}
+
+// steps walks the selection the way its shape demands. A path rolls its base;
+// a forked selection takes each branch's base from its recorded parent, because
+// "the branch before this one" stops meaning anything once there are siblings.
+func steps(prs []githubstack.PullRequest, baseBranch string, branches []string, parents map[string]string) func(func(githubstack.PathStep) bool) {
+	if len(parents) != 0 {
+		return githubstack.Across(parents, branches, prs)
+	}
+	return githubstack.Along(baseBranch, branches, prs)
 }

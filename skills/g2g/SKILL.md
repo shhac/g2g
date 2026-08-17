@@ -139,10 +139,19 @@ description: |
   relative to the working directory and silently wrong from a subdirectory.
   Writes are temp-file plus rename. `storeSchemaVersion` is separate from the
   `--json` `schemaVersion`; an unrecognised store version fails closed.
-- `--scope branch|path|subtree|graph` is graph selection, not projection
-  policy. Displaying a subtree does not imply a subtree can be linked on
-  GitHub. `--no-stack` on the Graphite-backed commands is the same axis as
-  `--scope branch`; unifying them is a deliberate, separate change.
+- `--scope branch|path|subtree|graph` is selection, not projection policy.
+  Displaying a subtree does not imply a subtree can be linked on GitHub. The
+  type lives in `stack` because both records answer it now, and `--no-stack`
+  is exactly `--scope branch` — translated once, so nothing downstream knows
+  both spellings exist.
+- **A command must refuse any scope it did not offer.** The services parse the
+  wider read set, which is right for a read-only discovery and would otherwise
+  let a command that rewrites history replay another root's work. Each command
+  registers its accepted set and gates on it; `graph` and `status` are the only
+  ones offering `forest`, and only `graph` can, since nothing projects a forest.
+- `graph` is the tree the selected branch is in; `forest` is every root. Do not
+  redefine `graph` to mean everything — `sync` and `restack` already accept it,
+  and widening it silently widens them.
 
 ## Source resolution
 

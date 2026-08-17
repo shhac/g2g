@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // Service reads and adopts g2g-owned graphs. It needs Git and a store, and
@@ -107,7 +108,10 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 	if err != nil {
 		return Discovery{}, err
 	}
-	scope, err := ParseScope(string(selection.Scope))
+	// Discover never writes, so it parses the read set. Which scopes a command
+	// offers is that command's own gate: forest is safe to display and unsafe to
+	// hand something that rewrites.
+	scope, err := stack.ParseScope(string(selection.Scope), stack.ReadScopes)
 	if err != nil {
 		return Discovery{}, err
 	}

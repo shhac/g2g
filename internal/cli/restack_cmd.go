@@ -57,6 +57,12 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 // validate rejects the combinations that cannot mean anything, rather than
 // silently preferring one of them.
 func (o restackOptions) validate() error {
+	// restack rewrites history, so it must refuse any scope it did not offer.
+	// The service parses the wider read set, which is correct for a read-only
+	// discovery and would otherwise let this command replay another root's work.
+	if err := o.selector.validateScope(); err != nil {
+		return err
+	}
 	chosen := 0
 	for _, set := range []bool{o.resume, o.abort, o.skip} {
 		if set {

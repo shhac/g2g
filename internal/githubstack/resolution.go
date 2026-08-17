@@ -70,13 +70,39 @@ type PathStep struct {
 // fourth caller drift into scanning for the first open pull request instead of
 // going through the open-is-identity rule.
 func Along(base string, branches []string, prs []PullRequest) func(func(PathStep) bool) {
+	return Across(rollingParents(base, branches), branches, prs)
+}
+
+// rollingParents is what "the base rolls" means, written down: on a path, a
+// branch's parent is simply the one before it.
+func rollingParents(base string, branches []string) map[string]string {
+	parents := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		parents[branch] = base
+		base = branch
+	}
+	return parents
+}
+
+// Across yields each branch with the base its recorded parent implies, for a
+// selection that need not be a path.
+//
+// A fork has no "branch before this one", so the rolling base that Along
+// derives is not merely inconvenient there, it is wrong: it would compare a
+// pull request against whichever sibling happened to sort first. Passing the
+// parent edges explicitly is the only thing that makes the question meaningful
+// once a selection can fork, and Along is now the special case where those
+// edges form a chain.
+//
+// A branch whose parent is outside the selection yields an empty expected base.
+// It is a root of the selection, and a root is not assessed against anything.
+func Across(parents map[string]string, branches []string, prs []PullRequest) func(func(PathStep) bool) {
 	resolutions := ResolveHeads(prs)
 	return func(yield func(PathStep) bool) {
 		for _, branch := range branches {
-			if !yield(PathStep{Branch: branch, ExpectedBase: base, Resolution: resolutions[branch]}) {
+			if !yield(PathStep{Branch: branch, ExpectedBase: parents[branch], Resolution: resolutions[branch]}) {
 				return
 			}
-			base = branch
 		}
 	}
 }

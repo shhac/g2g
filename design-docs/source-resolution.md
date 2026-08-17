@@ -149,6 +149,60 @@ Prune is graph-level by default. Deleting a local branch is a separate,
 explicit opt-in: it is the one step here that destroys something, and this tool
 does not do that implicitly.
 
+## Scope: how much, asked of either record
+
+Selecting a stack asked two different questions through one boolean. `--no-stack`
+meant "just this branch"; its absence meant "extend down a unique child chain to
+the tip". A branch with two children has no unique chain, so the second question
+had no answer and the command refused — including on a trunk, where refusing is
+least useful, because a trunk is exactly where several stacks meet.
+
+The refusal was correct for what it protected. A GitHub native stack is linear,
+so anything that links, submits, pushes or rewrites must have one ordered path.
+It was wrong for *looking*, which has no such constraint and was only ever
+sharing the machinery.
+
+```text
+branch    the selected branch alone
+path      root to selected branch          ← default; what a projection consumes
+subtree   the selected branch and below
+graph     the tree it belongs to
+forest    every root, reachable or not
+```
+
+Three properties keep this from becoming a way to widen a mutation:
+
+- **A command refuses any scope it did not offer.** The services parse the read
+  set, because discovery is read-only; the command's own registered set is the
+  gate. Without it, extending the read set silently let `restack` accept
+  `forest` — caught by running it, not by reading it.
+- **`graph` is one tree, not everything.** `sync` and `restack` already accept
+  it. Redefining it to span roots would widen both without either changing.
+- **`--no-stack` is translated, not consulted.** It means `ScopeBranch` at the
+  edge, so nothing downstream knows two spellings exist.
+
+The scope type lives in `stack` rather than `graph` because both records answer
+it now, and a scope asked of one must mean what it means asked of the other. The
+traversal lives there once for the same reason: two implementations of "subtree"
+agree until the day they do not.
+
+### A fork changes what "the base" means
+
+On a path, a branch's expected base is the branch before it. That is what
+`Along` encodes, and it is not merely inconvenient on a fork — it is wrong,
+because it would compare a pull request against whichever sibling sorted first.
+`Across` takes each branch's base from its recorded parent, and `Along` is now
+the special case where those parents form a chain.
+
+### One branch, one place
+
+Resolution is per branch and the first source that answers wins, so a branch has
+exactly one parent and appears exactly once. That is a property of *building the
+forest by resolving each branch*, not a free one: merging the two records' edge
+sets would give a branch two parents and put it in two places. The same branch
+can still sit differently under `--from g2g` and `--from graphite`; that is
+divergence between views, and reporting it is what the source label is for.
+
 ## After a merge, a disagreeing base is not drift
 
 Because GitHub retargets a child when its base branch is deleted on merge, a

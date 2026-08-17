@@ -164,8 +164,34 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 
 func graphStatusView(discovery graph.Discovery) stackView {
 	view := graphView(discovery, "graph")
-	if !discovery.Graph.Tracked(discovery.Target) {
+	// A trunk has no recorded parent because it is a root, which the node above
+	// already says. Telling someone standing on it to adopt one contradicts the
+	// line they just read and names a command that would refuse.
+	if !discovery.Graph.Tracked(discovery.Target) && !discovery.Graph.IsTrunk(discovery.Target) {
 		view = view.note("This branch has no recorded parent · run g2g track to adopt one.", severityNeutral)
 	}
+	if hidden := hiddenDescendants(discovery); hidden != 0 {
+		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope forest for every stack.", count(hidden, "branch", "branches")), severityNeutral)
+	}
 	return driftNotes(view, discovery)
+}
+
+// hiddenDescendants counts what the selected scope left out below the target.
+// Standing on a trunk with the default scope shows one node and no hint that
+// nine stacks hang off it, which reads as an empty graph rather than a narrow
+// question.
+func hiddenDescendants(discovery graph.Discovery) int {
+	selected := make(map[string]bool, len(discovery.Branches))
+	for _, branch := range discovery.Branches {
+		selected[branch] = true
+	}
+	hidden := 0
+	for _, branch := range discovery.Graph.Subtree(discovery.Target) {
+		// Subtree includes the target, which is never "below" itself. Counting
+		// it made an unrecorded branch claim one hidden descendant.
+		if branch != discovery.Target && !selected[branch] {
+			hidden++
+		}
+	}
+	return hidden
 }

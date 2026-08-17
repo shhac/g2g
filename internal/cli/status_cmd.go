@@ -15,6 +15,9 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 	cmd := &cobra.Command{Use: "status", GroupID: groupPublish, Short: "Inspect a stack, its pull requests, and native GitHub membership (read-only)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validateScope(); err != nil {
+			return err
+		}
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, selection.trunk))
 		defer cancel()
 		plan, err := service.Plan(ctx, selection.Selection())
@@ -24,6 +27,10 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
 	}
 	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
+	// status is read-only, so it is the one stack command that can show a shape
+	// rather than a path. It stops short of forest: a repository's other stacks
+	// are not what someone triaging this one is asking about.
+	selection.registerScope(cmd, stack.Scopes, "how much to show: branch, path, subtree, or graph (the tree this branch is in)")
 	return cmd
 }
 
@@ -38,6 +45,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	}
 	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
 
+	depths := stackDepths(plan.Snapshot)
 	view := stackView{
 		Operation:    operation,
 		Target:       plan.Target,
@@ -45,7 +53,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
 	}
 	for _, branch := range plan.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Target}
+		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
 		if reason := issues[branch]; reason != "" {
 			node.State, node.Severity = "blocked: "+reason, severityBad
 			view.Nodes = append(view.Nodes, node)
@@ -62,6 +70,28 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	return view, native
 }
 
+// stackDepths is the indentation of each branch in a forked selection, keyed by
+// branch. A linear selection returns nothing, so its rendering is untouched: a
+// chain reads better as the flat list every other command shows than as a
+// staircase that pushes each branch right for no information.
+//
+// The selection is ordered parent-before-child, so one pass is enough.
+func stackDepths(snapshot stack.Snapshot) map[string]int {
+	if !snapshot.Forked() {
+		return nil
+	}
+	depths := make(map[string]int, len(snapshot.Branches))
+	for _, branch := range snapshot.Branches {
+		parent, within := snapshot.Parents[branch]
+		if !within || parent == snapshot.Base {
+			depths[branch] = 1
+			continue
+		}
+		depths[branch] = depths[parent] + 1
+	}
+	return depths
+}
+
 // statusAdvice reuses the blocked-reason logic so triage and the command that
 // fixes it never disagree, phrased for a read-only report.
 func statusAdvice(plan link.Plan) string {
@@ -71,9 +101,26 @@ func statusAdvice(plan link.Plan) string {
 func statusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "status")
 	if len(plan.Issues) != 0 {
-		return view.block(statusAdvice(plan))
+		return structureNote(view.block(statusAdvice(plan)), plan.Snapshot)
 	}
-	return view.note(nativeMessage(native), membershipNoteSeverity(native.State))
+	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)
+}
+
+// structureNote says which record described this stack, and how much of it is
+// on screen.
+//
+// Structure is resolved per branch and never stored, so which record answered
+// is a property of this invocation rather than of the repository. Leaving it
+// unsaid was tolerable while Graphite was the only possible answer; it stops
+// being tolerable the moment two records can disagree and the reader cannot
+// tell which one they are looking at.
+func structureNote(view stackView, snapshot stack.Snapshot) stackView {
+	source := string(snapshot.Source)
+	if source == "" {
+		source = "unresolved"
+	}
+	shown := len(snapshot.Branches) + 1
+	return view.note(fmt.Sprintf("Structure from %s · scope %s · %s", source, snapshot.Scope, count(shown, "branch", "branches")), severityNeutral)
 }
 
 func writeStatus(writer io.Writer, plan link.Plan, p Presentation) error {

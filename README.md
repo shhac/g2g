@@ -177,10 +177,11 @@ g2g track
 g2g track --branch feature/login --parent feature/auth
 g2g track --branch feature/login --parent feature/auth --apply
 
-# Inspect the graph. Scope widens from one branch to the whole tree.
+# Inspect the graph. Scope widens from one branch to every stack.
 g2g graph                                    # root to the selected branch
 g2g graph --scope subtree                    # the branch and its descendants
 g2g graph --branch feature/login --scope graph   # the whole tree it belongs to
+g2g graph --scope forest                     # every root, including stacks this branch cannot reach
 
 # Remove edges. --scope subtree removes descendants too.
 g2g untrack --branch feature/auth --apply
@@ -548,6 +549,22 @@ to its tip. They do not checkout a branch, include no siblings, and fail rather
 than guessing when a descendant fork makes the extension ambiguous. `--no-stack`
 is the explicit safe opt-out: it stops at the selected branch and uses only its
 declared trunk-to-selected path.
+
+That ambiguity is a property of *projection*, not of looking. A GitHub native
+stack is linear, so a command that links, submits, pushes or rewrites has to
+refuse a fork. Reading does not:
+
+```sh
+g2g status --scope subtree   # the branch and everything under it, forks and all
+g2g status --scope graph     # the whole tree, from its root
+```
+
+Standing on a trunk with nine stacks hanging off it, the default scope is not
+wrong so much as narrow — it answers "which path am I on" when the question was
+"what is here". `status` reports each branch against **its own parent** rather
+than against whichever sibling happens to sort first, and says which record
+described the structure, because that is resolved per branch and per invocation
+rather than stored.
 
 ## Structure
 

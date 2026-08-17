@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,10 +18,44 @@ type stackOptions struct {
 	trunk   string
 	noStack bool
 	from    string
+	scope   string
+	// accepted is the scope set this command registered, empty for a command
+	// that never offered one. Only read-only commands take a scope that can
+	// fork: a forest cannot be projected onto a GitHub native stack, and
+	// widening what is shown must not widen what is done.
+	accepted []stack.Scope
 }
 
 func (o stackOptions) Selection() stack.Selection {
-	return stack.Selection{Branch: o.branch, Trunk: o.trunk, NoStack: o.noStack, From: stack.Source(o.from)}
+	return stack.Selection{Branch: o.branch, Trunk: o.trunk, NoStack: o.noStack, Scope: stack.Scope(o.scope), From: stack.Source(o.from)}
+}
+
+// registerScope adds the scope flag to a command that accepts one. It is a
+// separate call from register, so a command without a scope says so by not
+// asking for one.
+func (o *stackOptions) registerScope(cmd *cobra.Command, scopes []stack.Scope, usage string) {
+	o.accepted = scopes
+	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
+	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(func(context.Context, string) ([]string, error) {
+		values := make([]string, 0, len(scopes))
+		for _, scope := range scopes {
+			values = append(values, string(scope))
+		}
+		return values, nil
+	}))
+}
+
+// validateScope rejects a scope this command does not offer, and rejects
+// combining it with the older boolean rather than silently preferring one.
+func (o stackOptions) validateScope() error {
+	if o.scope == "" {
+		return nil
+	}
+	if o.noStack {
+		return fmt.Errorf("--scope and --no-stack both select how much to show; --no-stack means --scope %s", stack.ScopeBranch)
+	}
+	_, err := stack.ParseScope(o.scope, o.accepted)
+	return err
 }
 
 func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completions, branchUsage, trunkUsage string) {

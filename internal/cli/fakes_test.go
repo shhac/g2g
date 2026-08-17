@@ -195,3 +195,11 @@ func (f *cliGitHubMissing) Link(context.Context, string, []string) error { f.lin
 func (f *cliGitHubPRs) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
 	return f.prs, nil
 }
+
+func (f cliGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}
+
+func (f cliSingleBranchGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{}, nil
+}

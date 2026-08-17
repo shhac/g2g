@@ -18,6 +18,9 @@ type fakeGit struct {
 	objects   map[string]string
 	ancestors map[string][]string
 	remoteErr error
+	// fastForwardErr makes advancing the base fail, which is the first of the
+	// three effectful steps sync performs in order.
+	fastForwardErr error
 
 	fetched      []string
 	fastForwards []string
@@ -35,6 +38,9 @@ func (f *fakeGit) FetchIsolated(_ context.Context, _ string, branches []string) 
 }
 
 func (f *fakeGit) FastForward(_ context.Context, branch, _ string) error {
+	if f.fastForwardErr != nil {
+		return f.fastForwardErr
+	}
 	f.fastForwards = append(f.fastForwards, branch)
 	return nil
 }
@@ -55,10 +61,15 @@ func (f *fakeGit) IsAncestor(_ context.Context, ancestor, descendant string) (bo
 	return false, nil
 }
 
-type memoryStore struct{ graph graph.Graph }
+type memoryStore struct {
+	graph graph.Graph
+	// writes records every save, so a test can assert prune did not run.
+	writes []graph.Graph
+}
 
 func (m *memoryStore) Load(context.Context) (graph.Graph, error) { return m.graph.Clone(), nil }
 func (m *memoryStore) Save(_ context.Context, g graph.Graph) error {
+	m.writes = append(m.writes, g.Clone())
 	m.graph = g.Clone()
 	return nil
 }
@@ -100,6 +111,9 @@ type stubRestacker struct {
 	onto    []string
 	applied int
 	err     error
+	// applyErr makes the replay fail, which is the second of sync's three
+	// steps and the one that must stop the third from running.
+	applyErr error
 }
 
 func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto string, _ bool) (restack.Plan, error) {
@@ -107,7 +121,10 @@ func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto string, 
 	return s.plan, s.err
 }
 
-func (s *stubRestacker) Apply(context.Context, restack.Plan) error { s.applied++; return nil }
+func (s *stubRestacker) Apply(context.Context, restack.Plan) error {
+	s.applied++
+	return s.applyErr
+}
 
 func (s *stubRestacker) InProgress(context.Context) (bool, error) { return false, nil }
 
@@ -357,5 +374,45 @@ func TestApplyDoesNotTouchALevelBase(t *testing.T) {
 	}
 	if len(git.fastForwards) != 0 {
 		t.Errorf("fast-forwards = %v, want none for a level base", git.fastForwards)
+	}
+}
+
+// sync composes three effectful steps and each can fail. Ordering on the happy
+// path was covered; stopping was not, and the step it must stop before —
+// prune — edits the recorded graph and unpins fork-point refs.
+func TestApplyStopsAtTheFirstStepThatFails(t *testing.T) {
+	for name, test := range map[string]struct {
+		fastForwardErr error
+		applyErr       error
+		wantReplayed   int
+	}{
+		"the base cannot be advanced": {fastForwardErr: errors.New("synthetic fast-forward failure")},
+		"the replay fails":            {applyErr: errors.New("synthetic replay failure"), wantReplayed: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			git := behindGit()
+			git.fastForwardErr = test.fastForwardErr
+			restacker := &stubRestacker{
+				plan:     restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}},
+				applyErr: test.applyErr,
+			}
+			service, store := newService(git, restacker)
+			plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+			if err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+			plan.Prunable = []string{"synthetic-b"}
+
+			if err := service.Apply(context.Background(), plan, true); err == nil {
+				t.Fatal("Apply() error = nil when a step failed")
+			}
+			if restacker.applied != test.wantReplayed {
+				t.Errorf("replayed %d times, want %d", restacker.applied, test.wantReplayed)
+			}
+			// The graph is only ever written by prune, which must not run.
+			if len(store.writes) != 0 {
+				t.Errorf("prune edited the graph %d times after a failed step", len(store.writes))
+			}
+		})
 	}
 }

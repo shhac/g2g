@@ -56,10 +56,16 @@ func (f *fakeGraphite) recorded() string { return strings.Join(f.calls, "; ") }
 type memoryStore struct {
 	graph  graph.Graph
 	writes []graph.Graph
+	// err makes the store unusable, so a test can prove a failed write is
+	// reported rather than followed by a success message.
+	err error
 }
 
-func (m *memoryStore) Load(context.Context) (graph.Graph, error) { return m.graph, nil }
+func (m *memoryStore) Load(context.Context) (graph.Graph, error) { return m.graph, m.err }
 func (m *memoryStore) Save(_ context.Context, g graph.Graph) error {
+	if m.err != nil {
+		return m.err
+	}
 	m.writes = append(m.writes, g.Clone())
 	m.graph = g
 	return nil

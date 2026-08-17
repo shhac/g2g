@@ -399,3 +399,33 @@ func TestImportRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 		t.Error("import read Graphite in a repository that does not use it, which is what enrols it")
 	}
 }
+
+// mirror has an end-to-end test for a failing Graphite write; import's
+// equivalent risky write is the graph store itself, and a failure there must
+// be reported rather than followed by a false "adopted".
+func TestImportReportsAFailedGraphWrite(t *testing.T) {
+	store := &memoryStore{graph: graph.New()}
+	refs := &fakeRefs{}
+	svc := Service{
+		Git:      everyBranchLocal(),
+		Store:    store,
+		Refs:     refs,
+		Graphite: &fakeGraphite{forest: declaredChain()},
+	}
+
+	plan, err := svc.PlanImport(context.Background())
+	if err != nil {
+		t.Fatalf("PlanImport() error = %v", err)
+	}
+	if len(plan.Adopt) == 0 {
+		t.Fatal("nothing to adopt, so the write is never reached")
+	}
+
+	store.err = fmt.Errorf("synthetic store failure")
+	if err := svc.ApplyImport(context.Background(), plan); err == nil {
+		t.Error("ApplyImport() error = nil when the graph could not be written")
+	}
+	if len(refs.pinned) != 0 {
+		t.Errorf("pinned %v for a graph that was never saved", refs.pinned)
+	}
+}

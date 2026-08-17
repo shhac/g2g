@@ -33,6 +33,9 @@ type fakeGitHub struct {
 	prs       []githubstack.PullRequest
 	retargets []string
 	err       error
+	// failAfter makes the (failAfter+1)th call fail, so a test can reach the
+	// partial-success case rather than only the first-call-fails one.
+	failAfter int
 }
 
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
@@ -41,7 +44,10 @@ func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullReque
 
 func (f *fakeGitHub) Retarget(_ context.Context, number int, base string) error {
 	f.retargets = append(f.retargets, fmt.Sprintf("#%d->%s", number, base))
-	return f.err
+	if f.err != nil && len(f.retargets) > f.failAfter {
+		return f.err
+	}
+	return nil
 }
 
 func service(prs []githubstack.PullRequest) (Service, *fakeGitHub) {
@@ -209,5 +215,34 @@ func TestRevalidateRefusesAChangedPlan(t *testing.T) {
 func TestAnUnconfiguredServiceRefuses(t *testing.T) {
 	if _, err := (Service{}).Plan(context.Background(), stack.Selection{}); err == nil {
 		t.Error("Plan() error = nil on an unconfigured service")
+	}
+}
+
+// Execute's doc says it does not unwind, because a base already moved is
+// correct and putting it back would undo the only part that worked. The
+// existing stop-at-first-refusal test fails on call one, so it never reaches
+// the partial success that sentence is actually about.
+func TestExecuteLeavesTheBasesThatAlreadyMoved(t *testing.T) {
+	svc, github := service([]githubstack.PullRequest{
+		open(1, "synthetic-lower", "synthetic-elsewhere"),
+		open(2, "synthetic-top", "synthetic-trunk"),
+	})
+	github.err = fmt.Errorf("synthetic GitHub refusal")
+	github.failAfter = 1
+
+	plan, err := svc.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(plan.Changes) != 2 {
+		t.Fatalf("Changes = %+v, want two so partial success is observable", plan.Changes)
+	}
+
+	if err := svc.Execute(context.Background(), plan); err == nil {
+		t.Fatal("Execute() error = nil when the second call failed")
+	}
+	// The first move happened and stays; the second was attempted and failed.
+	if got := strings.Join(github.retargets, ";"); got != "#1->synthetic-trunk;#2->synthetic-lower" {
+		t.Errorf("retargeted %q, want the first to have moved and the second attempted", got)
 	}
 }

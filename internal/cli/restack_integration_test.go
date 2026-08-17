@@ -600,3 +600,43 @@ func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
 // syntheticEnv is the shared environment every throwaway repository runs
 // under, defined once in testutil.
 func syntheticEnv() []string { return testutil.SyntheticGitEnv() }
+
+// --skip abandons the commit a rebase stopped on. It had unit coverage on the
+// service but none end to end, unlike --continue and --abort, so the CLI
+// dispatch and the resulting report were never exercised.
+func TestRestackSkipAbandonsTheConflictingCommitAndFinishes(t *testing.T) {
+	dir := restackRepo(t)
+	trackStack(t)
+	advanceTrunk(t, true)
+
+	stdout, _, _ := run(t, "restack", "--scope", "graph", "--apply")
+	if !strings.Contains(stdout, "Stopped on a conflict") {
+		t.Fatalf("apply did not stop on the conflict:\n%s", stdout)
+	}
+
+	skipped, _, err := run(t, "restack", "--skip")
+	if err != nil {
+		t.Fatalf("restack --skip: %v\n%s", err, skipped)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, ".git", "g2g", "restack.json")); statErr == nil {
+		t.Error("the journal survived a completed skip")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, ".git", "rebase-merge")); statErr == nil {
+		t.Error("a rebase was left in progress after --skip")
+	}
+	// The commit that conflicted is gone, which is what skipping means.
+	if strings.Contains(subjects(t, "synthetic-b"), "b1") {
+		t.Errorf("--skip kept the commit it was told to abandon:\n%s", subjects(t, "synthetic-b"))
+	}
+}
+
+// --continue and --skip are mutually exclusive; asking for both is a mistake
+// worth catching rather than resolving.
+func TestRestackRefusesTwoResumeVerbsAtOnce(t *testing.T) {
+	restackRepo(t)
+	trackStack(t)
+
+	if _, _, err := run(t, "restack", "--continue", "--skip"); err == nil {
+		t.Error("restack --continue --skip: error = nil")
+	}
+}

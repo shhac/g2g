@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -25,13 +26,12 @@ type Git interface {
 	LocalBranches(context.Context) ([]string, error)
 }
 
-// Graphite discovers declared structure without checking out a branch.
+// Graphite reads declared structure without checking out a branch.
 //
-// Two reads rather than one, because the questions genuinely differ: a linear
-// scope wants the one ancestry a projection consumes, and a forked scope wants
-// the shape, which no ordered path can express.
+// One read, because there is one question: what does Graphite declare. How much
+// of that a command acts on is a scope, applied here, rather than a shape
+// Graphite is asked to produce.
 type Graphite interface {
-	DiscoverStack(context.Context, string, bool) (graphite.Stack, error)
 	ReadForest(context.Context) (graphite.Forest, error)
 }
 
@@ -100,12 +100,8 @@ func Discover(ctx context.Context, selector PathSelector, github GitHub, selecti
 type Selection struct {
 	Branch string
 	Trunk  string
-	// NoStack is the original binary form of Scope, kept because it is a
-	// published flag. It means ScopeBranch and nothing else.
-	NoStack bool
-	// Scope is how much of the structure to select. Empty means the default,
-	// which is the linear path every projection consumes, so a command that
-	// never sets it behaves exactly as it did before scopes existed.
+	// Scope is how much of the structure to select. Empty means the whole
+	// stack: the trunk beneath the target, the target, and everything above it.
 	Scope Scope
 	// From pins which source answers, for this invocation only. Empty means
 	// precedence decides, which is the normal case. Nothing is recorded: once
@@ -151,6 +147,51 @@ func (s Snapshot) ParentOf(branch string) (string, bool) {
 	return parent, true
 }
 
+// Forks reports whether any selected branch has two selected children.
+//
+// A GitHub native stack is linear, so this is the question every projecting
+// command has to ask before it can act. It is deliberately not asked during
+// selection: reading a fork is fine and is the ordinary case on a trunk, and
+// refusing it there was what made status unusable from one.
+func (s Snapshot) Forks() bool {
+	children := make(map[string]int, len(s.Parents))
+	for _, parent := range s.Parents {
+		children[parent]++
+		if children[parent] > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// RequireLinear refuses a selection a linear projection cannot represent, and
+// names the remedy: a leaf has no descendants, so selecting one collapses the
+// scope to an ordered path without needing a different scope at all.
+func (s Snapshot) RequireLinear(what string) error {
+	if !s.Forks() {
+		return nil
+	}
+	return fmt.Errorf("%s needs one ordered path and %q has more than one branch above it · select a leaf with --branch, or narrow with --scope path", what, s.forkedAt())
+}
+
+// forkedAt names a branch the selection divides at, so the message points at
+// something the reader can act on.
+func (s Snapshot) forkedAt() string {
+	children := make(map[string]int, len(s.Parents))
+	forks := make([]string, 0)
+	for _, parent := range s.Parents {
+		children[parent]++
+		if children[parent] == 2 {
+			forks = append(forks, parent)
+		}
+	}
+	sort.Strings(forks)
+	if len(forks) == 0 {
+		return s.Target
+	}
+	return forks[0]
+}
+
 // Resolve selects a local Graphite path without checkout. command names the
 // consumer's action in an option-like branch safety error.
 var errNotConfigured = fmt.Errorf("stack resolver is not fully configured")
@@ -173,57 +214,34 @@ func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Se
 	}
 
 	scope := selection.EffectiveScope()
-	if !scope.Linear() {
-		return resolveForked(ctx, graphiteClient, target, source, scope, local, command)
-	}
-
-	declared, err := graphiteClient.DiscoverStack(ctx, target, scope != ScopeBranch)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	if err := validatePathLocalAndSafe(local, declared.Path, command); err != nil {
-		return Snapshot{}, err
-	}
-	base, baseSource, branches, err := SelectBoundary(declared.Path, declared.Trunks, selection.Trunk)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	return Snapshot{
-		Target:       target,
-		TargetSource: source,
-		GraphitePath: append([]string(nil), declared.Path...),
-		Base:         base,
-		BaseSource:   baseSource,
-		Branches:     branches,
-		Scope:        scope,
-	}, nil
+	return resolveGraphite(ctx, graphiteClient, target, source, scope, selection.Trunk, local, command)
 }
 
-// EffectiveScope reconciles the scope flag with the older boolean. --no-stack
-// predates scopes and means exactly ScopeBranch, so it is translated rather
-// than consulted separately; nothing downstream should have to know both exist.
+// EffectiveScope is the scope this selection means.
 //
 // It is exported because every selector has to honour it. A selector that
-// resolves its own scope, or ignores the one it was handed, makes the flag mean
+// resolves its own scope, or ignores the one it was handed, makes a flag mean
 // something different depending on which record answered.
+//
+// An unset scope is the whole stack rather than the ancestry, because that is
+// what someone standing mid-stack means: where am I, what is under me, what is
+// above me. A command that wants something narrower says so.
 func (s Selection) EffectiveScope() Scope {
 	if s.Scope != "" {
 		return s.Scope
 	}
-	if s.NoStack {
-		return ScopeBranch
-	}
-	return ScopePath
+	return ScopeStack
 }
 
-// resolveForked answers a scope that can fork, from Graphite's whole declared
-// forest rather than one walk down it.
+// resolveGraphite answers any scope from Graphite's whole declared forest.
 //
-// The base here is the selection's own root, not a declared trunk. A subtree
-// taken from halfway up a stack legitimately hangs from a branch that is nobody's
-// trunk, and demanding a declared trunk would refuse exactly the selection the
-// user asked for.
-func resolveForked(ctx context.Context, graphiteClient Graphite, target, source string, scope Scope, local map[string]bool, command string) (Snapshot, error) {
+// Selection used to go through DiscoverStack(target, includeTip bool), and one
+// bool cannot carry six scopes. branch mapped to includeTip=false, which only
+// suppresses descendants and therefore returned the whole ancestry — so branch
+// and path both meant something other than their own documentation whenever
+// Graphite answered. The forest was always parsed; only a linear walk over it
+// was ever exposed.
+func resolveGraphite(ctx context.Context, graphiteClient Graphite, target, source string, scope Scope, requestedTrunk string, local map[string]bool, command string) (Snapshot, error) {
 	declared, err := graphiteClient.ReadForest(ctx)
 	if err != nil {
 		return Snapshot{}, err
@@ -243,17 +261,57 @@ func resolveForked(ctx context.Context, graphiteClient Graphite, target, source 
 	if err != nil {
 		return Snapshot{}, err
 	}
-	base, branches := selected[0], append([]string(nil), selected[1:]...)
+
+	base, baseSource, branches, err := graphiteBoundary(forest, declared.Roots, ancestry, selected, target, scope, requestedTrunk)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	return Snapshot{
 		Target:       target,
 		TargetSource: source,
 		GraphitePath: ancestry,
 		Base:         base,
-		BaseSource:   "selection root",
+		BaseSource:   baseSource,
 		Branches:     branches,
 		Parents:      forest.Restrict(selected),
 		Scope:        scope,
 	}, nil
+}
+
+// graphiteBoundary decides what the selection hangs from.
+//
+// A scope rooted at the target hangs from the target's own parent. A scope that
+// reaches the trunk hangs from a declared trunk, which is where --trunk applies
+// and where Graphite's ambiguity lives: a declared trunk can sit part-way up an
+// ancestry, so which one is the base is a real question and not one to guess.
+func graphiteBoundary(forest Forest, declaredTrunks, ancestry, selected []string, target string, scope Scope, requestedTrunk string) (string, string, []string, error) {
+	if base, within, err := forest.Hangs(selected, target, scope); err == nil && !within {
+		if requestedTrunk != "" && requestedTrunk != base {
+			return "", "", nil, fmt.Errorf("requested trunk %q is not %q's parent (%s); a scope rooted at the branch hangs from its parent", requestedTrunk, target, base)
+		}
+		return base, "Graphite-declared parent", append([]string(nil), selected...), nil
+	} else if err != nil && (scope == ScopeBranch || scope == ScopeSubtree) {
+		return "", "", nil, err
+	}
+	if scope == ScopeAll {
+		// Several trunks, so there is no single one to hang from: the first
+		// root renders as the base and the rest render as trunks in their own
+		// right.
+		return selected[0], "Graphite-declared roots", append([]string(nil), selected[1:]...), nil
+	}
+
+	base, baseSource, _, err := SelectBoundary(ancestry, declaredTrunks, requestedTrunk)
+	if err != nil {
+		return "", "", nil, err
+	}
+	// The base is on the ancestry and the ancestry opens the selection, so
+	// everything the command acts on is what follows it.
+	for index, branch := range selected {
+		if branch == base {
+			return base, baseSource, append([]string(nil), selected[index+1:]...), nil
+		}
+	}
+	return "", "", nil, fmt.Errorf("selected base %q is not part of the selection", base)
 }
 
 func resolveTarget(ctx context.Context, git Git, requestedBranch string) (string, string, error) {

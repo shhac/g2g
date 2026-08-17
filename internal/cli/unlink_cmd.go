@@ -72,6 +72,9 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink (defaults to the one discovered on the selected path)")
 	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
+	// A GitHub native stack is linear, so these are the two scopes that can
+	// produce one. stack still refuses when it forks, naming the remedy.
+	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("unlink", stack.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack unstack after revalidation")
 	return cmd
 }

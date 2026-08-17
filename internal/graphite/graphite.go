@@ -36,34 +36,32 @@ type Client struct {
 	Runner subprocess.Runner
 }
 
-// Discover resolves selected without checking it out. It accepts a forked
-// Graphite tree and returns only the selected branch's deterministic ancestry.
+// Discover resolves selected's declared ancestry without checking it out. It
+// accepts a forked Graphite tree and returns only the deterministic line down
+// to the trunk.
+//
+// How much of the forest a command acts on is a scope, decided above this
+// package. Discovery used to take a bool that also extended through the one
+// unambiguous downward chain, which is why a branch with two children was
+// refused outright — a bool cannot express the shapes people actually have.
 func (c Client) Discover(ctx context.Context, selected string) (Stack, error) {
-	return c.DiscoverStack(ctx, selected, false)
-}
-
-// DiscoverStack resolves selected's declared ancestry and, when includeTip is
-// true, extends through the only unambiguous downward child chain. It never
-// checks out, changes, or otherwise manages a Graphite branch.
-func (c Client) DiscoverStack(ctx context.Context, selected string, includeTip bool) (Stack, error) {
 	parsed, err := c.read(ctx)
 	if err != nil {
 		return Stack{}, err
 	}
-	stack, err := resolveStack(parsed, selected, includeTip)
+	stack, err := resolveStack(parsed, selected)
 	if err != nil {
 		return Stack{}, err
 	}
 	diagnostic.Event(ctx, "graphite.path",
 		diagnostic.Field{Key: "selected", Value: selected},
 		diagnostic.Field{Key: "path", Value: strings.Join(stack.Path, " -> ")},
-		diagnostic.Field{Key: "full_stack", Value: strconv.FormatBool(includeTip)},
 		diagnostic.Field{Key: "declared_trunks", Value: strings.Join(stack.Trunks, ",")},
 	)
 	return stack, nil
 }
 
-func resolveStack(parsed graph, selected string, includeTip bool) (Stack, error) {
+func resolveStack(parsed graph, selected string) (Stack, error) {
 	node, ok := parsed.nodes[selected]
 	if !ok {
 		return Stack{}, fmt.Errorf("Graphite does not track local branch %q", selected)
@@ -71,12 +69,6 @@ func resolveStack(parsed graph, selected string, includeTip bool) (Stack, error)
 	path, err := ancestry(parsed, node)
 	if err != nil {
 		return Stack{}, err
-	}
-	if includeTip {
-		path, err = extendLinearDescendants(parsed, selected, path)
-		if err != nil {
-			return Stack{}, err
-		}
 	}
 	return Stack{Path: path, Trunks: append([]string(nil), parsed.roots...)}, nil
 }
@@ -103,35 +95,6 @@ func ancestry(parsed graph, node node) ([]string, error) {
 		reversed[left], reversed[right] = reversed[right], reversed[left]
 	}
 	return reversed, nil
-}
-
-func extendLinearDescendants(parsed graph, selected string, path []string) ([]string, error) {
-	children := graphChildren(parsed)
-	for current := selected; ; {
-		next := children[current]
-		switch len(next) {
-		case 0:
-			return path, nil
-		case 1:
-			path = append(path, next[0])
-			current = next[0]
-		default:
-			return nil, fmt.Errorf("selected Graphite branch %q has multiple descendants (%s); full-stack resolution requires one linear path (rerun with --no-stack to stop at the selected branch)", current, strings.Join(next, ", "))
-		}
-	}
-}
-
-func graphChildren(g graph) map[string][]string {
-	children := make(map[string][]string, len(g.nodes))
-	for _, candidate := range g.nodes {
-		if candidate.parent != "" {
-			children[candidate.parent] = append(children[candidate.parent], candidate.name)
-		}
-	}
-	for parent := range children {
-		sort.Strings(children[parent])
-	}
-	return children
 }
 
 // TrackedBranches returns stable, local Graphite branch candidates for shell

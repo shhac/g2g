@@ -130,16 +130,19 @@ func (f cliGit) CurrentBranch(context.Context) (string, error)   { return f.curr
 func (f cliGit) LocalBranches(context.Context) ([]string, error) { return f.branches, nil }
 func (cliGit) Clean(context.Context) error                       { return nil }
 
-func (f cliGraphite) DiscoverStack(ctx context.Context, branch string, _ bool) (graphite.Stack, error) {
-	return f.Discover(ctx, branch)
+// ReadForest answers from the same shape Discover describes, because selection
+// reads the forest now: a fake whose two answers disagree is a fake that tests
+// nothing about the code between them.
+func (cliGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return forestOf("main", []string{"main", "alpha", "beta"}), nil
 }
 
 func (cliGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"alpha", "beta"}, nil
 }
 
-func (f cliSingleBranchGraphite) DiscoverStack(ctx context.Context, branch string, _ bool) (graphite.Stack, error) {
-	return f.Discover(ctx, branch)
+func (cliSingleBranchGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return forestOf("main", []string{"main", "alpha"}), nil
 }
 
 func (cliSingleBranchGraphite) TrackedBranches(context.Context) ([]string, error) {
@@ -196,10 +199,18 @@ func (f *cliGitHubPRs) Inspect(context.Context, []string) ([]githubstack.PullReq
 	return f.prs, nil
 }
 
-func (f cliGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
-}
-
-func (f cliSingleBranchGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+// forestOf turns an ordered chain into the forest a Graphite read would return,
+// so a fake states its shape once instead of once per question asked of it.
+func forestOf(root string, chain ...[]string) graphite.Forest {
+	forest := graphite.Forest{Parents: map[string]string{}, Roots: []string{root}}
+	for _, line := range chain {
+		for index, branch := range line {
+			if index == 0 {
+				forest.Parents[branch] = ""
+				continue
+			}
+			forest.Parents[branch] = line[index-1]
+		}
+	}
+	return forest
 }

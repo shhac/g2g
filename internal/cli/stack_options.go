@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,11 +13,10 @@ import (
 // It stays in cli because flag wording and shell completion are presentation
 // concerns; services receive the resulting value object, not Cobra state.
 type stackOptions struct {
-	branch  string
-	trunk   string
-	noStack bool
-	from    string
-	scope   string
+	branch string
+	trunk  string
+	from   string
+	scope  string
 	// accepted is the scope set this command registered, empty for a command
 	// that never offered one, and fallback is what it means when none is given.
 	// Only read-only commands take a scope that can fork: a tree cannot be
@@ -33,7 +31,7 @@ func (o stackOptions) Selection() stack.Selection {
 	if scope == "" {
 		scope = o.fallback
 	}
-	return stack.Selection{Branch: o.branch, Trunk: o.trunk, NoStack: o.noStack, Scope: scope, From: stack.Source(o.from)}
+	return stack.Selection{Branch: o.branch, Trunk: o.trunk, Scope: scope, From: stack.Source(o.from)}
 }
 
 // registerScope adds the scope flag to a command that accepts one. It is a
@@ -51,15 +49,8 @@ func (o *stackOptions) registerScope(cmd *cobra.Command, scopes []stack.Scope, f
 	}))
 }
 
-// validateScope rejects a scope this command does not offer, and rejects
-// combining it with the older boolean rather than silently preferring one.
+// validateScope rejects a scope this command does not offer.
 func (o stackOptions) validateScope() error {
-	if o.scope == "" {
-		return nil
-	}
-	if o.noStack {
-		return fmt.Errorf("--scope and --no-stack both select how much to show; --no-stack means --scope %s", stack.ScopeBranch)
-	}
 	_, err := stack.ParseScope(o.scope, o.accepted, o.fallback)
 	return err
 }
@@ -67,7 +58,6 @@ func (o stackOptions) validateScope() error {
 func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completions, branchUsage, trunkUsage string) {
 	cmd.Flags().StringVar(&o.branch, "branch", "", branchUsage)
 	cmd.Flags().StringVar(&o.trunk, "trunk", "", trunkUsage)
-	cmd.Flags().BoolVar(&o.noStack, "no-stack", false, "stop at the selected branch instead of resolving the full linear stack")
 	cmd.Flags().StringVar(&o.from, "from", "", "read the structure from this source only (default: whichever describes the branch)")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(completions.Branches))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {

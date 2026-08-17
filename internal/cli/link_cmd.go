@@ -47,6 +47,9 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 		},
 	}
 	selection.register(cmd, completions, "local branch to link (defaults to current branch)", "trunk to use as the link base")
+	// A GitHub native stack is linear, so these are the two scopes that can
+	// produce one. stack still refuses when it forks, naming the remedy.
+	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("link", stack.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	return cmd
 }

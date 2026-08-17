@@ -24,7 +24,7 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	}{
 		{"preview current", []string{"push"}, []string{"Target  synthetic-middle", "synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
 		{"preview default full stack", []string{"push", "--branch", "synthetic-middle"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
-		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--no-stack"}, []string{"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle"}},
+		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--scope", "path"}, []string{"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -122,8 +122,10 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 		args     []string
 		want     string
 	}{
-		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push"}, "multiple descendants"},
-		{"fork opt out", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}}, cliPushGraphite{stackErr: errors.New("multiple descendants")}, []string{"push", "--no-stack"}, ""},
+		// A fork is refused because one atomic push needs one ordered path, and
+		// the refusal names the remedy rather than picking a line.
+		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}, cliPushGraphite{stackErr: errors.New("forked")}, []string{"push"}, "one ordered path"},
+		{"fork opt out", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}, cliPushGraphite{stackErr: errors.New("forked")}, []string{"push", "--scope", "path"}, ""},
 		{"remote", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, remoteErr: errors.New("unknown remote")}, cliPushGraphite{}, []string{"push", "--remote", "synthetic"}, "unknown remote"},
 		{"atomic", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}, pushErr: errors.New("atomic unsupported")}, cliPushGraphite{}, []string{"push", "--apply"}, "Not applied\natomic unsupported"},
 	} {
@@ -162,7 +164,7 @@ func TestPushDebugIsStderrOnly(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"operation=\"push\"", "event=push.plan", "target=\"synthetic-middle\"",
-		"full_stack=\"true\"", "remote=\"origin\"",
+		"scope=\"stack\"", "remote=\"origin\"",
 		"command=\"git push --atomic --force-with-lease=refs/heads/synthetic-lower:",
 	} {
 		if !strings.Contains(stderr.String(), expected) {
@@ -225,6 +227,13 @@ func (cliPushGraphite) TrackedBranches(context.Context) ([]string, error) {
 	return []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, nil
 }
 
+// A fork is a shape rather than an error the read returns, because that is
+// what it is: reading one is ordinary, and only a linear projection cannot
+// represent it.
 func (f cliPushGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+	forest := forestOf("synthetic-main", []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"})
+	if f.stackErr != nil {
+		forest.Parents["synthetic-side"] = "synthetic-middle"
+	}
+	return forest, nil
 }

@@ -191,7 +191,14 @@ exit 9`,
 	}
 }
 
-func TestDiscoverStackExtendsOnlyOneLinearDescendantChain(t *testing.T) {
+// The forest is what a scope is applied to, so the mapping from the compact
+// display to parent edges is the thing worth pinning.
+//
+// Discovery used to take a bool that extended through the one unambiguous
+// downward chain, and refused a branch with two children outright. alpha here
+// has four, which is the ordinary shape of a trunk and was the shape that could
+// not be asked about at all.
+func TestReadForestGivesEveryDeclaredEdge(t *testing.T) {
 	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -202,38 +209,30 @@ func TestDiscoverStackExtendsOnlyOneLinearDescendantChain(t *testing.T) {
 if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
 exit 9`,
 	})
-	client := Client{Runner: subprocess.ExecRunner{}}
-	for _, test := range []struct{ selected, want string }{
-		{"beta", "main,alpha,beta,beta-top,beta-side"},
-		{"beta-top", "main,alpha,beta,beta-top,beta-side"},
-		{"beta-side", "main,alpha,beta,beta-top,beta-side"},
-	} {
-		t.Run(test.selected, func(t *testing.T) {
-			stack, err := client.DiscoverStack(context.Background(), test.selected, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := strings.Join(stack.Path, ","); got != test.want {
-				t.Errorf("path = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
 
-func TestDiscoverStackRejectsDescendantFork(t *testing.T) {
-	fixture, err := os.ReadFile(filepath.Join("testdata", "irregular-stack.txt"))
+	forest, err := (Client{Runner: subprocess.ExecRunner{}}).ReadForest(context.Background())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ReadForest() error = %v", err)
 	}
-	t.Setenv("GT_FIXTURE", string(fixture))
-	testutil.WithFakeExecutables(t, map[string]string{
-		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
-if [ "$*" = "log short --all --reverse --no-interactive" ]; then printf '%s' "$GT_FIXTURE"; exit 0; fi
-exit 9`,
-	})
-	_, err = (Client{Runner: subprocess.ExecRunner{}}).DiscoverStack(context.Background(), "alpha", true)
-	if err == nil || !strings.Contains(err.Error(), "multiple descendants") {
-		t.Fatalf("DiscoverStack() error = %v", err)
+	for branch, want := range map[string]string{
+		"main":         "",
+		"alpha":        "main",
+		"beta":         "alpha",
+		"beta-top":     "beta",
+		"beta-side":    "beta-top",
+		"gamma":        "alpha",
+		"gamma-deep":   "gamma",
+		"delta":        "alpha",
+		"delta-deep":   "delta",
+		"epsilon":      "alpha",
+		"epsilon-deep": "epsilon",
+	} {
+		if got := forest.Parents[branch]; got != want {
+			t.Errorf("parent of %q = %q, want %q", branch, got, want)
+		}
+	}
+	if got, want := strings.Join(forest.Roots, ","), "main"; got != want {
+		t.Errorf("roots = %q, want %q", got, want)
 	}
 }
 
@@ -267,22 +266,31 @@ func TestResolveStackRejectsInvalidGraphRelationships(t *testing.T) {
 			selected: "synthetic-a",
 			want:     "ancestry cycle",
 		},
-		{
-			name: "descendant fork",
-			graph: graph{nodes: map[string]node{
-				"synthetic-main": {name: "synthetic-main"},
-				"synthetic-a":    {name: "synthetic-a", parent: "synthetic-main"},
-				"synthetic-b":    {name: "synthetic-b", parent: "synthetic-main"},
-			}},
-			selected: "synthetic-main",
-			want:     "multiple descendants",
-		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := resolveStack(test.graph, test.selected, true)
+			_, err := resolveStack(test.graph, test.selected)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("resolveStack() error = %v", err)
 			}
 		})
+	}
+}
+
+// A branch with several children is an ordinary shape, not an error. Resolving
+// its ancestry is all this package does now; how much of the forest a command
+// acts on is a scope decided above it.
+func TestResolveStackAcceptsABranchWithSeveralChildren(t *testing.T) {
+	forked := graph{nodes: map[string]node{
+		"synthetic-main": {name: "synthetic-main"},
+		"synthetic-a":    {name: "synthetic-a", parent: "synthetic-main"},
+		"synthetic-b":    {name: "synthetic-b", parent: "synthetic-main"},
+	}}
+
+	stack, err := resolveStack(forked, "synthetic-main")
+	if err != nil {
+		t.Fatalf("resolveStack() error = %v; a trunk with two stacks on it is the ordinary case", err)
+	}
+	if got, want := strings.Join(stack.Path, ","), "synthetic-main"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
 	}
 }

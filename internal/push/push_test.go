@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/shhac/g2g/internal/stack"
+	"sort"
 	"strings"
 	"testing"
 
@@ -18,7 +19,10 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 		selection link.Selection
 		want      string
 	}{
-		{"current", link.Selection{}, "lower,middle"},
+		// The default reaches the tip: standing on middle, top is part of the
+		// stack being pushed. The old fake could not express that, so this case
+		// used to assert the fake rather than the behaviour.
+		{"current", link.Selection{}, "lower,middle,top"},
 		{"explicit", link.Selection{Branch: "top"}, "lower,middle,top"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -44,9 +48,22 @@ func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	if err != nil || strings.Join(plan.Branches, ",") != "lower,middle,top" {
 		t.Fatalf("Plan() = (%#v, %v)", plan, err)
 	}
-	service.Selector = graphiteSelector(service.Git, fakeGraphite{paths: paths(), stackErr: errors.New("multiple descendants")})
-	if _, err := service.Plan(context.Background(), link.Selection{}, "origin"); err == nil || !strings.Contains(err.Error(), "multiple descendants") {
+	// A fork is no longer refused during selection — reading one is ordinary —
+	// so the refusal belongs here, where a linear projection is the thing that
+	// cannot represent it.
+	forked := fakeGraphite{paths: map[string]graphite.Stack{
+		"middle": {Path: []string{"main", "lower", "middle"}, Trunks: []string{"main"}},
+		"top":    {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}},
+		"side":   {Path: []string{"main", "lower", "middle", "side"}, Trunks: []string{"main"}},
+	}}
+	git.branches = append(git.branches, "side")
+	service.Selector = graphiteSelector(git, forked)
+	_, err = service.Plan(context.Background(), link.Selection{}, "origin")
+	if err == nil || !strings.Contains(err.Error(), "one ordered path") {
 		t.Fatalf("Plan() fork error = %v", err)
+	}
+	if !strings.Contains(err.Error(), "--branch") {
+		t.Errorf("fork refusal does not name the remedy: %v", err)
 	}
 }
 
@@ -93,8 +110,8 @@ func TestApplyRefusesChangedPlanAndRemoteOrPushFailures(t *testing.T) {
 		graphite  fakeGraphite
 		wantError string
 	}{
-		{"missing remote", &fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, remoteErr: errors.New("unknown remote")}, fakeGraphite{paths: paths()}, "unknown remote"},
-		{"lease rejection", &fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, pushErr: errors.New("lease rejected")}, fakeGraphite{paths: paths()}, "lease rejected"},
+		{"missing remote", &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}, remoteErr: errors.New("unknown remote")}, fakeGraphite{paths: paths()}, "unknown remote"},
+		{"lease rejection", &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}, pushErr: errors.New("lease rejected")}, fakeGraphite{paths: paths()}, "lease rejected"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service := Service{Git: test.git, Selector: graphiteSelector(test.git, test.graphite)}
@@ -134,7 +151,7 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: map[string]graphite.Stack{
 		"tip": {Path: []string{"main", "-synthetic-option", "tip"}, Trunks: []string{"main"}},
 	}})}
-	if _, err := service.Plan(context.Background(), link.Selection{NoStack: true}, "origin"); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
+	if _, err := service.Plan(context.Background(), link.Selection{Scope: stack.ScopePath}, "origin"); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if git.pushes != 0 {
@@ -281,10 +298,45 @@ func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSe
 	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }
 
+// ReadForest states the same shape the configured paths describe. Selection
+// reads the forest, so a fake whose answers disagree tests nothing.
 func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+	return forestOfPaths(f.paths, f.stackPaths), nil
 }
 
+func forestOfPaths(sets ...map[string]graphite.Stack) graphite.Forest {
+	forest := graphite.Forest{Parents: map[string]string{}}
+	roots := map[string]bool{}
+	for _, set := range sets {
+		for _, declared := range set {
+			for index, branch := range declared.Path {
+				if index == 0 {
+					if _, seen := forest.Parents[branch]; !seen {
+						forest.Parents[branch] = ""
+					}
+					continue
+				}
+				forest.Parents[branch] = declared.Path[index-1]
+			}
+			for _, trunk := range declared.Trunks {
+				roots[trunk] = true
+			}
+		}
+	}
+	for trunk := range roots {
+		forest.Roots = append(forest.Roots, trunk)
+	}
+	sort.Strings(forest.Roots)
+	return forest
+}
+
+// changingGraphite answers differently on the second read, which is what
+// revalidation exists to notice.
 func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+	declared := f.first
+	if f.calls > 0 {
+		declared = f.next
+	}
+	f.calls++
+	return forestOfPaths(map[string]graphite.Stack{"middle": declared}), nil
 }

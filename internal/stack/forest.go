@@ -176,6 +176,31 @@ func (f Forest) Stack(branch string) ([]string, error) {
 	return append(path, f.Subtree(branch)[1:]...), nil
 }
 
+// Hangs reports what a selection sits on, and whether that branch is part of
+// the selection itself.
+//
+// A scope rooted at the target hangs from the target's own parent, which is
+// outside the selection: asking for a subtree does not ask for the branch it
+// grows from. A scope that reaches the trunk opens with it, so the first
+// selected branch is both the base and a member.
+//
+// Both records answer this the same way. They did not, briefly, and the answer
+// showed up as one record putting a stack on its parent and the other putting
+// it on itself.
+func (f Forest) Hangs(selected []string, target string, scope Scope) (base string, within bool, err error) {
+	if len(selected) == 0 {
+		return "", false, fmt.Errorf("nothing selected")
+	}
+	if scope == ScopeBranch || scope == ScopeSubtree {
+		parent, hasParent := f.Parent(target)
+		if !hasParent {
+			return "", false, fmt.Errorf("selected branch has no recorded parent that can be used as a base")
+		}
+		return parent, false, nil
+	}
+	return selected[0], true, nil
+}
+
 // Restrict returns the edges among the selected branches only. A parent outside
 // the selection is dropped rather than dangling, which is what lets a renderer
 // treat the selection's own roots as roots.

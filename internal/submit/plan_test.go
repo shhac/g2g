@@ -256,6 +256,16 @@ func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSe
 	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }
 
-func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+// ReadForest states the same chain Discover describes: selection reads the
+// forest, so the two answers have to agree.
+func (fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
+	return graphite.Forest{
+		Parents: map[string]string{
+			"main":             "",
+			"synthetic/lower":  "main",
+			"synthetic/middle": "synthetic/lower",
+			"synthetic/top":    "synthetic/middle",
+		},
+		Roots: []string{"main"},
+	}, nil
 }

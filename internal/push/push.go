@@ -66,6 +66,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
+	// One atomic push of an ordered path is the whole contract here, so a
+	// selection that forks is refused rather than pushed in some order.
+	if err := snapshot.RequireLinear("push"); err != nil {
+		return Plan{}, err
+	}
 	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
@@ -78,7 +83,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
 		diagnostic.Field{Key: "target_source", Value: snapshot.TargetSource},
-		diagnostic.Field{Key: "full_stack", Value: fmt.Sprintf("%t", !selection.NoStack)},
+		diagnostic.Field{Key: "scope", Value: string(selection.EffectiveScope())},
 		diagnostic.Field{Key: "base", Value: snapshot.Base},
 		diagnostic.Field{Key: "remote", Value: remote},
 		diagnostic.Field{Key: "branches", Value: strings.Join(snapshot.Branches, ",")},

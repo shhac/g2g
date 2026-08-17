@@ -49,21 +49,32 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 	if err := validatePath(discovery.Branches, command); err != nil {
 		return stack.Snapshot{}, err
 	}
-	base, baseSource, err := selectBase(discovery.Branches[0], discovery.Target, selection.Trunk)
+	shape := shapeOf(discovery.Graph)
+	hangsFrom, within, err := shape.Hangs(discovery.Branches, discovery.Target, scope)
 	if err != nil {
 		return stack.Snapshot{}, err
+	}
+	base, baseSource, err := selectBase(hangsFrom, discovery.Target, selection.Trunk)
+	if err != nil {
+		return stack.Snapshot{}, err
+	}
+	// A base inside the selection opens it; one outside it is the branch the
+	// selection grows from and is not itself acted on.
+	branches := append([]string(nil), discovery.Branches...)
+	if within {
+		branches = branches[1:]
 	}
 	return stack.Snapshot{
 		Target:       discovery.Target,
 		TargetSource: discovery.TargetSource,
 		Base:         base,
 		BaseSource:   baseSource,
-		Branches:     append([]string(nil), discovery.Branches[1:]...),
+		Branches:     branches,
 		Scope:        scope,
 		// Shape, restricted to the selection, so a renderer knows where this
 		// selection's own roots are. A linear selection yields edges that form
 		// a chain, which renders exactly as it always has.
-		Parents: shapeOf(discovery.Graph).Restrict(discovery.Branches),
+		Parents: shape.Restrict(discovery.Branches),
 	}, nil
 }
 

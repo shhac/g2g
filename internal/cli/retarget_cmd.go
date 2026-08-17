@@ -50,6 +50,9 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
 	selection.register(cmd, completions, "local branch to retarget from (defaults to current branch)", "trunk to use as the base")
+	// A GitHub native stack is linear, so these are the two scopes that can
+	// produce one. stack still refuses when it forks, naming the remedy.
+	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("retarget", stack.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "move the bases instead of previewing the change")
 	return cmd
 }

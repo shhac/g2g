@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/shhac/g2g/internal/stack"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -51,7 +52,7 @@ func TestApplyRevalidatesBeforeGitHubMutation(t *testing.T) {
 	if github.links != 1 {
 		t.Fatalf("Link calls = %d, want 1", github.links)
 	}
-	if got, want := strings.Join(github.branches, ","), "alpha,beta,beta-two"; got != want {
+	if got, want := strings.Join(github.branches, ","), "alpha,beta,beta-two,beta-two-deep"; got != want {
 		t.Errorf("linked branches = %q, want %q", got, want)
 	}
 }
@@ -60,14 +61,17 @@ func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 	github := &fakeGitHub{}
 	service := fakeService()
 	service.GitHub = github
-	preview, err := service.Plan(context.Background(), Selection{Branch: "alpha"})
+	// One pull request is one pull request only within a selection that holds
+	// one branch; the default now reaches the stack above alpha.
+	selection := Selection{Branch: "alpha", Scope: stack.ScopeBranch}
+	preview, err := service.Plan(context.Background(), selection)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if !preview.NothingToLink() {
 		t.Fatal("NothingToLink() = false, want true")
 	}
-	if err := applyPlan(t, service, Selection{Branch: "alpha"}, preview); err != nil {
+	if err := applyPlan(t, service, selection, preview); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	if github.links != 0 {
@@ -180,7 +184,7 @@ func TestPlanAccumulatesEveryUnresolvedBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if got, want := strings.Join(issueBranches(plan.Issues), ","), "beta,beta-two"; got != want {
+	if got, want := strings.Join(issueBranches(plan.Issues), ","), "beta,beta-two,beta-two-deep"; got != want {
 		t.Errorf("issues = %q, want %q", got, want)
 	}
 }
@@ -310,12 +314,28 @@ func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing
 	if got, want := strings.Join(plan.Branches, ","), "lower,middle,top"; got != want {
 		t.Errorf("branches = %q, want %q", got, want)
 	}
-	plan, err = service.Plan(context.Background(), Selection{NoStack: true})
+	// branch means the branch alone, which is what it always said and never
+	// did: resolving through a bool, it suppressed descendants only, so it
+	// returned the whole ancestry instead.
+	plan, err = service.Plan(context.Background(), Selection{Scope: stack.ScopeBranch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(plan.Branches, ","), "middle"; got != want {
+		t.Errorf("branch scope = %q, want %q", got, want)
+	}
+	if plan.Base != "lower" {
+		t.Errorf("branch scope hangs from %q, want its parent lower", plan.Base)
+	}
+
+	// path is the trunk down to the branch, which is what --no-stack used to
+	// produce and is the value it becomes.
+	plan, err = service.Plan(context.Background(), Selection{Scope: stack.ScopePath})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := strings.Join(plan.Branches, ","), "lower,middle"; got != want {
-		t.Errorf("no-stack branches = %q, want %q", got, want)
+		t.Errorf("path scope = %q, want %q", got, want)
 	}
 }
 func (*changingGraphite) TrackedBranches(context.Context) ([]string, error) {
@@ -417,10 +437,48 @@ func graphiteSelector(git stack.Git, graphiteClient stack.Graphite) stack.PathSe
 	return stack.GraphiteSelector{Git: git, Graphite: graphiteClient}
 }
 
+// ReadForest states the same shape the configured paths describe. Selection
+// reads the forest, so a fake answering it differently would test the code
+// between them against a world that does not exist.
 func (f fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+	if f.discoverErr != nil {
+		return graphite.Forest{}, f.discoverErr
+	}
+	return forestOfPaths(f.paths, f.stackPaths), nil
 }
 
+func forestOfPaths(sets ...map[string]graphite.Stack) graphite.Forest {
+	forest := graphite.Forest{Parents: map[string]string{}}
+	roots := map[string]bool{}
+	for _, set := range sets {
+		for _, declared := range set {
+			for index, branch := range declared.Path {
+				if index == 0 {
+					if _, seen := forest.Parents[branch]; !seen {
+						forest.Parents[branch] = ""
+					}
+					continue
+				}
+				forest.Parents[branch] = declared.Path[index-1]
+			}
+			for _, trunk := range declared.Trunks {
+				roots[trunk] = true
+			}
+		}
+	}
+	for trunk := range roots {
+		forest.Roots = append(forest.Roots, trunk)
+	}
+	sort.Strings(forest.Roots)
+	return forest
+}
+
+// The second read describes a different shape, which is what revalidation
+// exists to notice.
 func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
-	return graphite.Forest{}, nil
+	f.discoveries++
+	if f.discoveries > 1 {
+		return graphite.Forest{Parents: map[string]string{"main": "", "beta": "main"}, Roots: []string{"main"}}, nil
+	}
+	return graphite.Forest{Parents: map[string]string{"main": "", "alpha": "main", "beta": "alpha"}, Roots: []string{"main"}}, nil
 }

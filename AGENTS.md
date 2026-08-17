@@ -4,6 +4,40 @@ Start with the repository skill at `skills/g2g/SKILL.md`, then use the
 README and `design-docs/initial-scope.md` for product behavior. This file keeps
 only process knowledge that is easy to miss.
 
+## Running the real `gt`
+
+Running Graphite by hand is allowed, in any directory, with one boundary:
+**nothing that writes to a remote.** `gt submit` and anything else that pushes
+or talks to Graphite's API is out, because that is what would enrol a
+repository with the service. Local reads and local structure commands —
+`gt --version`, `gt init`, `gt track`, `gt untrack`, `gt log` — are fine, and
+are often the only way to check a change against the tool this one has to stay
+compatible with.
+
+Two different things get called enrolment, and conflating them is what makes
+people refuse `gt` outright. Writing files under `.git/` is local and
+disposable. Registering the repository with Graphite's service is neither. Only
+the second is off limits.
+
+- **Pass `--no-interactive`.** Graphite prompts by default, and a prompt in a
+  non-interactive session hangs rather than fails.
+- **Expect local state.** `gt log` creates `.graphite_metadata.db`,
+  `.graphite_repo_config` and `.graphite_pr_info` under `.git/` in a repository
+  that has never used Graphite. That is precisely why `Describes` answers from
+  the repository instead of running `gt`, and why completion is gated. It is
+  local-only and harmless in a throwaway repository; do not let it happen in
+  this working tree, and never commit it.
+- **Verify in a throwaway repository, not a real one.** Build a repository with
+  `synthetic-*` branch names, no remote, and nothing that leaves the machine.
+  That keeps a real checkout's names and graph out of anything captured.
+- **Real output is evidence, never a fixture.** Anything that lands in the
+  repository stays fully synthetic; abstract what a real run showed before
+  writing a regression case.
+
+This is what makes an end-to-end claim about Graphite-backed behaviour
+checkable. A PATH fake answers whatever it is asked, so it can confirm argv and
+parsing and can never confirm that the grammar is still the one Graphite emits.
+
 ## Discovery and external CLIs
 
 - Graphite parsing is a narrow compatibility boundary. Before changing it, read

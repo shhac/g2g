@@ -194,3 +194,40 @@ func pathToRoot(t *testing.T, parsed graph, selected string) []string {
 	}
 	return reversed
 }
+
+// A trunk with three children, where one child carries its own child and the
+// last sibling returns to the trunk's own depth.
+//
+// The grammar here was confirmed against Graphite 1.8.6 by tracking a synthetic
+// forest in a throwaway repository and reading what the CLI actually printed —
+// the display is reproduced, the repository it came from was invented. It is
+// worth pinning because it is the shape a trunk has in practice, and it is the
+// one the linear walk could never express: `◯` at the trunk's own depth extends
+// the trunk rather than starting a second root.
+func TestParseLogAcceptsATrunkWithSeveralChildren(t *testing.T) {
+	display := "◉─┬─┐  synthetic-trunk\n│ │ ◯  synthetic-a\n│ │ ◯  synthetic-a-one\n│ ◯    synthetic-b\n◯      synthetic-c\n"
+
+	parsed, err := parseLog(display)
+	if err != nil {
+		t.Fatalf("parseLog() error = %v", err)
+	}
+	for branch, want := range map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-a":     "synthetic-trunk",
+		"synthetic-a-one": "synthetic-a",
+		"synthetic-b":     "synthetic-trunk",
+		"synthetic-c":     "synthetic-trunk",
+	} {
+		node, tracked := parsed.nodes[branch]
+		if !tracked {
+			t.Errorf("branch %q missing from the parsed display", branch)
+			continue
+		}
+		if node.parent != want {
+			t.Errorf("parent of %q = %q, want %q", branch, node.parent, want)
+		}
+	}
+	if len(parsed.roots) != 1 || parsed.roots[0] != "synthetic-trunk" {
+		t.Errorf("roots = %v, want exactly synthetic-trunk; a sibling at the trunk's depth is not a second root", parsed.roots)
+	}
+}

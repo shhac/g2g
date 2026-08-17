@@ -3,7 +3,6 @@ package git
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,38 +18,13 @@ import (
 func syntheticRepo(t *testing.T) (string, Client) {
 	t.Helper()
 
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		command := exec.Command("git", args...)
-		command.Dir = dir
-		command.Env = syntheticEnv()
-		if output, err := command.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-		}
-	}
+	repo := testutil.NewGitRepo(t, "synthetic-main")
+	dir := repo.Dir
+	run := repo.Run
 	commit := func(name string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name+".txt"), []byte(name), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		run("add", "-A")
-		run("commit", "-m", "synthetic "+name)
+		repo.Commit("synthetic "+name, name+".txt", name)
 	}
-
-	run("init", "--initial-branch=synthetic-main")
-	// Background maintenance writes into .git after a commit, which races the
-	// temporary directory's cleanup. Disabling it in the repository covers
-	// every invocation, including the ones the code under test makes.
-	// The identity has to live in the repository, not just in the environment
-	// these helpers use: the code under test spawns its own git, which
-	// inherits the test process's environment instead. Some platforms guess an
-	// identity from the system and some refuse, so a rewrite that commits
-	// works in one place and stops half-way in another.
-	run("config", "user.name", "synthetic")
-	run("config", "user.email", "synthetic@example.test")
-	run("config", "gc.auto", "0")
-	run("config", "maintenance.auto", "false")
 	commit("root")
 	run("checkout", "-b", "synthetic-auth")
 	commit("auth")

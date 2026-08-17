@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -511,27 +510,20 @@ func TestLinkSelectsFromTheG2GOwnedGraph(t *testing.T) {
 func treeRepository(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	script := strings.Join([]string{
-		"git init -q -b synthetic-trunk .",
-		"git config user.email synthetic@example.test",
-		"git config user.name Synthetic",
-		"git config gc.auto 0",
-		"git config maintenance.auto false",
-		"git commit -q --allow-empty -m root",
-		"git switch -q -c synthetic-a && git commit -q --allow-empty -m a",
-		"git switch -q -c synthetic-b && git commit -q --allow-empty -m b",
-		"git switch -q synthetic-a",
-		"git switch -q -c synthetic-c && git commit -q --allow-empty -m c",
-		"git switch -q synthetic-trunk",
-		"git switch -q -c synthetic-elsewhere && git commit -q --allow-empty -m elsewhere",
-		"git switch -q synthetic-b",
-	}, " && ")
-	out, err := exec.Command("sh", "-c", "cd "+dir+" && "+script).CombinedOutput()
-	if err != nil {
-		t.Fatalf("build repository: %v\n%s", err, out)
-	}
-	return dir
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("root", "root.txt", "root\n")
+	repo.Run("switch", "-qc", "synthetic-a")
+	repo.Commit("a", "a.txt", "a\n")
+	repo.Run("switch", "-qc", "synthetic-b")
+	repo.Commit("b", "b.txt", "b\n")
+	repo.Run("switch", "-q", "synthetic-a")
+	repo.Run("switch", "-qc", "synthetic-c")
+	repo.Commit("c", "c.txt", "c\n")
+	repo.Run("switch", "-q", "synthetic-trunk")
+	repo.Run("switch", "-qc", "synthetic-elsewhere")
+	repo.Commit("elsewhere", "elsewhere.txt", "elsewhere\n")
+	repo.Run("switch", "-q", "synthetic-b")
+	return repo.Dir
 }
 
 func inRepository(t *testing.T, dir string, args ...string) (string, string, error) {

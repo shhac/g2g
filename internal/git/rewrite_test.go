@@ -12,18 +12,6 @@ import (
 	"github.com/shhac/gt2gh/internal/testutil"
 )
 
-// syntheticEnv is the whole environment a throwaway repository needs: an
-// identity to commit with, and no user configuration at all. Relying on the
-// machine's own identity works on a developer's box and fails on a runner that
-// has none, which is a difference between environments rather than in the code.
-func syntheticEnv() []string {
-	return append(os.Environ(),
-		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
-}
-
 // stackRepo builds synthetic-trunk <- synthetic-a <- synthetic-b, where the
 // trunk has since absorbed synthetic-a's work as one squashed commit and moved
 // on. That is the shape every restack exists to repair, and a rewrite is the
@@ -433,37 +421,12 @@ func gitExec(t *testing.T, args ...string) string {
 func fastForwardRepo(t *testing.T) (string, Client) {
 	t.Helper()
 
-	dir := t.TempDir()
-	run := func(args ...string) string {
-		t.Helper()
-		command := exec.Command("git", args...)
-		command.Dir = dir
-		command.Env = syntheticEnv()
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-		}
-		return strings.TrimSpace(string(output))
-	}
-	commit := func(name string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name+".txt"), []byte(name), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		run("add", "-A")
-		run("commit", "-m", "synthetic "+name)
-	}
-
-	run("init", "--initial-branch=synthetic-trunk")
-	run("config", "user.name", "synthetic")
-	run("config", "user.email", "synthetic@example.test")
-	run("config", "gc.auto", "0")
-	run("config", "maintenance.auto", "false")
-	commit("root")
-	run("checkout", "-b", "synthetic-ahead")
-	commit("ahead")
-	run("checkout", "synthetic-trunk")
-	return dir, Client{Runner: subprocess.ExecRunner{}}
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic root", "root.txt", "root")
+	repo.Run("checkout", "-b", "synthetic-ahead")
+	repo.Commit("synthetic ahead", "ahead.txt", "ahead")
+	repo.Run("checkout", "synthetic-trunk")
+	return repo.Dir, Client{Runner: subprocess.ExecRunner{}}
 }
 
 // The trunk-advance sync performs goes through here, and its only caller fakes
@@ -529,3 +492,8 @@ func TestFastForwardIsANoOpWhenAlreadyLevel(t *testing.T) {
 		t.Errorf("FastForward() error = %v for a branch already at the target", err)
 	}
 }
+
+// syntheticEnv is the shared environment every throwaway repository runs
+// under. It lives in testutil because internal/cli needs the identical thing
+// and the two copies were byte-for-byte the same.
+func syntheticEnv() []string { return testutil.SyntheticGitEnv() }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/gt2gh/internal/testutil"
+
 	localgit "github.com/shhac/gt2gh/internal/git"
 	"github.com/shhac/gt2gh/internal/subprocess"
 )
@@ -19,66 +21,26 @@ import (
 //
 // Nothing leaves the machine: no remote is configured and every name is
 // invented.
-// syntheticEnv is the whole environment a throwaway repository needs: an
-// identity to commit with, and no user configuration at all. Relying on the
-// machine's own identity works on a developer's box and fails on a runner that
-// has none, which is a difference between environments rather than in the code.
-func syntheticEnv() []string {
-	return append(os.Environ(),
-		"GIT_AUTHOR_NAME=synthetic", "GIT_AUTHOR_EMAIL=synthetic@example.test",
-		"GIT_COMMITTER_NAME=synthetic", "GIT_COMMITTER_EMAIL=synthetic@example.test",
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
-	)
-}
 
 func restackRepo(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	env := syntheticEnv()
-	run := func(args ...string) string {
-		t.Helper()
-		command := exec.Command("git", args...)
-		command.Dir, command.Env = dir, env
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-		}
-		return strings.TrimSpace(string(output))
-	}
-	write := func(contents string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, "shared.txt"), []byte(contents), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	write := func(contents string) { repo.Write("shared.txt", contents) }
 
-	run("init", "-q", "--initial-branch=synthetic-trunk")
-	// Background maintenance writes into .git after a commit, which races the
-	// temporary directory's cleanup. Disabling it in the repository covers
-	// every invocation, including the ones the code under test makes.
-	// The identity has to live in the repository, not just in the environment
-	// these helpers use: the code under test spawns its own git, which
-	// inherits the test process's environment instead. Some platforms guess an
-	// identity from the system and some refuse, so a rewrite that commits
-	// works in one place and stops half-way in another.
-	run("config", "user.name", "synthetic")
-	run("config", "user.email", "synthetic@example.test")
-	run("config", "gc.auto", "0")
-	run("config", "maintenance.auto", "false")
 	write("base\n")
-	run("add", "-A")
-	run("commit", "-qm", "base")
-	run("checkout", "-qb", "synthetic-a")
+	repo.Run("add", "-A")
+	repo.Run("commit", "-qm", "base")
+	repo.Run("checkout", "-qb", "synthetic-a")
 	write("base\na\n")
-	run("add", "-A")
-	run("commit", "-qm", "a1")
-	run("checkout", "-qb", "synthetic-b")
+	repo.Run("add", "-A")
+	repo.Run("commit", "-qm", "a1")
+	repo.Run("checkout", "-qb", "synthetic-b")
 	write("base\na\nb\n")
-	run("add", "-A")
-	run("commit", "-qm", "b1")
-	t.Chdir(dir)
-	return dir
+	repo.Run("add", "-A")
+	repo.Run("commit", "-qm", "b1")
+	t.Chdir(repo.Dir)
+	return repo.Dir
 }
 
 // advanceTrunk absorbs synthetic-a's work into the trunk as one squashed
@@ -555,52 +517,23 @@ func subjects(t *testing.T, revisions string) string {
 func chainedRestackRepo(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	env := syntheticEnv()
-	run := func(args ...string) {
-		t.Helper()
-		command := exec.Command("git", args...)
-		command.Dir, command.Env = dir, env
-		if output, err := command.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-		}
-	}
-	write := func(name, contents string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("base", "shared.txt", "base\n")
 
-	run("init", "-q", "--initial-branch=synthetic-trunk")
-	run("config", "user.name", "synthetic")
-	run("config", "user.email", "synthetic@example.test")
-	run("config", "gc.auto", "0")
-	run("config", "maintenance.auto", "false")
-	write("shared.txt", "base\n")
-	run("add", "-A")
-	run("commit", "-qm", "base")
-
-	run("checkout", "-qb", "synthetic-a")
-	write("shared.txt", "base\na\n")
-	run("add", "-A")
-	run("commit", "-qm", "a1")
+	repo.Run("checkout", "-qb", "synthetic-a")
+	repo.Commit("a1", "shared.txt", "base\na\n")
 
 	// synthetic-b touches the same lines the trunk will rewrite, so its replay
 	// conflicts; synthetic-c touches a different file, so it replays cleanly
 	// once b is resolved — which is only reachable by carrying on.
-	run("checkout", "-qb", "synthetic-b")
-	write("shared.txt", "base\na\nb\n")
-	run("add", "-A")
-	run("commit", "-qm", "b1")
+	repo.Run("checkout", "-qb", "synthetic-b")
+	repo.Commit("b1", "shared.txt", "base\na\nb\n")
 
-	run("checkout", "-qb", "synthetic-c")
-	write("own.txt", "c\n")
-	run("add", "-A")
-	run("commit", "-qm", "c1")
+	repo.Run("checkout", "-qb", "synthetic-c")
+	repo.Commit("c1", "own.txt", "c\n")
 
-	t.Chdir(dir)
-	return dir
+	t.Chdir(repo.Dir)
+	return repo.Dir
 }
 
 // A restack that stops mid-chain must, on --continue, carry on to the branches
@@ -663,3 +596,7 @@ func TestResumedRestackFinishesTheRestOfTheChain(t *testing.T) {
 		t.Error("synthetic-c lost the branch it sits on")
 	}
 }
+
+// syntheticEnv is the shared environment every throwaway repository runs
+// under, defined once in testutil.
+func syntheticEnv() []string { return testutil.SyntheticGitEnv() }

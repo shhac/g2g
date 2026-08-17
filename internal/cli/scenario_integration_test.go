@@ -3,11 +3,12 @@ package cli_test
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/shhac/gt2gh/internal/testutil"
 )
 
 // These drive whole restack scenarios against real Git, from the simplest
@@ -52,40 +53,25 @@ type scenario struct {
 	bottomUp bool
 }
 
+// repo is the shared throwaway repository plus the few things only these
+// scenarios ask of it.
 type repo struct {
-	t   *testing.T
-	dir string
+	t    *testing.T
+	dir  string
+	repo testutil.GitRepo
 }
 
-func (r repo) git(args ...string) string {
-	r.t.Helper()
-	command := exec.Command("git", args...)
-	command.Dir, command.Env = r.dir, syntheticEnv()
-	output, err := command.CombinedOutput()
-	if err != nil {
-		r.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
-	}
-	return strings.TrimSpace(string(output))
-}
+func (r repo) git(args ...string) string { return r.repo.Run(args...) }
 
-func (r repo) write(name, content string) {
-	r.t.Helper()
-	if err := os.WriteFile(filepath.Join(r.dir, name), []byte(content), 0o600); err != nil {
-		r.t.Fatal(err)
-	}
-}
+func (r repo) write(name, content string) { r.repo.Write(name, content) }
 
 // build creates the repository the scenario describes and leaves the checkout
 // on the last branch named.
 func (s scenario) build(t *testing.T) repo {
 	t.Helper()
 
-	r := repo{t: t, dir: t.TempDir()}
-	r.git("init", "-q", "--initial-branch=synthetic-trunk")
-	r.git("config", "user.name", "synthetic")
-	r.git("config", "user.email", "synthetic@example.test")
-	r.git("config", "gc.auto", "0")
-	r.git("config", "maintenance.auto", "false")
+	built := testutil.NewGitRepo(t, "synthetic-trunk")
+	r := repo{t: t, dir: built.Dir, repo: built}
 	r.write("shared.txt", "base\n")
 	r.git("add", "-A")
 	r.git("commit", "-qm", "base")
@@ -539,9 +525,7 @@ func (r repo) assertInvariants(t *testing.T, s scenario, before map[string]strin
 // on" means once the rewrite has happened.
 func (r repo) ancestor(parent, branch string) error {
 	r.t.Helper()
-	command := exec.Command("git", "merge-base", "--is-ancestor", parent, branch)
-	command.Dir, command.Env = r.dir, syntheticEnv()
-	return command.Run()
+	return r.repo.Try("merge-base", "--is-ancestor", parent, branch)
 }
 
 func contains(values []string, want string) bool {

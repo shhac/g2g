@@ -140,9 +140,6 @@ type Snapshot struct {
 	Source Source
 }
 
-// Forked reports whether the selection is a shape rather than a path.
-func (s Snapshot) Forked() bool { return len(s.Parents) != 0 }
-
 // ParentOf reports the selected parent of a branch. A linear selection records
 // no edges, so it answers false for everything and any renderer asking about
 // shape gets the same answer it did before scopes existed.

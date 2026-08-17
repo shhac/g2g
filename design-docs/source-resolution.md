@@ -23,7 +23,7 @@ Given a branch, which source describes it, and what does that permit?
 resolve(branch) → (parent, source)
   a g2g edge exists      → g2g            adoption is the claim
   Graphite tracks it     → graphite       when gt is installed
-  exactly one open PR    → pull-request   observed, not adopted
+  exactly one open PR    → pull-request   observed, asked for
   otherwise              → unknown
 ```
 
@@ -66,6 +66,20 @@ a different question, and both answers are worth having:
 
 Drift is where those disagree, and reporting it is the most useful thing a
 read-only command can do.
+
+### The pull request source answers only when asked
+
+It is not consulted by precedence, and the reason is a constraint rather than a
+preference: reading a base means invoking `gh`, and `push` must never do that.
+A source that would be asked merely to resolve a branch would drag GitHub into
+a command whose whole contract is that it does not go there. So it sits in the
+resolver's on-request tier and answers `--from pull-request`.
+
+That also suits what it is. It describes only published branches, and GitHub
+retargets a child when its base branch is deleted on merge — so right after a
+parent lands, its children point at the trunk. The structure is never wrong
+about what GitHub will do; it stops being a record of what the stack was.
+Asking for it makes that an informed reading rather than a silent one.
 
 **GitHub's native stack is not a source at all.** Nothing defines a stack by
 editing it; branches and bases are edited and the native stack is written from

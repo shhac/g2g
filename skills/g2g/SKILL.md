@@ -181,6 +181,11 @@ description: |
   `restack` refuses a branch it has no fork point for and names `g2g track`.
 - GitHub's native stack is not a source. It is written from the others, and is
   only ever read to report membership or to find a stack to unlink.
+- `pull-request` is the third source and answers only via `--from
+  pull-request`, never by precedence: reading a base invokes `gh`, and `push`
+  must never do that. It describes published branches only, and GitHub
+  retargets a child when its base is deleted on merge, so it reports what a
+  merge will do rather than what the stack was.
 - `link` covers both creating and repairing the GitHub relationship; there is
   no separate reconcile command. `sync` means fetch, advance the base, replay,
   prune — the meaning `gt sync` has.

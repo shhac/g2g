@@ -18,6 +18,9 @@ const (
 	// SourceGraphite is a branch Graphite declares. g2g reads it and never
 	// writes it back.
 	SourceGraphite Source = "graphite"
+	// SourcePullRequest is the base of a branch's open pull request. It is
+	// observed rather than adopted, and it is asked for rather than assumed.
+	SourcePullRequest Source = "pull-request"
 )
 
 // Selector produces the ordered path a command acts on, from one source.
@@ -42,6 +45,14 @@ type Resolver struct {
 	Git Git
 	// Selectors are consulted in precedence order.
 	Selectors []Selector
+	// OnRequest are sources reachable only when the caller names one with
+	// --from. They are never consulted by precedence.
+	//
+	// A source belongs here when asking it a question has a cost the default
+	// path must not pay. Reading pull request bases means invoking gh, and push
+	// must never do that — so a source that would otherwise be consulted merely
+	// to resolve a branch has to be opted into instead.
+	OnRequest []Selector
 }
 
 // Select resolves the branch's source and delegates the whole selection to it.
@@ -92,7 +103,7 @@ func (r Resolver) pinned(from Source) ([]Selector, error) {
 	if from == "" {
 		return r.Selectors, nil
 	}
-	for _, selector := range r.Selectors {
+	for _, selector := range append(append([]Selector{}, r.Selectors...), r.OnRequest...) {
 		if selector.Source() == from {
 			return []Selector{selector}, nil
 		}
@@ -102,8 +113,8 @@ func (r Resolver) pinned(from Source) ([]Selector, error) {
 
 // sources lists the sources this build was given, in precedence order.
 func (r Resolver) sources() []string {
-	names := make([]string, 0, len(r.Selectors))
-	for _, selector := range r.Selectors {
+	names := make([]string, 0, len(r.Selectors)+len(r.OnRequest))
+	for _, selector := range append(append([]Selector{}, r.Selectors...), r.OnRequest...) {
 		names = append(names, string(selector.Source()))
 	}
 	return names

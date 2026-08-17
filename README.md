@@ -606,6 +606,27 @@ GitHub native stack running through the tree, and says which record described
 the structure — that is resolved per branch and per invocation rather than
 stored.
 
+### Reading the stack GitHub already knows about
+
+A third source reads structure from the base of each branch's open pull
+request, so a repository with published branches can be seen as a tree without
+Graphite and without anything recorded locally:
+
+```sh
+g2g status --from pull-request --scope stack
+```
+
+It answers only when named. Reading a base means invoking `gh`, and `push` must
+never do that, so a source consulted merely to resolve a branch would drag
+GitHub into a command whose contract is that it does not go there.
+
+Two limits come with reading effect rather than intent, and asking for it makes
+them an informed reading rather than a silent one. It describes **published
+branches only** — no pull request, no edge. And GitHub retargets a child when
+its base branch is deleted on merge, so immediately after a parent lands its
+children point at the trunk: never wrong about what a merge will do, no longer
+a record of what the stack was.
+
 ## Structure
 
 - `cmd/g2g`: executable entry point.

@@ -58,7 +58,7 @@ func (o stackOptions) validateScope() error {
 func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completions, branchUsage, trunkUsage string) {
 	cmd.Flags().StringVar(&o.branch, "branch", "", branchUsage)
 	cmd.Flags().StringVar(&o.trunk, "trunk", "", trunkUsage)
-	cmd.Flags().StringVar(&o.from, "from", "", "read the structure from this source only (default: whichever describes the branch)")
+	cmd.Flags().StringVar(&o.from, "from", "", "read the structure from this source only: g2g, graphite, or pull-request (default: whichever describes the branch)")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(completions.Branches))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
 		return completions.Trunks(ctx, o.branch, prefix)
@@ -71,7 +71,7 @@ func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completion
 // repository state to name a flag's own vocabulary.
 func sourceCompletions(_ context.Context, prefix string) ([]string, error) {
 	var matches []string
-	for _, source := range []stack.Source{stack.SourceG2G, stack.SourceGraphite} {
+	for _, source := range []stack.Source{stack.SourceG2G, stack.SourceGraphite, stack.SourcePullRequest} {
 		if strings.HasPrefix(string(source), prefix) {
 			matches = append(matches, string(source))
 		}

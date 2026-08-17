@@ -29,9 +29,13 @@ func newSubmit(service submit.Service, completions stack.Completions, guard func
 	cmd.Flags().BoolVar(&options.keepSpec, "keep-spec", false, "keep the temporary --edit spec after a successful apply")
 	cmd.Flags().StringVar(&options.template, "template", "", "repository pull request template name to prefill generated specs")
 	cmd.Flags().BoolVar(&options.noTemplate, "no-template", false, "do not prefill bodies from a repository template")
-	cmd.Flags().BoolVar(&options.draft, "draft", true, "create missing pull requests as drafts")
-	cmd.Flags().BoolVar(&options.ready, "ready", false, "create missing pull requests ready for review")
-	cmd.MarkFlagsMutuallyExclusive("draft", "ready")
+	// Draft is the default and has no flag of its own. Opening a pull request
+	// ready for review notifies reviewers and cannot be taken back, so it is
+	// the thing a person opts into; there is nothing to opt into about a draft.
+	// --no-ready exists only to overrule a spec that asked for ready.
+	cmd.Flags().BoolVar(&options.ready, "ready", false, "create missing pull requests ready for review instead of as drafts")
+	cmd.Flags().BoolVar(&options.noReady, "no-ready", false, "create missing pull requests as drafts even if the spec asks for ready")
+	cmd.MarkFlagsMutuallyExclusive("ready", "no-ready")
 	cmd.MarkFlagsMutuallyExclusive("edit", "spec")
 	cmd.MarkFlagsMutuallyExclusive("edit", "write-spec")
 	cmd.Flags().BoolVar(&options.apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
@@ -50,8 +54,8 @@ type submitOptions struct {
 	writeSpec  string
 	template   string
 	apply      bool
-	draft      bool
 	ready      bool
+	noReady    bool
 	noTemplate bool
 	edit       bool
 	keepSpec   bool
@@ -71,7 +75,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		return err
 	}
 	if o.writeSpec != "" {
-		return o.writeDraft(cmd, plan, chosenTemplate)
+		return o.writeDraft(cmd, plan, chosenTemplate, resolveDraft(submit.DefaultDraft, o.ready, o.noReady))
 	}
 	// --edit creates the document this command then reads. Returning the path
 	// rather than assigning o.specPath as a side effect keeps the dispatch
@@ -84,31 +88,33 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		}
 	}
 	if o.specPath == "" {
-		return o.previewWithoutSpec(cmd, plan, presentation, templateName)
+		// No spec has been read yet, so the choice is whatever the flags say
+		// over the default a fresh spec would carry.
+		return o.previewWithoutSpec(cmd, plan, presentation, templateName, resolveDraft(submit.DefaultDraft, o.ready, o.noReady))
 	}
 	spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
 	if err != nil {
 		return actionableSpecError(err, o.specPath)
 	}
-	spec.Draft = resolveDraft(cmd, spec.Draft, o.draft, o.ready)
+	spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
 	if !o.apply {
-		return o.previewWithSpec(cmd, plan, presentation, templateName)
+		return o.previewWithSpec(cmd, plan, presentation, templateName, spec.Draft)
 	}
 	return o.applyPlan(cmd, service, plan, spec, presentation, templateName)
 }
 
-func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
+func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
 	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>")
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>"+readyFlag(draft))
 }
 
-func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template); err != nil {
+func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
 	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply to push, create missing PRs, and link.")
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+" to push, create missing PRs, and link.")
 }
 
 func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
@@ -127,7 +133,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return validated, nil
 		},
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
-			return writeSubmitPreview(w, plan, presentation, template)
+			return writeSubmitPreview(w, plan, presentation, template, spec.Draft)
 		},
 		guard: o.guard,
 		execute: func(ctx context.Context, plan submit.Plan) error {
@@ -153,7 +159,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 	return flow.run(cmd, o.root, o.budgets, p, true)
 }
 
-func submitView(plan submit.Plan, template string) stackView {
+func submitView(plan submit.Plan, template string, draft bool) stackView {
 	view := stackView{
 		Operation:    "submit",
 		Target:       plan.Snapshot.Target,
@@ -161,7 +167,7 @@ func submitView(plan submit.Plan, template string) stackView {
 		Nodes:        []stackNode{{Branch: plan.Snapshot.Base, Trunk: true}},
 	}
 	for _, branch := range plan.Snapshot.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, State: "create draft"}
+		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, State: "create " + openAs(draft)}
 		previous, replaced := plan.Superseded[branch]
 		existing := existingNumber(plan, branch)
 		switch {
@@ -170,7 +176,7 @@ func submitView(plan submit.Plan, template string) stackView {
 		case existing != 0:
 			node.PRNumber, node.State, node.Severity = existing, "existing", severityOK
 		case replaced:
-			node.State = fmt.Sprintf("create draft · #%d %s", previous.Number, strings.ToLower(previous.State))
+			node.State = fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State))
 		}
 		view.Nodes = append(view.Nodes, node)
 	}
@@ -181,11 +187,38 @@ func submitView(plan submit.Plan, template string) stackView {
 	if len(plan.Issues) != 0 {
 		return view.block("Apply blocked: repair the marked existing pull requests first.")
 	}
-	return view.note("Missing PRs will be created as drafts; existing PRs are preserved.", severityNeutral)
+	return view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 }
 
-func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string) error {
-	return writeStackView(w, submitView(plan, template), p)
+// openAs names what a missing pull request will be opened as. The preview is
+// rendered and flushed immediately before the mutation, so saying "draft" while
+// about to open ready for review is not a cosmetic error: it is the last thing
+// a person reads before reviewers are notified.
+func openAs(draft bool) string {
+	if draft {
+		return "draft"
+	}
+	return "ready for review"
+}
+
+func openAsPlural(draft bool) string {
+	if draft {
+		return "as drafts"
+	}
+	return "ready for review"
+}
+
+// readyFlag echoes the choice back in any command this preview suggests, so a
+// copied command reproduces the run that was previewed.
+func readyFlag(draft bool) string {
+	if draft {
+		return ""
+	}
+	return " --ready"
+}
+
+func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string, draft bool) error {
+	return writeStackView(w, submitView(plan, template, draft), p)
 }
 
 // existingNumber routes through the shared resolution rather than scanning for

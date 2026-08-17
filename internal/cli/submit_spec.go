@@ -17,8 +17,14 @@ import (
 // broken one with repair steps — is kept apart from the command wiring and the
 // rendering it sits between.
 
-func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string) error {
-	path, err := submit.Write(o.writeSpec, submit.NewSpec(plan.Snapshot.Branches, body))
+// writeDraft records the choice in the document rather than leaving it to be
+// re-typed. A spec is meant to be the whole request, so a --ready that only
+// lived on the command line that produced it would be silently dropped by the
+// --apply that reads it back.
+func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string, draft bool) error {
+	spec := submit.NewSpec(plan.Snapshot.Branches, body)
+	spec.Draft = draft
+	path, err := submit.Write(o.writeSpec, spec)
 	if err != nil {
 		return err
 	}
@@ -48,12 +54,18 @@ func (o submitOptions) editedSpec(ctx context.Context, cmd *cobra.Command, plan 
 	return path, nil
 }
 
-func resolveDraft(cmd *cobra.Command, specDraft, draft, ready bool) bool {
+// resolveDraft decides whether missing pull requests are opened as drafts.
+//
+// Draft is the default and the safe answer: a draft can be marked ready at any
+// time, while opening ready notifies reviewers immediately and cannot be
+// undone. So --ready is the only way to ask for the irreversible thing, and
+// --no-ready exists to overrule a spec that already asked for it.
+func resolveDraft(specDraft, ready, noReady bool) bool {
 	if ready {
 		return false
 	}
-	if cmd.Flags().Changed("draft") {
-		return draft
+	if noReady {
+		return true
 	}
 	return specDraft
 }

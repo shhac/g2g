@@ -28,12 +28,17 @@ type Pull struct {
 	Reviewers []string `json:"reviewers,omitempty"`
 }
 
+// DefaultDraft is what a fresh spec asks for. Opening a pull request ready for
+// review notifies reviewers and cannot be undone, so the default is the
+// reversible one and being ready is opted into.
+const DefaultDraft = true
+
 func NewSpec(branches []string, template string) Spec {
 	pulls := make([]Pull, len(branches))
 	for i, branch := range branches {
 		pulls[i] = Pull{Branch: branch, Body: template}
 	}
-	return Spec{Version: 1, Draft: true, Pulls: pulls, Template: template}
+	return Spec{Version: 1, Draft: DefaultDraft, Pulls: pulls, Template: template}
 }
 
 func Write(dir string, spec Spec) (string, error) {

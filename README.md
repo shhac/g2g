@@ -512,9 +512,17 @@ g2g submit --spec "$spec_dir/submission.json" --apply
 ```
 
 The spec is one JSON document with ordered branch/title/body/reviewer entries;
-complex Markdown bodies are preserved exactly. Missing PRs default to drafts;
-use `--ready` only deliberately. If apply fails, the spec remains in place and
-the error gives exact repair, validation, and retry commands.
+complex Markdown bodies are preserved exactly. If apply fails, the spec remains
+in place and the error gives exact repair, validation, and retry commands.
+
+Missing PRs are opened as drafts. There is no `--draft` flag, because a draft
+is the default and can be marked ready at any time; `--ready` is how you ask
+for the thing that cannot be undone, since opening ready for review notifies
+reviewers immediately. `--write-spec` records the choice in the document, so an
+`--apply` that reads it back does not silently drop it, and `--no-ready`
+overrules a spec that asks for ready. The preview names what it is about to
+open and echoes `--ready` into the command it suggests, so what you read is
+what runs.
 
 `g2g submit --edit` creates one temporary `submission.json` document and opens
 `$EDITOR`; it never opens a buffer per PR. Add `--apply` to continue after

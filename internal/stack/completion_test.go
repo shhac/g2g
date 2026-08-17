@@ -277,3 +277,41 @@ func TestCompletionsRefuseWhenNotConfigured(t *testing.T) {
 		t.Error("Trunks() on an unconfigured value = nil, want error")
 	}
 }
+
+// A source that cannot answer costs its own candidates and nothing else. A
+// deadline is different in kind: it is global, so every remaining source will
+// fail too, and continuing produces an empty list that is then presented as a
+// complete answer. Silence and "there is nothing here" must not look the same.
+func TestAnExpiredBudgetIsReportedRatherThanReadAsNoCandidates(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	completions := Completions{
+		Git:     completionGit{current: "owned", branches: []string{"main", "owned"}},
+		Sources: []Candidates{storedCandidates{err: context.Canceled}},
+	}
+
+	if _, err := completions.Branches(ctx, ""); err == nil {
+		t.Error("Branches() error = nil for an expired budget; an empty completion list would claim there is nothing to offer")
+	}
+}
+
+// The degradation the design actually wants is untouched: one broken source
+// costs its own candidates while the budget still holds.
+func TestABrokenSourceStillCostsOnlyItsOwnCandidates(t *testing.T) {
+	completions := Completions{
+		Git: completionGit{current: "owned", branches: []string{"main", "owned"}},
+		Sources: []Candidates{
+			storedCandidates{err: fmt.Errorf("synthetic store failure")},
+			graphiteSource(completionGraphite{tracked: []string{"owned"}}),
+		},
+	}
+
+	branches, err := completions.Branches(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Branches() error = %v, want the surviving source's candidates", err)
+	}
+	if strings.Join(branches, ",") != "owned" {
+		t.Errorf("branches = %v, want the surviving source's candidates", branches)
+	}
+}

@@ -91,6 +91,14 @@ func (c Completions) gather(ctx context.Context, prefix string, from func(Candid
 	for _, source := range c.Sources {
 		candidates, err := from(source)
 		if err != nil {
+			// Running out of time is not a source that cannot answer. A
+			// cancelled context guarantees every remaining source fails too, so
+			// carrying on builds an empty list and then presents it as a
+			// complete one — a user who tabs and sees nothing concludes there
+			// are no candidates, when the truth is that nobody looked.
+			if ctx.Err() != nil {
+				return nil, err
+			}
 			diagnostic.Event(ctx, "completion.source_skipped", diagnostic.Field{Key: "reason", Value: err.Error()})
 			continue
 		}

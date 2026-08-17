@@ -1,15 +1,16 @@
 ---
 name: gt2gh
 description: |
-  Develop, test, or safely use the gt2gh Go CLI that bridges Graphite-managed
-  branch stacks to GitHub native stacks. Use when working on gt2gh commands,
-  Graphite/GitHub stack discovery or linking, reconciliation, CLI tests, or
-  release readiness. Triggers: "gt2gh", "Graphite GitHub stack", "gh stack
-  link", "Graphite stack linking", "gt2gh link", "gt2gh sync", "g2g link",
-  "g2g sync", "g2g push", "g2g submit", "Graphite atomic stack push",
-  "g2g source resolution", "stack without Graphite",
-  "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g-owned graph",
-  "branch graph without Graphite", "restack after squash merge".
+  Develop, test, or safely use the gt2gh Go CLI, which records stacked branches
+  itself and projects them onto GitHub. Graphite is an optional source it can
+  read, mirror to, and import from — not a requirement. Use when working on
+  gt2gh commands, stack structure or linking, restacking, alignment with
+  Graphite, CLI tests, or release readiness. Triggers: "gt2gh", "g2g",
+  "gh stack link", "g2g link", "g2g sync", "g2g push", "g2g submit",
+  "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g mirror",
+  "g2g import", "g2g retarget", "g2g-owned graph", "stack without Graphite",
+  "branch graph without Graphite", "restack after squash merge",
+  "source resolution", "source alignment", "retarget pull request base".
 ---
 
 # gt2gh
@@ -33,31 +34,32 @@ description: |
 - Read `README.md` and `design-docs/initial-scope.md` before changing behavior.
   For anything touching the gt2gh-owned branch forest, read
   `design-docs/g2g-owned-graphs.md` first.
-- Treat Graphite as authoritative. Preserve the selected declared-trunk-to-leaf
-  path in bottom-to-top order; do not manage, reorder, rebase, submit, or merge
-  Graphite branches. A selected branch may sit in a forked tree, but siblings
-  and descendants are not part of a v0.1 link.
+- **Graphite is not authoritative.** Structure is resolved per invocation, and a
+  branch the gt2gh graph records wins over anything Graphite declares; Graphite
+  answers for whatever gt2gh has not adopted. Read
+  `design-docs/source-resolution.md` before changing how a command selects a
+  stack, and never reintroduce the assumption that Graphite decides.
 - `link` previews by default. Its optional `--branch` target must work without
   checkout; `--apply` is the only path that may invoke `gh stack link`. Bare
-  invocation prints help. `sync` is preview-first and only applies when every
-  selected-path branch already has an open GitHub PR; it must not create
-  Graphite-only mappings or repair closed/non-open PRs.
-- `push` is a preview-first publication escape hatch. It may use Graphite's
-  supported read-only discovery to select a path, but must never submit,
-  restack, or otherwise mutate Graphite, and must never call `gh`; only
-  `--apply` may run exactly one
+  invocation prints help.
+- `sync` has nothing to do with pull requests. It brings a stack up to date with
+  its remote: fetch into gt2gh's own ref namespace, fast-forward the base or
+  refuse if it has diverged, replay, and forget what has landed. It never calls
+  `gh`.
+- `push` is a preview-first publication escape hatch. It selects a path through
+  source resolution, must never submit or restack, and must never call `gh`;
+  only `--apply` may run exactly one
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
-  weaker push mode. Graphite remains responsible for tracking, restacking, and
-  submission.
-- By default, commands treat the selected branch as a pivot and extend through
-  a unique downward Graphite child chain. This remains no-checkout and excludes
+  weaker push mode.
+- By default, a stack command treats the selected branch as a pivot and extends
+  through a unique downward child chain. This remains no-checkout and excludes
   siblings; reject a descendant fork rather than guessing. `--no-stack` is the
-  explicit opt-out for only the declared trunk-to-selected path.
-- `--debug` is a persistent, stderr-only diagnostic flag for `link`, `sync`,
-  and `push`.
-  It is safe to use for local investigation but must not alter command behavior
-  or cause agents to enable Graphite's own `gt --debug`.
+  explicit opt-out for only the trunk-to-selected path, and `--from` pins which
+  source answers for one invocation.
+- `--debug` is a persistent, stderr-only diagnostic flag on every command. It is
+  safe for local investigation but must not alter command behavior or cause
+  agents to enable Graphite's own `gt --debug`.
 - Never guess a Graphite trunk from its name. The selected ancestry determines
   the inferred trunk; multiple valid declared trunks require `--trunk`, whose
   value must itself be declared and ancestral. A g2g-owned path has one root,

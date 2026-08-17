@@ -8,14 +8,14 @@ import (
 
 // syncView shows the sequence in the order it runs, so a reader can see where
 // it would stop as easily as what it would do.
-func syncView(plan syncer.Plan, prune bool) stackView {
+func syncView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "sync")
 	if plan.Blocked != "" {
 		return view.blockedBy(plan.Blocked)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
 	view = view.note(replayNote(plan), severityNeutral)
-	return pruneNote(view, plan, prune)
+	return view
 }
 
 func baseNote(plan syncer.Plan) string {
@@ -38,17 +38,4 @@ func replayNote(plan syncer.Plan) string {
 		return "Nothing needs replaying."
 	}
 	return "Replays " + branchList(replaying) + "."
-}
-
-// pruneNote always names what would be forgotten, whether or not it will be:
-// a branch leaving the recorded graph is a change to say out loud.
-func pruneNote(view stackView, plan syncer.Plan, prune bool) stackView {
-	if len(plan.Prunable) == 0 {
-		return view
-	}
-	landed := branchList(plan.Prunable) + " " + pick(len(plan.Prunable), "has", "have") + " landed"
-	if !prune {
-		return view.note(landed+" · --prune would forget "+pick(len(plan.Prunable), "it", "them")+".", severityNeutral)
-	}
-	return view.note("Forgets "+branchList(plan.Prunable)+" · "+landed+". No branch is deleted.", severityWarn)
 }

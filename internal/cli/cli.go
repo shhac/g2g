@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/retarget"
@@ -57,6 +58,9 @@ type Options struct {
 	Restack restack.Service
 	// Sync brings a stack up to date with its remote by composing the others.
 	Sync syncer.Service
+	// Prune forgets branches whose work has landed. It edits the graph and
+	// deletes nothing, which is why it is not the tail of sync.
+	Prune prune.Service
 	// Retarget reconciles GitHub's pull request bases with the resolved stack.
 	// It is the only command that changes what a merge will do.
 	Retarget retarget.Service
@@ -122,6 +126,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Graph:       graphService,
 		Restack:     restackService,
 		Sync:        syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
+		Prune:       prune.Service{Git: gitClient, Graph: graphService},
 		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
 		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
 		Unstacker:   githubClient,
@@ -197,6 +202,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
 		root.AddCommand(newSync(options.Sync, guard, presentation))
+		root.AddCommand(newPrune(options.Prune, guard, presentation))
 	}
 	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))

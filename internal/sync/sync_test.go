@@ -209,7 +209,7 @@ func TestApplyRefusesABlockedPlan(t *testing.T) {
 	}
 	before := store.graph.Clone()
 
-	if err := service.Apply(context.Background(), plan, true); err == nil {
+	if err := service.Apply(context.Background(), plan); err == nil {
 		t.Fatal("Apply() error = nil for a blocked plan")
 	}
 	if len(git.fastForwards) != 0 {
@@ -293,7 +293,7 @@ func TestApplyAdvancesTheBaseBeforeReplaying(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.Apply(context.Background(), plan, false); err != nil {
+	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 
@@ -310,34 +310,6 @@ func TestApplyAdvancesTheBaseBeforeReplaying(t *testing.T) {
 	}
 }
 
-// Pruning forgets a landed branch in the recorded graph. Deleting the branch
-// is a separate, deliberate act and never the tail of another command.
-func TestPruneForgetsLandedBranchesWithoutDeletingThem(t *testing.T) {
-	git := behindGit()
-	restacker := &stubRestacker{plan: restack.Plan{
-		Steps: []restack.Step{{Branch: "synthetic-a", Collapses: true}, {Branch: "synthetic-b"}},
-	}}
-	service, store := newService(git, restacker)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(plan.Prunable, ",") != "synthetic-a" {
-		t.Fatalf("Prunable = %v, want the landed branch", plan.Prunable)
-	}
-
-	if err := service.Apply(context.Background(), plan, true); err != nil {
-		t.Fatalf("Apply() error = %v", err)
-	}
-
-	if store.graph.Tracked("synthetic-a") {
-		t.Error("the landed branch is still recorded")
-	}
-	if !store.graph.Tracked("synthetic-b") {
-		t.Error("pruning removed a branch that had not landed")
-	}
-}
-
 func TestPruneIsSkippedWhenNotAskedFor(t *testing.T) {
 	git := behindGit()
 	restacker := &stubRestacker{plan: restack.Plan{
@@ -349,7 +321,7 @@ func TestPruneIsSkippedWhenNotAskedFor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.Apply(context.Background(), plan, false); err != nil {
+	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
 
@@ -369,7 +341,7 @@ func TestApplyDoesNotTouchALevelBase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.Apply(context.Background(), plan, false); err != nil {
+	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
 	if len(git.fastForwards) != 0 {
@@ -401,17 +373,16 @@ func TestApplyStopsAtTheFirstStepThatFails(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}
-			plan.Prunable = []string{"synthetic-b"}
-
-			if err := service.Apply(context.Background(), plan, true); err == nil {
+			if err := service.Apply(context.Background(), plan); err == nil {
 				t.Fatal("Apply() error = nil when a step failed")
 			}
 			if restacker.applied != test.wantReplayed {
 				t.Errorf("replayed %d times, want %d", restacker.applied, test.wantReplayed)
 			}
-			// The graph is only ever written by prune, which must not run.
+			// sync never writes the graph at all now: forgetting what has
+			// landed is prune's job and prune's boundary.
 			if len(store.writes) != 0 {
-				t.Errorf("prune edited the graph %d times after a failed step", len(store.writes))
+				t.Errorf("sync edited the graph %d times", len(store.writes))
 			}
 		})
 	}

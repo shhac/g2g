@@ -54,9 +54,6 @@ type Plan struct {
 	// Diverged means the base cannot be fast-forwarded. Nothing is attempted
 	// in that case: reconciling it is the user's call, not a side effect.
 	Diverged bool
-	// Prunable is the branches whose work is entirely in their parent, which
-	// is what a landed branch looks like after its replay.
-	Prunable []string
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 }
@@ -114,12 +111,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	plan.Blocked = plan.Restack.Blocked
-	plan.Prunable = plan.Restack.Emptied()
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
 		diagnostic.Field{Key: "advance", Value: fmt.Sprintf("%t", plan.Advance)},
 		diagnostic.Field{Key: "replays", Value: strings.Join(plan.Restack.Replaying(), ",")},
-		diagnostic.Field{Key: "prunable", Value: strings.Join(plan.Prunable, ",")},
 	)
 	return plan, nil
 }
@@ -152,7 +147,7 @@ func (s Service) compare(ctx context.Context, base, remote string) (advance, div
 // It reports how far it got rather than unwinding: a replay that stops on a
 // conflict is resumable, and undoing the fetch and the fast-forward would
 // throw away work the user then has to redo.
-func (s Service) Apply(ctx context.Context, plan Plan, prune bool) error {
+func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot sync: %s", plan.Blocked)
 	}
@@ -164,33 +159,6 @@ func (s Service) Apply(ctx context.Context, plan Plan, prune bool) error {
 	}
 	if len(plan.Restack.Steps) != 0 {
 		if err := s.Restack.Apply(ctx, plan.Restack); err != nil {
-			return err
-		}
-	}
-	if !prune || len(plan.Prunable) == 0 {
-		return nil
-	}
-	return s.prune(ctx, plan.Prunable)
-}
-
-// prune forgets branches whose work has landed. It edits the recorded graph
-// and never deletes a branch: removing someone's local work is not something
-// to do as the tail of another command.
-func (s Service) prune(ctx context.Context, branches []string) error {
-	adopted, err := s.Graph.Store.Load(ctx)
-	if err != nil {
-		return err
-	}
-	diagnostic.Event(ctx, "sync.prune", diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")})
-	updated := adopted.Untrack(branches...)
-	if err := s.Graph.Store.Save(ctx, updated); err != nil {
-		return err
-	}
-	if s.Graph.Refs == nil {
-		return nil
-	}
-	for _, branch := range branches {
-		if err := s.Graph.Refs.UnpinForkPoint(ctx, branch); err != nil {
 			return err
 		}
 	}

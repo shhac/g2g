@@ -14,14 +14,14 @@ import (
 // the flat list every other command shows than as a staircase that pushes each
 // branch further right for no information.
 func graphNodes(discovery graph.Discovery) []stackNode {
-	depths := renderDepths(discovery)
+	depths := treeDepths(discovery.Branches, discovery.Graph.Parent)
 	nodes := make([]stackNode, 0, len(discovery.Branches))
 	for index, branch := range discovery.Branches {
 		parent, _ := discovery.Graph.Parent(branch)
 		node := stackNode{
 			Branch: branch,
 			Parent: parent,
-			Depth:  depths[index],
+			Depth:  depths[branch],
 			Target: branch == discovery.Target,
 			// The root of a path or component is the base the graph hangs
 			// from. A lone untracked branch is not a base, it is the branch
@@ -53,60 +53,6 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 	default:
 		return "", severityNeutral
 	}
-}
-
-// renderDepths returns the indentation depth of each selected branch, or all
-// zeros when the selection is a chain.
-func renderDepths(discovery graph.Discovery) []int {
-	positions := selectedPositions(discovery)
-	depths := make([]int, len(discovery.Branches))
-	if !forks(discovery, positions) {
-		return depths
-	}
-	for index, branch := range discovery.Branches {
-		if parentIndex, inSelection := selectedParent(discovery, positions, branch); inSelection {
-			depths[index] = depths[parentIndex] + 1
-		}
-	}
-	return depths
-}
-
-func selectedPositions(discovery graph.Discovery) map[string]int {
-	positions := make(map[string]int, len(discovery.Branches))
-	for index, branch := range discovery.Branches {
-		positions[branch] = index
-	}
-	return positions
-}
-
-// selectedParent locates a branch's parent within the selection. A parent
-// outside it is not a parent for rendering: the selection's own root hangs
-// from nothing.
-func selectedParent(discovery graph.Discovery, positions map[string]int, branch string) (int, bool) {
-	parent, tracked := discovery.Graph.Parent(branch)
-	if !tracked {
-		return 0, false
-	}
-	index, inSelection := positions[parent]
-	return index, inSelection
-}
-
-// forks reports whether any selected branch has two selected children. A
-// selection without one is a chain, and a chain reads better as the flat list
-// every other command shows.
-func forks(discovery graph.Discovery, positions map[string]int) bool {
-	children := make(map[int]int, len(discovery.Branches))
-	for _, branch := range discovery.Branches {
-		parentIndex, inSelection := selectedParent(discovery, positions, branch)
-		if !inSelection {
-			continue
-		}
-		children[parentIndex]++
-		if children[parentIndex] > 1 {
-			return true
-		}
-	}
-	return false
 }
 
 func graphView(discovery graph.Discovery, operation string) stackView {

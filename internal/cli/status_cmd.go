@@ -45,7 +45,9 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	}
 	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
 
-	depths := stackDepths(plan.Snapshot)
+	// The base is a node too, and it is the parent of every top-level branch, so
+	// it has to be in the ordered selection for depth to come out right.
+	depths := treeDepths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
 	view := stackView{
 		Operation:    operation,
 		Target:       plan.Target,
@@ -68,28 +70,6 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		view.Nodes = append(view.Nodes, node)
 	}
 	return view, native
-}
-
-// stackDepths is the indentation of each branch in a forked selection, keyed by
-// branch. A linear selection returns nothing, so its rendering is untouched: a
-// chain reads better as the flat list every other command shows than as a
-// staircase that pushes each branch right for no information.
-//
-// The selection is ordered parent-before-child, so one pass is enough.
-func stackDepths(snapshot stack.Snapshot) map[string]int {
-	if !snapshot.Forked() {
-		return nil
-	}
-	depths := make(map[string]int, len(snapshot.Branches))
-	for _, branch := range snapshot.Branches {
-		parent, within := snapshot.Parents[branch]
-		if !within || parent == snapshot.Base {
-			depths[branch] = 1
-			continue
-		}
-		depths[branch] = depths[parent] + 1
-	}
-	return depths
 }
 
 // statusAdvice reuses the blocked-reason logic so triage and the command that

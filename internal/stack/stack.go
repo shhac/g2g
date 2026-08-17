@@ -143,6 +143,17 @@ type Snapshot struct {
 // Forked reports whether the selection is a shape rather than a path.
 func (s Snapshot) Forked() bool { return len(s.Parents) != 0 }
 
+// ParentOf reports the selected parent of a branch. A linear selection records
+// no edges, so it answers false for everything and any renderer asking about
+// shape gets the same answer it did before scopes existed.
+func (s Snapshot) ParentOf(branch string) (string, bool) {
+	parent, within := s.Parents[branch]
+	if !within || parent == "" {
+		return "", false
+	}
+	return parent, true
+}
+
 // Resolve selects a local Graphite path without checkout. command names the
 // consumer's action in an option-like branch safety error.
 var errNotConfigured = fmt.Errorf("stack resolver is not fully configured")

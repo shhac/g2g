@@ -172,7 +172,7 @@ func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Se
 		return Snapshot{}, fmt.Errorf("selected branch %q is not a local branch", target)
 	}
 
-	scope := selection.scope()
+	scope := selection.EffectiveScope()
 	if !scope.Linear() {
 		return resolveForked(ctx, graphiteClient, target, source, scope, local, command)
 	}
@@ -199,10 +199,14 @@ func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Se
 	}, nil
 }
 
-// scope reconciles the scope flag with the older boolean. --no-stack predates
-// scopes and means exactly ScopeBranch, so it is translated rather than
-// consulted separately; nothing downstream should have to know both exist.
-func (s Selection) scope() Scope {
+// EffectiveScope reconciles the scope flag with the older boolean. --no-stack
+// predates scopes and means exactly ScopeBranch, so it is translated rather
+// than consulted separately; nothing downstream should have to know both exist.
+//
+// It is exported because every selector has to honour it. A selector that
+// resolves its own scope, or ignores the one it was handed, makes the flag mean
+// something different depending on which record answered.
+func (s Selection) EffectiveScope() Scope {
 	if s.Scope != "" {
 		return s.Scope
 	}

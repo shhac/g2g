@@ -34,13 +34,15 @@ func (s Selector) Describes(ctx context.Context, branch string) (bool, error) {
 	return adopted.Tracked(branch), nil
 }
 
-// Select returns the root-to-target path as the ordered stack a projection
-// consumes: the root is the base, and everything above it is the stack.
+// Select returns the selected branches as the ordered stack a command acts on:
+// the first is the base, and the rest hang from it.
 //
-// NoStack narrows to the selected branch and its ancestry, which is what the
-// path scope already means, so the flag needs no separate handling here.
+// The scope it was handed is the scope it resolves. Hardcoding one here made
+// --scope and --no-stack silently do nothing for every branch this record
+// describes, which is the common case because this record is consulted first.
 func (s Selector) Select(ctx context.Context, selection stack.Selection, command string) (stack.Snapshot, error) {
-	discovery, err := s.Service.Discover(ctx, Selection{Branch: selection.Branch, Scope: ScopePath})
+	scope := selection.EffectiveScope()
+	discovery, err := s.Service.Discover(ctx, Selection{Branch: selection.Branch, Scope: scope})
 	if err != nil {
 		return stack.Snapshot{}, err
 	}
@@ -57,8 +59,17 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 		Base:         base,
 		BaseSource:   baseSource,
 		Branches:     append([]string(nil), discovery.Branches[1:]...),
+		Scope:        scope,
+		// Shape, restricted to the selection, so a renderer knows where this
+		// selection's own roots are. A linear selection yields edges that form
+		// a chain, which renders exactly as it always has.
+		Parents: shapeOf(discovery.Graph).Restrict(discovery.Branches),
 	}, nil
 }
+
+// shapeOf exposes a graph's edges as the shared forest, so a selector can
+// describe a selection's shape without reimplementing the walk.
+func shapeOf(g Graph) stack.Forest { return g.shape() }
 
 // selectBase applies --trunk to a recorded path. A path has exactly one root,
 // so the flag can only confirm the base g2g already derived; naming any other

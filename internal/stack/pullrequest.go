@@ -103,7 +103,7 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 	return Snapshot{
 		Target:       target,
 		TargetSource: source,
-		GraphitePath: ancestry,
+		Ancestry:     ancestry,
 		Base:         base,
 		BaseSource:   "pull request base",
 		Branches:     branches,

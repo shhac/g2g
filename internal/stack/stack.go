@@ -60,7 +60,7 @@ func (s Snapshot) Equal(other Snapshot) bool {
 		s.BaseSource == other.BaseSource &&
 		s.Scope == other.Scope &&
 		maps.Equal(s.Parents, other.Parents) &&
-		slices.Equal(s.GraphitePath, other.GraphitePath) &&
+		slices.Equal(s.Ancestry, other.Ancestry) &&
 		slices.Equal(s.Branches, other.Branches)
 }
 
@@ -115,13 +115,15 @@ type Selection struct {
 type Snapshot struct {
 	Target       string
 	TargetSource string
-	// GraphitePath is the full declared ancestry including the base. Only a
-	// Graphite selection fills it; it exists for revalidation, which must
-	// notice ancestry moving even when Branches does not change.
-	GraphitePath []string
-	Base         string
-	BaseSource   string
-	Branches     []string
+	// Ancestry is the whole line of descent to the target, base included,
+	// whether or not the selection acts on all of it. It exists for
+	// revalidation, which has to notice the structure above the base moving
+	// even when Branches is unchanged — so every source fills it, and one that
+	// did not would revalidate more weakly than the others without saying so.
+	Ancestry   []string
+	Base       string
+	BaseSource string
+	Branches   []string
 	// Parents carries the shape that Branches alone cannot express, restricted
 	// to the selection: a branch whose parent lies outside it is absent, which
 	// is how a renderer knows the selection's own roots.
@@ -269,7 +271,7 @@ func resolveGraphite(ctx context.Context, graphiteClient Graphite, target, sourc
 	return Snapshot{
 		Target:       target,
 		TargetSource: source,
-		GraphitePath: ancestry,
+		Ancestry:     ancestry,
 		Base:         base,
 		BaseSource:   baseSource,
 		Branches:     branches,

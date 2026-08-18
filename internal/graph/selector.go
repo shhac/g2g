@@ -54,6 +54,14 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 	if err != nil {
 		return stack.Snapshot{}, err
 	}
+	// The whole line of descent, not just the selection: revalidation compares
+	// it so that structure moving above the base is noticed even when the
+	// acted-on branches are unchanged. Leaving it empty here would have made a
+	// g2g-owned selection revalidate more weakly than any other source's.
+	ancestry, err := shape.Path(discovery.Target)
+	if err != nil {
+		return stack.Snapshot{}, err
+	}
 	base, baseSource, err := selectBase(hangsFrom, discovery.Target, selection.Trunk)
 	if err != nil {
 		return stack.Snapshot{}, err
@@ -67,6 +75,7 @@ func (s Selector) Select(ctx context.Context, selection stack.Selection, command
 	return stack.Snapshot{
 		Target:       discovery.Target,
 		TargetSource: discovery.TargetSource,
+		Ancestry:     ancestry,
 		Base:         base,
 		BaseSource:   baseSource,
 		Branches:     branches,

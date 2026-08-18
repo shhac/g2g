@@ -187,3 +187,31 @@ func TestAnUnreadableStoreIsReportedNotTreatedAsEmpty(t *testing.T) {
 		t.Error("Trunks() error = nil for an unreadable store")
 	}
 }
+
+// Ancestry is what revalidation compares to notice the structure above the
+// base moving while the acted-on branches stay the same. A source that leaves
+// it empty passes that comparison unconditionally, so a g2g-owned selection
+// used to be revalidated more weakly than a Graphite or pull request one —
+// invisibly, because the field was called GraphitePath.
+func TestSelectorFillsTheAncestryRevalidationCompares(t *testing.T) {
+	// The two scopes a projection command offers, because a GitHub native
+	// stack is linear. Ancestry is the same either way: it describes the
+	// structure, not the selection.
+	for _, test := range []struct {
+		scope stack.Scope
+		want  string
+	}{
+		{stack.ScopePath, "synthetic-trunk,synthetic-a,synthetic-b"},
+		{stack.ScopeStack, "synthetic-trunk,synthetic-a,synthetic-b"},
+	} {
+		t.Run(string(test.scope), func(t *testing.T) {
+			snapshot, err := selectorService(chain()).Select(context.Background(), stack.Selection{Branch: "synthetic-b", Scope: test.scope}, "g2g test")
+			if err != nil {
+				t.Fatalf("Select() error = %v", err)
+			}
+			if got := strings.Join(snapshot.Ancestry, ","); got != test.want {
+				t.Errorf("Ancestry = %q, want %q · the whole line of descent, not just the selection", got, test.want)
+			}
+		})
+	}
+}

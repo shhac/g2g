@@ -10,4 +10,4 @@ g2g track --parent synthetic-auth   record just this edge
 g2g track --stack                   record the whole ancestry at once
 Scope branch · 1 branch · /synthetic/repo/.git/g2g/graph.json
 
-No changes were made. Rerun with --apply to record this edge.
+No changes were made. Apply would refuse until that is resolved.

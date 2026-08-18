@@ -25,7 +25,10 @@ type applyFlow[P any] struct {
 	render     func(io.Writer, P, Presentation) error
 	execute    func(context.Context, P) error
 
-	// branches sizes the mutation budget, which scales with the stack.
+	// branches sizes the mutation budget, which scales with the stack. A
+	// command that does not supply one gets the base budget rather than a
+	// panic: every other closure here is optional and nil-guarded, and this one
+	// being required-but-unchecked is not a distinction a caller can see.
 	branches func(P) int
 	// noOp reports a plan that is valid but has nothing to do. Commands without
 	// such a state leave it nil.
@@ -128,7 +131,7 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
 
-	mutateCtx, cancelMutation := budgets.mutation(root, f.branches(validated))
+	mutateCtx, cancelMutation := budgets.mutation(root, f.mutationSize(validated))
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
 		if f.interrupted != nil {
@@ -163,3 +166,11 @@ func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentatio
 }
 
 func (f applyFlow[P]) isNoOp(plan P) bool { return f.noOp != nil && f.noOp(plan) }
+
+// mutationSize is how many branches the mutation budget scales with.
+func (f applyFlow[P]) mutationSize(plan P) int {
+	if f.branches == nil {
+		return 0
+	}
+	return f.branches(plan)
+}

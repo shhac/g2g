@@ -31,13 +31,19 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 			revalidate: func(ctx context.Context, preview prune.Plan) (prune.Plan, error) {
 				return service.Revalidate(ctx, selection.Selection(), preview)
 			},
-			render:  func(w io.Writer, plan prune.Plan, p Presentation) error { return writePrunePlan(w, plan, p) },
-			execute: func(ctx context.Context, plan prune.Plan) error { return service.Apply(ctx, plan) },
-			noOp:    func(plan prune.Plan) bool { return plan.Nothing() },
+			render:   func(w io.Writer, plan prune.Plan, p Presentation) error { return writePrunePlan(w, plan, p) },
+			execute:  func(ctx context.Context, plan prune.Plan) error { return service.Apply(ctx, plan) },
+			branches: func(plan prune.Plan) int { return len(plan.Landed) },
+			noOp:     func(plan prune.Plan) bool { return plan.Nothing() },
+			// Forgetting a branch while something recorded under it survives is
+			// a refusal, so it belongs before the ready banner rather than
+			// after it, in Apply.
+			blocked: func(plan prune.Plan) string { return plan.Blocked },
 			notices: flowNotices{
 				preview: "Rerun with --apply to forget them.",
 				noOp:    "Nothing has landed.",
-				changed: "Forgot",
+				applied: "Forgotten.",
+				changed: "The graph no longer records them. No branch was deleted.",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

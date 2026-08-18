@@ -212,6 +212,12 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
 		root.AddCommand(newSync(options.Sync, guard, presentation))
+	}
+	// prune reads Git and the graph store and nothing else, so it is available
+	// wherever those are. It was registered under sync's condition when it was
+	// still part of sync, which meant a build configured for one and not the
+	// other silently lost the command.
+	if options.Prune.Git != nil && options.Prune.Graph.Store != nil {
 		root.AddCommand(newPrune(options.Prune, guard, presentation))
 	}
 	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {

@@ -294,6 +294,15 @@ func (s Service) blockedReason(discovery graph.Discovery) string {
 		if !state.Restackable() {
 			return fmt.Sprintf("%s is %s · retrack it before restacking", branch, state)
 		}
+		// An edge written before fork points were recorded says where the
+		// branch hangs but not where its own commits begin. Standing in the
+		// parent's tip for that is right only while the branch still sits on
+		// it: once the parent moves, the substitute range is empty and the
+		// rewrite silently becomes a no-op. Refuse and say so, rather than
+		// report success having replayed nothing.
+		if edge, tracked := discovery.Graph.Edges[branch]; tracked && edge.ForkPoint == "" && state != graph.StateAligned {
+			return fmt.Sprintf("%s was recorded before fork points were · retrack it before restacking", branch)
+		}
 	}
 	return ""
 }

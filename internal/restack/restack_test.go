@@ -914,3 +914,49 @@ func TestResumeCollapsesBranchesWithNothingLeftToContribute(t *testing.T) {
 		t.Errorf("journal cleared %d times, want once", journal.cleared)
 	}
 }
+
+// An edge written before fork points were recorded carries a parent and
+// nothing else. Standing in the parent's current tip for the missing fork
+// point makes the replay range empty, so the rewrite does nothing at all —
+// and used to report success for it, directly contradicting the graph, which
+// went on saying the branch needed restacking.
+func TestALegacyEdgeThatHasDriftedIsRefusedRatherThanSilentlyDoingNothing(t *testing.T) {
+	git := stackGit()
+	legacy := stack()
+	legacy.Edges["synthetic-a"] = graph.Edge{Parent: "synthetic-trunk"}
+	service, _, _ := newService(git, legacy)
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked == "" {
+		t.Fatalf("Blocked = %q, want a refusal naming the branch with no recorded fork point", plan.Blocked)
+	}
+	if !strings.Contains(plan.Blocked, "synthetic-a") {
+		t.Errorf("Blocked = %q, want it to name synthetic-a", plan.Blocked)
+	}
+	if len(plan.Steps) != 0 {
+		t.Errorf("Steps = %v, want none once the plan is blocked", plan.Branches())
+	}
+}
+
+// The substitute is sound while the branch still sits on its parent, because
+// then the parent's tip really is where the branch's own commits begin. Only
+// drift invalidates it, so an aligned legacy edge must stay usable.
+func TestALegacyEdgeThatIsStillAlignedIsNotRefused(t *testing.T) {
+	git := stackGit()
+	// synthetic-a sits exactly on the trunk, so nothing about it has drifted.
+	git.objects["synthetic-trunk"] = "trunk-old"
+	legacy := stack()
+	legacy.Edges["synthetic-a"] = graph.Edge{Parent: "synthetic-trunk"}
+	service, _, _ := newService(git, legacy)
+
+	plan, err := service.Plan(context.Background(), selection(), "", false)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Blocked = %q for an aligned legacy edge", plan.Blocked)
+	}
+}

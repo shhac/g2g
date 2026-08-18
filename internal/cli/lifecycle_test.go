@@ -193,6 +193,10 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		name     string
 		args     []string
 		mutation string
+		// spec means the command needs a submission spec before --apply does
+		// anything at all; without one it only previews, so a row that omits
+		// it would assert nothing.
+		spec bool
 	}{
 		{name: "link", args: []string{"link", "--apply"}, mutation: "stack link"},
 		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "stack unstack"},
@@ -203,12 +207,25 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "track"},
 		{name: "import", args: []string{"import", "--apply"}, mutation: "update-ref"},
 		{name: "sync", args: []string{"sync", "--apply"}, mutation: "push"},
+		{name: "submit", args: []string{"submit", "--apply"}, mutation: "push --atomic", spec: true},
+		{name: "prune", args: []string{"prune", "--apply"}, mutation: "update-ref"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder, common := lifecycleRepositoryIn(t, stackedPullRequests)
+
+			args := test.args
+			if test.spec {
+				specDir := t.TempDir()
+				if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+					t.Fatal(err)
+				}
+				specPath := filepath.Join(specDir, "submission.json")
+				fillSpecTitles(t, specPath)
+				args = []string{"submit", "--spec", specPath, "--apply"}
+			}
 			plantRestackJournal(t, common)
 
-			_, _, err := run(t, test.args...)
+			_, _, err := run(t, args...)
 			if err == nil {
 				t.Fatalf("%s --apply was allowed during an interrupted restack", test.name)
 			}

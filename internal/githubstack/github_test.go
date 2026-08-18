@@ -296,3 +296,41 @@ func TestAnUnrecognisedRepositoryFailureKeepsItsCommand(t *testing.T) {
 		t.Errorf("error = %v, want the command named", err)
 	}
 }
+
+// Retarget is the only call that changes what a merge will do, so each of its
+// three refusals has to hold. None of them was covered: a recording runner
+// would have shown the call going out regardless.
+func TestRetargetRefusesBeforeInvokingGh(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		client  Client
+		number  int
+		base    string
+		wantErr string
+	}{
+		{name: "no runner", client: Client{}, number: 7, base: "synthetic-trunk", wantErr: "runner is not configured"},
+		{name: "no number", client: Client{Runner: refusingRunner{t: t}}, number: 0, base: "synthetic-trunk", wantErr: "number is required"},
+		{name: "option-like base", client: Client{Runner: refusingRunner{t: t}}, number: 7, base: "--synthetic-option", wantErr: "base branch"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.client.Retarget(context.Background(), test.number, test.base)
+			if err == nil {
+				t.Fatalf("Retarget(%d, %q) = nil", test.number, test.base)
+			}
+			if !strings.Contains(err.Error(), test.wantErr) {
+				t.Errorf("error = %v, want it to mention %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+// refusingRunner fails the test if anything reaches it, which is what makes a
+// refusal test assert the refusal happened *before* the call rather than that
+// the call happened to fail.
+type refusingRunner struct{ t *testing.T }
+
+func (r refusingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.t.Helper()
+	r.t.Errorf("a refused retarget still invoked %s %s", name, strings.Join(args, " "))
+	return nil, nil
+}

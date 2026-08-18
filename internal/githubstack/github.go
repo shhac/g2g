@@ -30,6 +30,34 @@ type Client struct {
 	Runner subprocess.Runner
 }
 
+// run invokes gh and reports a failure as the command that produced it.
+//
+// Five call sites were each repeating the nil check, the invocation and the
+// error wrap, and three of them built the command string by a different rule
+// than the other two. internal/git and internal/graphite both extracted exactly
+// this for exactly that reason; this package is the one that had not.
+//
+// The wrapped string keeps its "gh " prefix because remediationHint matches on
+// it to decide whether a failure is worth advising on.
+func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
+	return c.runAs(ctx, "gh "+strings.Join(args, " "), args...)
+}
+
+// runAs is run for a command whose full argv should not be repeated back — a
+// pull request body file and title make for a wrapped error nobody can read.
+// The abbreviation is an argument rather than a slice index at the call site,
+// so what is being hidden is stated rather than inferred.
+func (c Client) runAs(ctx context.Context, display string, args ...string) ([]byte, error) {
+	if c.Runner == nil {
+		return nil, fmt.Errorf("GitHub runner is not configured")
+	}
+	output, err := c.Runner.Run(ctx, "gh", args...)
+	if err != nil {
+		return nil, commandError(display, err, output)
+	}
+	return output, nil
+}
+
 // Create creates one pull request without changing any existing PR. It owns
 // the temporary body file required by gh, keeping that transport detail out of
 // submission planning while preserving Markdown verbatim.
@@ -53,11 +81,8 @@ func (c Client) Create(ctx context.Context, branch, base, title, body string, dr
 		args = append(args, "--reviewer", reviewer)
 	}
 	diagnostic.Event(ctx, "github.pr_create", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "base", Value: base}, diagnostic.Field{Key: "draft", Value: strconv.FormatBool(draft)})
-	output, err := c.Runner.Run(ctx, "gh", args...)
-	if err != nil {
-		return commandError("gh "+strings.Join(args[:6], " ")+" …", err, output)
-	}
-	return nil
+	_, err = c.runAs(ctx, "gh "+strings.Join(args[:6], " ")+" …", args...)
+	return err
 }
 
 func writeBody(body string) (string, error) {
@@ -102,11 +127,8 @@ func (c Client) Link(ctx context.Context, trunk string, branches []string) error
 	}
 	args := append([]string{"stack", "link", "--base", trunk}, branches...)
 	diagnostic.Event(ctx, "github.stack_link", diagnostic.Field{Key: "decision", Value: "invoke"}, diagnostic.Field{Key: "base", Value: trunk}, diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")})
-	output, err := c.Runner.Run(ctx, "gh", args...)
-	if err != nil {
-		return commandError("gh "+strings.Join(args, " "), err, output)
-	}
-	return nil
+	_, err := c.run(ctx, args...)
+	return err
 }
 
 // Unstack removes only the GitHub-native stack relationship identified by its
@@ -120,11 +142,8 @@ func (c Client) Unstack(ctx context.Context, number int) error {
 	}
 	args := []string{"stack", "unstack", strconv.Itoa(number)}
 	diagnostic.Event(ctx, "github.stack_unstack", diagnostic.Field{Key: "stack_number", Value: strconv.Itoa(number)})
-	output, err := c.Runner.Run(ctx, "gh", args...)
-	if err != nil {
-		return commandError("gh "+strings.Join(args, " "), err, output)
-	}
-	return nil
+	_, err := c.run(ctx, args...)
+	return err
 }
 
 func commandError(command string, err error, output []byte) error {
@@ -148,9 +167,6 @@ func (c Client) Retarget(ctx context.Context, number int, base string) error {
 	}
 	args := []string{"pr", "edit", strconv.Itoa(number), "--base", base}
 	diagnostic.Event(ctx, "github.pr_retarget", diagnostic.Field{Key: "number", Value: strconv.Itoa(number)}, diagnostic.Field{Key: "base", Value: base})
-	output, err := c.Runner.Run(ctx, "gh", args...)
-	if err != nil {
-		return commandError("gh "+strings.Join(args, " "), err, output)
-	}
-	return nil
+	_, err := c.run(ctx, args...)
+	return err
 }

@@ -42,15 +42,21 @@ type applyFlow[P any] struct {
 	// be introduced as one that is about to.
 	blocked func(P) string
 	// interrupted reports a mutation that stopped part-way rather than not
-	// happening. It returns nil when the failure was ordinary, and the flow
-	// falls through to saying nothing was applied.
+	// happening. It answers two separate questions: whether this failure was
+	// one it claims, and whether writing its report succeeded.
+	//
+	// One return value cannot carry both. Every report helper in this package
+	// returns nil on a successful write, so a hook that returned its report
+	// directly said "not my case" precisely when it had handled the case — and
+	// the flow then printed "Not applied" underneath the report and exited
+	// non-zero.
 	//
 	// The flow's contract is that a mutation either happened or did not, which
 	// is true of every command whose mutation is one call. It is not true of a
 	// sequence that can stop between steps, and a command that grew its own
 	// copy of this whole sequence to say so ended up skipping the revalidation
 	// the copy did not include. One hook is cheaper than one copy.
-	interrupted func(context.Context, error) error
+	interrupted func(context.Context, error) (handled bool, err error)
 
 	// guard refuses the whole command when another operation has left the
 	// repository part-way through a rewrite. Mid-restack a branch may already
@@ -135,7 +141,7 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
 		if f.interrupted != nil {
-			if report := f.interrupted(mutateCtx, err); report != nil {
+			if handled, report := f.interrupted(mutateCtx, err); handled {
 				return report
 			}
 		}

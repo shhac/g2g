@@ -39,12 +39,12 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 			// deliberately does not unwind: the fetch and the fast-forward are
 			// wanted regardless, and the replay is resumable through the
 			// command that owns it.
-			interrupted: func(ctx context.Context, _ error) error {
+			interrupted: func(ctx context.Context, _ error) (bool, error) {
 				stopped, err := service.Restack.InProgress(ctx)
 				if err != nil || !stopped {
-					return nil
+					return false, nil
 				}
-				return stoppedMidSync(cmd, presentation)
+				return true, stoppedMidSync(cmd, presentation)
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to bring the stack up to date.",

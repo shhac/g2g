@@ -104,7 +104,9 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 - Read `design-docs/source-resolution.md` before changing how a command selects
   a stack, and `design-docs/stack-scope.md` before changing how much of one it
   selects. Precedence is declared once, in the root command's wiring; the scope
-  vocabulary and its traversal live once, in `internal/stack`.
+  vocabulary and its traversal live once, in `internal/shape`, which depends on
+  nothing so that `internal/graph` can use them without reaching Graphite or
+  GitHub.
 - A scope means the same thing whichever record answered. The parity table in
   `internal/stack/parity_test.go` is what keeps that true — it asks both records
   the same question and compares, which is the only shape that finds a

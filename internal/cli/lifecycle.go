@@ -175,7 +175,17 @@ func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentatio
 	return fmt.Errorf("render ready-to-apply output: %w", presented)
 }
 
-func (f applyFlow[P]) isNoOp(plan P) bool { return f.noOp != nil && f.noOp(plan) }
+// isNoOp reports a plan that is valid and has nothing to do.
+//
+// A blocked plan is never one of those, however empty it looks. sync stops
+// planning the moment it finds a diverged base, so its plan has no steps and
+// nothing to advance — and it reported "The stack is already up to date." on
+// the line directly below "Apply blocked: … has diverged". Asking each command
+// to remember this in its own predicate is how four of them came to disagree;
+// the flow has both answers, so it decides here.
+func (f applyFlow[P]) isNoOp(plan P) bool {
+	return f.noOp != nil && f.noOp(plan) && f.blockedReason(plan) == ""
+}
 
 // blockedReason is why an apply would refuse, empty when it would proceed.
 func (f applyFlow[P]) blockedReason(plan P) string {

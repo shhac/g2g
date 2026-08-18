@@ -174,11 +174,8 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 		},
 		execute:  func(ctx context.Context, plan restack.Plan) error { return service.Apply(ctx, plan) },
 		branches: func(plan restack.Plan) int { return len(plan.Steps) },
-		// A blocked plan has no steps either, and calling that "nothing to
-		// replay" would report a refusal as a clean result. Only an unblocked
-		// plan with nothing in it is a no-op.
-		noOp:    func(plan restack.Plan) bool { return plan.Blocked == "" && len(plan.Steps) == 0 },
-		blocked: func(plan restack.Plan) string { return plan.Blocked },
+		noOp:     func(plan restack.Plan) bool { return len(plan.Steps) == 0 },
+		blocked:  func(plan restack.Plan) string { return plan.Blocked },
 		// A rewrite that stops on a conflict is half applied and resumable, so
 		// "no changes were made" would be a lie. This is the case the whole
 		// hook exists for.

@@ -156,6 +156,25 @@ func TestPlanStackIsRepeatable(t *testing.T) {
 	}
 }
 
+func TestApplyStackRestoresGraphAndPinsWhenPinningFails(t *testing.T) {
+	service, store := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	pinner := &memoryPinner{failPin: "synthetic-b"}
+	service.Refs = pinner
+	plan, err := service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyStack(context.Background(), plan); err == nil {
+		t.Fatal("ApplyStack() error = nil")
+	}
+	if !store.graph.Equal(plan.Discovery.Graph) {
+		t.Errorf("graph = %#v, want the graph from before the failed pin", store.graph)
+	}
+	if len(pinner.pins) != 0 {
+		t.Errorf("pins = %v, want the successful pins rolled back", pinner.pins)
+	}
+}
+
 // A plan that moved between preview and apply is caught rather than acted on.
 func TestRevalidateStackRefusesAChangedGraph(t *testing.T) {
 	service, store := adoptionService(t, New().WithTrunks("synthetic-trunk"))

@@ -42,6 +42,31 @@ func newService(t *testing.T, git Ancestry, adopted Graph) (Service, *memoryStor
 	return Service{Git: git, Store: store}, store
 }
 
+type memoryPinner struct {
+	pins      map[string]string
+	failPin   string
+	failUnpin string
+}
+
+func (m *memoryPinner) PinForkPoint(_ context.Context, branch, object string) error {
+	if branch == m.failPin {
+		return errors.New("synthetic pin failure")
+	}
+	if m.pins == nil {
+		m.pins = make(map[string]string)
+	}
+	m.pins[branch] = object
+	return nil
+}
+
+func (m *memoryPinner) UnpinForkPoint(_ context.Context, branch string) error {
+	if branch == m.failUnpin {
+		return errors.New("synthetic unpin failure")
+	}
+	delete(m.pins, branch)
+	return nil
+}
+
 func stackGit() fakeAncestry {
 	return fakeAncestry{
 		current: "synthetic-login",
@@ -207,6 +232,24 @@ func TestApplyTrackWritesOnceAndRefusesABlockedPlan(t *testing.T) {
 	}
 }
 
+func TestApplyTrackRestoresTheGraphWhenPinningFails(t *testing.T) {
+	service, store := newService(t, stackGit(), forest())
+	service.Refs = &memoryPinner{failPin: "synthetic-session"}
+	plan, err := service.PlanTrack(context.Background(), Selection{Branch: "synthetic-session"}, "synthetic-billing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyTrack(context.Background(), plan); err == nil {
+		t.Fatal("ApplyTrack() error = nil")
+	}
+	if !store.graph.Equal(plan.Discovery.Graph) {
+		t.Errorf("graph = %#v, want the graph from before the failed pin", store.graph)
+	}
+	if got := len(store.writes); got != 2 {
+		t.Errorf("store writes = %d, want apply and recovery", got)
+	}
+}
+
 // Untracking a middle branch must report the children it strands rather than
 // reparenting them onto the grandparent.
 func TestPlanUntrackReportsNewlyOrphanedChildren(t *testing.T) {
@@ -251,6 +294,37 @@ func TestApplyUntrackRefusesWhenNothingIsTracked(t *testing.T) {
 	}
 	if len(store.writes) != 0 {
 		t.Error("ApplyUntrack() wrote despite having nothing to remove")
+	}
+}
+
+func TestApplyUntrackRestoresGraphAndPinsWhenUnpinningFails(t *testing.T) {
+	adopted := forest()
+	adopted.Edges["synthetic-auth"] = Edge{Parent: "synthetic-main", Origin: OriginUser, ForkPoint: "synthetic-auth-fork"}
+	adopted.Edges["synthetic-login"] = Edge{Parent: "synthetic-auth", Origin: OriginAncestry, ForkPoint: "synthetic-login-fork"}
+	adopted.Edges["synthetic-session"] = Edge{Parent: "synthetic-auth", Origin: OriginAncestry, ForkPoint: "synthetic-session-fork"}
+	service, store := newService(t, stackGit(), adopted)
+	pinner := &memoryPinner{pins: map[string]string{
+		"synthetic-auth":    "synthetic-auth-fork",
+		"synthetic-login":   "synthetic-login-fork",
+		"synthetic-session": "synthetic-session-fork",
+	}, failUnpin: "synthetic-session"}
+	service.Refs = pinner
+	plan, err := service.PlanUntrack(context.Background(), Selection{Branch: "synthetic-auth", Scope: ScopeSubtree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyUntrack(context.Background(), plan); err == nil {
+		t.Fatal("ApplyUntrack() error = nil")
+	}
+	if !store.graph.Equal(plan.Discovery.Graph) {
+		t.Errorf("graph = %#v, want the graph from before the failed unpin", store.graph)
+	}
+	for branch, want := range map[string]string{
+		"synthetic-auth": "synthetic-auth-fork", "synthetic-login": "synthetic-login-fork", "synthetic-session": "synthetic-session-fork",
+	} {
+		if got := pinner.pins[branch]; got != want {
+			t.Errorf("pin %q = %q, want %q", branch, got, want)
+		}
 	}
 }
 

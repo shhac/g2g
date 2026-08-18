@@ -186,5 +186,5 @@ func (s GraphiteSelector) Describes(ctx context.Context, _ string) (bool, error)
 }
 
 func (s GraphiteSelector) Select(ctx context.Context, selection Selection, command string) (Snapshot, error) {
-	return Resolve(ctx, s.Git, s.Graphite, selection, command)
+	return resolveGraphiteSelection(ctx, s.Git, s.Graphite, selection, command)
 }

@@ -212,7 +212,7 @@ func (s Snapshot) forkedAt() string {
 // consumer's action in an option-like branch safety error.
 var errNotConfigured = fmt.Errorf("stack resolver is not fully configured")
 
-func Resolve(ctx context.Context, git Git, graphiteClient Graphite, selection Selection, command string) (Snapshot, error) {
+func resolveGraphiteSelection(ctx context.Context, git Git, graphiteClient Graphite, selection Selection, command string) (Snapshot, error) {
 	if git == nil || graphiteClient == nil {
 		return Snapshot{}, errNotConfigured
 	}

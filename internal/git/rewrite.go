@@ -124,7 +124,7 @@ func (c Client) replay(ctx context.Context, onto string, ranges []Range, extra .
 
 func parseRefUpdates(output []byte) []RefUpdate {
 	updates := make([]RefUpdate, 0)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for _, line := range outputLines(output) {
 		fields := strings.Fields(line)
 		if len(fields) != 4 || fields[0] != "update" {
 			continue
@@ -229,10 +229,8 @@ func (c Client) ConflictedPaths(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	paths := make([]string, 0)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			paths = append(paths, line)
-		}
+	for _, line := range outputLines(output) {
+		paths = append(paths, line)
 	}
 	return paths, nil
 }

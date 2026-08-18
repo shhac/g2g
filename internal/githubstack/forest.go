@@ -3,6 +3,7 @@ package githubstack
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 
@@ -89,28 +90,9 @@ func BuildForest(ctx context.Context, inspector Inspector, local []string, round
 		if err != nil {
 			return Forest{}, err
 		}
-		unknown := map[string]bool{}
-		for branch, resolution := range ResolveHeads(prs) {
-			// One open pull request is an edge. None contributes nothing, and
-			// more than one is the ambiguity this tool refuses to interpret
-			// anywhere else, so interpreting it here would be inconsistent as
-			// well as a guess.
-			//
-			// Neither records an entry, not even an empty one. An entry is what
-			// makes the forest claim to place a branch, and a branch nothing is
-			// based on and which has no single pull request of its own is
-			// exactly the one this source cannot speak for.
-			if resolution.Open == nil {
-				continue
-			}
-			base := resolution.Open.Base
-			parents[branch] = base
-			if onThisMachine[base] || asked[base] {
-				continue
-			}
-			unknown[base] = true
-			absent[base] = true
-		}
+		roundParents, unknown := mergeInspection(prs, onThisMachine, asked)
+		maps.Copy(parents, roundParents)
+		maps.Copy(absent, unknown)
 		diagnostic.Event(ctx, "github.forest_round",
 			diagnostic.Field{Key: "round", Value: strconv.Itoa(round + 1)},
 			diagnostic.Field{Key: "asked", Value: strconv.Itoa(len(frontier))},
@@ -124,6 +106,28 @@ func BuildForest(ctx context.Context, inspector Inspector, local []string, round
 	// it reads as a root. That is right for a trunk and wrong for a chain the
 	// rounds ran out on, which is why the latter is reported.
 	return forest, nil
+}
+
+// mergeInspection turns one complete GitHub inspection round into edges and
+// the next remote-only frontier. It is deliberately independent of the loop:
+// round ordering and API calls belong to BuildForest, while interpreting one
+// response has no effects and can be reasoned about on its own.
+func mergeInspection(prs []PullRequest, onThisMachine, asked map[string]bool) (map[string]string, map[string]bool) {
+	parents := make(map[string]string)
+	unknown := make(map[string]bool)
+	for branch, resolution := range ResolveHeads(prs) {
+		// One open pull request is an edge. None contributes nothing, and more
+		// than one is ambiguity this source does not interpret.
+		if resolution.Open == nil {
+			continue
+		}
+		base := resolution.Open.Base
+		parents[branch] = base
+		if !onThisMachine[base] && !asked[base] {
+			unknown[base] = true
+		}
+	}
+	return parents, unknown
 }
 
 func sorted(set map[string]bool) []string {

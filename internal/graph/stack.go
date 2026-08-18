@@ -256,10 +256,21 @@ func (s Service) ApplyStack(ctx context.Context, plan StackPlan) error {
 	if err := s.Store.Save(ctx, plan.Updated); err != nil {
 		return err
 	}
+	pinned := make([]string, 0, len(plan.Record))
 	for _, adoption := range plan.Record {
 		if err := s.pin(ctx, adoption.Branch, plan.Updated.Edges[adoption.Branch].ForkPoint); err != nil {
-			return err
+			return s.restoreStack(ctx, plan.Discovery.Graph, pinned, err)
 		}
+		pinned = append(pinned, adoption.Branch)
 	}
 	return nil
+}
+
+func (s Service) restoreStack(ctx context.Context, previous Graph, pinned []string, applyErr error) error {
+	for _, branch := range pinned {
+		if err := s.Refs.UnpinForkPoint(ctx, branch); err != nil {
+			return fmt.Errorf("%w; could not remove fork-point pin for %q: %v", applyErr, branch, err)
+		}
+	}
+	return s.rollbackGraph(ctx, previous, applyErr)
 }

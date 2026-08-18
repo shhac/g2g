@@ -202,7 +202,10 @@ func (s Service) ApplyTrack(ctx context.Context, plan TrackPlan) error {
 	if err := s.Store.Save(ctx, plan.Updated); err != nil {
 		return err
 	}
-	return s.pin(ctx, plan.Target, plan.Updated.Edges[plan.Target].ForkPoint)
+	if err := s.pin(ctx, plan.Target, plan.Updated.Edges[plan.Target].ForkPoint); err != nil {
+		return s.rollbackGraph(ctx, plan.Discovery.Graph, err)
+	}
+	return nil
 }
 
 // ApplyUntrack writes the adopted graph.
@@ -217,12 +220,36 @@ func (s Service) ApplyUntrack(ctx context.Context, plan UntrackPlan) error {
 	if s.Refs == nil {
 		return nil
 	}
+	unpinned := make([]string, 0, len(plan.Removed))
 	for _, branch := range plan.Removed {
 		if err := s.Refs.UnpinForkPoint(ctx, branch); err != nil {
-			return err
+			return s.restoreUntracked(ctx, plan.Discovery.Graph, unpinned, err)
 		}
+		unpinned = append(unpinned, branch)
 	}
 	return nil
+}
+
+// rollbackGraph returns an apply failure after restoring the graph that was
+// current when its plan was made. A pin is auxiliary durability state; it must
+// not leave an adopted edge behind when it cannot be created.
+func (s Service) rollbackGraph(ctx context.Context, previous Graph, applyErr error) error {
+	if err := s.Store.Save(ctx, previous); err != nil {
+		return fmt.Errorf("%w; could not restore the previous graph: %v", applyErr, err)
+	}
+	return applyErr
+}
+
+func (s Service) restoreUntracked(ctx context.Context, previous Graph, unpinned []string, applyErr error) error {
+	if err := s.Store.Save(ctx, previous); err != nil {
+		return fmt.Errorf("%w; could not restore the previous graph: %v", applyErr, err)
+	}
+	for _, branch := range unpinned {
+		if pinErr := s.pin(ctx, branch, previous.Edges[branch].ForkPoint); pinErr != nil {
+			return fmt.Errorf("%w; could not restore fork-point pin for %q: %v", applyErr, branch, pinErr)
+		}
+	}
+	return applyErr
 }
 
 // pin keeps a fork point reachable. A repository without a pinner still

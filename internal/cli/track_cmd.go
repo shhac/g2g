@@ -62,6 +62,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			execute:  service.ApplyTrack,
 			branches: func(plan graph.TrackPlan) int { return len(plan.Branches) },
 			noOp:     trackIsNoOp,
+			blocked:  func(plan graph.TrackPlan) string { return plan.Blocked },
 			notices: flowNotices{
 				preview:       "Rerun with --apply to record this edge.",
 				noOp:          "The graph already records this parent. Nothing to do.",
@@ -100,7 +101,8 @@ func trackStackFlow(service graph.Service, selection graphOptions, trunk string,
 		guard:    guard,
 		execute:  service.ApplyStack,
 		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
-		noOp:     func(plan graph.StackPlan) bool { return plan.Blocked == "" && len(plan.Record) == 0 },
+		noOp:     func(plan graph.StackPlan) bool { return len(plan.Record) == 0 },
+		blocked:  func(plan graph.StackPlan) string { return plan.Blocked },
 		notices: flowNotices{
 			preview:       "Rerun with --apply to record this stack.",
 			noOp:          "The graph already records this whole ancestry. Nothing to do.",
@@ -114,9 +116,6 @@ func trackStackFlow(service graph.Service, selection graphOptions, trunk string,
 
 // trackIsNoOp reports a plan that would rewrite the edge it already found.
 func trackIsNoOp(plan graph.TrackPlan) bool {
-	if plan.Blocked != "" {
-		return false
-	}
 	recorded, tracked := plan.Graph.Parent(plan.Target)
 	return tracked && recorded == plan.Parent && plan.NewTrunk == ""
 }

@@ -32,10 +32,8 @@ func (c Client) LocalBranches(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	var branches []string
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			branches = append(branches, line)
-		}
+	for _, line := range outputLines(output) {
+		branches = append(branches, line)
 	}
 	sort.Strings(branches)
 	return branches, nil
@@ -56,10 +54,10 @@ func (c Client) AncestorBranches(ctx context.Context, target string) ([]string, 
 		return nil, err
 	}
 	branches := make([]string, 0)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for _, line := range outputLines(output) {
 		// for-each-ref includes the target itself; a candidate parent set that
 		// contains the target would let a branch be recorded as its own parent.
-		if line = strings.TrimSpace(line); line != "" && line != target {
+		if line != target {
 			branches = append(branches, line)
 		}
 	}
@@ -182,8 +180,8 @@ func (c Client) Cherry(ctx context.Context, upstream, head, limit string) (absen
 		return nil, nil, err
 	}
 	absent, present = make([]string, 0), make([]string, 0)
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		mark, object, found := strings.Cut(strings.TrimSpace(line), " ")
+	for _, line := range outputLines(output) {
+		mark, object, found := strings.Cut(line, " ")
 		if !found {
 			continue
 		}

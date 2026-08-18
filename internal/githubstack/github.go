@@ -68,6 +68,11 @@ func (c Client) Create(ctx context.Context, branch, base, title, body string, dr
 	if branch == "" || base == "" || title == "" {
 		return fmt.Errorf("pull request branch, base, and title are required")
 	}
+	for _, reviewer := range reviewers {
+		if err := subprocess.CheckArgument("gh", "reviewer", reviewer); err != nil {
+			return err
+		}
+	}
 	bodyFile, err := writeBody(body)
 	if err != nil {
 		return err

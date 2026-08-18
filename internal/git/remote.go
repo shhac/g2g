@@ -65,8 +65,8 @@ func (c Client) RemoteTips(ctx context.Context, remote string, branches []string
 		return nil, err
 	}
 	tips := make(map[string]string, len(branches))
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		object, ref, found := strings.Cut(strings.TrimSpace(line), "\t")
+	for _, line := range outputLines(output) {
+		object, ref, found := strings.Cut(line, "\t")
 		if !found {
 			continue
 		}

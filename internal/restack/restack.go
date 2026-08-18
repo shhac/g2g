@@ -213,6 +213,20 @@ func (s Service) recordStructure(ctx context.Context, branches []string, reparen
 	if err != nil {
 		return err
 	}
+	updated, err := reparentStructure(adopted, reparent)
+	if err != nil {
+		return err
+	}
+	if err := s.refreshForkPoints(ctx, updated, branches); err != nil {
+		return err
+	}
+	return s.Graph.Store.Save(ctx, updated)
+}
+
+// reparentStructure updates only the declared parent relationships. Keeping it
+// separate from fork-point refresh makes the two records a restack repairs
+// independently visible at their natural seams.
+func reparentStructure(adopted graph.Graph, reparent map[string]string) (graph.Graph, error) {
 	updated := adopted.Clone()
 	for _, branch := range slices.Sorted(maps.Keys(reparent)) {
 		parent := reparent[branch]
@@ -226,10 +240,15 @@ func (s Service) recordStructure(ctx context.Context, branches []string, reparen
 		// stops being one.
 		adoptedGraph, _, err := updated.Adopt(branch, edge)
 		if err != nil {
-			return err
+			return graph.Graph{}, err
 		}
 		updated = adoptedGraph
 	}
+	return updated, nil
+}
+
+// refreshForkPoints records the parent tips that describe each replay range.
+func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, branches []string) error {
 	for _, branch := range branches {
 		edge, tracked := updated.Edges[branch]
 		if !tracked {
@@ -252,149 +271,5 @@ func (s Service) recordStructure(ctx context.Context, branches []string, reparen
 			return err
 		}
 	}
-	return s.Graph.Store.Save(ctx, updated)
-}
-
-// Continue resumes an interrupted restack.
-//
-// It recomputes rather than replaying a stored queue, so a user who ran git
-// rebase --continue or --abort themselves simply changes what work remains.
-func (s Service) Continue(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	inProgress, err := s.Git.RebaseInProgress(ctx)
-	if err != nil {
-		return err
-	}
-	if inProgress {
-		if err := s.Git.RebaseContinue(ctx); err != nil {
-			return err
-		}
-	}
-	return s.finish(ctx, record)
-}
-
-// Skip abandons the commit an interrupted rebase stopped on.
-func (s Service) Skip(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	if err := s.Git.RebaseSkip(ctx); err != nil {
-		return err
-	}
-	return s.finish(ctx, record)
-}
-
-// finish re-derives what is left. Anything still needing a rewrite is done
-// now; when nothing is, the graph is brought up to date and the journal goes.
-func (s Service) finish(ctx context.Context, record Record) error {
-	// Each pass records what has already been rewritten, then asks what is
-	// left. The order matters: a branch this operation has replayed no longer
-	// sits on the fork point the graph holds for it, and a plan measured
-	// against that stale value reads it as moved off its parent. That refuses
-	// the whole selection, so a resumed restack used to stop at the branch
-	// whose conflict was just resolved and report success while every branch
-	// above it stayed on abandoned history.
-	//
-	for pass := 0; ; pass++ {
-		discovery, err := s.Graph.Discover(ctx, record.Selection())
-		if err != nil {
-			return err
-		}
-		if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
-			return err
-		}
-		plan, err := s.Plan(ctx, record.Selection(), record.Onto, record.Absorb)
-		if err != nil {
-			return err
-		}
-		if len(plan.Steps) == 0 || plan.Blocked != "" {
-			// Nothing left to rewrite. The reparenting comes from the record
-			// rather than the fresh plan: once the rewrite has happened the
-			// branch no longer sits where the graph says, so the plan can no
-			// longer tell where it was headed.
-			if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
-				return err
-			}
-			return s.Journal.Clear(ctx)
-		}
-		// Every pass that finds work rewrites at least one branch, so needing
-		// more passes than there are branches means it is not converging.
-		if pass > len(plan.Discovery.Branches) {
-			return fmt.Errorf("restack did not settle after %d passes · run g2g restack to see the current state", pass)
-		}
-		needed, err := s.settleCollapses(ctx, plan)
-		if err != nil {
-			return err
-		}
-		// Collapsing was the whole of this pass's work: the next one re-plans
-		// against where those branches landed and finds nothing left.
-		if !needed {
-			continue
-		}
-		if plan.Clean {
-			if err := s.replay(ctx, plan); err != nil {
-				return err
-			}
-			return s.Journal.Clear(ctx)
-		}
-		// Carrying on can stop again on the next branch, which is the same
-		// state this began in: the journal stays and --continue re-derives.
-		if err := s.rebaseEach(ctx, plan); err != nil {
-			return err
-		}
-	}
-}
-
-// Abort restores every branch to the tip it had when the operation began,
-// including paths that already completed.
-func (s Service) Abort(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	inProgress, err := s.Git.RebaseInProgress(ctx)
-	if err != nil {
-		return err
-	}
-	if inProgress {
-		if err := s.Git.RebaseAbort(ctx); err != nil {
-			return err
-		}
-	}
-	diagnostic.Event(ctx, "restack.abort", diagnostic.Field{Key: "branches", Value: strings.Join(slices.Sorted(maps.Keys(record.Original)), ",")})
-	for _, branch := range slices.Sorted(maps.Keys(record.Original)) {
-		if err := s.Git.UpdateBranch(ctx, branch, record.Original[branch]); err != nil {
-			return err
-		}
-	}
-	return s.Journal.Clear(ctx)
-}
-
-// Conflicted lists the files an interrupted rewrite left for the user.
-func (s Service) Conflicted(ctx context.Context) ([]string, error) {
-	return s.Git.ConflictedPaths(ctx)
-}
-
-// InProgress reports an unfinished restack, which every other command has to
-// refuse while it lasts: a branch may already have moved while the graph still
-// records where it used to be.
-func (s Service) InProgress(ctx context.Context) (bool, error) {
-	if s.Journal == nil {
-		return false, nil
-	}
-	_, found, err := s.Journal.Load(ctx)
-	return found, err
+	return nil
 }

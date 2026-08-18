@@ -217,6 +217,19 @@ func TestClientCreateRejectsIncompleteRequestBeforeGh(t *testing.T) {
 	}
 }
 
+func TestClientCreateRejectsAnOptionLikeReviewerBeforeGh(t *testing.T) {
+	called := filepath.Join(t.TempDir(), "called")
+	t.Setenv("GH_CALLED", called)
+	testutil.WithFakeExecutables(t, map[string]string{"gh": `touch "$GH_CALLED"`})
+	err := (Client{Runner: subprocess.ExecRunner{}}).Create(context.Background(), "synthetic/head", "synthetic/base", "Synthetic title", "", false, []string{"--synthetic-option"})
+	if err == nil || !strings.Contains(err.Error(), "reviewer") {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := os.Stat(called); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("gh was called for an unsafe reviewer")
+	}
+}
+
 func TestClientUnstackValidatesAndInvokesExpectedCommand(t *testing.T) {
 	arguments := filepath.Join(t.TempDir(), "gh-arguments")
 	t.Setenv("GH_ARGUMENTS", arguments)

@@ -95,6 +95,13 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 	if err != nil {
 		return Snapshot{}, err
 	}
+	return selectPullRequestSnapshot(selection, target, source, local, published, command)
+}
+
+// selectPullRequestSnapshot turns already-loaded local and GitHub facts into
+// one selection. Keeping that policy separate from loading makes the source's
+// no-checkout contract and its boundary decisions directly readable.
+func selectPullRequestSnapshot(selection Selection, target, source string, local map[string]bool, published githubstack.Forest, command string) (Snapshot, error) {
 	// The shared traversal takes the edges and nothing else. Which of them are
 	// on this machine is this package's concern, carried on the snapshot, so a
 	// forest walk never has to ask.

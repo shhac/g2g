@@ -83,7 +83,7 @@ func TestEveryScopeSelectsTheSameBranchesFromEitherRecord(t *testing.T) {
 			}
 
 			// What Graphite answers, through the resolver commands actually use.
-			snapshot, err := Resolve(
+			snapshot, err := resolveGraphiteSelection(
 				context.Background(),
 				parityGit{branches: local},
 				parityGraphite{forest: graphite.Forest{Parents: parents, Roots: []string{"synthetic-trunk"}}},
@@ -91,7 +91,7 @@ func TestEveryScopeSelectsTheSameBranchesFromEitherRecord(t *testing.T) {
 				"synthetic command",
 			)
 			if err != nil {
-				t.Fatalf("Resolve() error = %v", err)
+				t.Fatalf("resolveGraphiteSelection() error = %v", err)
 			}
 			if got := strings.Join(snapshot.Branches, ","); got != test.want {
 				t.Errorf("Graphite selected %q, want %q", got, test.want)
@@ -115,7 +115,7 @@ func TestAForkedSelectionCarriesItsEdges(t *testing.T) {
 		"synthetic-c":     "synthetic-b",
 		"synthetic-d":     "synthetic-b",
 	}
-	snapshot, err := Resolve(
+	snapshot, err := resolveGraphiteSelection(
 		context.Background(),
 		parityGit{branches: []string{"synthetic-trunk", "synthetic-b", "synthetic-c", "synthetic-d"}},
 		parityGraphite{forest: graphite.Forest{Parents: parents, Roots: []string{"synthetic-trunk"}}},
@@ -123,7 +123,7 @@ func TestAForkedSelectionCarriesItsEdges(t *testing.T) {
 		"synthetic command",
 	)
 	if err != nil {
-		t.Fatalf("Resolve() error = %v; a branch with two children is the ordinary shape", err)
+		t.Fatalf("resolveGraphiteSelection() error = %v; a branch with two children is the ordinary shape", err)
 	}
 	for branch, want := range map[string]string{"synthetic-c": "synthetic-b", "synthetic-d": "synthetic-b"} {
 		if got := snapshot.Parents[branch]; got != want {
@@ -185,7 +185,7 @@ func TestEveryScopeSelectsTheSameBranchesFromATrunkFromEitherRecord(t *testing.T
 				t.Errorf("the store selected %q, want %q", got, test.want)
 			}
 
-			snapshot, err := Resolve(
+			snapshot, err := resolveGraphiteSelection(
 				context.Background(),
 				parityGit{branches: local},
 				parityGraphite{forest: graphite.Forest{Parents: parents, Roots: []string{"synthetic-trunk"}}},
@@ -193,7 +193,7 @@ func TestEveryScopeSelectsTheSameBranchesFromATrunkFromEitherRecord(t *testing.T
 				"synthetic command",
 			)
 			if err != nil {
-				t.Fatalf("Resolve() error = %v", err)
+				t.Fatalf("resolveGraphiteSelection() error = %v", err)
 			}
 			if got := strings.Join(snapshot.Branches, ","); got != test.want {
 				t.Errorf("Graphite selected %q, want %q", got, test.want)
@@ -221,7 +221,7 @@ func TestATargetRootedScopeOnATrunkIsRefusedByBothRecords(t *testing.T) {
 			}
 			_, _, storeErr := forest.Hangs(owned, "synthetic-trunk", scope)
 
-			_, graphiteErr := Resolve(
+			_, graphiteErr := resolveGraphiteSelection(
 				context.Background(),
 				parityGit{branches: local},
 				parityGraphite{forest: graphite.Forest{Parents: parents, Roots: []string{"synthetic-trunk"}}},
@@ -246,7 +246,7 @@ func TestTrunkOverrideFromATrunkConfirmsOrRefuses(t *testing.T) {
 	local := []string{"synthetic-trunk", "synthetic-a"}
 
 	resolve := func(requested string) (Snapshot, error) {
-		return Resolve(
+		return resolveGraphiteSelection(
 			context.Background(),
 			parityGit{branches: local},
 			parityGraphite{forest: graphite.Forest{Parents: parents, Roots: []string{"synthetic-trunk"}}},

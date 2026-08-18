@@ -38,6 +38,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 			execute:  service.ApplyMirror,
 			branches: func(plan align.MirrorPlan) int { return len(plan.Writes) + len(plan.Prunes) },
 			noOp:     mirrorIsNoOp,
+			blocked:  func(plan align.MirrorPlan) string { return plan.Blocked },
 			notices: flowNotices{
 				preview:  "Rerun with --apply to align Graphite.",
 				noOp:     "Graphite already agrees with the g2g graph. Nothing to do.",
@@ -53,7 +54,6 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	return cmd
 }
 
-// mirrorIsNoOp reports a plan with nothing to do. A blocked plan also has no
-// writes, and must not be reported as agreement: "nothing to do" and "this
-// cannot be done" are opposite answers that happen to produce an empty list.
-func mirrorIsNoOp(plan align.MirrorPlan) bool { return plan.Blocked == "" && plan.Aligned() }
+// mirrorIsNoOp reports only whether there is no alignment work. The shared
+// lifecycle separately gives blocked plans their canonical refusal path.
+func mirrorIsNoOp(plan align.MirrorPlan) bool { return plan.Aligned() }

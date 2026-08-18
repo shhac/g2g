@@ -87,6 +87,17 @@ type flowNotices struct {
 	suggestedNext string
 }
 
+// planOutcome is the complete pre-mutation decision. Keeping the three cases
+// named means command predicates only answer their own question: noOp means
+// empty work, and blocked means refusal. The lifecycle owns their ordering.
+type planOutcome uint8
+
+const (
+	planReady planOutcome = iota
+	planNoOp
+	planBlocked
+)
+
 func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budgets, p Presentation, apply bool) error {
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
@@ -108,32 +119,34 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	if err != nil {
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
-	if f.isNoOp(validated) {
+	switch f.outcome(validated) {
+	case planNoOp:
 		if err := f.render(cmd.OutOrStdout(), validated, p); err != nil {
 			return err
 		}
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
+	case planBlocked:
+		return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", f.blockedReason(validated)))
+	default:
+		return f.mutate(cmd, root, budgets, validated, p)
 	}
-	if reason := f.blockedReason(validated); reason != "" {
-		return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", reason))
-	}
-	return f.mutate(cmd, root, budgets, validated, p)
 }
 
 func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error {
 	if err := f.render(cmd.OutOrStdout(), plan, p); err != nil {
 		return err
 	}
-	if f.isNoOp(plan) {
+	switch f.outcome(plan) {
+	case planNoOp:
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
-	}
-	// A preview whose plan is already blocked must not close by inviting an
-	// apply that will refuse. The rendered view names the reason, so repeating
-	// it here would say it twice; what has to go is the invitation.
-	if f.blockedReason(plan) != "" {
+	case planBlocked:
+		// A preview whose plan is already blocked must not close by inviting an
+		// apply that will refuse. The rendered view names the reason, so repeating
+		// it here would say it twice; what has to go is the invitation.
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
+	default:
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" "+f.notices.preview)
 	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" "+f.notices.preview)
 }
 
 // mutate renders and flushes the validated plan before invoking the mutation,
@@ -196,16 +209,16 @@ func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentatio
 	return fmt.Errorf("render ready-to-apply output: %w", presented)
 }
 
-// isNoOp reports a plan that is valid and has nothing to do.
-//
-// A blocked plan is never one of those, however empty it looks. sync stops
-// planning the moment it finds a diverged base, so its plan has no steps and
-// nothing to advance — and it reported "The stack is already up to date." on
-// the line directly below "Apply blocked: … has diverged". Asking each command
-// to remember this in its own predicate is how four of them came to disagree;
-// the flow has both answers, so it decides here.
-func (f applyFlow[P]) isNoOp(plan P) bool {
-	return f.noOp != nil && f.noOp(plan) && f.blockedReason(plan) == ""
+// outcome classifies an already-resolved plan before it is rendered ready or
+// given a mutation budget. A refusal always wins over empty work.
+func (f applyFlow[P]) outcome(plan P) planOutcome {
+	if f.blockedReason(plan) != "" {
+		return planBlocked
+	}
+	if f.noOp != nil && f.noOp(plan) {
+		return planNoOp
+	}
+	return planReady
 }
 
 // blockedReason is why an apply would refuse, empty when it would proceed.

@@ -34,6 +34,7 @@ func newImport(service align.Service, guard func(context.Context) error, present
 			execute:  service.ApplyImport,
 			branches: func(plan align.ImportPlan) int { return len(plan.Adopt) },
 			noOp:     importIsNoOp,
+			blocked:  func(plan align.ImportPlan) string { return plan.Blocked },
 			notices: flowNotices{
 				preview:       "Rerun with --apply to adopt them.",
 				noOp:          "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
@@ -49,6 +50,6 @@ func newImport(service align.Service, guard func(context.Context) error, present
 	return cmd
 }
 
-// importIsNoOp reports a plan with nothing to adopt. A blocked plan adopts
-// nothing either, and must not be reported as agreement.
-func importIsNoOp(plan align.ImportPlan) bool { return plan.Blocked == "" && len(plan.Adopt) == 0 }
+// importIsNoOp reports only whether there is no adoption work. The shared
+// lifecycle separately gives blocked plans their canonical refusal path.
+func importIsNoOp(plan align.ImportPlan) bool { return len(plan.Adopt) == 0 }

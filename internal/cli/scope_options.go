@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // scopeOptions is the branch-and-scope half of every command's selection.
@@ -24,31 +24,31 @@ type scopeOptions struct {
 	// given. Both are per command: all is a legitimate value for a read-only
 	// view and a dangerous one to hand a command that rewrites, and reading
 	// defaults wider than rewriting does.
-	accepted []stack.Scope
-	fallback stack.Scope
+	accepted []shape.Scope
+	fallback shape.Scope
 }
 
 // effectiveScope is the scope this invocation means, which is the command's own
 // default when the flag was not given.
-func (o scopeOptions) effectiveScope() stack.Scope {
+func (o scopeOptions) effectiveScope() shape.Scope {
 	if o.scope == "" {
 		return o.fallback
 	}
-	return stack.Scope(o.scope)
+	return shape.Scope(o.scope)
 }
 
 // validateScope rejects a scope this command does not offer. Cobra validates a
 // flag's syntax, never its vocabulary, so without this a command silently
 // accepts any scope the service happens to parse.
 func (o scopeOptions) validateScope() error {
-	_, err := stack.ParseScope(o.scope, o.accepted, o.fallback)
+	_, err := shape.ParseScope(o.scope, o.accepted, o.fallback)
 	return err
 }
 
 // registerScope adds the scope flag to a command that accepts one. It is a
 // separate call rather than an empty argument, because a command without a
 // scope should say so by not asking for one.
-func (o *scopeOptions) registerScope(cmd *cobra.Command, scopes []stack.Scope, fallback stack.Scope, usage string) {
+func (o *scopeOptions) registerScope(cmd *cobra.Command, scopes []shape.Scope, fallback shape.Scope, usage string) {
 	o.accepted, o.fallback = scopes, fallback
 	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
 	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(staticCompletions(scopes)))
@@ -56,7 +56,7 @@ func (o *scopeOptions) registerScope(cmd *cobra.Command, scopes []stack.Scope, f
 
 // staticCompletions offers exactly the values a command registered, which is
 // what keeps completion from proposing a scope the same command would refuse.
-func staticCompletions(scopes []stack.Scope) func(context.Context, string) ([]string, error) {
+func staticCompletions(scopes []shape.Scope) func(context.Context, string) ([]string, error) {
 	return func(context.Context, string) ([]string, error) {
 		values := make([]string, 0, len(scopes))
 		for _, scope := range scopes {

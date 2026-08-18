@@ -28,15 +28,3 @@ const (
 	ScopeTrunk   = shape.ScopeTrunk
 	ScopeAll     = shape.ScopeAll
 )
-
-var (
-	Scopes        = shape.Scopes
-	ReadScopes    = shape.ReadScopes
-	RewriteScopes = shape.RewriteScopes
-	ProjectScopes = shape.ProjectScopes
-)
-
-// ParseScope is shape's, passed through whole. It takes the accepted set and
-// the default as arguments, so there is nothing here for a wrapper to get
-// wrong by choosing either.
-var ParseScope = shape.ParseScope

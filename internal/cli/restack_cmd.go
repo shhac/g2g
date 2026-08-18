@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // restackOptions are the resume verbs, which mirror git rebase because the
@@ -54,7 +55,7 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 	// Rewriting defaults to the branches above the target: a conflict below it
 	// is one the user may be deliberately deferring, and replaying it uninvited
 	// is how restacking from the middle walks into it every time.
-	options.selector.registerScope(cmd, graph.RewriteScopes, graph.ScopeSubtree, scopeUsage("replay", graph.RewriteScopes))
+	options.selector.registerScope(cmd, shape.RewriteScopes, graph.ScopeSubtree, scopeUsage("replay", shape.RewriteScopes))
 	return cmd
 }
 

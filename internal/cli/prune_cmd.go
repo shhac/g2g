@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 func newPrune(service prune.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -54,6 +55,6 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 	// a read. It defaults to the stack being worked on, which is the boundary
 	// sync uses, because "what has landed" is asked about a stack rather than
 	// about a repository.
-	selection.registerScope(cmd, graph.ReadScopes, graph.ScopeStack, scopeUsage("forget", graph.ReadScopes))
+	selection.registerScope(cmd, shape.ReadScopes, graph.ScopeStack, scopeUsage("forget", shape.ReadScopes))
 	return cmd
 }

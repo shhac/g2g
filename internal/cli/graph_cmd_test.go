@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/graph"
-	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // graphGit answers the ancestry questions without a repository. The forest
@@ -257,7 +257,7 @@ func TestBranchCompletionIsEmptyWithoutAGit(t *testing.T) {
 }
 
 func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
-	completed, err := staticCompletions(graph.Scopes)(context.Background(), "")
+	completed, err := staticCompletions(shape.Scopes)(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
 		t.Errorf("scope completion = %v", completed)
 	}
 	for _, value := range completed {
-		if _, err := stack.ParseScope(value, graph.Scopes, graph.ScopeStack); err != nil {
+		if _, err := shape.ParseScope(value, shape.Scopes, graph.ScopeStack); err != nil {
 			t.Errorf("completion offered %q, which ParseScope rejects", value)
 		}
 	}
@@ -335,11 +335,11 @@ func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 		scope    string
 		wantErr  bool
 	}{
-		{"replay refuses forest", graph.Scopes, string(graph.ScopeAll), true},
-		{"replay allows graph", graph.Scopes, string(graph.ScopeTrunk), false},
-		{"display allows forest", graph.ReadScopes, string(graph.ScopeAll), false},
+		{"replay refuses forest", shape.Scopes, string(graph.ScopeAll), true},
+		{"replay allows graph", shape.Scopes, string(graph.ScopeTrunk), false},
+		{"display allows forest", shape.ReadScopes, string(graph.ScopeAll), false},
 		{"removal refuses graph", []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, string(graph.ScopeTrunk), true},
-		{"an empty scope is the default", graph.Scopes, "", false},
+		{"an empty scope is the default", shape.Scopes, "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			options := graphOptions{scopeOptions: scopeOptions{scope: test.scope, accepted: test.accepted}}
@@ -358,13 +358,13 @@ func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 // ReadScopes into something that writes should fail here rather than in a
 // repository.
 func TestOnlyReadOnlyCommandsOfferForest(t *testing.T) {
-	for _, scope := range graph.Scopes {
+	for _, scope := range shape.Scopes {
 		if scope == graph.ScopeAll {
-			t.Fatal("graph.Scopes contains forest; it is the set handed to commands that mutate")
+			t.Fatal("shape.Scopes contains forest; it is the set handed to commands that mutate")
 		}
 	}
-	if len(graph.ReadScopes) != len(graph.Scopes)+1 {
-		t.Errorf("ReadScopes = %v, want exactly Scopes plus forest", graph.ReadScopes)
+	if len(shape.ReadScopes) != len(shape.Scopes)+1 {
+		t.Errorf("ReadScopes = %v, want exactly Scopes plus forest", shape.ReadScopes)
 	}
 }
 
@@ -392,7 +392,7 @@ func TestSuggestedScopesAreOnesTheCommandAccepts(t *testing.T) {
 			// Checked against the set the graph command registers, not a
 			// fixed one: the whole failure mode is advice drifting from what
 			// the command actually takes.
-			if _, err := stack.ParseScope(match[1], graph.ReadScopes, graph.ScopeStack); err != nil {
+			if _, err := shape.ParseScope(match[1], shape.ReadScopes, graph.ScopeStack); err != nil {
 				t.Errorf("advice names --scope %s, which the command rejects: %v", match[1], err)
 			}
 		}

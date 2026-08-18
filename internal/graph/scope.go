@@ -23,19 +23,10 @@ const (
 	ScopeAll     = shape.ScopeAll
 )
 
-// Scopes is the set every selecting command accepts. ReadScopes adds all,
-// which only read-only commands offer, and RewriteScopes drops the widest two,
-// which want deliberate worktree handling first.
-//
-// There is no ParseScope here on purpose. Parsing needs the accepted set and
-// the default together, and both genuinely differ per command; a graph-side
-// wrapper could only supply one pair, which is how one command's default
-// silently becomes another's.
-var (
-	Scopes        = shape.Scopes
-	ReadScopes    = shape.ReadScopes
-	RewriteScopes = shape.RewriteScopes
-)
+// The accepted sets are not aliased here, and neither is ParseScope. A command
+// names the set it offers, and there is one place to read that list from; a
+// second name for it is how two of the four ended up aliased in one package
+// and two in another, each used from exactly one call site.
 
 // Select returns the branches a scope covers, in render order.
 //

@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/spf13/cobra"
 )
@@ -77,7 +78,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	selection.register(cmd, completions, stack.ReadableSources, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
-	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("unlink", stack.ProjectScopes))
+	selection.registerScope(cmd, shape.ProjectScopes, stack.ScopeStack, scopeUsage("unlink", shape.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack unstack after revalidation")
 	return cmd
 }

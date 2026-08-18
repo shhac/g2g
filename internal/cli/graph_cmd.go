@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // graphOptions owns the selection flags the graph commands share. Scope is a
@@ -45,7 +46,7 @@ func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
 		return writeGraphView(cmd.OutOrStdout(), graphStatusView(discovery), discovery, presentation)
 	}
 	selection.registerBranch(cmd, service)
-	selection.registerScope(cmd, graph.ReadScopes, graph.ScopeStack, scopeUsage("show", graph.ReadScopes))
+	selection.registerScope(cmd, shape.ReadScopes, graph.ScopeStack, scopeUsage("show", shape.ReadScopes))
 	return cmd
 }
 

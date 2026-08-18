@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/retarget"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -55,7 +56,7 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 	selection.register(cmd, completions, stack.ReadableSources, "local branch to retarget from (defaults to current branch)", "trunk to use as the base")
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
-	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("retarget", stack.ProjectScopes))
+	selection.registerScope(cmd, shape.ProjectScopes, stack.ScopeStack, scopeUsage("retarget", shape.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "move the bases instead of previewing the change")
 	return cmd
 }

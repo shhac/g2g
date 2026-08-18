@@ -79,3 +79,44 @@ func TestAnUnclaimedFailureStillSaysNotApplied(t *testing.T) {
 		t.Errorf("the ordinary failure path did not run:\n%s", out)
 	}
 }
+
+// A preview closes by telling the reader what to do next. When the plan is
+// already blocked, "rerun with --apply" is advice for a command that will
+// refuse — and the rendered view says "Apply blocked" three lines above it, so
+// the two contradicted each other in one screen.
+func TestABlockedPreviewDoesNotInviteAnApply(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		blocked string
+		want    string
+		absent  string
+	}{
+		{name: "blocked", blocked: "a synthetic refusal", want: "Apply would refuse", absent: "Rerun with --apply"},
+		{name: "clear", blocked: "", want: "Rerun with --apply", absent: "Apply would refuse"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			flow := applyFlow[interruptedPlan]{
+				plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{}, nil },
+				render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
+					_, err := fmt.Fprintln(w, "synthetic plan")
+					return err
+				},
+				blocked: func(interruptedPlan) string { return test.blocked },
+				notices: flowNotices{preview: "Rerun with --apply to replay these commits."},
+			}
+			if err := flow.run(cmd, context.Background(), newBudgets(cmd), Presentation{}, false); err != nil {
+				t.Fatalf("preview error = %v", err)
+			}
+
+			if !strings.Contains(out.String(), test.want) {
+				t.Errorf("preview does not say %q:\n%s", test.want, out.String())
+			}
+			if strings.Contains(out.String(), test.absent) {
+				t.Errorf("preview still says %q:\n%s", test.absent, out.String())
+			}
+		})
+	}
+}

@@ -109,10 +109,8 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 		}
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
 	}
-	if f.blocked != nil {
-		if reason := f.blocked(validated); reason != "" {
-			return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", reason))
-		}
+	if reason := f.blockedReason(validated); reason != "" {
+		return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", reason))
 	}
 	return f.mutate(cmd, root, budgets, validated, p)
 }
@@ -123,6 +121,12 @@ func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error 
 	}
 	if f.isNoOp(plan) {
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
+	}
+	// A preview whose plan is already blocked must not close by inviting an
+	// apply that will refuse. The rendered view names the reason, so repeating
+	// it here would say it twice; what has to go is the invitation.
+	if f.blockedReason(plan) != "" {
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
 	}
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" "+f.notices.preview)
 }
@@ -172,6 +176,14 @@ func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentatio
 }
 
 func (f applyFlow[P]) isNoOp(plan P) bool { return f.noOp != nil && f.noOp(plan) }
+
+// blockedReason is why an apply would refuse, empty when it would proceed.
+func (f applyFlow[P]) blockedReason(plan P) string {
+	if f.blocked == nil {
+		return ""
+	}
+	return f.blocked(plan)
+}
 
 // mutationSize is how many branches the mutation budget scales with.
 func (f applyFlow[P]) mutationSize(plan P) int {

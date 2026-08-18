@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -150,71 +151,53 @@ func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter
 	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve those files, git add them, then run g2g restack --continue. Or g2g restack --abort to undo."))
 }
 
-// runRestack is the preview/apply sequence. It is written out rather than
-// driven by applyFlow because a rewrite can legitimately stop part-way, and
-// the flow's contract is that a mutation either happened or did not.
+// runRestack is the preview/apply sequence, driven by applyFlow like every
+// other mutating command.
+//
+// It was written out by hand because a rewrite can legitimately stop part-way
+// and the flow's contract was that a mutation either happened or did not. The
+// interrupted hook is what made that no longer the reason, and the copy it
+// justified had already drifted in two places: a timeout during the rewrite
+// carried no recovery advice, and a blocked plan previewed identically to an
+// empty one, so a refusal read as a clean result.
 func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service, options restackOptions, p Presentation) error {
-	budgets := newBudgets(cmd)
-	discoveryCtx, cancelDiscovery := budgets.discovery(ctx)
-	defer cancelDiscovery()
-
 	selection := options.selector.Selection()
-	plan, err := service.Plan(discoveryCtx, selection, options.onto, options.absorb)
-	if err != nil {
-		return err
+	flow := applyFlow[restack.Plan]{
+		plan: func(ctx context.Context) (restack.Plan, error) {
+			return service.Plan(ctx, selection, options.onto, options.absorb)
+		},
+		revalidate: func(ctx context.Context, preview restack.Plan) (restack.Plan, error) {
+			return service.Revalidate(ctx, selection, options.onto, options.absorb, preview)
+		},
+		render: func(w io.Writer, plan restack.Plan, p Presentation) error {
+			return writeStackView(w, restackView(plan), p)
+		},
+		execute:  func(ctx context.Context, plan restack.Plan) error { return service.Apply(ctx, plan) },
+		branches: func(plan restack.Plan) int { return len(plan.Steps) },
+		// A blocked plan has no steps either, and calling that "nothing to
+		// replay" would report a refusal as a clean result. Only an unblocked
+		// plan with nothing in it is a no-op.
+		noOp:    func(plan restack.Plan) bool { return plan.Blocked == "" && len(plan.Steps) == 0 },
+		blocked: func(plan restack.Plan) string { return plan.Blocked },
+		// A rewrite that stops on a conflict is half applied and resumable, so
+		// "no changes were made" would be a lie. This is the case the whole
+		// hook exists for.
+		interrupted: func(ctx context.Context, cause error) (bool, error) {
+			interrupted, err := service.InProgress(ctx)
+			if err != nil || !interrupted {
+				return false, nil
+			}
+			return true, stopped(cmd, ctx, service, cause, p)
+		},
+		notices: flowNotices{
+			preview:  "Rerun with --apply to replay these commits.",
+			noOp:     "Nothing to replay.",
+			applied:  "Replayed.",
+			changed:  "Branch contents now match the recorded structure.",
+			recovery: "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
+		},
 	}
-	if !options.apply {
-		if err := writeStackView(cmd.OutOrStdout(), restackView(plan), p); err != nil {
-			return err
-		}
-		if plan.Blocked != "" || len(plan.Steps) == 0 {
-			return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made."))
-		}
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Rerun with --apply to replay these commits.")
-	}
-
-	validated, err := service.Revalidate(discoveryCtx, selection, options.onto, options.absorb, plan)
-	if err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-	if validated.Blocked != "" {
-		return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", validated.Blocked))
-	}
-	if len(validated.Steps) == 0 {
-		if err := writeStackView(cmd.OutOrStdout(), restackView(validated), p); err != nil {
-			return err
-		}
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("Nothing to replay."))
-	}
-	return applyRestack(cmd, ctx, budgets, service, validated, p)
-}
-
-// applyRestack renders and flushes the validated plan before the rewrite, so a
-// reader always sees exactly what ran even if the process dies during it.
-func applyRestack(cmd *cobra.Command, ctx context.Context, budgets budgets, service restack.Service, plan restack.Plan, p Presentation) error {
-	if err := writeReadyBanner(cmd.OutOrStdout(), p); err != nil {
-		return err
-	}
-	if err := writeStackView(cmd.OutOrStdout(), restackView(plan), p); err != nil {
-		return err
-	}
-	if err := flushOutput(cmd.OutOrStdout()); err != nil {
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-
-	mutateCtx, cancel := budgets.mutation(ctx, len(plan.Steps))
-	defer cancel()
-	if err := service.Apply(mutateCtx, plan); err != nil {
-		// An interrupted rewrite is not a failure to apply: it is half applied
-		// and resumable, and saying "no changes were made" would be a lie.
-		interrupted, checkErr := service.InProgress(mutateCtx)
-		if checkErr == nil && interrupted {
-			return stopped(cmd, mutateCtx, service, err, p)
-		}
-		return writeNotApplied(cmd.OutOrStdout(), p, err)
-	}
-	_ = prose(cmd.OutOrStdout(), p, p.notice("Replayed."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("Branch contents now match the recorded structure."))
+	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)
 }
 
 // restackGuard refuses a mutation while a restack is unfinished. A service

@@ -152,6 +152,19 @@ func TestOnlyBranchAndPathAreLinear(t *testing.T) {
 	}
 }
 
+// Every accepted value round-trips. A set a command offers but the parser
+// rejects would refuse exactly the values shell completion had just proposed.
+func TestParseScopeAcceptsEveryValueItsCommandOffers(t *testing.T) {
+	for _, accepted := range [][]Scope{Scopes, ReadScopes, RewriteScopes, ProjectScopes} {
+		for _, scope := range accepted {
+			parsed, err := ParseScope(string(scope), accepted, accepted[0])
+			if err != nil || parsed != scope {
+				t.Errorf("ParseScope(%q, %v) = %q, %v", scope, accepted, parsed, err)
+			}
+		}
+	}
+}
+
 // A command offering a narrow set must refuse a value another command allows,
 // and say what it does take.
 func TestParseScopeRefusesAValueThisCommandDoesNotOffer(t *testing.T) {

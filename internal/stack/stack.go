@@ -342,23 +342,18 @@ func branchSet(branches []string) map[string]bool {
 	return set
 }
 
-func validatePathLocalAndSafe(local map[string]bool, path []string, command string) error {
-	// A path needs a branch above its base to be a link base at all. A forked
-	// selection has no such requirement: one branch with no descendants is a
-	// legitimate subtree, and refusing it here would refuse the honest answer.
-	if len(path) < 2 {
-		return fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
-	}
-	return validateBranchesLocalAndSafe(local, path, command)
-}
-
+// validateBranchesLocalAndSafe refuses a selection a command could not act on.
+//
+// It names no source, because more than one reaches it: a pull request base
+// can put a branch here just as a Graphite ancestry can, and telling someone
+// Graphite selected a branch it did not sends them to the wrong record.
 func validateBranchesLocalAndSafe(local map[string]bool, branches []string, command string) error {
 	for _, branch := range branches {
 		if !local[branch] {
-			return fmt.Errorf("Graphite ancestry branch %q is not a local branch", branch)
+			return fmt.Errorf("selected branch %q is not a local branch", branch)
 		}
 		if subprocess.OptionLike(branch) {
-			return fmt.Errorf("Graphite ancestry branch %q cannot be passed safely to %s", branch, command)
+			return fmt.Errorf("selected branch %q cannot be passed safely to %s", branch, command)
 		}
 	}
 	return nil

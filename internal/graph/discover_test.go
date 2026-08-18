@@ -259,30 +259,6 @@ func TestAssessRequiresAGit(t *testing.T) {
 	}
 }
 
-func TestParseScopeAcceptsEveryValueAndDefaultsToTheWholeStack(t *testing.T) {
-	got, err := ParseScope("")
-	if err != nil || got != ScopeStack {
-		t.Errorf("ParseScope(\"\") = %q, %v; want stack", got, err)
-	}
-	for _, scope := range Scopes {
-		if parsed, err := ParseScope(string(scope)); err != nil || parsed != scope {
-			t.Errorf("ParseScope(%q) = %q, %v", scope, parsed, err)
-		}
-	}
-}
-
-func TestParseScopeRejectsAnUnknownValueAndListsTheValidOnes(t *testing.T) {
-	_, err := ParseScope("tree")
-	if err == nil {
-		t.Fatal("ParseScope() error = nil")
-	}
-	for _, scope := range Scopes {
-		if !strings.Contains(err.Error(), string(scope)) {
-			t.Errorf("error %v does not mention %q", err, scope)
-		}
-	}
-}
-
 func TestSelectWidensWithScope(t *testing.T) {
 	for scope, want := range map[Scope]string{
 		ScopeBranch:  "synthetic-auth",

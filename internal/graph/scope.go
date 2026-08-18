@@ -20,19 +20,18 @@ const (
 )
 
 // Scopes is the set every selecting command accepts. ReadScopes adds all,
-// which only read-only commands offer.
+// which only read-only commands offer, and RewriteScopes drops the widest two,
+// which want deliberate worktree handling first.
+//
+// There is no ParseScope here on purpose. Parsing needs the accepted set and
+// the default together, and both genuinely differ per command; a graph-side
+// wrapper could only supply one pair, which is how one command's default
+// silently becomes another's.
 var (
 	Scopes        = stack.Scopes
 	ReadScopes    = stack.ReadScopes
 	RewriteScopes = stack.RewriteScopes
-	ProjectScopes = stack.ProjectScopes
 )
-
-// ParseScope validates a flag value against the scopes a selecting command
-// accepts, defaulting to the whole stack.
-func ParseScope(value string) (Scope, error) {
-	return stack.ParseScope(value, stack.Scopes, stack.ScopeStack)
-}
 
 // Select returns the branches a scope covers, in render order.
 //

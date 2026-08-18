@@ -265,7 +265,7 @@ func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
 		t.Errorf("scope completion = %v", completed)
 	}
 	for _, value := range completed {
-		if _, err := graph.ParseScope(value); err != nil {
+		if _, err := stack.ParseScope(value, graph.Scopes, graph.ScopeStack); err != nil {
 			t.Errorf("completion offered %q, which ParseScope rejects", value)
 		}
 	}

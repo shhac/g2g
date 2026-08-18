@@ -23,6 +23,9 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	cmd := &cobra.Command{Use: "unlink", GroupID: groupPublish, Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validate(); err != nil {
+			return err
+		}
 		if cmd.Flags().Changed("stack-number") && number <= 0 {
 			return fmt.Errorf("--stack-number must be a positive GitHub stack number")
 		}
@@ -71,7 +74,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().IntVar(&number, "stack-number", 0, "GitHub stack number to unlink (defaults to the one discovered on the selected path)")
-	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
+	selection.register(cmd, completions, stack.ReadableSources, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
 	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("unlink", stack.ProjectScopes))

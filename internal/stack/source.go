@@ -23,6 +23,26 @@ const (
 	SourcePullRequest Source = "pull-request"
 )
 
+// ReadableSources are the sources a command may be pointed at when reading a
+// pull request costs it nothing it has promised not to do.
+var ReadableSources = []Source{SourceG2G, SourceGraphite, SourcePullRequest}
+
+// OfflineSources are the sources a command may be pointed at when it must not
+// invoke gh. push is the case: its whole contract is one atomic git push and no
+// GitHub call, and resolving through pull request bases would break that before
+// selection even began.
+var OfflineSources = []Source{SourceG2G, SourceGraphite}
+
+// Permits reports whether a source is one of these.
+func Permits(sources []Source, from Source) bool {
+	for _, source := range sources {
+		if source == from {
+			return true
+		}
+	}
+	return false
+}
+
 // Selector produces the ordered path a command acts on, from one source.
 //
 // Describes is separate from Select so precedence can be decided without

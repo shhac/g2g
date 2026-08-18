@@ -26,7 +26,7 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 		}
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
 	}
-	selection.register(cmd, completions, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
+	selection.register(cmd, completions, stack.ReadableSources, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
 	// status reads, so it defaults to the whole stack: ancestors, descendants,
 	// and where the target sits between them. It stops short of all, because a
 	// repository's other trunks are not what someone triaging this one asked

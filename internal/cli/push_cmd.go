@@ -20,6 +20,9 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
+			if err := selection.validate(); err != nil {
+				return err
+			}
 			root := commandContext(cmd.Context(), cmd, "push", applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[push.Plan]{
 				plan: func(ctx context.Context) (push.Plan, error) { return service.Plan(ctx, selection.Selection(), remote) },
@@ -40,7 +43,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 		},
 	}
-	selection.register(cmd, completions, "local branch to push (defaults to current branch)", "trunk to use as the push base")
+	selection.register(cmd, completions, stack.OfflineSources, "local branch to push (defaults to current branch)", "trunk to use as the push base")
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
 	selection.registerScope(cmd, stack.ProjectScopes, stack.ScopeStack, scopeUsage("push", stack.ProjectScopes))

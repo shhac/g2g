@@ -625,3 +625,44 @@ func TestCandidateAdviceOffersWholeStackAdoption(t *testing.T) {
 		t.Errorf("the candidate advice does not mention --stack:\n%s", stdout)
 	}
 }
+
+// push must never invoke gh. Its whole contract is one atomic git push and no
+// GitHub call, so a source that resolves by reading pull request bases has to
+// be refused by the flag rather than honoured by the resolver.
+//
+// It was honoured: --from is registered on every stack command, and the
+// resolver's on-request tier answers whoever names it, so push --from
+// pull-request ran gh repo view and gh api graphql before selection began. The
+// invariant was stated in the skill and in the comment directly above the field
+// that broke it, and nothing asserted it — the sibling test above checks push
+// reaches no Graphite and never checked GitHub.
+func TestPushNeverReachesGitHubWhateverSourceIsNamed(t *testing.T) {
+	for _, from := range []string{"", "g2g", "pull-request"} {
+		name := from
+		if name == "" {
+			name = "default"
+		}
+		t.Run(name, func(t *testing.T) {
+			recorder, _ := g2gOwnedRepository(t, ownedGraph)
+
+			args := []string{"push", "--apply"}
+			if from != "" {
+				args = append(args, "--from", from)
+			}
+			stdout, _, err := run(t, args...)
+
+			// pull-request is refused; the others succeed. Either way no gh.
+			if from == "pull-request" {
+				if err == nil {
+					t.Fatalf("push --from pull-request was allowed:\n%s", stdout)
+				}
+				if !strings.Contains(err.Error(), "gh") {
+					t.Errorf("refusal does not say why: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("push --from %q: %v\n%s", from, err, stdout)
+			}
+			recorder.AssertNone("gh ")
+		})
+	}
+}

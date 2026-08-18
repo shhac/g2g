@@ -191,6 +191,9 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if s.GitHub == nil {
 		return fmt.Errorf("link service is not fully configured")
 	}
+	if err := plan.Snapshot.RequireActionable("g2g link"); err != nil {
+		return err
+	}
 	if len(plan.Issues) != 0 {
 		return fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
 	}

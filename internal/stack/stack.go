@@ -60,6 +60,8 @@ func (s Snapshot) Equal(other Snapshot) bool {
 		s.BaseSource == other.BaseSource &&
 		s.Scope == other.Scope &&
 		maps.Equal(s.Parents, other.Parents) &&
+		slices.Equal(s.Absent, other.Absent) &&
+		slices.Equal(s.Unfollowed, other.Unfollowed) &&
 		slices.Equal(s.Ancestry, other.Ancestry) &&
 		slices.Equal(s.Branches, other.Branches)
 }
@@ -134,6 +136,18 @@ type Snapshot struct {
 	// Scope is what was actually selected, so a renderer can say how much of
 	// the structure it is showing.
 	Scope Scope
+	// Absent are selected branches that are not on this machine. Only the pull
+	// request source produces them: a stack published from another checkout can
+	// join two local subtrees through a branch nobody here has, and dropping
+	// that edge makes the two look unrelated.
+	//
+	// They are structure and they are not somewhere a command may act, so every
+	// command that mutates refuses on them rather than quietly skipping them.
+	Absent []string
+	// Unfollowed are bases the structure stops short of, because following them
+	// ran out of rounds. Reported so a tree that ends early cannot be mistaken
+	// for one that is finished.
+	Unfollowed []string
 	// Source names where the structure came from, so a preview can say.
 	Source Source
 }
@@ -366,6 +380,18 @@ func validateBranchesLocalAndSafe(local map[string]bool, branches []string, comm
 		if !local[branch] {
 			return fmt.Errorf("selected branch %q is not a local branch", branch)
 		}
+	}
+	return validateSelectionIsSafe(branches, command)
+}
+
+// validateSelectionIsSafe refuses a name a process would read as an option.
+//
+// It is separate from the locality check because the pull request source has a
+// third answer: a branch can be legitimately absent and still be structure. The
+// safety rule applies to every name regardless, which is why it splits out
+// rather than being repeated.
+func validateSelectionIsSafe(branches []string, command string) error {
+	for _, branch := range branches {
 		if subprocess.OptionLike(branch) {
 			return fmt.Errorf("selected branch %q cannot be passed safely to %s", branch, command)
 		}
@@ -410,4 +436,27 @@ func SelectBoundary(path, trunks []string, requestedTrunk string) (string, strin
 	}
 	trunk := slices.Collect(maps.Keys(indices))[0]
 	return trunk, "Graphite-declared ancestry", append([]string(nil), path[indices[trunk]+1:]...), nil
+}
+
+// RequireActionable refuses a selection containing branches this machine does
+// not have.
+//
+// Reading a structure through pull request bases can place a branch nobody here
+// has checked out, which is the point: it is what joins two local subtrees
+// published from somebody else's machine. Acting on one is a different matter —
+// there is no ref to push, rewrite, or link — so every command that mutates
+// asks this first, and says which branches rather than failing at the tool.
+func (s Snapshot) RequireActionable(command string) error {
+	if len(s.Absent) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s cannot act on %s: not %s on this machine · the structure came from pull request bases, which describe branches this checkout does not have",
+		command, strings.Join(s.Absent, ", "), pluralBranches(len(s.Absent)))
+}
+
+func pluralBranches(count int) string {
+	if count == 1 {
+		return "a local branch"
+	}
+	return "local branches"
 }

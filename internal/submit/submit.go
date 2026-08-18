@@ -113,6 +113,9 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 	if len(plan.Issues) != 0 {
 		return fmt.Errorf("submission is blocked by existing pull request state: %s", issueText(plan.Issues))
 	}
+	if err := plan.Snapshot.RequireActionable("g2g submit"); err != nil {
+		return err
+	}
 	diagnostic.Event(ctx, "submit.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Snapshot.Branches, ",")}, diagnostic.Field{Key: "draft", Value: fmt.Sprintf("%t", spec.Draft)})
 	if err := validateSpec(plan, spec); err != nil {
 		return err

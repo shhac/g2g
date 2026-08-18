@@ -81,6 +81,51 @@ parent lands, its children point at the trunk. The structure is never wrong
 about what GitHub will do; it stops being a record of what the stack was.
 Asking for it makes that an informed reading rather than a silent one.
 
+### Each source builds its own forest, and only its own
+
+Every source has an adapter package that produces the shape, and `stack`
+selects within it. Keeping that arrow one-directional is what stops source
+resolution from accumulating one traversal per record:
+
+| source | builds the forest | where |
+|---|---|---|
+| Graphite | `graphite.ReadForest` | `internal/graphite` |
+| g2g store | `graph.Graph.Shape` | `internal/graph` |
+| pull request bases | `githubstack.BuildForest` | `internal/githubstack` |
+
+`internal/stack` converts each to `shape.Forest`, applies the scope, and builds
+the snapshot. It is the only one of the three that has to reach the network, so
+it is also the only one with a bound.
+
+### Following a base that is not checked out here
+
+A pull request base need not be a local branch. It happens whenever part of a
+stack was published from another machine, and the branch in the middle joins
+two subtrees that are both here. Reading only local branches drops that edge, so
+the lower subtree reads as a root of its own — and reads that way silently,
+which is what misleads rather than what is missing.
+
+So the walk follows bases it does not recognise, in rounds:
+
+- **A round is one invocation.** `Inspect` resolves every branch handed to it in
+  a single aliased GraphQL query, so a round costs the same whether it is asking
+  about one unknown or forty. The bound is therefore on the *depth* of a
+  remote-only chain, never on its width.
+- **The bound is `FollowRounds`.** Four consecutive branches none of which are
+  on this machine is somebody else's stack, and the honest thing at that point
+  is to say where the following stopped rather than keep going.
+- **Where it stopped is reported**, because a tree that silently ends early is
+  indistinguishable from one that is finished.
+- **The structure is read once per invocation.** Resolution asks `Describes` and
+  then `Select`, and each needs all of it; building it per question doubles
+  every round.
+
+**Structure is not permission.** A branch that is not here has no ref to push,
+rewrite, or link, so it is carried on the snapshot as `Absent`, rendered as
+`on remote only`, and every command that mutates refuses it by name. That
+refusal lives on the snapshot rather than in each command, because "which
+commands remembered to check" is not a property worth depending on.
+
 **GitHub's native stack is not a source at all.** Nothing defines a stack by
 editing it; branches and bases are edited and the native stack is written from
 them. It is a projection artifact, and its only role here is drift detection —

@@ -138,9 +138,15 @@ func TestAnUnpublishedBranchDescribesNothing(t *testing.T) {
 	}
 }
 
-// A base outside the checkout cannot be rendered or acted on, so the branch
-// reads as a root rather than hanging from something absent.
-func TestABaseThatIsNotLocalReadsAsARoot(t *testing.T) {
+// A base that is not on this machine is where the branch actually hangs, so it
+// is placed there rather than dropped. This used to read as a root — which was
+// wrong in a way nothing showed: the branch really does have a parent, it is
+// just not one this checkout has.
+//
+// The base is not acted on locally by any command that uses it — link, submit
+// and retarget all name it to GitHub, which has it — so it being absent is
+// reported rather than refused.
+func TestABaseThatIsNotLocalIsStillWhereTheBranchHangs(t *testing.T) {
 	selector, _ := syntheticSelector([]githubstack.PullRequest{
 		{Number: 11, Head: "synthetic-a", Base: "synthetic-absent", State: "OPEN"},
 	})
@@ -149,8 +155,16 @@ func TestABaseThatIsNotLocalReadsAsARoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select() error = %v", err)
 	}
-	if snapshot.Base != "synthetic-a" {
-		t.Errorf("base = %q, want the branch itself once its base is not local", snapshot.Base)
+	if snapshot.Base != "synthetic-absent" {
+		t.Errorf("base = %q, want the branch the pull request is actually based on", snapshot.Base)
+	}
+	if got := strings.Join(snapshot.Branches, ","); got != "synthetic-a" {
+		t.Errorf("branches = %q, want only the branch this checkout has", got)
+	}
+	// Nothing selected is absent, so nothing is refused: the base is GitHub's
+	// to resolve, not this machine's.
+	if err := snapshot.RequireActionable("g2g link"); err != nil {
+		t.Errorf("RequireActionable() = %v; only a selected branch may block a mutation", err)
 	}
 }
 
@@ -251,5 +265,99 @@ func TestABranchNoPullRequestMentionsIsStillNotDescribed(t *testing.T) {
 	}
 	if describes {
 		t.Error("a branch no pull request mentions was described")
+	}
+}
+
+// A stack published from somebody else's checkout joins two local subtrees
+// through a branch nobody here has. Dropping that edge made the lower subtree
+// read as a root of its own, so the two looked unrelated — and looked that way
+// with no indication anything had been left out.
+func TestASelectionCarriesABranchThatIsNotOnThisMachine(t *testing.T) {
+	prs := []githubstack.PullRequest{
+		{Number: 11, Head: "synthetic-a", Base: "synthetic-trunk", State: "OPEN"},
+		{Number: 12, Head: "synthetic-remote", Base: "synthetic-a", State: "OPEN"},
+		{Number: 13, Head: "synthetic-c", Base: "synthetic-remote", State: "OPEN"},
+	}
+	selector := PullRequestSelector{
+		// synthetic-remote is deliberately absent from the checkout.
+		Git:    prGit{current: "synthetic-c", branches: []string{"synthetic-trunk", "synthetic-a", "synthetic-c"}},
+		GitHub: &prGitHub{prs: prs},
+	}
+
+	snapshot, err := selector.Select(context.Background(), Selection{Branch: "synthetic-c", Scope: ScopePath}, "synthetic command")
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+
+	if got, want := strings.Join(snapshot.Branches, ","), "synthetic-a,synthetic-remote,synthetic-c"; got != want {
+		t.Errorf("branches = %q, want %q · the chain joins through the absent branch", got, want)
+	}
+	if got := strings.Join(snapshot.Absent, ","); got != "synthetic-remote" {
+		t.Errorf("Absent = %q, want the branch this checkout does not have", got)
+	}
+	if snapshot.Base != "synthetic-trunk" {
+		t.Errorf("base = %q, want the trunk the chain reaches", snapshot.Base)
+	}
+}
+
+// Structure is not permission. A branch that is not here has no ref to push,
+// rewrite, or link, so every command that mutates refuses and names it.
+func TestAMutationRefusesABranchThatIsNotOnThisMachine(t *testing.T) {
+	snapshot := Snapshot{Branches: []string{"synthetic-a", "synthetic-remote"}, Absent: []string{"synthetic-remote"}}
+
+	err := snapshot.RequireActionable("g2g link")
+	if err == nil {
+		t.Fatal("RequireActionable() = nil for a selection containing an absent branch")
+	}
+	for _, want := range []string{"g2g link", "synthetic-remote", "not a local branch"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not mention %q", err, want)
+		}
+	}
+	if err := (Snapshot{Branches: []string{"synthetic-a"}}).RequireActionable("g2g link"); err != nil {
+		t.Errorf("RequireActionable() = %v for an entirely local selection", err)
+	}
+}
+
+// Resolution asks Describes and then Select, and each needs the whole
+// structure. Building it per question doubles every round of the walk, so a
+// selector reads it once for the invocation it belongs to.
+func TestTheStructureIsReadOncePerInvocation(t *testing.T) {
+	github := &prGitHub{prs: syntheticPRs()}
+	selector := NewPullRequestSelector(
+		prGit{current: "synthetic-b", branches: []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c"}},
+		github,
+	)
+
+	if _, err := selector.Describes(context.Background(), "synthetic-b"); err != nil {
+		t.Fatalf("Describes() error = %v", err)
+	}
+	if _, err := selector.Select(context.Background(), Selection{Branch: "synthetic-b", Scope: ScopeStack}, "synthetic command"); err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+
+	// One round covers this forest: every base is already local.
+	if github.calls != 1 {
+		t.Errorf("read the structure %d times for one invocation, want 1", github.calls)
+	}
+}
+
+// A selector built as a plain literal still works; it simply reads more than
+// once. Correctness must not depend on remembering the constructor.
+func TestASelectorWithoutTheMemoStillResolves(t *testing.T) {
+	selector, github := syntheticSelector(syntheticPRs())
+
+	if _, err := selector.Describes(context.Background(), "synthetic-b"); err != nil {
+		t.Fatalf("Describes() error = %v", err)
+	}
+	snapshot, err := selector.Select(context.Background(), Selection{Branch: "synthetic-b", Scope: ScopeStack}, "synthetic command")
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if got, want := strings.Join(snapshot.Branches, ","), "synthetic-a,synthetic-b"; got != want {
+		t.Errorf("branches = %q, want %q", got, want)
+	}
+	if github.calls < 2 {
+		t.Errorf("calls = %d; this case exists to cover the uncached path", github.calls)
 	}
 }

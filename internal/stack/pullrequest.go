@@ -3,8 +3,8 @@ package stack
 import (
 	"context"
 	"fmt"
+	"sync"
 
-	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
 )
 
@@ -30,6 +30,29 @@ import (
 type PullRequestSelector struct {
 	Git    Git
 	GitHub GitHub
+	// memo holds the forest for the life of one invocation.
+	//
+	// Resolution asks Describes and then Select, and each needs the whole
+	// structure, so without this a single command builds it twice — and since
+	// building it walks remote-only bases in rounds, that doubles every round
+	// as well. A pointer so a copied value shares it; nil simply means no
+	// sharing, which is slower and never wrong.
+	memo *forestMemo
+}
+
+// NewPullRequestSelector builds a selector that reads the structure once per
+// invocation rather than once per question asked of it.
+func NewPullRequestSelector(git Git, github GitHub) PullRequestSelector {
+	return PullRequestSelector{Git: git, GitHub: github, memo: &forestMemo{}}
+}
+
+// forestMemo is the once-per-invocation cache. A selector is constructed for
+// one command run, so there is no staleness to reason about: the structure
+// cannot change underneath a single read.
+type forestMemo struct {
+	once   sync.Once
+	forest githubstack.Forest
+	err    error
 }
 
 func (s PullRequestSelector) Source() Source { return SourcePullRequest }
@@ -44,11 +67,11 @@ func (s PullRequestSelector) Describes(ctx context.Context, branch string) (bool
 	if s.Git == nil || s.GitHub == nil {
 		return false, nil
 	}
-	forest, err := s.forest(ctx)
+	published, err := s.forest(ctx)
 	if err != nil {
 		return false, err
 	}
-	return forest.Knows(branch), nil
+	return Forest{Parents: published.Parents}.Knows(branch), nil
 }
 
 // Select builds the structure GitHub already holds and applies the scope.
@@ -68,10 +91,14 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 	if !local[target] {
 		return Snapshot{}, fmt.Errorf("selected branch %q is not a local branch", target)
 	}
-	forest, err := s.forest(ctx)
+	published, err := s.forest(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	// The shared traversal takes the edges and nothing else. Which of them are
+	// on this machine is this package's concern, carried on the snapshot, so a
+	// forest walk never has to ask.
+	forest := Forest{Parents: published.Parents}
 	if !forest.Knows(target) {
 		return Snapshot{}, fmt.Errorf("no open pull request describes %q · a branch with none, and with none based on it, has no place to read", target)
 	}
@@ -81,8 +108,14 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if err := validateBranchesLocalAndSafe(local, selected, command); err != nil {
+	absent := branchSet(published.Absent)
+	if err := validateSelectionIsSafe(selected, command); err != nil {
 		return Snapshot{}, err
+	}
+	for _, branch := range selected {
+		if !local[branch] && !absent[branch] {
+			return Snapshot{}, fmt.Errorf("selected branch %q is not a local branch", branch)
+		}
 	}
 	base, within, err := forest.Hangs(selected, target, scope)
 	if err != nil {
@@ -108,39 +141,45 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 		Branches:     branches,
 		Parents:      forest.Restrict(selected),
 		Scope:        scope,
+		Absent:       selectedAbsent(branches, absent),
+		Unfollowed:   published.Unfollowed,
 	}, nil
 }
 
-// forest reads every local branch's open pull request and keeps the base as the
-// parent.
+// forest reads the structure GitHub holds, through the builder that owns it.
 //
-// A branch with no open pull request, or with more than one, contributes no
-// edge: the first has nothing to read and the second is the one ambiguity this
-// tool refuses to interpret anywhere else, so interpreting it here would be
-// inconsistent as well as a guess.
-func (s PullRequestSelector) forest(ctx context.Context) (Forest, error) {
+// The walk lives in githubstack for the same reason Graphite's parsing lives in
+// graphite: this package selects within a structure and does not build one. It
+// was inline here, which is what made the pull request source the only one
+// whose shape was assembled inside the resolver.
+func (s PullRequestSelector) forest(ctx context.Context) (githubstack.Forest, error) {
+	if s.memo == nil {
+		return s.build(ctx)
+	}
+	s.memo.once.Do(func() { s.memo.forest, s.memo.err = s.build(ctx) })
+	return s.memo.forest, s.memo.err
+}
+
+func (s PullRequestSelector) build(ctx context.Context) (githubstack.Forest, error) {
 	localBranches, err := s.Git.LocalBranches(ctx)
 	if err != nil {
-		return Forest{}, err
+		return githubstack.Forest{}, err
 	}
-	prs, err := s.GitHub.Inspect(ctx, localBranches)
-	if err != nil {
-		return Forest{}, err
-	}
-	local := branchSet(localBranches)
-	parents := make(map[string]string, len(prs))
-	for branch, resolution := range githubstack.ResolveHeads(prs) {
-		if resolution.Open == nil || !local[branch] {
-			continue
+	return githubstack.BuildForest(ctx, s.GitHub, localBranches, githubstack.FollowRounds)
+}
+
+// selectedAbsent narrows the forest's absent branches to the ones this
+// selection actually contains, because a snapshot describes its own selection
+// and not the repository.
+func selectedAbsent(branches []string, absent map[string]bool) []string {
+	listed := make([]string, 0)
+	for _, branch := range branches {
+		if absent[branch] {
+			listed = append(listed, branch)
 		}
-		// A base outside the checkout cannot be rendered or acted on, so the
-		// branch reads as a root rather than hanging from something absent.
-		if base := resolution.Open.Base; local[base] {
-			parents[branch] = base
-			continue
-		}
-		parents[branch] = ""
 	}
-	diagnostic.Event(ctx, "pullrequest.forest", diagnostic.Field{Key: "edges", Value: fmt.Sprint(len(parents))})
-	return Forest{Parents: parents}, nil
+	if len(listed) == 0 {
+		return nil
+	}
+	return listed
 }

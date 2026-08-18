@@ -45,6 +45,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `internal/graphite`, capture only synthetic regression coverage, and do not
   "improve" discovery by reading Graphite metadata or enabling Graphite debug
   output.
+- Each source's adapter package builds its own forest and `internal/stack`
+  selects within it: `graphite.ReadForest`, `graph.Graph.Shape`,
+  `githubstack.BuildForest`. Do not assemble a structure inside
+  `internal/stack` — the pull request source used to, and it is why the walk
+  that follows non-local bases had nowhere to live. `githubstack.BuildForest`
+  is bounded by rounds, not by branches, because `Inspect` answers a whole
+  round in one query; a branch it places that is not local is carried as
+  `Snapshot.Absent` and refused by `RequireActionable` before any mutation.
 - Treat `internal/subprocess` as the sole process seam. Extend adapters through
   it, retain context cancellation, and route opt-in diagnostics through
   `internal/diagnostic`; diagnostic tests deliberately exercise redaction and

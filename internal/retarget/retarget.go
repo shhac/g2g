@@ -128,6 +128,9 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot retarget: %s", plan.Blocked)
 	}
+	if err := plan.Snapshot.RequireActionable("g2g retarget"); err != nil {
+		return err
+	}
 	for _, change := range plan.Changes {
 		if err := s.GitHub.Retarget(ctx, change.Number, change.To); err != nil {
 			return err

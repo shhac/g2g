@@ -104,6 +104,13 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if s.Git == nil {
 		return fmt.Errorf("push service is not fully configured")
 	}
+	// push cannot reach the pull request source at all, so this can only ever
+	// be a no-op here. It is asked anyway: the reason push is safe is a flag
+	// gate two packages away, and a mutation should not depend on remembering
+	// that.
+	if err := plan.Snapshot.RequireActionable("g2g push"); err != nil {
+		return err
+	}
 	diagnostic.Event(ctx, "push.apply",
 		diagnostic.Field{Key: "decision", Value: "run"},
 		diagnostic.Field{Key: "remote", Value: plan.Remote},

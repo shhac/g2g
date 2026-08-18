@@ -56,8 +56,20 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		TargetSource: plan.TargetSource,
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
 	}
+	absent := map[string]bool{}
+	for _, branch := range plan.Snapshot.Absent {
+		absent[branch] = true
+	}
 	for _, branch := range plan.Branches {
 		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
+		// A branch this checkout does not have is structure and not a place to
+		// act, so it is marked as what it is rather than as a blocked branch:
+		// nothing here is wrong with it, and no command will touch it.
+		if absent[branch] {
+			node.State, node.Severity = "on remote only", severityNeutral
+			view.Nodes = append(view.Nodes, node)
+			continue
+		}
 		if reason := issues[branch]; reason != "" {
 			node.State, node.Severity = "blocked: "+reason, severityBad
 			view.Nodes = append(view.Nodes, node)

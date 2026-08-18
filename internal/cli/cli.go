@@ -110,7 +110,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		// Reading pull request bases means invoking gh, and push must never do
 		// that, so this source answers only when --from names it.
 		OnRequest: []stack.Selector{
-			stack.PullRequestSelector{Git: gitClient, GitHub: githubClient},
+			stack.NewPullRequestSelector(gitClient, githubClient),
 		},
 	}
 	// Completion draws on the same sources, in the same order, so a flag never

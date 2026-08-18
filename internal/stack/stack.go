@@ -308,6 +308,20 @@ func graphiteBoundary(forest Forest, declaredTrunks, ancestry, selected []string
 		// right.
 		return selected[0], "Graphite-declared roots", append([]string(nil), selected[1:]...), nil
 	}
+	if len(ancestry) == 1 {
+		// The target is itself a trunk, so there is nothing above it to choose
+		// between and Hangs has already given the answer. SelectBoundary
+		// cannot: it scans the ancestry excluding the target precisely because
+		// it exists to find the trunk *under* one, so asked from a trunk it can
+		// only report that there is no ancestor to use.
+		if !slices.Contains(declaredTrunks, target) {
+			return "", "", nil, fmt.Errorf("selected branch %q is a root of the Graphite forest but is not a declared trunk; use supported Graphite configuration to resolve it", target)
+		}
+		if requestedTrunk != "" && requestedTrunk != target {
+			return "", "", nil, fmt.Errorf("requested trunk %q is not %q, which is the trunk this selection starts from", requestedTrunk, target)
+		}
+		return base, "Graphite-declared trunk", append([]string(nil), selected[1:]...), nil
+	}
 
 	base, baseSource, _, err := SelectBoundary(ancestry, declaredTrunks, requestedTrunk)
 	if err != nil {

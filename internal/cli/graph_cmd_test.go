@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // graphGit answers the ancestry questions without a repository. The forest
@@ -364,4 +366,57 @@ func TestOnlyReadOnlyCommandsOfferForest(t *testing.T) {
 	if len(graph.ReadScopes) != len(graph.Scopes)+1 {
 		t.Errorf("ReadScopes = %v, want exactly Scopes plus forest", graph.ReadScopes)
 	}
+}
+
+// A hint that names a flag value is a command the reader will type, so the
+// value has to be one the command accepts.
+//
+// The scope vocabulary was renamed (forest became all) and this hint kept the
+// old word, so following the tool's own advice produced "unsupported scope".
+// Scanning the advice for scope words and checking each against the parser
+// catches the next rename too, which naming one value in one assertion would
+// not.
+func TestSuggestedScopesAreOnesTheCommandAccepts(t *testing.T) {
+	discovery := graph.Discovery{
+		Target:   "synthetic-trunk",
+		Branches: []string{"synthetic-trunk"},
+		Scope:    graph.ScopePath,
+		Graph:    forkedGraph(t),
+	}
+
+	suggested := regexp.MustCompile(`--scope ([a-z]+)`)
+	found := 0
+	for _, note := range graphStatusView(discovery).Notes {
+		for _, match := range suggested.FindAllStringSubmatch(note.Text, -1) {
+			found++
+			// Checked against the set the graph command registers, not a
+			// fixed one: the whole failure mode is advice drifting from what
+			// the command actually takes.
+			if _, err := stack.ParseScope(match[1], graph.ReadScopes, graph.ScopeStack); err != nil {
+				t.Errorf("advice names --scope %s, which the command rejects: %v", match[1], err)
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no scope advice found to check; the hint this guards has moved")
+	}
+}
+
+// forkedGraph is a trunk with branches under it, so the hidden-descendants
+// hint that carries the scope advice actually fires.
+func forkedGraph(t *testing.T) graph.Graph {
+	t.Helper()
+
+	recorded := graph.New()
+	for _, edge := range []struct{ branch, parent string }{
+		{"synthetic-a", "synthetic-trunk"},
+		{"synthetic-b", "synthetic-trunk"},
+	} {
+		updated, err := recorded.Track(edge.branch, graph.Edge{Parent: edge.parent})
+		if err != nil {
+			t.Fatalf("Track(%q) error = %v", edge.branch, err)
+		}
+		recorded = updated
+	}
+	return recorded
 }

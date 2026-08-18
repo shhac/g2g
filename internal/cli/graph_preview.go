@@ -117,7 +117,7 @@ func graphStatusView(discovery graph.Discovery) stackView {
 		view = view.note("This branch has no recorded parent · run g2g track to adopt one.", severityNeutral)
 	}
 	if hidden := hiddenDescendants(discovery); hidden != 0 {
-		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope forest for every stack.", count(hidden, "branch", "branches")), severityNeutral)
+		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", count(hidden, "branch", "branches")), severityNeutral)
 	}
 	return driftNotes(view, discovery)
 }

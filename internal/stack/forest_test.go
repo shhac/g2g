@@ -184,3 +184,26 @@ func TestAnAbsentScopeTakesTheCommandsOwnDefault(t *testing.T) {
 		}
 	}
 }
+
+// Hangs refuses an empty selection rather than letting a caller index it.
+//
+// The boundary that consumes this used to test the scope again after an error,
+// which was already implied, and an empty selection under a wide scope fell
+// past both branches into selected[0].
+func TestHangsRefusesAnEmptySelection(t *testing.T) {
+	for _, scope := range ReadScopes {
+		if _, _, err := (syntheticForest()).Hangs(nil, "synthetic-a", scope); err == nil {
+			t.Errorf("Hangs(nil, %q) error = nil; indexing an empty selection is what follows", scope)
+		}
+	}
+}
+
+// A scope rooted at the target refuses when the target has no parent, because
+// there is nothing for the selection to hang from.
+func TestHangsRefusesATargetRootedScopeWithNoParent(t *testing.T) {
+	for _, scope := range []Scope{ScopeBranch, ScopeSubtree} {
+		if _, _, err := (syntheticForest()).Hangs([]string{"synthetic-trunk"}, "synthetic-trunk", scope); err == nil {
+			t.Errorf("Hangs(%q) on a trunk error = nil; a trunk has no parent to hang from", scope)
+		}
+	}
+}

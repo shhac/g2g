@@ -19,7 +19,7 @@ const (
 	ScopeAll     = stack.ScopeAll
 )
 
-// Scopes is the set every selecting command accepts. ReadScopes adds forest,
+// Scopes is the set every selecting command accepts. ReadScopes adds all,
 // which only read-only commands offer.
 var (
 	Scopes        = stack.Scopes

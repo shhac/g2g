@@ -285,13 +285,20 @@ func resolveGraphite(ctx context.Context, graphiteClient Graphite, target, sourc
 // and where Graphite's ambiguity lives: a declared trunk can sit part-way up an
 // ancestry, so which one is the base is a real question and not one to guess.
 func graphiteBoundary(forest Forest, declaredTrunks, ancestry, selected []string, target string, scope Scope, requestedTrunk string) (string, string, []string, error) {
-	if base, within, err := forest.Hangs(selected, target, scope); err == nil && !within {
+	// Hangs fails for an empty selection as well as for a target-rooted scope
+	// with no parent, and both are refusals rather than something to carry on
+	// from. The earlier form tested the scope again here, which was already
+	// implied by !within, and let an empty selection fall through to indexing
+	// it.
+	base, within, err := forest.Hangs(selected, target, scope)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if !within {
 		if requestedTrunk != "" && requestedTrunk != base {
 			return "", "", nil, fmt.Errorf("requested trunk %q is not %q's parent (%s); a scope rooted at the branch hangs from its parent", requestedTrunk, target, base)
 		}
 		return base, "Graphite-declared parent", append([]string(nil), selected...), nil
-	} else if err != nil && (scope == ScopeBranch || scope == ScopeSubtree) {
-		return "", "", nil, err
 	}
 	if scope == ScopeAll {
 		// Several trunks, so there is no single one to hang from: the first

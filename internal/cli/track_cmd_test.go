@@ -82,7 +82,7 @@ func TestTrackIsANoOpWhenTheParentIsAlreadyRecorded(t *testing.T) {
 // suggests a branch that track then refuses.
 func TestParentCompletionOffersTheSameCandidatesAsThePreview(t *testing.T) {
 	service := graph.Service{Git: graphGitFixture(), Store: &graphStore{graph: graph.New()}}
-	selection := graphOptions{branch: "synthetic-login"}
+	selection := graphOptions{scopeOptions: scopeOptions{branch: "synthetic-login"}}
 
 	completed, err := parentCompletions(service, &selection)(context.Background(), "")
 	if err != nil {

@@ -14,17 +14,9 @@ import (
 // It stays in cli because flag wording and shell completion are presentation
 // concerns; services receive the resulting value object, not Cobra state.
 type stackOptions struct {
-	branch string
-	trunk  string
-	from   string
-	scope  string
-	// accepted is the scope set this command registered, empty for a command
-	// that never offered one, and fallback is what it means when none is given.
-	// Only read-only commands take a scope that can fork: a tree cannot be
-	// projected onto a GitHub native stack, and widening what is shown must not
-	// widen what is done.
-	accepted []stack.Scope
-	fallback stack.Scope
+	scopeOptions
+	trunk string
+	from  string
 	// sources are the records this command may be pointed at. It is per command
 	// for the same reason the scope set is: reading a pull request base invokes
 	// gh, and push must never do that, so the flag has to refuse what the
@@ -33,26 +25,7 @@ type stackOptions struct {
 }
 
 func (o stackOptions) Selection() stack.Selection {
-	scope := stack.Scope(o.scope)
-	if scope == "" {
-		scope = o.fallback
-	}
-	return stack.Selection{Branch: o.branch, Trunk: o.trunk, Scope: scope, From: stack.Source(o.from)}
-}
-
-// registerScope adds the scope flag to a command that accepts one. It is a
-// separate call from register, so a command without a scope says so by not
-// asking for one.
-func (o *stackOptions) registerScope(cmd *cobra.Command, scopes []stack.Scope, fallback stack.Scope, usage string) {
-	o.accepted, o.fallback = scopes, fallback
-	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
-	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(scopes))
-		for _, scope := range scopes {
-			values = append(values, string(scope))
-		}
-		return values, nil
-	}))
+	return stack.Selection{Branch: o.branch, Trunk: o.trunk, Scope: o.effectiveScope(), From: stack.Source(o.from)}
 }
 
 // validate rejects a scope or a source this command does not offer, before any
@@ -64,12 +37,6 @@ func (o stackOptions) validate() error {
 		return err
 	}
 	return o.validateSource()
-}
-
-// validateScope rejects a scope this command does not offer.
-func (o stackOptions) validateScope() error {
-	_, err := stack.ParseScope(o.scope, o.accepted, o.fallback)
-	return err
 }
 
 func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completions, sources []stack.Source, branchUsage, trunkUsage string) {

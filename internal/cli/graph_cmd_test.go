@@ -342,7 +342,7 @@ func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 		{"an empty scope is the default", graph.Scopes, "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			options := graphOptions{scope: test.scope, accepted: test.accepted}
+			options := graphOptions{scopeOptions: scopeOptions{scope: test.scope, accepted: test.accepted}}
 			err := options.validateScope()
 			if test.wantErr && err == nil {
 				t.Errorf("validateScope() error = nil for scope %q", test.scope)

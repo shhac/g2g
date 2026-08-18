@@ -8,52 +8,24 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/graph"
-	"github.com/shhac/g2g/internal/stack"
 )
 
 // graphOptions owns the selection flags the graph commands share. Scope is a
 // graph-selection concept and stays separate from projection policy: choosing
 // to display a subtree does not imply a subtree can be linked on GitHub.
 type graphOptions struct {
-	branch string
-	scope  string
-	// accepted is the scope set this command registered, and fallback is the
-	// scope it means when none is given. Both are per command: all is a
-	// legitimate value for a read-only view and a dangerous one to hand a
-	// command that rewrites, and reading defaults wider than rewriting does.
-	accepted []graph.Scope
-	fallback graph.Scope
+	scopeOptions
 }
 
 func (o graphOptions) Selection() graph.Selection {
-	scope := graph.Scope(o.scope)
-	if scope == "" {
-		scope = o.fallback
-	}
-	return graph.Selection{Branch: o.branch, Scope: scope}
+	return graph.Selection{Branch: o.branch, Scope: o.effectiveScope()}
 }
 
-// validateScope rejects a scope this command does not offer. Cobra validates a
-// flag's syntax, never its vocabulary, so without this a command silently
-// accepts any scope the service happens to parse.
-func (o graphOptions) validateScope() error {
-	_, err := stack.ParseScope(o.scope, o.accepted, o.fallback)
-	return err
-}
-
-// registerBranch adds the selector every graph command shares.
+// registerBranch adds the selector every graph command shares. Completion comes
+// from the store, which reads one file and runs nothing.
 func (o *graphOptions) registerBranch(cmd *cobra.Command, service graph.Service) {
 	cmd.Flags().StringVar(&o.branch, "branch", "", "branch to select (defaults to current branch)")
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(localBranchCompletions(service)))
-}
-
-// registerScope adds the scope flag for the commands that have one. It is a
-// separate call rather than an empty argument, because a command without a
-// scope should say so by not asking for one.
-func (o *graphOptions) registerScope(cmd *cobra.Command, scopes []graph.Scope, fallback graph.Scope, usage string) {
-	o.accepted, o.fallback = scopes, fallback
-	cmd.Flags().StringVar(&o.scope, "scope", "", usage)
-	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(staticCompletions(scopes)))
 }
 
 func newGraph(service graph.Service, presentation Presentation) *cobra.Command {
@@ -90,16 +62,6 @@ func localBranchCompletions(service graph.Service) func(context.Context, string)
 			return nil, nil
 		}
 		return service.Git.LocalBranches(ctx)
-	}
-}
-
-func staticCompletions(scopes []graph.Scope) func(context.Context, string) ([]string, error) {
-	return func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(scopes))
-		for _, scope := range scopes {
-			values = append(values, string(scope))
-		}
-		return values, nil
 	}
 }
 

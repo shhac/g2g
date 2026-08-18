@@ -25,6 +25,10 @@ type stackView struct {
 	// first.
 	Blocked string
 	Notes   []stackNote
+	// Advice is the laid-out form of Blocked, rendered for a person instead of
+	// it. Both are set together; only the human renderer prefers this one.
+	Advice        *advice
+	AdviceHeading string
 }
 
 // severity names the meaning of a piece of output. The renderer maps it to a
@@ -117,7 +121,12 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 	lines = append(lines, "")
 	lines = append(lines, graphLines(view, p)...)
 
-	if view.Blocked != "" {
+	// Advice replaces the one-line refusal for a person, and never for a
+	// machine: Blocked stays a single line so the porcelain record it becomes
+	// remains one tab-separated row.
+	if view.Advice != nil {
+		lines = append(lines, view.Advice.lines(view.AdviceHeading, p)...)
+	} else if view.Blocked != "" {
 		lines = append(lines, "", p.problem(view.Blocked))
 	}
 	if len(view.Action) != 0 {

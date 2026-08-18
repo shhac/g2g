@@ -149,3 +149,37 @@ func TestShellQuoteLeavesSafeArgumentsAloneAndQuotesTheRest(t *testing.T) {
 		t.Errorf("shellQuote(%q) = %q, want %q", "it's", got, want)
 	}
 }
+
+// The sentence a machine reads and the block a person reads are built
+// separately, so the thing that must not drift is which command they name.
+// Naming different ones would send the two readers to different remedies for
+// the same state.
+func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		issues  []link.Issue
+		command string
+	}{
+		{name: "merged", issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "PR merged"}}, command: "gt sync"},
+		{name: "missing", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open PR"}}, command: "g2g submit"},
+		{name: "closed", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueClosed, Number: 7, Reason: "PR closed"}}, command: "g2g submit"},
+		{name: "wrong base", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueBase, Number: 3, Reason: "PR #3 base main, want feat-b"}}, command: "g2g sync"},
+		{name: "ambiguous has no command", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueAmbiguous, Reason: "2 open PRs"}}, command: ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{Issues: test.issues}
+
+			structured := repairAdvice(plan)
+			if structured.Command != test.command {
+				t.Errorf("laid-out advice names %q, want %q", structured.Command, test.command)
+			}
+			sentence := blockedReason(plan)
+			if test.command == "" {
+				return
+			}
+			if !strings.Contains(sentence, test.command) {
+				t.Errorf("the sentence %q does not name %q", sentence, test.command)
+			}
+		})
+	}
+}

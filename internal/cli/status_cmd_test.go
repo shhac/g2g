@@ -11,12 +11,12 @@ import (
 )
 
 func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN"}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}, Issues: []link.Issue{{Branch: "synthetic/top", Kind: link.IssueMissing, Reason: "no open pull request"}}}
+	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN"}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}, Issues: []link.Issue{{Branch: "synthetic/top", Kind: link.IssueMissing, Reason: "no open PR"}}}
 	var out bytes.Buffer
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open pull request", "Safe next action: synthetic/top has no pull request. Run g2g submit"} {
+	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open PR", "Safe next action", "g2g submit · opens a new PR", "  synthetic/top"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
@@ -266,4 +266,75 @@ func TestStatusLeavesALinearSelectionUnmarked(t *testing.T) {
 	if strings.Contains(out.String(), "stack #7 · 1/2") {
 		t.Errorf("a linear selection repeated the stack number per node:\n%s", out.String())
 	}
+}
+
+// The advice used to be one prose sentence naming every branch, which for a
+// real stack wrapped mid-name across two terminal lines and had to be read
+// twice to find out which branches it meant. Each branch gets its own line
+// now, and only the exception carries a note: the headline already says what
+// happens to the ordinary ones.
+func TestStatusAdvicePutsEachBranchOnItsOwnLine(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{Snapshot: stack.Snapshot{
+			Target:   "synthetic/top",
+			Base:     "main",
+			Branches: []string{"synthetic/lower", "synthetic/middle", "synthetic/top"},
+		}},
+		Issues: []link.Issue{
+			{Branch: "synthetic/lower", Kind: link.IssueMissing, Reason: "no open PR"},
+			{Branch: "synthetic/middle", Kind: link.IssueMissing, Reason: "no open PR"},
+			{Branch: "synthetic/top", Kind: link.IssueClosed, Number: 19891, Reason: "PR closed"},
+		},
+	}
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(out.String(), "\n")
+	index := func(want string) int {
+		for at, line := range lines {
+			if strings.TrimSpace(line) == want {
+				return at
+			}
+		}
+		t.Fatalf("no line %q in:\n%s", want, out.String())
+		return -1
+	}
+	headline := index("g2g submit · opens a new PR for each of these 3 branches")
+	// Every branch on its own line, in selection order, under the headline.
+	for offset, want := range []string{"synthetic/lower", "synthetic/middle", "synthetic/top  · #19891 was closed"} {
+		if at := index(want); at != headline+1+offset {
+			t.Errorf("line %q is at %d, want %d (one per branch, in order)", want, at, headline+1+offset)
+		}
+	}
+	// The ordinary case carries no note; repeating "no open PR" on every line
+	// is what the headline exists to avoid.
+	if strings.Contains(out.String(), "synthetic/lower  ·") {
+		t.Errorf("the ordinary case was annotated anyway:\n%s", out.String())
+	}
+}
+
+// A machine reads one field, and a porcelain record is one tab-separated row,
+// so the sentence must stay a sentence however the human form is laid out.
+func TestStatusAdviceStaysOneLineForMachines(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/top"}}},
+		Issues:    []link.Issue{{Branch: "synthetic/top", Kind: link.IssueMissing, Reason: "no open PR"}},
+	}
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{Format: formatPorcelain}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		if !strings.HasPrefix(line, "blocked\t") {
+			continue
+		}
+		if strings.Count(line, "\t") != 1 {
+			t.Errorf("the blocked record is not one field: %q", line)
+		}
+		return
+	}
+	t.Errorf("no blocked record in:\n%s", out.String())
 }

@@ -30,6 +30,26 @@ func (f Forest) Parent(branch string) (string, bool) {
 	return parent, true
 }
 
+// Knows reports whether the forest places this branch at all, as a child or as
+// a parent.
+//
+// This is not the same question as "has a recorded parent". A root has none and
+// is still fully described: it is where its stacks hang from. Asking the
+// narrower question is how the pull request source came to refuse a trunk —
+// the trunk carries no pull request of its own, so it appears only as somebody
+// else's base.
+func (f Forest) Knows(branch string) bool {
+	if _, recorded := f.Parents[branch]; recorded {
+		return true
+	}
+	for _, parent := range f.Parents {
+		if parent == branch {
+			return true
+		}
+	}
+	return false
+}
+
 // Branches is every branch the forest mentions, as a child or as a parent,
 // sorted. A root that nothing is recorded against still counts.
 func (f Forest) Branches() []string {

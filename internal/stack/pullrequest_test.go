@@ -208,3 +208,48 @@ func (refusingSelector) Describes(context.Context, string) (bool, error) { retur
 func (refusingSelector) Select(context.Context, Selection, string) (Snapshot, error) {
 	return Snapshot{}, fmt.Errorf("synthetic selector should not have been asked")
 }
+
+// A trunk carries no pull request of its own — it only ever appears as
+// somebody else's base — so asking whether the forest holds an edge *for* it
+// answered no, and `g2g status --from pull-request` refused from main with
+// "pull-request does not describe \"main\"".
+//
+// Standing on the trunk is where a person looks at what is outstanding, so it
+// is the ordinary case. The question the source has to answer is whether it
+// places the branch, and a root is placed: it is what the stacks hang from.
+func TestThePullRequestSourceDescribesATrunkItIsTheBaseOf(t *testing.T) {
+	selector, _ := syntheticSelector(syntheticPRs())
+
+	describes, err := selector.Describes(context.Background(), "synthetic-trunk")
+	if err != nil {
+		t.Fatalf("Describes() error = %v", err)
+	}
+	if !describes {
+		t.Fatal("the source does not describe the trunk every open pull request is based on")
+	}
+
+	snapshot, err := selector.Select(context.Background(), Selection{Branch: "synthetic-trunk", Scope: ScopeStack}, "synthetic command")
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if snapshot.Base != "synthetic-trunk" {
+		t.Errorf("base = %q, want the trunk itself", snapshot.Base)
+	}
+	if got, want := strings.Join(snapshot.Branches, ","), "synthetic-a,synthetic-b,synthetic-c"; got != want {
+		t.Errorf("branches = %q, want %q", got, want)
+	}
+}
+
+// A branch nothing is based on, and which has no pull request of its own, is
+// still not described. The widened question must not become "any branch".
+func TestABranchNoPullRequestMentionsIsStillNotDescribed(t *testing.T) {
+	selector, _ := syntheticSelector(syntheticPRs())
+
+	describes, err := selector.Describes(context.Background(), "synthetic-unpublished")
+	if err != nil {
+		t.Fatalf("Describes() error = %v", err)
+	}
+	if describes {
+		t.Error("a branch no pull request mentions was described")
+	}
+}

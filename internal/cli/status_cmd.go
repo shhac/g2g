@@ -76,6 +76,9 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 
 // statusAdvice reuses the blocked-reason logic so triage and the command that
 // fixes it never disagree, phrased for a read-only report.
+//
+// This is the machine-facing form, kept to one line because it becomes a
+// porcelain record. The human form is laid out by advice.lines.
 func statusAdvice(plan link.Plan) string {
 	return "Safe next action: " + blockedReason(plan)
 }
@@ -83,7 +86,10 @@ func statusAdvice(plan link.Plan) string {
 func statusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "status")
 	if len(plan.Issues) != 0 {
-		return structureNote(view.block(statusAdvice(plan)), plan.Snapshot)
+		blocked := view.block(statusAdvice(plan))
+		repair := repairAdvice(plan)
+		blocked.Advice, blocked.AdviceHeading = &repair, "Safe next action"
+		return structureNote(blocked, plan.Snapshot)
 	}
 	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)
 }

@@ -48,8 +48,7 @@ func (s PullRequestSelector) Describes(ctx context.Context, branch string) (bool
 	if err != nil {
 		return false, err
 	}
-	_, described := forest.Parents[branch]
-	return described, nil
+	return forest.Knows(branch), nil
 }
 
 // Select builds the structure GitHub already holds and applies the scope.
@@ -73,8 +72,8 @@ func (s PullRequestSelector) Select(ctx context.Context, selection Selection, co
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if _, described := forest.Parents[target]; !described {
-		return Snapshot{}, fmt.Errorf("no open pull request describes %q · a branch with none, or with more than one, has no base to read", target)
+	if !forest.Knows(target) {
+		return Snapshot{}, fmt.Errorf("no open pull request describes %q · a branch with none, and with none based on it, has no place to read", target)
 	}
 
 	scope := selection.EffectiveScope()

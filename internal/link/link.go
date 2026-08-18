@@ -76,6 +76,11 @@ type Issue struct {
 	Branch string
 	Reason string
 	Kind   IssueKind
+	// Number is the pull request the issue is about, zero when there is none.
+	// A closed one is the case worth carrying: "submit will open a new PR" is
+	// advice a person can only judge by going and reading why the old one was
+	// closed, and they need its number to do that.
+	Number int
 }
 
 // MergedBranches lists branches whose pull requests have landed. They are
@@ -219,17 +224,17 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		switch step.Classify() {
 		case githubstack.StepAligned:
 		case githubstack.StepAmbiguous:
-			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueAmbiguous, Reason: fmt.Sprintf("%d open pull requests", step.Resolution.OpenCount)})
+			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueAmbiguous, Reason: fmt.Sprintf("%d open PRs", step.Resolution.OpenCount)})
 		case githubstack.StepBaseMismatch:
-			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueBase, Reason: fmt.Sprintf("PR #%d base %s, want %s", step.Resolution.Open.Number, step.Resolution.Open.Base, step.ExpectedBase)})
+			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueBase, Number: step.Resolution.Open.Number, Reason: fmt.Sprintf("PR #%d base %s, want %s", step.Resolution.Open.Number, step.Resolution.Open.Base, step.ExpectedBase)})
 		case githubstack.StepSuperseded:
 			kind := IssueClosed
 			if step.Merged() {
 				kind = IssueMerged
 			}
-			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Reason: strings.ToLower(step.Resolution.Latest.State) + " pull request"})
+			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Number: step.Resolution.Latest.Number, Reason: "PR " + strings.ToLower(step.Resolution.Latest.State)})
 		default:
-			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueMissing, Reason: "no open pull request"})
+			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueMissing, Reason: "no open PR"})
 		}
 	}
 	return issues

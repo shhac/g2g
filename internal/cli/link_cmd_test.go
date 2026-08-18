@@ -162,7 +162,7 @@ func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview error = %v", err)
 	}
-	if !strings.Contains(output, "unresolved: no open pull request") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
+	if !strings.Contains(output, "unresolved: no open PR") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
 		t.Errorf("preview = %q links=%d", output, github.links)
 	}
 	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
@@ -177,8 +177,8 @@ func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
 		prs  []githubstack.PullRequest
 		want string
 	}{
-		{name: "missing", want: "unresolved: no open pull request"},
-		{name: "non-open", prs: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"}}, want: "unresolved: closed pull request"},
+		{name: "missing", want: "unresolved: no open PR"},
+		{name: "non-open", prs: []githubstack.PullRequest{{Number: 1, Head: "alpha", Base: "main", State: "CLOSED"}}, want: "unresolved: PR closed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHubPRs{prs: test.prs}
@@ -199,14 +199,14 @@ func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
 
 func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta-two", TargetSource: "--branch", Base: "main", Branches: []string{"alpha", "beta", "beta-two"}}, PullRequests: []githubstack.PullRequest{{Number: 1, Head: "alpha"}}}, Issues: []link.Issue{
-		{Branch: "beta", Reason: "closed pull request"},
-		{Branch: "beta-two", Reason: "no open pull request"},
+		{Branch: "beta", Reason: "PR closed"},
+		{Branch: "beta-two", Reason: "no open PR"},
 	}}
 	var output bytes.Buffer
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := output.String(); !strings.Contains(got, "unresolved: closed pull request") || !strings.Contains(got, "unresolved: no open pull request") || strings.Contains(got, "(#0)") {
+	if got := output.String(); !strings.Contains(got, "unresolved: PR closed") || !strings.Contains(got, "unresolved: no open PR") || strings.Contains(got, "(#0)") {
 		t.Errorf("preview = %q", got)
 	}
 }

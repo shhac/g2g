@@ -12,6 +12,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 type Git interface {
@@ -128,6 +129,13 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 	return s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches)
 }
 
+// validateSpec checks everything the spec contributes to a mutation, and runs
+// before the push because the push cannot be taken back.
+//
+// Reviewers reach gh as "--reviewer <value>", so a value gh would read as an
+// option is the shared CheckArgument case. Leaving it to gh meant the refusal
+// arrived after the refs were already published, which is the one ordering
+// this command exists to get right.
 func validateSpec(plan Plan, spec Spec) error {
 	if len(spec.Pulls) != len(plan.Snapshot.Branches) {
 		return fmt.Errorf("submission spec does not match selected stack")
@@ -135,6 +143,11 @@ func validateSpec(plan Plan, spec Spec) error {
 	for index, branch := range plan.Snapshot.Branches {
 		if spec.Pulls[index].Branch != branch || strings.TrimSpace(spec.Pulls[index].Title) == "" {
 			return fmt.Errorf("submission spec is not valid for branch %q", branch)
+		}
+		for _, reviewer := range spec.Pulls[index].Reviewers {
+			if err := subprocess.CheckArgument("gh", "reviewer", reviewer); err != nil {
+				return fmt.Errorf("branch %q: %w", branch, err)
+			}
 		}
 	}
 	return nil

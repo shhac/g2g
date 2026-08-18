@@ -140,3 +140,31 @@ func (f *fakeGitHub) Create(_ context.Context, branch, base, _, _ string, _ bool
 	return nil
 }
 func (f *fakeGitHub) Link(context.Context, string, []string) error { f.links++; return f.linkErr }
+
+// A reviewer reaches gh as "--reviewer <value>", so a value gh would read as
+// an option has to be refused. What matters is when: the push publishes refs
+// and cannot be undone, so leaving the refusal to gh meant it arrived after
+// the irreversible half of the apply had already happened.
+func TestAnOptionLikeReviewerIsRefusedBeforeThePush(t *testing.T) {
+	git, github := &fakeGit{}, &fakeGitHub{}
+	spec := Spec{Version: 1, Pulls: []Pull{
+		{Branch: "synthetic/lower", Title: "a"},
+		{Branch: "synthetic/middle", Title: "b", Reviewers: []string{"--synthetic-option"}},
+		{Branch: "synthetic/top", Title: "c"},
+	}}
+
+	err := (Service{Git: git, GitHub: github}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec)
+
+	if err == nil {
+		t.Fatal("Apply() = nil for a reviewer gh would read as an option")
+	}
+	if !strings.Contains(err.Error(), "synthetic/middle") {
+		t.Errorf("refusal does not name the branch: %v", err)
+	}
+	if git.pushes != 0 {
+		t.Errorf("pushed %d times before refusing; the push cannot be taken back", git.pushes)
+	}
+	if len(github.created) != 0 || github.links != 0 {
+		t.Errorf("GitHub mutated: %#v %d", github.created, github.links)
+	}
+}

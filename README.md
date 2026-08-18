@@ -1,46 +1,83 @@
 # g2g
 
-`g2g` is a lightweight Go CLI intended to bridge a Graphite-managed linear
-branch stack into GitHub's native stack feature. Graphite remains the source of
-truth; `link` discovers a single ordered Graphite stack and, only with an
-explicit `--apply`, passes its branches to `gh stack link` from bottom to top.
+`g2g` is a local stacked-branch structure tool. It records a branch forest in
+the repository's Git common directory, then uses that structure to inspect,
+restack, update, and publish a stack. Recording and maintaining structure need
+only Git: neither Graphite nor GitHub is required.
 
-`g2g` can also keep a branch graph of its own, which needs neither Graphite
-nor GitHub. See [g2g-owned graphs](#g2g-owned-graphs).
+Graphite is an optional source and alignment target. g2g can read a
+Graphite-described stack where one exists, import it into the local forest, or
+mirror local structure back to Graphite. GitHub is a publishing and projection
+integration: g2g can create pull requests, inspect their bases, and project a
+selected **linear** path onto GitHub native stacks. It never flattens a fork
+merely to publish it.
 
-## Command names
+## Start here
 
-The command is `g2g`, and so is the project. Two names still lag behind and are
-being retired in order: the GitHub repository, and the Homebrew formula, which
-cannot be renamed until the tap carries a rename mapping or every existing
-install silently stops updating. Release assets from tags before the rename keep
-the old name, as they should.
-
-The stable v1 command shape is:
+Record the existing stack you are on, inspect it, then preview any change.
 
 ```sh
-g2g link
+# Record local structure once. --stack derives the ancestry; --apply writes it.
+# Replace main with this stack's root when it cannot be inferred.
+g2g track --stack --trunk main --apply
+g2g graph
+
+# Preview maintenance or publishing; add --apply only after review.
+g2g restack
+g2g status
+g2g push
 ```
 
-The `link` command is a safe preview by default. It resolves the checked-out Git
-branch as its pivot, reads the Graphite-declared trunk-to-tip linear path, and
-inspects matching GitHub pull requests. Its concise output shows a target, one
-self-describing graph, and a command only when valid. When at least two
-PR-backed branches need linking, it prints the exact proposed bottom-to-top
+`track` never chooses a parent when the answer is ambiguous. `graph`, `track`,
+and `untrack` read Git and the local store only. The stored model is a forest:
+each branch has at most one parent, a parent may have many children, and a
+repository may have several roots. See [g2g-owned graphs](#g2g-owned-graphs)
+for the storage and ancestry model.
+
+## Where structure comes from
+
+Each invocation resolves the branch structure per branch. An edge recorded by
+g2g is the first answer; Graphite is the fallback for branches g2g has not
+adopted. Pull-request bases are an observed, on-request source
+(`--from pull-request`), useful for seeing what GitHub will merge rather than
+for defining local intent. This is not a permanent ownership field: adoption
+is the local claim, and `--from` lets one command inspect a particular source.
+
+Graphite is never run just to discover whether it applies. In a repository that
+has not already used it, g2g stays local instead of creating Graphite state.
+
+## Common workflows
+
+| Goal | Command family |
+|---|---|
+| Record and inspect local structure | `track`, `graph`, `untrack` |
+| Keep branch contents consistent with that structure | `restack`, `sync`, `prune` |
+| Publish a linear path to GitHub | `push`, `submit`, `link`, `retarget`, `unlink` |
+| Work with an existing Graphite structure | `import`, `mirror`, or `--from graphite` |
+
+All mutating commands preview first and require `--apply`. They re-discover and
+revalidate before mutation, render and flush the final plan first, and refuse
+ambiguous or unsafe work instead of guessing.
+
+## The original Graphite-to-GitHub use case
+
+`link` remains the focused workflow for projecting a resolved linear path onto
+GitHub's native stack feature. It works with a g2g-owned or Graphite-described
+path; Graphite is no longer a prerequisite. When at least two PR-backed
+branches need linking, it prints the exact bottom-to-top `gh stack link`
 command. A one-PR path is a successful no-op: it prints `Nothing to link` and
-never constructs an invalid `gh stack link` command, whether or not that path
-is also blocked. Preview clearly states
-that no changes were made; nothing changes unless `--apply` is present.
+never constructs an invalid command.
 
 ```sh
 # Preview the path ending at the current branch.
 g2g link
 
-# Preview a Graphite-tracked local branch without checking it out.
+# Preview a local branch without checking it out; source resolution picks g2g
+# first, then Graphite where applicable.
 g2g link --branch feature/top
 
-# Use a particular Graphite-declared trunk when the selected ancestry is
-# genuinely multi-trunk or when intentionally choosing another valid ancestor.
+# Pin a source or, for a Graphite-described multi-trunk ancestry, its trunk.
+g2g link --branch feature/top --from graphite
 g2g link --branch feature/top --trunk main
 
 # Revalidate, then allow gh to create/update the native GitHub stack.
@@ -49,9 +86,8 @@ g2g link --branch feature/top --apply
 # Stop at the selected branch instead of resolving its full linear stack.
 g2g link --branch feature/middle --scope path
 
-# Preview an atomic, lease-protected publication of Graphite-selected local
-# refs. It reads Graphite but never submits/restacks or invokes GitHub.
-# Full-stack expansion is default.
+# Preview atomic, lease-protected publication of the resolved local refs.
+# `push` never invokes GitHub; full-stack expansion is the default.
 g2g push --branch feature/top
 
 # Revalidate, then advance every selected ref together or none of them.
@@ -68,13 +104,12 @@ g2g --timeout 3m submit --spec "$spec_dir/submission.json" --apply
 ```
 
 `--help`, `--version`, and `completion bash|zsh|fish` are available; bare
-`g2g` shows help when installed through Homebrew. The command uses Graphite CLI
-1.8.6 as its tested compact-display baseline and requires a compatible `gh`
-with `stack link`.
-Compatible Graphite patch/minor versions continue with a stderr warning; an
-unsupported major version or changed display grammar fails safely. Its tests
-use fake executables on `PATH`, so they need neither authentication nor a
-network connection.
+`g2g` shows help. When Graphite is selected as a source, g2g uses Graphite CLI
+1.8.6 as its tested compact-display baseline; compatible patch/minor versions
+continue with a stderr warning, while an unsupported major version or changed
+display grammar fails safely. GitHub projection requires a compatible `gh` with
+the relevant stack command. Tests use fake executables on `PATH`, so they need
+neither authentication nor a network connection.
 
 Discovery and mutation are bounded separately. Discovery and revalidation get
 45 seconds; the mutation phase gets its own budget of 60 seconds plus 30 per
@@ -475,7 +510,8 @@ the current `--apply` flow.
 ## Status and recovery
 
 `g2g status` is the read-only first step for triage. It renders one selected
-Graphite path with its open PR mappings and highlights blocked relationships.
+path, from the resolved g2g or Graphite structure, with its open PR mappings
+and highlights blocked relationships.
 The same bounded GitHub PR read reports native stack number, size, and position
 for each selected PR, without checkout or a second graph. A healthy selected
 path ends with one compact `GitHub stack #… · selected path … · aligned` line;
@@ -488,18 +524,18 @@ discovers the stack number from the selected path, the same batched read
 refuses rather than guesses: a path that is not linked, or that spans more than
 one stack, is an error naming `--stack-number`, which remains available to
 choose deliberately and always wins. `--apply` invokes the supported
-`gh stack unstack <number>` after the selected Graphite/PR path is revalidated.
+`gh stack unstack <number>` after the selected structure and PR path are
+revalidated.
 It never changes Graphite, branches, pull-request metadata, review state, or PR
 lifecycle.
 
 ## Submitting pull requests
 
-`g2g submit` is a preview-first recovery path when Graphite owns a local stack
-but its own submit flow cannot publish it. With `--apply`, it validates the
-complete spec, revalidates immediately before mutation, performs one atomic
-lease-protected push, creates only missing PRs bottom-to-top as drafts,
-preserves existing PRs, then links the complete stack. It never invokes
-`gt submit`, restacks Graphite, or retargets an existing PR.
+`g2g submit` is a preview-first publication path for a resolved linear stack.
+With `--apply`, it validates the complete spec, revalidates immediately before
+mutation, performs one atomic lease-protected push, creates only missing PRs
+bottom-to-top as drafts, preserves existing PRs, then links the complete stack.
+It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
 Generate a reusable spec outside the repository, fill in each title, validate,
 then apply it:
@@ -539,7 +575,7 @@ the spec win over templates.
 
 ```sh
 brew install shhac/tap/g2g
-g2g link
+g2g track --stack --apply
 ```
 
 The formula was once named `gt2gh`. The tap maps the old name to the new one,
@@ -548,22 +584,13 @@ at the last version published under it. Release archives from tags before the
 rename keep the old asset name, which is why a download from one of those
 unpacks a binary called `gt2gh`.
 
-`g2g push` is a deliberately narrow publication escape hatch for a
-Graphite-managed linear path. It reads Graphite to discover that path, but never
-submits, restacks, or otherwise changes Graphite and never invokes `gh`. It
-previews `git push --atomic --force-with-lease origin <branches>` by default and
-requires `--apply` to run that exact one invocation. `--remote` defaults to
-`origin` and must name a configured remote. Every selected non-trunk branch is
-pushed bottom-to-top; atomic push means they all advance together or none do.
-Unsupported atomic pushes and rejected leases fail without a non-atomic or
-unsafe-force fallback. This does not replace Graphite's ownership of tracking,
-restacking, or submission.
-
-Use `push` only as a publication-only recovery path when Graphite remains the
-owner of a stack but its normal submission flow cannot publish already-prepared
-refs because GitHub native-stack restrictions intervene. After a successful
-atomic push, return to Graphite for stack management and submission; `g2g`
-does not retarget pull requests or repair Graphite state.
+`g2g push` is deliberately narrow: it publishes the selected linear path with
+`git push --atomic --force-with-lease origin <branches>` and never invokes
+GitHub, submits, or restacks. The path may come from the local forest or
+Graphite. `--remote` defaults to `origin` and must name a configured remote.
+Every selected non-trunk branch is pushed bottom-to-top; atomic push means they
+all advance together or none do. Unsupported atomic pushes and rejected leases
+fail without a non-atomic or unsafe-force fallback.
 
 ## Scope: how much of the stack
 
@@ -638,8 +665,8 @@ a record of what the stack was.
   discovery, and the store under the Git common directory.
 - `internal/restack`: the only history-rewriting service, with the journal that
   makes an interrupted rewrite resumable.
-- `internal/link`: Graphite-authoritative plan/apply orchestration.
-- `internal/push`: Git-only atomic stack-ref publication planning.
+- `internal/link`: plan/apply orchestration for GitHub native-stack projection.
+- `internal/push`: atomic stack-ref publication planning.
 - `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.
 - `internal/testutil`: fake executables installed on `PATH` during tests.
 - `design-docs`: concise scope and safety notes.

@@ -1,19 +1,18 @@
 # Source resolution
 
-**Status:** implemented in v0.11. Pull request retargeting is deliberately out
-of scope; see [Deferred](#deferred).
+**Status:** implemented. `retarget` is the explicit pull-request-base mutation;
+it is intentionally separate from publishing and restacking.
 
 ## Problem
 
-Every command that selects a stack asks Graphite, and only Graphite.
-`stack.Resolve` requires a Graphite client, so `push`, `link`, and `submit`
-cannot serve a branch graph g2g owns — the thing the previous release built.
+g2g has several useful descriptions of branch structure, but they answer
+different questions. Its own local forest records intent without requiring a
+service. Graphite can describe structure a repository already maintains there.
+Pull-request bases show what GitHub will merge, but only for published work.
 
-It fails badly rather than cleanly. Running `g2g push` on a g2g-owned stack in
-a repository that has never used Graphite invokes `gt`, fails with a Graphite
-error, and leaves `.graphite_metadata.db` and `.graphite_pr_info` behind in
-`.git`. A repository that deliberately has no Graphite is enrolled into it by
-running a g2g command.
+Selection must compose those sources without making Graphite a prerequisite or
+running it in a repository that has never used it. Graphite discovery creates
+local state, so asking whether it applies must itself remain side-effect free.
 
 ## The question
 
@@ -223,13 +222,17 @@ merge means someone retargeted and the native stack needs relinking.
 Pull request state is what tells those apart, which is the same reason Git
 alone cannot detect a squash merge.
 
-## Deferred
+## Completed boundary: retargeting pull-request bases
 
-**Retargeting a pull request base** (`gh pr edit --base`). After a restack the
-local stack is correct and the remote bases may not be. Nothing does this yet
-and `submit` explicitly refuses to, so it stays refused rather than becoming a
-side effect of another command. It is a new class of GitHub mutation and wants
-its own preview and apply scrutiny.
+`g2g retarget` uses `gh pr edit <number> --base <branch>` to make open pull
+requests match the resolved linear path. It previews the affected pull requests
+and their old and new bases, revalidates before `--apply`, changes only bases
+that disagree, and refuses a branch with more than one open pull request.
+
+It remains separate from `submit` and `restack`: changing what a merge will do
+is a different mutation from creating a pull request or replaying local refs.
+
+## Deferred
 
 **Whether one pull request may belong to two native stacks.** Unanswered, and
 it decides what `link` does on a fork. It needs an experiment against real

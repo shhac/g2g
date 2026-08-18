@@ -1,18 +1,21 @@
 # g2g-owned graphs
 
-**Status:** implemented in v0.9. Restack is explicitly out of scope; see
-[Known limits](#known-limits).
+**Status:** implemented. This is g2g's primary structure model; see the
+[README](../README.md) for product orientation and
+[source resolution](source-resolution.md) for how it composes with Graphite
+and pull-request bases.
 
 ## Problem
 
-Everything g2g does today starts by asking Graphite for a linear path. That
-makes Graphite a hard runtime dependency for commands that otherwise only need
-Git and GitHub, and it means the tool has nothing to say in a repository where
-Graphite was never installed.
+Stack structure is useful before branches are pushed, when Graphite is absent,
+and when a repository has more than one line of work. Git itself supplies
+ancestry, but it does not retain the intended parent edge after a branch moves
+or a parent is squash-merged. GitHub pull-request bases describe only published
+work and describe merge behaviour rather than local intent.
 
-The structure being asked for is small: which branch is the parent of which.
-Graphite holds it, GitHub holds a partial copy of it in pull request bases, and
-neither is available in every situation a user is actually in.
+g2g therefore records the small, local fact every later operation needs: which
+branch is the intended parent of which. The record is independent of Graphite
+and GitHub, and remains a forest even though GitHub projection is linear.
 
 ## Model
 
@@ -43,36 +46,24 @@ projected; the tree is neither flattened nor rejected for containing a fork.
 That is a property of the projection, not of the graph, and it is expected to
 change if `gh stack` gains tree support.
 
-## Authority
+## Authority and sources
 
-Authority is recorded **per branch**, not per graph:
+An edge in the local store is an adoption claim, not a mutable owner field.
+Source resolution is **per branch**, not per graph: a path may legitimately
+cross from a g2g-recorded edge to a Graphite-described one. That prevents a
+whole-tree rule from becoming stale when sources change independently.
 
-| Authority | Meaning |
-|---|---|
-| `graphite` | Graphite declares this branch's parent. g2g reads, never writes. |
-| `g2g` | The user adopted this edge into the local store. |
+Precedence when several sources describe a branch is:
 
-Per-branch authority is what makes the rule locally checkable. A whole-graph
-rule cannot survive `gt track` on a branch that bridges two previously separate
-components, because that merges them through an action g2g never observed.
-The per-branch rule instead says: **an edge whose endpoints disagree about
-authority is a conflict**, which localises the report to the offending edge and
-never invalidates a component.
+1. the g2g store, when it holds an adopted edge;
+2. Graphite, when it tracks a branch g2g has not adopted;
+3. a pull-request base only when explicitly selected with `--from pull-request`;
+4. unknown.
 
-GitHub pull request bases are **observed**, not an authority. The distinction
-that matters is adopted versus observed rather than authority versus import: an
-observed base edge is renderable and comparable immediately, it just is not
-something the user has committed to.
-
-Precedence when several sources describe one branch:
-
-1. Graphite, when installed and tracking the branch
-2. the g2g store, when it holds an adopted edge
-3. the branch's single open pull request base
-4. unknown
-
-A lower source disagreeing with a higher one is reported, never silently
-merged. g2g does not write Graphite's metadata under any circumstances.
+GitHub bases are observed merge behaviour, not local intent. A disagreement is
+reported rather than silently merged. Graphite can remain alongside the local
+record: `import` adopts Graphite edges into g2g, and `mirror` makes Graphite
+agree with the g2g forest. See [source alignment](source-alignment.md).
 
 ## Deriving edges from Git
 
@@ -186,9 +177,10 @@ An unrecognised future store version fails closed.
 ## Commands
 
 ```text
-g2g graph   [--branch <branch>] [--scope branch|path|subtree|graph]
-g2g track   [--branch <branch>] [--parent <branch>] [--apply]
+g2g graph   [--branch <branch>] [--scope branch|path|subtree|stack|trunk|all]
+g2g track   [--branch <branch>] [--parent <branch> | --stack] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
+g2g restack [--branch <branch>] [--scope branch|path|subtree|stack] [--apply]
 ```
 
 `graph` is read-only. `track` and `untrack` follow the same
@@ -217,38 +209,23 @@ working on one sub-stack of a larger tree.
 policy. Selecting a subtree for display does not imply that a subtree can be
 projected onto a GitHub native stack.
 
-The `--no-stack` flag on the Graphite-backed commands was the same axis
-as `--scope branch`. Unifying them is a user-visible change to six shipped
-commands and is deliberately left to its own change; `--scope` is introduced
-only on the new commands.
+`--scope` is shared by every source that can describe a stack. The allowed
+values and defaults differ by operation; [stack scope](stack-scope.md) records
+the common vocabulary.
 
-## Known limits
+## Limits and safety boundaries
 
-**No restack yet.** The operation is designed in
-[restack.md](restack.md) but not implemented. g2g does not rebase today, and
-does not check out branches. It can
-repair a tree's parent edges but cannot repair a branch's contents.
+`restack` maintains branch contents after the recorded parent moves, including
+the common squash-merge case. It previews exact replay ranges before changing
+refs. A clean replay leaves the working tree alone; a conflict falls back to
+the user's working tree so it can be resolved, then resumed or aborted through
+g2g's journal. [restack](restack.md) describes those boundaries.
 
-This matters most under squash merges. When the bottom branch of a stack is
-squash-merged, GitHub retargets the child's pull request onto the new base, but
-the child still carries the original pre-squash commits. Its merge base is
-unchanged, so its pull request then shows the parent's changes a second time,
-and merging it will try to reapply changes the trunk already has.
-
-The consequence is stated rather than discovered: **until g2g owns restack, a
-g2g-owned graph needs something else to repair branch contents after a merge.**
-The graph is safe to build and safe to inspect; it goes stale in content, not
-in structure, and `g2g graph` reports the branches affected.
-
-When restack is implemented, the intended route is a detached temporary
-worktree — rebase there, update the branch ref, remove the worktree — so that
-HEAD, the index, and the user's working tree are never touched and the
-no-checkout property survives intact. Conflicts abort and report rather than
-leaving a half-finished state.
-
-**No Graphite writes.** Graphite has no supported mutation contract that g2g
-can rely on, so adoption is one-way: g2g can read Graphite structure but
-never writes it back.
+GitHub native stacks remain linear. A fork is valid local structure but must be
+narrowed to a path before `link`, `submit`, `push`, or `retarget` can project
+it. `mirror` is the sole Graphite-writing command and only makes a configured
+Graphite repository agree with the local forest; all other Graphite use is
+read-only.
 
 **No automatic adoption.** Nothing is written to the store without an explicit
 `--apply`. Observing a pull request base or inferring an ancestry edge produces
@@ -256,7 +233,6 @@ a preview, never a record.
 
 ## Non-goals
 
-Reordering, creating, merging, or rebasing branches. Replacing Graphite for
-users who have it and are happy with it. Sharing the graph between clones or
-machines — if that is wanted later it should be an explicit export/import or a
-dedicated ref, never a silent addition to a normal branch push.
+Creating or merging branches, and silently sharing the graph between clones or
+machines. If shared structure is wanted later it should be an explicit
+export/import or dedicated ref, never an accidental addition to a normal push.

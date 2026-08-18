@@ -240,18 +240,20 @@ description: |
   human-facing line, and `schemaVersion` signals breaking changes. Never scrape
   the pretty graph.
 - A blocked preview names the repairing command: merged pull requests point at
-  `gt sync` (Graphite owns restacking; no g2g command helps), missing or
-  closed ones at `g2g submit`, a wrong base at `g2g sync`. Two open pull
-  requests for one branch is deliberately unadvised — a person must choose.
+  `g2g sync` when the recorded stack needs its base advanced and replayed,
+  missing or closed ones at `g2g submit`, and a wrong base at `g2g retarget`.
+  Two open pull requests for one branch is deliberately unadvised — a person
+  must choose.
 - `status` is the read-only triage entry point. It renders one selected
-  Graphite path and reports each selected PR's native GitHub stack membership
-  from the same batched PR query; keep the healthy case to one compact summary
-  line and annotate only missing/conflicting nodes. `unlink` is the deliberate
-  inverse of `link`: it discovers the GitHub stack number from the selected
-  path and refuses rather than guesses when that path is unlinked or spans
-  several stacks, accepts `--stack-number` to override, previews first, and
-  only `--apply` invokes `gh stack unstack`. It must never alter
-  Graphite, branches, PR content, reviewers, or PR lifecycle.
+  path from the resolved g2g or Graphite structure and reports each selected
+  PR's native GitHub stack membership from the same batched PR query; keep the
+  healthy case to one compact summary line and annotate only
+  missing/conflicting nodes. `unlink` is the deliberate inverse of `link`: it
+  discovers the GitHub stack number from the selected path and refuses rather
+  than guesses when that path is unlinked or spans several stacks, accepts
+  `--stack-number` to override, previews first, and only `--apply` invokes
+  `gh stack unstack`. It must never alter Graphite, branches, PR content,
+  reviewers, or PR lifecycle.
 
 - After command discovery, use the resolved command's `--help` or `link --help`
   to inspect the current interface (for example, `g2g link --help` after a

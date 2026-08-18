@@ -33,6 +33,21 @@ type applyFlow[P any] struct {
 	// wrapMutationError adds command-specific context to a failed mutation,
 	// such as where a submission spec was retained.
 	wrapMutationError func(error) error
+	// blocked reports why an already-validated plan must not be applied,
+	// consulted after revalidation and before anything is announced. A refusal
+	// has to come before the ready banner: a plan that cannot run should never
+	// be introduced as one that is about to.
+	blocked func(P) string
+	// interrupted reports a mutation that stopped part-way rather than not
+	// happening. It returns nil when the failure was ordinary, and the flow
+	// falls through to saying nothing was applied.
+	//
+	// The flow's contract is that a mutation either happened or did not, which
+	// is true of every command whose mutation is one call. It is not true of a
+	// sequence that can stop between steps, and a command that grew its own
+	// copy of this whole sequence to say so ended up skipping the revalidation
+	// the copy did not include. One hook is cheaper than one copy.
+	interrupted func(context.Context, error) error
 
 	// guard refuses the whole command when another operation has left the
 	// repository part-way through a rewrite. Mid-restack a branch may already
@@ -85,6 +100,11 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 		}
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
 	}
+	if f.blocked != nil {
+		if reason := f.blocked(validated); reason != "" {
+			return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", reason))
+		}
+	}
 	return f.mutate(cmd, root, budgets, validated, p)
 }
 
@@ -111,6 +131,11 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	mutateCtx, cancelMutation := budgets.mutation(root, f.branches(validated))
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
+		if f.interrupted != nil {
+			if report := f.interrupted(mutateCtx, err); report != nil {
+				return report
+			}
+		}
 		presented := writeNotApplied(cmd.OutOrStdout(), p, mutationTimeout(err, f.notices.recovery))
 		if f.wrapMutationError != nil {
 			return f.wrapMutationError(presented)

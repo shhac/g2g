@@ -387,3 +387,47 @@ func TestApplyStopsAtTheFirstStepThatFails(t *testing.T) {
 		})
 	}
 }
+
+// sync mutates, so it must re-discover and compare before it does.
+//
+// It had no revalidation at all: it was the one mutating command that wrote its
+// own preview-and-apply sequence instead of using the shared flow, and the copy
+// left this step out. A plan approved by a reader could be acted on some time
+// later against a repository that had moved.
+func TestRevalidateRefusesAPlanThatMovedUnderneath(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
+	service, _ := newService(git, restacker)
+
+	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	// The stack moved: what the reader approved replays one branch, what is
+	// there now replays a different one.
+	restacker.plan = restack.Plan{Steps: []restack.Step{{Branch: "synthetic-c"}}}
+
+	if _, err := service.Revalidate(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", preview); err == nil {
+		t.Fatal("Revalidate() error = nil for a plan that changed underneath")
+	}
+}
+
+// An unchanged repository revalidates cleanly, so the check refuses drift
+// rather than refusing everything.
+func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
+	service, _ := newService(git, restacker)
+
+	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	validated, err := service.Revalidate(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", preview)
+	if err != nil {
+		t.Fatalf("Revalidate() error = %v", err)
+	}
+	if !validated.Equal(preview) {
+		t.Error("an unchanged repository revalidated to a different plan")
+	}
+}

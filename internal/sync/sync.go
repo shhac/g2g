@@ -142,6 +142,38 @@ func (s Service) compare(ctx context.Context, base, remote string) (advance, div
 	return behind, !behind, nil
 }
 
+// Nothing reports a plan with no step to take: the base is level and there is
+// nothing to replay.
+func (p Plan) Nothing() bool { return !p.Advance && len(p.Restack.Steps) == 0 }
+
+// Equal compares every fact that changes what the sync does.
+func (p Plan) Equal(other Plan) bool {
+	return p.Remote == other.Remote &&
+		p.Base == other.Base &&
+		p.Advance == other.Advance &&
+		p.Diverged == other.Diverged &&
+		p.Blocked == other.Blocked &&
+		p.Restack.Equal(other.Restack)
+}
+
+// Revalidate repeats the whole discovery immediately before the mutation and
+// refuses if anything moved underneath.
+//
+// sync had none. It was the one mutating command that wrote its own
+// preview-and-apply sequence instead of using the shared flow, and the copy
+// left this step out — so it could fetch, advance a base and replay against a
+// plan the reader had approved some time earlier.
+func (s Service) Revalidate(ctx context.Context, selection graph.Selection, remote string, preview Plan) (Plan, error) {
+	current, err := s.Plan(ctx, selection, remote)
+	if err != nil {
+		return Plan{}, err
+	}
+	if err := diagnostic.Revalidated(ctx, "sync.revalidation", "plan", current.Equal(preview)); err != nil {
+		return Plan{}, err
+	}
+	return current, nil
+}
+
 // Apply performs the sequence and stops at the first step that cannot finish.
 //
 // It reports how far it got rather than unwinding: a replay that stops on a

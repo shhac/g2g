@@ -1,26 +1,27 @@
-package graph
+package stack
 
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/graph"
 )
 
-func selectorService(adopted Graph) Selector {
-	git := fakeAncestry{
+func selectorService(adopted graph.Graph) G2GSelector {
+	git := g2gAncestry{
 		current:   "synthetic-b",
 		local:     []string{"synthetic-trunk", "synthetic-a", "synthetic-b"},
 		ancestors: map[string][]string{"synthetic-a": {"synthetic-trunk"}, "synthetic-b": {"synthetic-a"}},
 	}
-	return Selector{Service: Service{Git: git, Store: &memoryStore{graph: adopted}}}
+	return G2GSelector{Service: graph.Service{Git: git, Store: &g2gStore{graph: adopted}}}
 }
 
-func chain() Graph {
-	return Graph{
-		Edges: map[string]Edge{
+func chain() graph.Graph {
+	return graph.Graph{
+		Edges: map[string]graph.Edge{
 			"synthetic-a": {Parent: "synthetic-trunk"},
 			"synthetic-b": {Parent: "synthetic-a"},
 		},
@@ -47,7 +48,7 @@ func TestSelectorDescribesOnlyAdoptedBranches(t *testing.T) {
 // The root is the base a projection sits on, and everything above it is the
 // stack — the same shape a Graphite selection produces.
 func TestSelectorReturnsTheRootAsTheBase(t *testing.T) {
-	snapshot, err := selectorService(chain()).Select(context.Background(), stack.Selection{Branch: "synthetic-b"}, "g2g test")
+	snapshot, err := selectorService(chain()).Select(context.Background(), Selection{Branch: "synthetic-b"}, "g2g test")
 	if err != nil {
 		t.Fatalf("Select() error = %v", err)
 	}
@@ -66,7 +67,7 @@ func TestSelectorReturnsTheRootAsTheBase(t *testing.T) {
 // A branch with nothing recorded under it has no base to sit on, which is the
 // same refusal a Graphite path with no ancestor gets.
 func TestSelectorRefusesABranchWithNoRecordedParent(t *testing.T) {
-	_, err := selectorService(New()).Select(context.Background(), stack.Selection{Branch: "synthetic-b"}, "g2g test")
+	_, err := selectorService(graph.New()).Select(context.Background(), Selection{Branch: "synthetic-b"}, "g2g test")
 	if err == nil {
 		t.Fatal("Select() error = nil for a branch with no recorded parent")
 	}
@@ -78,13 +79,13 @@ func TestSelectorRefusesABranchWithNoRecordedParent(t *testing.T) {
 // A name readable as an option must not reach the command it is passed to,
 // whichever source supplied it.
 func TestSelectorRefusesOptionLikeBranchNames(t *testing.T) {
-	unsafe := Graph{Edges: map[string]Edge{"-synthetic": {Parent: "synthetic-trunk"}}}
-	selector := Selector{Service: Service{
-		Git:   fakeAncestry{current: "-synthetic", local: []string{"synthetic-trunk", "-synthetic"}},
-		Store: &memoryStore{graph: unsafe},
+	unsafe := graph.Graph{Edges: map[string]graph.Edge{"-synthetic": {Parent: "synthetic-trunk"}}}
+	selector := G2GSelector{Service: graph.Service{
+		Git:   g2gAncestry{current: "-synthetic", local: []string{"synthetic-trunk", "-synthetic"}},
+		Store: &g2gStore{graph: unsafe},
 	}}
 
-	_, err := selector.Select(context.Background(), stack.Selection{Branch: "-synthetic"}, "gh stack link")
+	_, err := selector.Select(context.Background(), Selection{Branch: "-synthetic"}, "gh stack link")
 	if err == nil {
 		t.Fatal("Select() error = nil for an option-like branch name")
 	}
@@ -99,7 +100,7 @@ func TestSelectorRefusesOptionLikeBranchNames(t *testing.T) {
 func TestSelectorAcceptsTheRootAsTrunkAndRefusesAnyOther(t *testing.T) {
 	selector := selectorService(chain())
 
-	snapshot, err := selector.Select(context.Background(), stack.Selection{Branch: "synthetic-b", Trunk: "synthetic-trunk"}, "g2g test")
+	snapshot, err := selector.Select(context.Background(), Selection{Branch: "synthetic-b", Trunk: "synthetic-trunk"}, "g2g test")
 	if err != nil {
 		t.Fatalf("Select() with the root as --trunk error = %v", err)
 	}
@@ -107,7 +108,7 @@ func TestSelectorAcceptsTheRootAsTrunkAndRefusesAnyOther(t *testing.T) {
 		t.Errorf("BaseSource = %q, want the flag to be credited", snapshot.BaseSource)
 	}
 
-	_, err = selector.Select(context.Background(), stack.Selection{Branch: "synthetic-b", Trunk: "synthetic-a"}, "g2g test")
+	_, err = selector.Select(context.Background(), Selection{Branch: "synthetic-b", Trunk: "synthetic-a"}, "g2g test")
 	if err == nil {
 		t.Fatal("Select() error = nil for a --trunk that is not the recorded base")
 	}
@@ -118,8 +119,8 @@ func TestSelectorAcceptsTheRootAsTrunkAndRefusesAnyOther(t *testing.T) {
 
 // Completion answers from the store alone: no ancestry probing, no subprocess,
 // and roots left out because a command cannot act on one.
-func TestStoreCandidatesOfferWhatSelectionWouldAccept(t *testing.T) {
-	candidates := StoreCandidates{Service: Service{Store: &memoryStore{graph: chain()}}}
+func TestG2GCandidatesOfferWhatSelectionWouldAccept(t *testing.T) {
+	candidates := G2GCandidates{Service: graph.Service{Store: &g2gStore{graph: chain()}}}
 
 	branches, err := candidates.Branches(context.Background())
 	if err != nil {
@@ -144,7 +145,7 @@ func TestStoreCandidatesOfferWhatSelectionWouldAccept(t *testing.T) {
 }
 
 func TestSelectorWithoutAStoreDescribesNothing(t *testing.T) {
-	describes, err := (Selector{}).Describes(context.Background(), "synthetic-b")
+	describes, err := (G2GSelector{}).Describes(context.Background(), "synthetic-b")
 	if err != nil || describes {
 		t.Errorf("Describes() = %t, %v; want false", describes, err)
 	}
@@ -152,8 +153,8 @@ func TestSelectorWithoutAStoreDescribesNothing(t *testing.T) {
 
 // A zero value must answer rather than panic: completion reaches these on a
 // keystroke, in whatever state the process happens to be wired.
-func TestZeroValueStoreCandidatesOfferNothing(t *testing.T) {
-	candidates := StoreCandidates{}
+func TestZeroValueG2GCandidatesOfferNothing(t *testing.T) {
+	candidates := G2GCandidates{}
 
 	branches, err := candidates.Branches(context.Background())
 	if err != nil || len(branches) != 0 {
@@ -169,21 +170,21 @@ func TestZeroValueStoreCandidatesOfferNothing(t *testing.T) {
 // silent "nothing is tracked" would make every command refuse for a reason
 // that has nothing to do with what the user asked.
 func TestAnUnreadableStoreIsReportedNotTreatedAsEmpty(t *testing.T) {
-	broken := Service{
-		Git:   fakeAncestry{current: "synthetic-b", local: []string{"synthetic-trunk", "synthetic-b"}},
-		Store: &memoryStore{err: fmt.Errorf("synthetic store failure")},
+	broken := graph.Service{
+		Git:   g2gAncestry{current: "synthetic-b", local: []string{"synthetic-trunk", "synthetic-b"}},
+		Store: &g2gStore{err: fmt.Errorf("synthetic store failure")},
 	}
 
-	if _, err := (Selector{Service: broken}).Describes(context.Background(), "synthetic-b"); err == nil {
+	if _, err := (G2GSelector{Service: broken}).Describes(context.Background(), "synthetic-b"); err == nil {
 		t.Error("Describes() error = nil for an unreadable store")
 	}
-	if _, err := (Selector{Service: broken}).Select(context.Background(), stack.Selection{Branch: "synthetic-b"}, "g2g test"); err == nil {
+	if _, err := (G2GSelector{Service: broken}).Select(context.Background(), Selection{Branch: "synthetic-b"}, "g2g test"); err == nil {
 		t.Error("Select() error = nil for an unreadable store")
 	}
-	if _, err := (StoreCandidates{Service: broken}).Branches(context.Background()); err == nil {
+	if _, err := (G2GCandidates{Service: broken}).Branches(context.Background()); err == nil {
 		t.Error("Branches() error = nil for an unreadable store")
 	}
-	if _, err := (StoreCandidates{Service: broken}).Trunks(context.Background(), "synthetic-b"); err == nil {
+	if _, err := (G2GCandidates{Service: broken}).Trunks(context.Background(), "synthetic-b"); err == nil {
 		t.Error("Trunks() error = nil for an unreadable store")
 	}
 }
@@ -198,14 +199,14 @@ func TestSelectorFillsTheAncestryRevalidationCompares(t *testing.T) {
 	// stack is linear. Ancestry is the same either way: it describes the
 	// structure, not the selection.
 	for _, test := range []struct {
-		scope stack.Scope
+		scope Scope
 		want  string
 	}{
-		{stack.ScopePath, "synthetic-trunk,synthetic-a,synthetic-b"},
-		{stack.ScopeStack, "synthetic-trunk,synthetic-a,synthetic-b"},
+		{ScopePath, "synthetic-trunk,synthetic-a,synthetic-b"},
+		{ScopeStack, "synthetic-trunk,synthetic-a,synthetic-b"},
 	} {
 		t.Run(string(test.scope), func(t *testing.T) {
-			snapshot, err := selectorService(chain()).Select(context.Background(), stack.Selection{Branch: "synthetic-b", Scope: test.scope}, "g2g test")
+			snapshot, err := selectorService(chain()).Select(context.Background(), Selection{Branch: "synthetic-b", Scope: test.scope}, "g2g test")
 			if err != nil {
 				t.Fatalf("Select() error = %v", err)
 			}
@@ -214,4 +215,62 @@ func TestSelectorFillsTheAncestryRevalidationCompares(t *testing.T) {
 			}
 		})
 	}
+}
+
+// g2gAncestry and g2gStore are the graph service's two boundaries, reduced to
+// what this selector actually asks them. They are copies of the graph
+// package's own fakes rather than shared ones, because a fake shared across a
+// package boundary is a second interface nobody declared.
+type g2gAncestry struct {
+	current   string
+	local     []string
+	ancestors map[string][]string
+	err       error
+}
+
+func (f g2gAncestry) Resolve(_ context.Context, revision string) (string, error) {
+	return revision, f.err
+}
+
+func (f g2gAncestry) CurrentBranch(context.Context) (string, error) { return f.current, f.err }
+
+func (f g2gAncestry) LocalBranches(context.Context) ([]string, error) { return f.local, f.err }
+
+func (f g2gAncestry) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return slices.Contains(f.ancestors[descendant], ancestor), nil
+}
+
+func (f g2gAncestry) AncestorBranches(_ context.Context, branch string) ([]string, error) {
+	return f.ancestors[branch], f.err
+}
+
+func (f g2gAncestry) Divergence(context.Context, string, string) (int, int, error) {
+	return 0, 1, f.err
+}
+
+type g2gStore struct {
+	graph graph.Graph
+	err   error
+}
+
+func (s *g2gStore) Load(context.Context) (graph.Graph, error) {
+	if s.err != nil {
+		return graph.Graph{}, s.err
+	}
+	return s.graph.Clone(), nil
+}
+
+func (s *g2gStore) Save(_ context.Context, g graph.Graph) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.graph = g.Clone()
+	return nil
+}
+
+func (s *g2gStore) Path(context.Context) (string, error) {
+	return "/synthetic/repo/.git/g2g/graph.json", nil
 }

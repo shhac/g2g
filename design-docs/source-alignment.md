@@ -32,7 +32,7 @@ a branch's structure, which source does it read?**
   go stale.
 - It resolves for the **target**, and that source then vouches for the whole
   path — never a stack half-described by each.
-- `graph.Selector.Describes` is per branch (does the store hold this edge?);
+- `stack.G2GSelector.Describes` is per branch (does the store hold this edge?);
   `GraphiteSelector.Describes` is per repository (is Graphite configured?). So
   Graphite is the fallback for whatever g2g has not adopted, not a per-branch
   rival claim.

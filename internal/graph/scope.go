@@ -1,22 +1,26 @@
 package graph
 
 import (
-	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/shape"
 )
 
-// Scope and its values are defined in stack, because both sources answer a
+// Scope and its values are defined in shape, because both sources answer a
 // scope now and the word has to mean the same thing asked of either. These
 // aliases keep the graph-side vocabulary intact for callers that never touch a
 // Graphite path.
-type Scope = stack.Scope
+//
+// shape depends on nothing, which is what lets this package keep depending on
+// Git alone. Taking them from stack instead pulled Graphite and GitHub in
+// transitively.
+type Scope = shape.Scope
 
 const (
-	ScopeBranch  = stack.ScopeBranch
-	ScopePath    = stack.ScopePath
-	ScopeSubtree = stack.ScopeSubtree
-	ScopeStack   = stack.ScopeStack
-	ScopeTrunk   = stack.ScopeTrunk
-	ScopeAll     = stack.ScopeAll
+	ScopeBranch  = shape.ScopeBranch
+	ScopePath    = shape.ScopePath
+	ScopeSubtree = shape.ScopeSubtree
+	ScopeStack   = shape.ScopeStack
+	ScopeTrunk   = shape.ScopeTrunk
+	ScopeAll     = shape.ScopeAll
 )
 
 // Scopes is the set every selecting command accepts. ReadScopes adds all,
@@ -28,18 +32,18 @@ const (
 // wrapper could only supply one pair, which is how one command's default
 // silently becomes another's.
 var (
-	Scopes        = stack.Scopes
-	ReadScopes    = stack.ReadScopes
-	RewriteScopes = stack.RewriteScopes
+	Scopes        = shape.Scopes
+	ReadScopes    = shape.ReadScopes
+	RewriteScopes = shape.RewriteScopes
 )
 
 // Select returns the branches a scope covers, in render order.
 //
-// The scope values are stack.Forest's to know. A second switch over the same
+// The scope values are shape.Forest's to know. A second switch over the same
 // names here would drift the moment one gains a value the other lacks, which is
 // exactly what happened before the traversal was shared.
 func (g Graph) Select(branch string, scope Scope) ([]string, error) {
-	selected, err := g.shape().Select(branch, scope)
+	selected, err := g.Shape().Select(branch, scope)
 	if err != nil {
 		return nil, err
 	}

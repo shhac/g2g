@@ -75,7 +75,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   and the deliberate absence of restack are decisions, not accidents.
 - `internal/graph` must depend on Git alone. Importing Graphite or GitHub into
   it, or making any of `graph`/`track`/`untrack` need a network, removes the
-  only reason the package exists.
+  only reason the package exists. The scope vocabulary and the forest traversal
+  therefore live in `internal/shape`, which depends on nothing: taking them
+  from `internal/stack` pulled Graphite and GitHub in transitively, through an
+  import line that named neither. `internal/graph/boundary_test.go` checks the
+  whole transitive set, because no single import line looked wrong.
 - `track` previews candidates and blocks rather than choosing; `untrack`
   reports the children it strands rather than reparenting them. Both are the
   same fail-closed rule the Graphite commands follow, and both have tests that

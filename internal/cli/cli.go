@@ -104,7 +104,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	selector := stack.Resolver{
 		Git: gitClient,
 		Selectors: []stack.Selector{
-			graph.Selector{Service: graphService},
+			stack.G2GSelector{Service: graphService},
 			stack.GraphiteSelector{Git: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
 		},
 		// Reading pull request bases means invoking gh, and push must never do
@@ -119,7 +119,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	completions := stack.Completions{
 		Git: gitClient,
 		Sources: []stack.Candidates{
-			graph.StoreCandidates{Service: graphService},
+			stack.G2GCandidates{Service: graphService},
 			stack.GraphiteCandidates{Graphite: graphiteClient, Configured: graphiteConfigured},
 		},
 	}

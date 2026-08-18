@@ -34,7 +34,7 @@ suppresses descendants and returns the *whole ancestry* — not the branch alone
 So `branch` and `path` both meant something other than their own documentation
 when Graphite answered.
 
-**The g2g store ignored scope entirely.** `graph.Selector` hardcoded
+**The g2g store ignored scope entirely.** The g2g selector hardcoded
 `ScopePath`, never filled `Snapshot.Scope`, and never filled the shape. Since
 that record is consulted first, this was the common path: `--scope subtree`
 returned the linear path, exit 0, and the footer rendered `scope  `.
@@ -128,8 +128,11 @@ g2g status                     g2g status --branch feature-c
 A scope asked of the g2g store must mean what it means asked of Graphite. Two
 things enforce it:
 
-- The traversal lives once, in `stack.Forest`, and both records answer from it.
+- The traversal lives once, in `shape.Forest`, and both records answer from it.
   `graph.Graph` exposes its edges as a forest rather than walking them itself.
+  `shape` depends on nothing, which is what lets `internal/graph` keep
+  depending on Git alone: defining these in `stack` gave it Graphite and
+  GitHub transitively, through an import line that named neither.
 - Graphite selection is resolved against the forest its display already
   describes, not through a boolean. The parser always built the whole forest;
   only a linear walk over it was ever exposed.

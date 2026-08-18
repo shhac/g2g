@@ -133,14 +133,40 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 		}
 	}
 
+	// Membership, ordering and the per-branch candidate list are three separate
+	// jobs, and the loop previously did all three the same way: by rescanning.
+	// selected stays the ordered slice Attach reads; chosen answers "already
+	// taken" without walking it.
+	chosen := map[string]bool{trunk: true}
+	for _, branch := range selected {
+		chosen[branch] = true
+	}
+	// adopted does not change while this runs, so its roots do not either, and
+	// a branch's candidates depend only on the branch and those roots. Asking
+	// Git again on every pass was work proportional to passes rather than to
+	// branches.
+	roots := s.knownRoots(adopted)
+	candidatesFor := make(map[string][]Candidate, len(local))
+	lookup := func(branch string) ([]Candidate, error) {
+		if cached, found := candidatesFor[branch]; found {
+			return cached, nil
+		}
+		candidates, err := Candidates(ctx, s.Git, branch, roots)
+		if err != nil {
+			return nil, err
+		}
+		candidatesFor[branch] = candidates
+		return candidates, nil
+	}
+
 	edges := make([]Adoption, 0)
 	for grew := true; grew; {
 		grew = false
 		for _, branch := range local {
-			if branch == trunk || slices.Contains(selected, branch) {
+			if chosen[branch] {
 				continue
 			}
-			candidates, err := Candidates(ctx, s.Git, branch, s.knownRoots(adopted))
+			candidates, err := lookup(branch)
 			if err != nil {
 				return nil, err
 			}
@@ -153,6 +179,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 			}
 			edges = append(edges, Adoption{Branch: branch, Parent: parent})
 			selected = append(selected, branch)
+			chosen[branch] = true
 			grew = true
 		}
 	}

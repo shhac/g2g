@@ -422,5 +422,12 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 		return nil, false, false, nil
 	}
 	updates, clean, err = s.Git.PreviewReplay(ctx, plan.Steps[0].Base, plan.ranges())
-	return updates, clean, err == nil, err
+	if err != nil {
+		return nil, false, false, err
+	}
+	// Predicted means the preview actually ran, which the two returns above
+	// already answer for the cases where it did not. Deriving it from the error
+	// being returned alongside read as though a caller might see both, when the
+	// only caller bails on the error first.
+	return updates, clean, true, nil
 }

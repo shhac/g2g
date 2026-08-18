@@ -129,3 +129,23 @@ func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 		})
 	}
 }
+
+// The safe set is now a list rather than a triple negation, so it is worth
+// asserting directly: this decides whether a rendered command can be pasted.
+func TestShellQuoteLeavesSafeArgumentsAloneAndQuotesTheRest(t *testing.T) {
+	for _, safe := range []string{"main", "paul/eco-1627", "a_b-c.d/e:f=g@h", "0123"} {
+		if got := shellQuote(safe); got != safe {
+			t.Errorf("shellQuote(%q) = %q, want it untouched", safe, got)
+		}
+	}
+	for _, unsafe := range []string{"", "two words", "semi;colon", "dollar$sign", "back`tick`"} {
+		got := shellQuote(unsafe)
+		if !strings.HasPrefix(got, "'") || !strings.HasSuffix(got, "'") {
+			t.Errorf("shellQuote(%q) = %q, want it quoted", unsafe, got)
+		}
+	}
+	// An embedded quote must not end the quoting early.
+	if got, want := shellQuote("it's"), `'it'\''s'`; got != want {
+		t.Errorf("shellQuote(%q) = %q, want %q", "it's", got, want)
+	}
+}

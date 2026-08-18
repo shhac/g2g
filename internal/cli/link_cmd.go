@@ -40,11 +40,12 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 				branches: func(plan link.Plan) int { return len(plan.Branches) },
 				noOp:     link.Plan.NothingToLink,
 				notices: flowNotices{
-					preview:  "Re-run with --apply to link.",
-					noOp:     "No changes were needed or made.",
-					applied:  "Applied — GitHub stack updated",
-					changed:  "Changes were made.",
-					recovery: "Run g2g status to see whether GitHub recorded the link.",
+					preview:       "Re-run with --apply to link.",
+					noOp:          "No changes were needed or made.",
+					applied:       "Applied — GitHub stack updated",
+					changed:       "Changes were made.",
+					recovery:      "Run g2g status to see whether GitHub recorded the link.",
+					suggestedNext: "g2g status",
 				},
 			}
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

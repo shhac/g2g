@@ -41,10 +41,11 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 			// after it, in Apply.
 			blocked: func(plan prune.Plan) string { return plan.Blocked },
 			notices: flowNotices{
-				preview: "Rerun with --apply to forget them.",
-				noOp:    "Nothing has landed.",
-				applied: "Forgotten.",
-				changed: "The graph no longer records them. No branch was deleted.",
+				preview:       "Rerun with --apply to forget them.",
+				noOp:          "Nothing has landed.",
+				applied:       "Forgotten.",
+				changed:       "The graph no longer records them. No branch was deleted.",
+				suggestedNext: "g2g graph",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

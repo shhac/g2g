@@ -63,11 +63,12 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			branches: func(plan graph.TrackPlan) int { return len(plan.Branches) },
 			noOp:     trackIsNoOp,
 			notices: flowNotices{
-				preview:  "Rerun with --apply to record this edge.",
-				noOp:     "The graph already records this parent. Nothing to do.",
-				applied:  "Recorded.",
-				changed:  "The g2g-owned graph now records this parent.",
-				recovery: "The graph store may or may not have been written.",
+				preview:       "Rerun with --apply to record this edge.",
+				noOp:          "The graph already records this parent. Nothing to do.",
+				applied:       "Recorded.",
+				changed:       "The g2g-owned graph now records this parent.",
+				recovery:      "The graph store may or may not have been written.",
+				suggestedNext: "g2g graph",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
@@ -101,11 +102,12 @@ func trackStackFlow(service graph.Service, selection graphOptions, trunk string,
 		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
 		noOp:     func(plan graph.StackPlan) bool { return plan.Blocked == "" && len(plan.Record) == 0 },
 		notices: flowNotices{
-			preview:  "Rerun with --apply to record this stack.",
-			noOp:     "The graph already records this whole ancestry. Nothing to do.",
-			applied:  "Recorded.",
-			changed:  "The g2g-owned graph now records this stack.",
-			recovery: "The graph store may or may not have been written.",
+			preview:       "Rerun with --apply to record this stack.",
+			noOp:          "The graph already records this whole ancestry. Nothing to do.",
+			applied:       "Recorded.",
+			changed:       "The g2g-owned graph now records this stack.",
+			recovery:      "The graph store may or may not have been written.",
+			suggestedNext: "g2g graph",
 		},
 	}
 }

@@ -35,11 +35,12 @@ func newImport(service align.Service, guard func(context.Context) error, present
 			branches: func(plan align.ImportPlan) int { return len(plan.Adopt) },
 			noOp:     importIsNoOp,
 			notices: flowNotices{
-				preview:  "Rerun with --apply to adopt them.",
-				noOp:     "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
-				applied:  "Adopted.",
-				changed:  "Graphite still tracks these branches; g2g is what answers for them now.",
-				recovery: "The graph store may or may not have been written · rerun g2g import to see what is left.",
+				preview:       "Rerun with --apply to adopt them.",
+				noOp:          "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
+				applied:       "Adopted.",
+				changed:       "Graphite still tracks these branches; g2g is what answers for them now.",
+				recovery:      "The graph store may or may not have been written · rerun g2g import to see what is left.",
+				suggestedNext: "g2g graph",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

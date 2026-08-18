@@ -188,11 +188,12 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			return true, stopped(cmd, ctx, service, cause, p)
 		},
 		notices: flowNotices{
-			preview:  "Rerun with --apply to replay these commits.",
-			noOp:     "Nothing to replay.",
-			applied:  "Replayed.",
-			changed:  "Branch contents now match the recorded structure.",
-			recovery: "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
+			preview:       "Rerun with --apply to replay these commits.",
+			noOp:          "Nothing to replay.",
+			applied:       "Replayed.",
+			changed:       "Branch contents now match the recorded structure.",
+			recovery:      "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
+			suggestedNext: "g2g status",
 		},
 	}
 	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)

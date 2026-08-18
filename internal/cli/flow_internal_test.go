@@ -120,3 +120,63 @@ func TestABlockedPreviewDoesNotInviteAnApply(t *testing.T) {
 		})
 	}
 }
+
+// A suggested next step is an optional continuation after a completed mutation,
+// never recovery guidance. Keeping it in the shared flow makes that boundary
+// hold for every command that opts in.
+func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		p       Presentation
+		blocked string
+		want    string
+		absent  string
+	}{
+		{name: "human success", want: "Suggested next step: g2g status"},
+		{name: "blocked", blocked: "a synthetic refusal", absent: "Suggested next step:"},
+		{name: "json", p: Presentation{Format: formatJSON}, absent: "Suggested next step:"},
+		{name: "porcelain", p: Presentation{Format: formatPorcelain}, absent: "Suggested next step:"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			flow := applyFlow[interruptedPlan]{
+				plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{}, nil },
+				revalidate: func(_ context.Context, plan interruptedPlan) (interruptedPlan, error) {
+					return plan, nil
+				},
+				render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
+					_, err := fmt.Fprintln(w, "synthetic plan")
+					return err
+				},
+				execute: func(context.Context, interruptedPlan) error { return nil },
+				blocked: func(interruptedPlan) string { return test.blocked },
+				notices: flowNotices{
+					applied:       "Applied.",
+					changed:       "Changed.",
+					suggestedNext: "g2g status",
+				},
+			}
+			err := flow.run(cmd, context.Background(), newBudgets(cmd), test.p, true)
+			if test.blocked != "" {
+				if err == nil {
+					t.Fatal("blocked apply returned nil")
+				}
+			} else if err != nil {
+				t.Fatalf("successful apply error = %v", err)
+			}
+			if test.want != "" && !strings.Contains(out.String(), test.want) {
+				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
+			}
+			if test.absent != "" && strings.Contains(out.String(), test.absent) {
+				t.Errorf("output unexpectedly contains %q:\n%s", test.absent, out.String())
+			}
+			if test.p.machine() {
+				if got, want := out.String(), "synthetic plan\n"; got != want {
+					t.Errorf("machine output = %q, want unchanged %q", got, want)
+				}
+			}
+		})
+	}
+}

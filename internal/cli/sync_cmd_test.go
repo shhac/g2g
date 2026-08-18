@@ -152,6 +152,9 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	if !strings.Contains(out, "Synced.") {
 		t.Errorf("output does not report the sync:\n%s", out)
 	}
+	if !strings.Contains(out, "Suggested next step: g2g status") {
+		t.Errorf("successful sync does not suggest inspecting status:\n%s", out)
+	}
 }
 
 // A diverged base is reported, never merged or reset. The refusal has to reach
@@ -180,6 +183,9 @@ func TestSyncRefusesADivergedBaseInBothPreviewAndApply(t *testing.T) {
 			}
 			if len(git.fastForwards) != 0 || replay.applies != 0 {
 				t.Errorf("a refused sync mutated: fast-forwards=%v applies=%d", git.fastForwards, replay.applies)
+			}
+			if strings.Contains(out, "Suggested next step:") {
+				t.Errorf("a refused sync offered a success-path suggestion:\n%s", out)
 			}
 		})
 	}

@@ -52,6 +52,9 @@ func TestTrackApplyWritesOnceAndRecordsTheNewRoot(t *testing.T) {
 	if !strings.Contains(out, "becomes a root") {
 		t.Errorf("output does not say a root was recorded:\n%s", out)
 	}
+	if !strings.Contains(out, "Suggested next step: g2g graph") {
+		t.Errorf("successful tracking does not suggest inspecting the graph:\n%s", out)
+	}
 }
 
 func TestTrackApplyRefusesABlockedPlanWithoutWriting(t *testing.T) {
@@ -61,6 +64,9 @@ func TestTrackApplyRefusesABlockedPlanWithoutWriting(t *testing.T) {
 	}
 	if store.writes != 0 {
 		t.Error("a blocked plan was written")
+	}
+	if strings.Contains(out, "Suggested next step:") {
+		t.Errorf("blocked tracking offered a success-path suggestion:\n%s", out)
 	}
 }
 

@@ -157,10 +157,11 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
 		},
 		notices: flowNotices{
-			preview:  "Re-run with --apply to push, create missing PRs, and link.",
-			applied:  "Applied — stack published and missing pull requests created",
-			changed:  "Changes were made.",
-			recovery: fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
+			preview:       "Re-run with --apply to push, create missing PRs, and link.",
+			applied:       "Applied — stack published and missing pull requests created",
+			changed:       "Changes were made.",
+			recovery:      fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
+			suggestedNext: "g2g status",
 		},
 	}
 	return flow.run(cmd, o.root, o.budgets, p, true)

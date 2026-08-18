@@ -47,11 +47,12 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 				return true, stoppedMidSync(cmd, presentation)
 			},
 			notices: flowNotices{
-				preview:  "Rerun with --apply to bring the stack up to date.",
-				noOp:     "The stack is already up to date.",
-				applied:  "Synced.",
-				changed:  "The stack sits on the current base.",
-				recovery: "The base may already have been advanced; rerunning is safe.",
+				preview:       "Rerun with --apply to bring the stack up to date.",
+				noOp:          "The stack is already up to date.",
+				applied:       "Synced.",
+				changed:       "The stack sits on the current base.",
+				recovery:      "The base may already have been advanced; rerunning is safe.",
+				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

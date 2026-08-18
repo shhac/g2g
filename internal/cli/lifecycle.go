@@ -80,6 +80,11 @@ type flowNotices struct {
 	// recovery tells the reader what may already have happened if the mutation
 	// phase runs out of time.
 	recovery string
+	// suggestedNext is an optional, success-only continuation for a human who
+	// has just completed a clear operation. It is deliberately separate from
+	// recovery advice: it never repairs a blocked state, does not imply that it
+	// must be followed, and is omitted when the command cannot know one safely.
+	suggestedNext string
 }
 
 func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budgets, p Presentation, apply bool) error {
@@ -156,8 +161,24 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 		return presented
 	}
 
-	_ = prose(cmd.OutOrStdout(), p, p.notice(f.notices.applied))
-	return prose(cmd.OutOrStdout(), p, p.subdued(f.notices.changed))
+	if err := prose(cmd.OutOrStdout(), p, p.notice(f.notices.applied)); err != nil {
+		return err
+	}
+	if err := prose(cmd.OutOrStdout(), p, p.subdued(f.notices.changed)); err != nil {
+		return err
+	}
+	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.notices.suggestedNext)
+}
+
+// writeSuggestedNextStep offers one likely continuation after a completed,
+// unambiguous mutation. It is presentation-only: commands never run it or
+// gather more facts to make it, and machine formats remain their exact
+// plan/state documents.
+func writeSuggestedNextStep(writer io.Writer, p Presentation, command string) error {
+	if command == "" || p.machine() {
+		return nil
+	}
+	return prose(writer, p, "\n"+p.accent("Suggested next step:")+" "+p.command(command))
 }
 
 func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentation) error {

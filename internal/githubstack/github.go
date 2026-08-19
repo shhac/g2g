@@ -15,9 +15,13 @@ import (
 
 // PullRequest is the GitHub information relevant to a planned stack link.
 type PullRequest struct {
-	Number        int    `json:"number"`
-	URL           string `json:"url"`
-	Head          string `json:"headRefName"`
+	Number int    `json:"number"`
+	URL    string `json:"url"`
+	Head   string `json:"headRefName"`
+	// HeadOID is the commit the pull request is actually on. Without it a
+	// reader can be told a pull request is aligned while it does not contain
+	// the work sitting in the branch, because alignment is about the base.
+	HeadOID       string `json:"headRefOid"`
 	Base          string `json:"baseRefName"`
 	State         string `json:"state"`
 	StackNumber   int

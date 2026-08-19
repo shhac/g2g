@@ -89,6 +89,12 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		pr := native.Branches[branch]
 		node.PRNumber, node.PRURL = pr.Number, pr.URL
 		node.State, node.Severity = "aligned", severityOK
+		// "aligned" is a statement about the base, so it said nothing about
+		// whether the pull request has the work sitting in the branch. It read
+		// as healthy with two commits that had never been pushed.
+		if note, level := currencyNote(plan.Currency, branch); note != "" {
+			node.State, node.Severity = "aligned · "+note, level
+		}
 		if marker, markerSeverity := membershipStyle(native, branch, plan.Forks()); marker != "" {
 			node.State, node.Severity = marker, markerSeverity
 		}
@@ -214,4 +220,21 @@ func unstackedNote(undescribed stack.Undescribed) string {
 		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with g2g track --branch <child> --parent %s.", undescribed.Branch, undescribed.Branch)
 	}
 	return undescribed.Error()
+}
+
+// currencyNote says how a branch stands against the commit its pull request is
+// on. A current one gets no note: it is the ordinary case, and annotating it
+// would bury the two that are not.
+func currencyNote(currency map[string]link.Currency, branch string) (string, severity) {
+	state, compared := currency[branch]
+	if !compared || state.Current() {
+		return "", severityOK
+	}
+	if state.Diverged {
+		if state.Unpushed > 0 {
+			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here are not on it", count(state.Unpushed, "commit", "commits")), severityBad
+		}
+		return "PR is on a commit this branch does not have", severityBad
+	}
+	return fmt.Sprintf("%s not pushed", count(state.Unpushed, "commit", "commits")), severityWarn
 }

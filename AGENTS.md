@@ -98,6 +98,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   are branches nothing sits under, so an empty store has none at all, which is
   exactly the repository where someone standing on `main` was told to give it a
   parent.
+- "Aligned" is a statement about a pull request's *base*, never its contents,
+  so `status` reports currency separately from `githubstack.PullRequest.HeadOID`
+  — a field on a query already being made. `push` says the same thing from the
+  other side, out of the `RemoteTips` it already reads for its leases. Both
+  compare with one local read per branch and nothing extra over the network,
+  both are optional capabilities (`link.Service.Tips`, `push.Git`), and in both
+  the zero value must not read as the reassuring answer: an uncompared branch
+  says nothing rather than "up to date".
 - `status` renders a branch nothing describes instead of refusing it, through
   the typed `stack.Undescribed`. "Nothing is stacked here" is an answer to what
   a read-only triage command was asked; only `status` renders it, and every

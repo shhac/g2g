@@ -338,3 +338,42 @@ func TestStatusAdviceStaysOneLineForMachines(t *testing.T) {
 	}
 	t.Errorf("no blocked record in:\n%s", out.String())
 }
+
+// A branch whose pull request is missing its latest work read as plain
+// "aligned", because alignment is about the base. The annotation goes on the
+// node the reader is already looking at, and only where there is something to
+// say — a current pull request stays unannotated so the stale ones stand out.
+func TestStatusSaysWhenAPullRequestIsMissingTheBranchesWork(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		currency link.Currency
+		want     string
+	}{
+		{name: "current", currency: link.Currency{}, want: "aligned"},
+		{name: "unpushed", currency: link.Currency{Unpushed: 2}, want: "aligned · 2 commits not pushed"},
+		{name: "one unpushed reads singular", currency: link.Currency{Unpushed: 1}, want: "aligned · 1 commit not pushed"},
+		{name: "diverged", currency: link.Currency{Diverged: true}, want: "aligned · PR is on a commit this branch does not have"},
+		{name: "diverged with local work", currency: link.Currency{Diverged: true, Unpushed: 3}, want: "3 commits here are not on it"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{
+				Discovery: stack.Discovery{
+					Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
+					PullRequests: []githubstack.PullRequest{{Head: "synthetic-top", Number: 12, State: "OPEN"}},
+				},
+				Currency: map[string]link.Currency{"synthetic-top": test.currency},
+			}
+			var out bytes.Buffer
+			if err := writeStatus(&out, plan, Presentation{}); err != nil {
+				t.Fatal(err)
+			}
+
+			if !strings.Contains(out.String(), test.want) {
+				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
+			}
+			if test.name == "current" && strings.Contains(out.String(), "aligned ·") {
+				t.Errorf("a current pull request was annotated anyway:\n%s", out.String())
+			}
+		})
+	}
+}

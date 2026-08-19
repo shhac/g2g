@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/shhac/g2g/internal/stack"
 	"slices"
 	"strings"
@@ -455,4 +456,105 @@ func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) 
 		return graphite.Forest{Parents: map[string]string{"main": "", "beta": "main"}, Roots: []string{"main"}}, nil
 	}
 	return graphite.Forest{Parents: map[string]string{"main": "", "alpha": "main", "beta": "alpha"}, Roots: []string{"main"}}, nil
+}
+
+// currencyTips answers the two local reads that compare a branch with the
+// commit its pull request is on.
+type currencyTips struct {
+	local  map[string]string
+	known  map[string]bool
+	ours   map[string]int
+	theirs map[string]int
+}
+
+func (t currencyTips) Resolve(_ context.Context, revision string) (string, error) {
+	if tip, ok := t.local[revision]; ok {
+		return tip, nil
+	}
+	if t.known[revision] {
+		return revision, nil
+	}
+	return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
+}
+
+func (t currencyTips) Divergence(_ context.Context, _, target string) (int, int, error) {
+	return t.theirs[target], t.ours[target], nil
+}
+
+// "aligned" is a statement about a pull request's base, so it said nothing
+// about whether the pull request has the work sitting in the branch. A branch
+// with two unpushed commits read as healthy.
+func TestAPlanReportsWhetherEachPullRequestHasTheBranchesWork(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		tips currencyTips
+		want Currency
+	}{
+		{
+			name: "the pull request is on the branch's commit",
+			tips: currencyTips{local: map[string]string{"synthetic-top": "same"}, known: map[string]bool{"same": true}},
+			want: Currency{},
+		},
+		{
+			name: "the branch has commits the pull request does not",
+			tips: currencyTips{
+				local: map[string]string{"synthetic-top": "local"},
+				known: map[string]bool{"pr-head": true},
+				ours:  map[string]int{"synthetic-top": 2},
+			},
+			want: Currency{Unpushed: 2},
+		},
+		{
+			name: "the pull request is on a commit this repository does not have",
+			tips: currencyTips{local: map[string]string{"synthetic-top": "local"}},
+			want: Currency{Diverged: true},
+		},
+		{
+			name: "both have commits the other does not",
+			tips: currencyTips{
+				local:  map[string]string{"synthetic-top": "local"},
+				known:  map[string]bool{"pr-head": true},
+				ours:   map[string]int{"synthetic-top": 1},
+				theirs: map[string]int{"synthetic-top": 3},
+			},
+			want: Currency{Unpushed: 1, Diverged: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			headOID := "pr-head"
+			if test.tips.local["synthetic-top"] == "same" {
+				headOID = "same"
+			}
+			plan := Plan{Discovery: stack.Discovery{
+				Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
+				PullRequests: []githubstack.PullRequest{{Number: 7, Head: "synthetic-top", HeadOID: headOID, Base: "main", State: "OPEN"}},
+			}}
+
+			currency, err := (Service{Tips: test.tips}).currency(context.Background(), plan)
+			if err != nil {
+				t.Fatalf("currency() error = %v", err)
+			}
+			if got := currency["synthetic-top"]; got != test.want {
+				t.Errorf("currency = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
+// Without a reader there is nothing to say, and saying nothing is what every
+// reader saw before. It must not become a claim that the pull request is
+// current.
+func TestCurrencyIsAbsentRatherThanAssumedWithoutAReader(t *testing.T) {
+	plan := Plan{Discovery: stack.Discovery{
+		Snapshot:     stack.Snapshot{Branches: []string{"synthetic-top"}},
+		PullRequests: []githubstack.PullRequest{{Number: 7, Head: "synthetic-top", HeadOID: "pr-head", Base: "main", State: "OPEN"}},
+	}}
+
+	currency, err := (Service{}).currency(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("currency() error = %v", err)
+	}
+	if _, reported := currency["synthetic-top"]; reported {
+		t.Error("currency was reported with no reader to compute it from")
+	}
 }

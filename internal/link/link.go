@@ -4,6 +4,7 @@ package link
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -32,6 +33,17 @@ type GitHub interface {
 	Link(context.Context, string, []string) error
 }
 
+// Tips compares a branch with the commit its pull request is on.
+//
+// It is optional. Without it currency is simply not reported, which is what
+// every reader saw before: a pull request described as aligned while it did not
+// contain the work sitting in the branch, because alignment is a statement
+// about the base and never about the contents.
+type Tips interface {
+	Resolve(ctx context.Context, revision string) (string, error)
+	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
+}
+
 // Service coordinates a safe link plan.
 type Service struct {
 	Git Git
@@ -39,13 +51,30 @@ type Service struct {
 	// branch. link only needs a path, so it works with any of them.
 	Selector stack.PathSelector
 	GitHub   GitHub
+	// Tips answers whether each pull request is on the branch's current commit.
+	Tips Tips
 }
+
+// Currency is how a branch stands against the commit its pull request is on.
+type Currency struct {
+	// Unpushed is how many commits the branch has that its pull request does
+	// not. Diverged means the pull request is on a commit this branch does not
+	// contain at all, so there is no count to give.
+	Unpushed int
+	Diverged bool
+}
+
+// Current reports a pull request that already has everything the branch does.
+func (c Currency) Current() bool { return c.Unpushed == 0 && !c.Diverged }
 
 // Plan is the validated, printable bottom-to-top linking action: the shared
 // discovery every command performs, plus link's own policy verdict on it.
 type Plan struct {
 	stack.Discovery
 	Issues []Issue
+	// Currency says, per branch, whether its pull request is on the commit the
+	// branch is on. Absent when no Tips reader was configured.
+	Currency map[string]Currency
 }
 
 // IssueKind classifies why a node blocks apply. link's policy is stricter than
@@ -150,6 +179,10 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches, plan.Parents)
+	plan.Currency, err = s.currency(ctx, plan)
+	if err != nil {
+		return Plan{}, err
+	}
 	if len(plan.Issues) != 0 {
 		diagnostic.Event(ctx, "link.plan", diagnostic.Field{Key: "decision", Value: "blocked"}, diagnostic.Field{Key: "reasons", Value: issueSummary(plan.Issues)})
 	} else if plan.NothingToLink() {
@@ -216,7 +249,9 @@ func issueSummary(issues []Issue) string {
 // Equal compares every fact that can affect the command shown in a preview or
 // the GitHub action performed after revalidation.
 func (left Plan) Equal(right Plan) bool {
-	return left.Discovery.Equal(right.Discovery) && slices.Equal(left.Issues, right.Issues)
+	return left.Discovery.Equal(right.Discovery) &&
+		slices.Equal(left.Issues, right.Issues) &&
+		maps.Equal(left.Currency, right.Currency)
 }
 
 func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string, parents map[string]string) []Issue {
@@ -251,4 +286,50 @@ func steps(prs []githubstack.PullRequest, baseBranch string, branches []string, 
 		return githubstack.Across(parents, branches, prs)
 	}
 	return githubstack.Along(baseBranch, branches, prs)
+}
+
+// currency compares each branch with the commit its open pull request is on.
+//
+// A pull request whose head this repository does not have is reported as
+// diverged rather than counted: the commits are not here to count, and
+// fetching them to say how many would turn a read into a network write.
+func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, error) {
+	if s.Tips == nil {
+		return nil, nil
+	}
+	open := map[string]githubstack.PullRequest{}
+	for branch, resolution := range githubstack.ResolveHeads(plan.PullRequests) {
+		if resolution.Open != nil {
+			open[branch] = *resolution.Open
+		}
+	}
+	currency := make(map[string]Currency, len(plan.Branches))
+	for _, branch := range plan.Branches {
+		pr, published := open[branch]
+		if !published || pr.HeadOID == "" {
+			continue
+		}
+		local, err := s.Tips.Resolve(ctx, branch)
+		if err != nil {
+			return nil, err
+		}
+		if local == pr.HeadOID {
+			currency[branch] = Currency{}
+			continue
+		}
+		if _, err := s.Tips.Resolve(ctx, pr.HeadOID); err != nil {
+			currency[branch] = Currency{Diverged: true}
+			continue
+		}
+		theirs, ours, err := s.Tips.Divergence(ctx, pr.HeadOID, branch)
+		if err != nil {
+			return nil, err
+		}
+		if theirs > 0 {
+			currency[branch] = Currency{Unpushed: ours, Diverged: true}
+			continue
+		}
+		currency[branch] = Currency{Unpushed: ours}
+	}
+	return currency, nil
 }

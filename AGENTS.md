@@ -173,6 +173,26 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   Graphite-backed selection produces. The golden files are the check: a diff
   there during selection work is a bug, not an update.
 
+## Journeys
+
+`internal/cli/journey_test.go` drives a person through a stack while the remote
+moves under them, against a real bare remote and a real second clone standing in
+for a colleague. Everything is real except GitHub, which has no local stand-in.
+
+This exists because a PATH fake answers whatever it is asked, and the failures
+that keep recurring are about what Git actually does: a ref moves and the
+working tree, the index, or another worktree does not follow. Three shipped
+releases had that bug in three different places.
+
+- **Assert a clean tree after every mutation.** `world.assertClean` is the check
+  that catches the recurring class. Changes nobody made are the symptom every
+  time.
+- **Assert against the remote, not the command's own output.** A push that
+  claims success and a ref that arrived are different facts.
+- **Model the state exactly.** A trunk that has only moved ahead is not
+  diverged, it fast-forwards; divergence needs commits on both sides. Getting
+  that wrong writes a test that passes for the wrong reason.
+
 ## Fixtures and data hygiene
 
 - Put reusable Graphite display fixtures in `internal/graphite/testdata/`; keep

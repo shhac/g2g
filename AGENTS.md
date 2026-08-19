@@ -131,6 +131,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   branch before any rewrite, or the range silently widens to include the base's
   own commits. Every range handed to an engine starts at the topmost step's
   fork point, and a branch whose parent is being rewritten is rewritten too.
+- A rewrite that moves the branch you are standing on must reconcile the
+  checkout: the replay engine and a collapse both move refs without one, so the
+  index and working tree are left describing the old commit, which git reports
+  as changes nobody made and which blocks the next `git switch`. `git reset
+  --keep HEAD` cannot fix this and was the previous answer — `--keep` updates
+  what differs between the target and HEAD, and by then they are the same
+  commit. `Service.standingOn` records both ends before anything moves and
+  `resettle` hands them to `git.Client.SwitchTree` (`read-tree -m -u`), which is
+  the plumbing `git switch` itself uses.
 - A rewrite refuses a branch another worktree has checked out. It does not need
   to check a branch out to move it, so nothing stopped it: Git updated the ref,
   that worktree's index still described the old commit, and its next

@@ -48,17 +48,71 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Absorb {
 		return s.absorb(ctx, plan)
 	}
+	// Where the checkout stands before anything moves. A rewrite that moves the
+	// branch you are on leaves the index and working tree describing the old
+	// commit, so the two ends have to be known to reconcile them.
+	standing, err := s.standingOn(ctx)
+	if err != nil {
+		return err
+	}
 	needed, err := s.settleCollapses(ctx, plan)
 	if err != nil {
 		return err
 	}
 	if !needed {
+		if err := s.resettle(ctx, standing); err != nil {
+			return err
+		}
 		return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
 	}
 	if plan.Clean {
-		return s.replay(ctx, plan)
+		return s.replay(ctx, plan, standing)
 	}
 	return s.rebase(ctx, plan)
+}
+
+// standingOn records the branch the checkout is on and where it points.
+//
+// A detached HEAD has no branch for a rewrite to move underneath it, and an
+// unreadable one is not worth failing a rewrite for, so both answer with an
+// empty branch and nothing to reconcile later.
+func (s Service) standingOn(ctx context.Context) (checkout, error) {
+	branch, err := s.Git.CurrentBranch(ctx)
+	if err != nil || branch == "" {
+		return checkout{}, nil
+	}
+	tip, err := s.Git.Resolve(ctx, branch)
+	if err != nil {
+		return checkout{}, nil
+	}
+	return checkout{Branch: branch, Tip: tip}, nil
+}
+
+// checkout is where the working tree stood before a rewrite.
+type checkout struct {
+	Branch string
+	Tip    string
+}
+
+// resettle brings the index and working tree to the branch's new tip.
+//
+// The rebase engine checks out as it goes, so this is only for the paths that
+// move a ref without one: the replay engine, and a collapse, which is a bare
+// ref move and could strand the checkout just as easily.
+func (s Service) resettle(ctx context.Context, standing checkout) error {
+	if standing.Branch == "" {
+		return nil
+	}
+	tip, err := s.Git.Resolve(ctx, standing.Branch)
+	if err != nil || tip == standing.Tip {
+		return err
+	}
+	diagnostic.Event(ctx, "restack.resettle",
+		diagnostic.Field{Key: "branch", Value: standing.Branch},
+		diagnostic.Field{Key: "from", Value: standing.Tip},
+		diagnostic.Field{Key: "to", Value: tip},
+	)
+	return s.Git.SwitchTree(ctx, standing.Tip, tip)
 }
 
 // settleCollapses moves the branches with nothing left to contribute and
@@ -124,7 +178,7 @@ func (s Service) absorb(ctx context.Context, plan Plan) error {
 	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
 }
 
-func (s Service) replay(ctx context.Context, plan Plan) error {
+func (s Service) replay(ctx context.Context, plan Plan, standing checkout) error {
 	ranges := plan.ranges()
 	diagnostic.Event(ctx, "restack.replay", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
 	if err := s.Git.Replay(ctx, plan.onto(), ranges); err != nil {
@@ -134,8 +188,9 @@ func (s Service) replay(ctx context.Context, plan Plan) error {
 		return err
 	}
 	// A replay moves refs without touching the index, so a user standing on a
-	// rewritten branch would otherwise see changes they never made.
-	if err := s.Git.ResetKeep(ctx); err != nil {
+	// rewritten branch would otherwise see changes they never made — and be
+	// unable to switch away, because git refuses to overwrite them.
+	if err := s.resettle(ctx, standing); err != nil {
 		return err
 	}
 	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())

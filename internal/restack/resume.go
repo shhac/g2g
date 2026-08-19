@@ -98,15 +98,25 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if pass > len(plan.Discovery.Branches) {
 		return finishComplete, fmt.Errorf("restack did not settle after %d passes · run g2g restack to see the current state", pass)
 	}
+	// Where the checkout stands before this pass moves anything. A resume
+	// finishes through the same engines, so it can strand the working tree the
+	// same way.
+	standing, err := s.standingOn(ctx)
+	if err != nil {
+		return finishComplete, err
+	}
 	needed, err := s.settleCollapses(ctx, plan)
 	if err != nil {
 		return finishComplete, err
 	}
 	if !needed {
+		if err := s.resettle(ctx, standing); err != nil {
+			return finishComplete, err
+		}
 		return finishAgain, nil
 	}
 	if plan.Clean {
-		if err := s.replay(ctx, plan); err != nil {
+		if err := s.replay(ctx, plan, standing); err != nil {
 			return finishComplete, err
 		}
 		return finishComplete, nil

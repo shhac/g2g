@@ -269,13 +269,29 @@ func (c Client) FastForward(ctx context.Context, branch, to string) error {
 	return c.UpdateBranch(ctx, branch, target)
 }
 
-// ResetKeep points the index and working tree at the current branch tip.
+// SwitchTree updates the index and working tree from one commit to another,
+// without moving any ref.
 //
 // A replay moves refs without touching the working tree, so a user standing on
-// a rewritten branch is left with an index describing the old commit — which
-// git reports as changes they never made. This resyncs it, and refuses rather
+// a rewritten branch is left with an index and tree describing the old commit —
+// which git reports as changes they never made, and which blocks the next
+// git switch with "local changes would be overwritten".
+//
+// "git reset --keep HEAD" was the previous answer and could not work: --keep
+// updates the files that differ between the target and HEAD, and by the time it
+// runs the ref has already moved, so the two are the same commit and there is
+// nothing left for it to reconcile. The old tip has to be named explicitly,
+// which is why this takes both ends.
+//
+// read-tree is the plumbing git switch itself uses for this. It refuses rather
 // than discarding anything it would have to overwrite.
-func (c Client) ResetKeep(ctx context.Context) error {
-	_, err := c.run(ctx, "reset", "--keep", "HEAD")
+func (c Client) SwitchTree(ctx context.Context, from, to string) error {
+	if err := safeRef(from); err != nil {
+		return err
+	}
+	if err := safeRef(to); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "read-tree", "-m", "-u", from, to)
 	return err
 }

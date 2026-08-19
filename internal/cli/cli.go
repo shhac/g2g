@@ -256,7 +256,17 @@ func commandContext(ctx context.Context, cmd *cobra.Command, operation, mode, br
 }
 
 func newCompletion(root *cobra.Command) *cobra.Command {
-	cmd := &cobra.Command{Use: "completion [bash|zsh|fish]", Short: "Generate shell completion scripts", Args: cobra.ExactArgs(1)}
+	// Hidden, not removed. This is run once by a shell rc or by the Homebrew
+	// formula's generate_completions_from_executable, and never typed while
+	// working on a stack, so it is noise in a help listing whose other entries
+	// are all things a person runs. Hidden affects the listing alone: the
+	// command still executes, which is what the formula depends on.
+	cmd := &cobra.Command{
+		Use:    "completion [bash|zsh|fish]",
+		Short:  "Generate shell completion scripts",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true,
+	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		switch args[0] {
 		case "bash":

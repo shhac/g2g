@@ -35,6 +35,10 @@ type fakeGit struct {
 	rebases  []localgit.Range
 	ontos    []string
 	resets   int
+	switched []string
+	// tips is where a branch points after a rewrite, which is not the same
+	// question as what objects the repository has.
+	tips     map[string]string
 	pinned   map[string]string
 	restored map[string]string
 	steps    []string
@@ -66,6 +70,9 @@ func (f *fakeGit) IsAncestor(_ context.Context, ancestor, descendant string) (bo
 }
 
 func (f *fakeGit) Resolve(_ context.Context, revision string) (string, error) {
+	if moved, rewritten := f.tips[revision]; rewritten {
+		return moved, nil
+	}
 	if resolved, listed := f.objects[revision]; listed {
 		return resolved, nil
 	}
@@ -90,6 +97,15 @@ func (f *fakeGit) Replay(_ context.Context, onto string, ranges []localgit.Range
 	}
 	for _, replayed := range ranges {
 		f.ancestors[replayed.To] = append(f.ancestors[replayed.To], onto)
+		// The ref moves. Leaving it where it was hid the whole reason the
+		// checkout needs reconciling afterwards: nothing appeared to change,
+		// so nothing appeared to need bringing up to date. It is kept apart
+		// from objects so ancestry keeps answering about the shape, which is a
+		// different question from where a branch now points.
+		if f.tips == nil {
+			f.tips = map[string]string{}
+		}
+		f.tips[replayed.To] = "replayed-" + replayed.To
 	}
 	return nil
 }
@@ -130,7 +146,14 @@ func (f *fakeGit) RebaseInProgress(context.Context) (bool, error) { return f.inP
 
 func (f *fakeGit) ConflictedPaths(context.Context) ([]string, error) { return f.conflicted, nil }
 
-func (f *fakeGit) ResetKeep(context.Context) error { f.resets++; return nil }
+// SwitchTree records the two ends it was asked to reconcile, which is the only
+// way to see that the checkout was brought to the branch's new tip rather than
+// left describing the old one.
+func (f *fakeGit) SwitchTree(_ context.Context, from, to string) error {
+	f.resets++
+	f.switched = append(f.switched, from+"->"+to)
+	return nil
+}
 
 func (f *fakeGit) CherryDropped(_ context.Context, upstream, head string) ([]string, error) {
 	return f.dropped[upstream+".."+head], nil
@@ -304,9 +327,17 @@ func TestCleanApplyReplaysAndResyncsTheIndex(t *testing.T) {
 	if journal.present {
 		t.Error("a clean rewrite journalled an operation that cannot be interrupted")
 	}
-	// Fork points describe the world after the rewrite, not before it.
-	if fork := store.graph.Edges["synthetic-b"].ForkPoint; fork != "a-old" {
-		t.Errorf("synthetic-b fork point = %q", fork)
+	// Fork points describe the world after the rewrite, not before it: the
+	// parent's new tip, not the commit it no longer points at. While the fake
+	// left refs where they were those were the same value, so this asserted
+	// nothing.
+	if fork := store.graph.Edges["synthetic-b"].ForkPoint; fork != "replayed-synthetic-a" {
+		t.Errorf("synthetic-b fork point = %q, want the parent's post-rewrite tip", fork)
+	}
+	// The checkout is brought to where its branch now points, from where it
+	// stood, which is the pair git needs to update the tree at all.
+	if got := strings.Join(git.switched, ","); got != "b-old->replayed-synthetic-b" {
+		t.Errorf("checkout reconciled as %q, want the old tip to the new one", got)
 	}
 	if git.pinned["synthetic-a"] == "" {
 		t.Error("fork points were not pinned, so they can be collected")

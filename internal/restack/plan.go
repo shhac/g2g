@@ -34,6 +34,15 @@ type Git interface {
 	UpdateBranch(context.Context, string, string) error
 }
 
+// WorktreeReader reports branches other worktrees have checked out.
+//
+// It is an optional capability rather than a method on Git: every fake in the
+// tests implements Git, and a rewrite that could not ask was safe before this
+// check existed and stays safe now.
+type WorktreeReader interface {
+	CheckedOutElsewhere(ctx context.Context) (map[string]string, error)
+}
+
 // Service rewrites stacks so their contents match their recorded structure.
 type Service struct {
 	Git     Git
@@ -250,6 +259,14 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto strin
 		plan.Blocked = blocked
 		return plan, nil
 	}
+	held, err := s.heldElsewhere(ctx, discovery.Branches)
+	if err != nil {
+		return Plan{}, err
+	}
+	if held != "" {
+		plan.Blocked = held
+		return plan, nil
+	}
 	steps, err := s.steps(ctx, discovery, onto)
 	if err != nil {
 		return Plan{}, err
@@ -439,4 +456,36 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 	// being returned alongside read as though a caller might see both, when the
 	// only caller bails on the error first.
 	return updates, clean, true, nil
+}
+
+// heldElsewhere refuses to rewrite a branch another worktree has checked out.
+//
+// A rewrite moves a ref without checking anything out, so nothing stopped it
+// from moving a branch another worktree held. Git updated the ref; that
+// worktree's index and working tree still described the old commit, so its next
+// git status reported staged changes nobody made. The preview said "applies
+// without touching your working tree or checked-out branch" while doing it,
+// which was true of the worktree it ran in and false of the other.
+//
+// A Git too old to list worktrees, or a failure to ask, is not a reason to
+// refuse a rewrite that was fine before this check existed.
+func (s Service) heldElsewhere(ctx context.Context, branches []string) (string, error) {
+	holder, ok := s.Git.(WorktreeReader)
+	if !ok {
+		return "", nil
+	}
+	elsewhere, err := holder.CheckedOutElsewhere(ctx)
+	if err != nil || len(elsewhere) == 0 {
+		return "", nil
+	}
+	held := make([]string, 0, len(branches))
+	for _, branch := range branches {
+		if path, taken := elsewhere[branch]; taken {
+			held = append(held, fmt.Sprintf("%s (%s)", branch, path))
+		}
+	}
+	if len(held) == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("checked out in another worktree: %s · rewriting it there would leave that worktree describing a commit it no longer has · close it or narrow the selection", strings.Join(held, ", ")), nil
 }

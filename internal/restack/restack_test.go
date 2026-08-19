@@ -960,3 +960,71 @@ func TestALegacyEdgeThatIsStillAlignedIsNotRefused(t *testing.T) {
 		t.Fatalf("Blocked = %q for an aligned legacy edge", plan.Blocked)
 	}
 }
+
+// holdingGit reports branches other worktrees have checked out.
+type holdingGit struct {
+	*fakeGit
+	elsewhere map[string]string
+	err       error
+}
+
+func (g holdingGit) CheckedOutElsewhere(context.Context) (map[string]string, error) {
+	return g.elsewhere, g.err
+}
+
+// A rewrite moves a ref without checking anything out, so nothing stopped it
+// moving a branch another worktree held. Git updated the ref, that worktree's
+// index still described the old commit, and its next git status reported staged
+// changes nobody made — while the preview said it had touched no checked-out
+// branch.
+func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		elsewhere map[string]string
+		err       error
+		blocked   bool
+	}{
+		{
+			name:      "a selected branch is held",
+			elsewhere: map[string]string{"synthetic-b": "/synthetic/other"},
+			blocked:   true,
+		},
+		{
+			name:      "a branch outside the selection is not a conflict",
+			elsewhere: map[string]string{"synthetic-elsewhere": "/synthetic/other"},
+		},
+		{name: "no other worktree"},
+		{
+			// Refusing a rewrite that was safe before this check existed would
+			// make an unrelated Git failure break restack entirely.
+			name: "a failure to ask is not a refusal",
+			err:  errors.New("synthetic worktree failure"),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			git := holdingGit{fakeGit: stackGit(), elsewhere: test.elsewhere, err: test.err}
+			service, _, _ := newService(git.fakeGit, stack())
+			service.Git = git
+
+			plan, err := service.Plan(context.Background(), selection(), "", false)
+			if err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+
+			if blocked := plan.Blocked != ""; blocked != test.blocked {
+				t.Fatalf("Blocked = %q, want blocked=%t", plan.Blocked, test.blocked)
+			}
+			if !test.blocked {
+				return
+			}
+			for _, want := range []string{"synthetic-b", "/synthetic/other", "another worktree"} {
+				if !strings.Contains(plan.Blocked, want) {
+					t.Errorf("refusal %q does not name %q", plan.Blocked, want)
+				}
+			}
+			if len(plan.Steps) != 0 {
+				t.Errorf("Steps = %v, want none once blocked", plan.Branches())
+			}
+		})
+	}
+}

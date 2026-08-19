@@ -124,6 +124,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   branch before any rewrite, or the range silently widens to include the base's
   own commits. Every range handed to an engine starts at the topmost step's
   fork point, and a branch whose parent is being rewritten is rewritten too.
+- A rewrite refuses a branch another worktree has checked out. It does not need
+  to check a branch out to move it, so nothing stopped it: Git updated the ref,
+  that worktree's index still described the old commit, and its next
+  `git status` reported staged changes nobody made — while the preview said it
+  had touched no checked-out branch. `git.Client.CheckedOutElsewhere` reads
+  `worktree list --porcelain` and excludes the current worktree; it is an
+  optional `restack.WorktreeReader`, so a Git that cannot answer leaves the
+  rewrite exactly as safe as it was before the check existed.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

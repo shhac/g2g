@@ -43,6 +43,13 @@ func Permits(sources []Source, from Source) bool {
 	return false
 }
 
+// TrunkEvidence reports the branch a remote calls its default. It is evidence
+// and never authority: it may choose how advice is phrased, and it may never
+// decide structure.
+type TrunkEvidence interface {
+	DefaultBranch(ctx context.Context, remote string) (string, error)
+}
+
 // Selector produces the ordered path a command acts on, from one source.
 //
 // Describes is separate from Select so precedence can be decided without
@@ -65,6 +72,11 @@ type Resolver struct {
 	Git Git
 	// Selectors are consulted in precedence order.
 	Selectors []Selector
+	// Trunks answers whether a branch is the repository's default, so advice
+	// for a trunk can differ from advice for a branch missing its parent. It is
+	// optional: without it every branch reads as the latter, which is what it
+	// did before.
+	Trunks TrunkEvidence
 	// OnRequest are sources reachable only when the caller names one with
 	// --from. They are never consulted by precedence.
 	//
@@ -109,9 +121,43 @@ func (r Resolver) Select(ctx context.Context, selection Selection, command strin
 		return snapshot, nil
 	}
 	if selection.From != "" {
-		return Snapshot{}, fmt.Errorf("%s does not describe %q · rerun without --from to let any source answer", selection.From, target)
+		return Snapshot{}, fmt.Errorf("%s does not describe %q · %s", selection.From, target, r.pinnedRemedy(ctx, selection.From, target))
 	}
-	return Snapshot{}, fmt.Errorf("no source describes %q · %s", target, r.remedy())
+	return Snapshot{}, Undescribed{Branch: target, Trunk: r.looksLikeTrunk(ctx, target), remedy: r.remedy(ctx, target)}
+}
+
+// Undescribed is the state of a branch no source places.
+//
+// It is a type rather than a sentence because two commands want different
+// things from it. A command that mutates has nothing to act on and must
+// refuse. A read-only one has been asked what the state is, and "nothing is
+// stacked here" is a complete answer to that — refusing to say it is how
+// status came to exit non-zero on a repository that is simply not stacked yet,
+// while graph rendered the same fact happily.
+type Undescribed struct {
+	Branch string
+	// Trunk reports that this branch is where stacks would start rather than a
+	// branch missing its parent. Nothing sits under a trunk by definition, so
+	// having no recorded parent is its ordinary state and not a gap to fill.
+	Trunk  bool
+	remedy string
+}
+
+func (e Undescribed) Error() string {
+	return fmt.Sprintf("no source describes %q · %s", e.Branch, e.remedy)
+}
+
+// looksLikeTrunk asks what the remote calls its default branch.
+//
+// Not knowing is an ordinary answer and so is a failure to ask: the whole value
+// of this is choosing a better sentence, so anything that goes wrong leaves the
+// sentence as it was.
+func (r Resolver) looksLikeTrunk(ctx context.Context, branch string) bool {
+	if r.Trunks == nil {
+		return false
+	}
+	def, err := r.Trunks.DefaultBranch(ctx, "")
+	return err == nil && def != "" && def == branch
 }
 
 // pinned narrows resolution to one source when the caller named it.
@@ -142,7 +188,15 @@ func (r Resolver) sources() []string {
 
 // remedy names what to do about a branch nothing describes, listing only the
 // sources this build was actually given.
-func (r Resolver) remedy() string {
+//
+// A trunk gets different advice, because the usual advice is wrong there:
+// telling someone to record a parent for the branch their stacks start from
+// asks them to break the one rule the graph has, and the command named would
+// refuse anyway.
+func (r Resolver) remedy(ctx context.Context, branch string) string {
+	if r.looksLikeTrunk(ctx, branch) {
+		return fmt.Sprintf("it is this repository's default branch, so nothing is stacked on it yet · start one with g2g track --branch <child> --parent %s", branch)
+	}
 	options := make([]string, 0, len(r.Selectors))
 	for _, selector := range r.Selectors {
 		switch selector.Source() {
@@ -156,6 +210,24 @@ func (r Resolver) remedy() string {
 		return "no structure source is configured"
 	}
 	return strings.Join(options, ", or ")
+}
+
+// pinnedRemedy answers a --from that did not match.
+//
+// "rerun without --from to let any source answer" is advice worth giving only
+// when another source might: in a repository with no pull requests at all, the
+// reader has just been sent to try something that fails the same way.
+func (r Resolver) pinnedRemedy(ctx context.Context, from Source, branch string) string {
+	for _, selector := range r.Selectors {
+		describes, err := selector.Describes(ctx, branch)
+		if err == nil && describes {
+			return "rerun without --from to let any source answer"
+		}
+	}
+	if r.looksLikeTrunk(ctx, branch) {
+		return fmt.Sprintf("nothing is stacked on it yet, and no other source describes it either · start one with g2g track --branch <child> --parent %s", branch)
+	}
+	return "and no other source describes it either · " + r.remedy(ctx, branch)
 }
 
 // GraphiteSelector describes branches Graphite declares.

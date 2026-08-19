@@ -21,12 +21,27 @@ type Pinner interface {
 	UnpinForkPoint(ctx context.Context, branch string) error
 }
 
+// TrunkEvidence reports the branch a remote calls its default.
+//
+// It is optional and it is evidence, never authority: the ref it reads is
+// written by clone and can be missing or stale, so it may choose how advice is
+// phrased and may never decide structure. A service without one behaves
+// exactly as before, which is what keeps it from becoming a requirement.
+type TrunkEvidence interface {
+	DefaultBranch(ctx context.Context, remote string) (string, error)
+}
+
 type Service struct {
 	Git   Ancestry
 	Store Store
 	// Refs pins fork points so they survive garbage collection. A service
 	// without one still works; its fork points are simply unprotected.
 	Refs Pinner
+	// Trunks answers whether a branch is the repository's default. The g2g
+	// graph's own trunks are branches nothing sits under, so an empty store has
+	// none at all — which is precisely when someone standing on main is told to
+	// give it a parent.
+	Trunks TrunkEvidence
 }
 
 // Selection is the no-checkout selector the graph commands share.
@@ -47,12 +62,17 @@ type Discovery struct {
 	// StorePath names the file an apply would write, so a preview can be
 	// specific about what it is about to change.
 	StorePath string
+	// DefaultTrunk is the branch the remote calls its default, empty when
+	// nothing says. It is advisory: it changes what a preview suggests and
+	// never what a command selects.
+	DefaultTrunk string
 }
 
 // Equal compares every fact that can change what a graph command does.
 func (d Discovery) Equal(other Discovery) bool {
 	return d.Target == other.Target &&
 		d.TargetSource == other.TargetSource &&
+		d.DefaultTrunk == other.DefaultTrunk &&
 		d.Scope == other.Scope &&
 		d.StorePath == other.StorePath &&
 		d.Graph.Equal(other.Graph) &&
@@ -139,7 +159,24 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 		diagnostic.Field{Key: "tracked", Value: fmt.Sprint(len(adopted.Edges))},
 		diagnostic.Field{Key: "selected", Value: strings.Join(branches, ",")},
 	)
-	return Discovery{Graph: adopted, Target: target, TargetSource: source, Scope: scope, Branches: branches, States: states, StorePath: path}, nil
+	return Discovery{Graph: adopted, Target: target, TargetSource: source, Scope: scope, Branches: branches, States: states, StorePath: path, DefaultTrunk: s.defaultTrunk(ctx)}, nil
+}
+
+// defaultTrunk asks what the remote calls its default branch, and treats not
+// knowing as an ordinary answer.
+//
+// A failure here is never worth failing a read for: the whole value of the
+// answer is that it improves a sentence, so an error means the sentence stays
+// as it was.
+func (s Service) defaultTrunk(ctx context.Context) string {
+	if s.Trunks == nil {
+		return ""
+	}
+	branch, err := s.Trunks.DefaultBranch(ctx, "")
+	if err != nil {
+		return ""
+	}
+	return branch
 }
 
 func (s Service) target(ctx context.Context, requested string) (string, string, error) {

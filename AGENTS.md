@@ -88,6 +88,20 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   from `internal/stack` pulled Graphite and GitHub in transitively, through an
   import line that named neither. `internal/graph/boundary_test.go` checks the
   whole transitive set, because no single import line looked wrong.
+- A trunk is evidenced, never guessed. `git.Client.DefaultBranch` reads
+  `refs/remotes/<remote>/HEAD`, which clone writes, so the ordinary case is
+  answered locally with no network and no config. It is wired as an optional
+  `TrunkEvidence` on `graph.Service` and `stack.Resolver`, and it may only
+  choose how advice is phrased — never what a command selects. An unset ref is
+  an empty answer rather than an error, because a repository nobody has told is
+  ordinary. The g2g graph's own trunks cannot fill this role on their own: they
+  are branches nothing sits under, so an empty store has none at all, which is
+  exactly the repository where someone standing on `main` was told to give it a
+  parent.
+- `status` renders a branch nothing describes instead of refusing it, through
+  the typed `stack.Undescribed`. "Nothing is stacked here" is an answer to what
+  a read-only triage command was asked; only `status` renders it, and every
+  command that mutates still refuses because it still has nothing to act on.
 - `track` previews candidates and blocks rather than choosing; `untrack`
   reports the children it strands rather than reparenting them. Both are the
   same fail-closed rule the Graphite commands follow, and both have tests that

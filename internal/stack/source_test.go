@@ -185,3 +185,83 @@ func (g refusingGraphite) DiscoverStack(context.Context, string, bool) (graphite
 func (g refusingGraphite) ReadForest(context.Context) (graphite.Forest, error) {
 	return graphite.Forest{}, errors.New("synthetic Graphite refusal")
 }
+
+// syntheticTrunks answers what a remote calls its default branch.
+type syntheticTrunks struct {
+	branch string
+	err    error
+}
+
+func (t syntheticTrunks) DefaultBranch(context.Context, string) (string, error) {
+	return t.branch, t.err
+}
+
+// Advice for a trunk cannot be the advice for a branch missing its parent.
+// "run g2g track to record its parent", followed on the branch stacks start
+// from, breaks the one rule the graph has — and names a command that refuses.
+func TestABranchNothingDescribesGetsAdviceThatFitsWhatItIs(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		trunks TrunkEvidence
+		branch string
+		trunk  bool
+		want   string
+		unwant string
+	}{
+		{
+			name:   "the repository's default branch",
+			trunks: syntheticTrunks{branch: "main"},
+			branch: "main",
+			trunk:  true,
+			want:   "g2g track --branch <child> --parent main",
+			unwant: "record its parent",
+		},
+		{
+			name:   "an ordinary branch is still missing a parent",
+			trunks: syntheticTrunks{branch: "main"},
+			branch: "synthetic-feature",
+			want:   "record its parent",
+			unwant: "default branch",
+		},
+		{
+			name:   "no evidence either way keeps the advice it always had",
+			trunks: nil,
+			branch: "main",
+			want:   "record its parent",
+			unwant: "default branch",
+		},
+		{
+			name:   "a failure to ask is not a reason to fail",
+			trunks: syntheticTrunks{err: errors.New("synthetic git failure")},
+			branch: "main",
+			want:   "record its parent",
+			unwant: "default branch",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := Resolver{
+				Git:       resolverGit{current: test.branch},
+				Trunks:    test.trunks,
+				Selectors: []Selector{&recordingSelector{source: SourceG2G}},
+			}
+
+			_, err := resolver.Select(context.Background(), Selection{}, "synthetic command")
+			if err == nil {
+				t.Fatal("Select() error = nil for a branch nothing describes")
+			}
+			var undescribed Undescribed
+			if !errors.As(err, &undescribed) {
+				t.Fatalf("error %v is not an Undescribed a caller can render", err)
+			}
+			if undescribed.Trunk != test.trunk {
+				t.Errorf("Trunk = %t, want %t", undescribed.Trunk, test.trunk)
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("advice %q does not contain %q", err, test.want)
+			}
+			if strings.Contains(err.Error(), test.unwant) {
+				t.Errorf("advice %q still contains %q", err, test.unwant)
+			}
+		})
+	}
+}

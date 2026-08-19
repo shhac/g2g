@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -23,6 +24,16 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 		defer cancel()
 		plan, err := service.Plan(ctx, selection.Selection())
 		if err != nil {
+			// "Nothing is stacked here" is an answer to what status was asked,
+			// not a failure to answer it. Refusing meant the read-only triage
+			// entry point exited non-zero on a repository that is simply not
+			// stacked yet — while graph rendered the very same fact and exited
+			// zero. Only this command renders it; anything that mutates still
+			// has nothing to act on and still refuses.
+			var undescribed stack.Undescribed
+			if errors.As(err, &undescribed) {
+				return writeUnstacked(cmd.OutOrStdout(), undescribed, presentation)
+			}
 			return err
 		}
 		return writeStatus(cmd.OutOrStdout(), plan, presentation)
@@ -172,4 +183,35 @@ func nativeMessage(s githubstack.Membership) string {
 	default:
 		return "GitHub stack: not linked · run g2g link to preview a link."
 	}
+}
+
+// writeUnstacked reports a branch no source places, as a state rather than a
+// refusal.
+//
+// It goes through the same view every other status output does, so --json and
+// --porcelain keep describing the world in one shape: a target, no branches,
+// and a note saying why. A consumer that switched on the exit code to mean
+// "there is a stack" was reading the wrong thing; the branch list says it.
+func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentation) error {
+	view := stackView{
+		Operation:    "status",
+		Target:       undescribed.Branch,
+		TargetSource: "current Git branch",
+		Nodes:        []stackNode{{Branch: undescribed.Branch, Trunk: undescribed.Trunk, Target: true, State: unstackedState(undescribed), Severity: severityNeutral}},
+	}
+	return writeStackView(writer, view.note(unstackedNote(undescribed), severityNeutral), p)
+}
+
+func unstackedState(undescribed stack.Undescribed) string {
+	if undescribed.Trunk {
+		return "trunk · nothing stacked on it"
+	}
+	return "untracked"
+}
+
+func unstackedNote(undescribed stack.Undescribed) string {
+	if undescribed.Trunk {
+		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with g2g track --branch <child> --parent %s.", undescribed.Branch, undescribed.Branch)
+	}
+	return undescribed.Error()
 }

@@ -113,7 +113,14 @@ func graphStatusView(discovery graph.Discovery) stackView {
 	// A trunk has no recorded parent because it is a root, which the node above
 	// already says. Telling someone standing on it to adopt one contradicts the
 	// line they just read and names a command that would refuse.
-	if !discovery.Graph.Tracked(discovery.Target) && !discovery.Graph.IsTrunk(discovery.Target) {
+	//
+	// The graph's own trunks are branches nothing sits under, so an empty store
+	// has none — which is exactly the repository where somebody standing on
+	// main was told to give it a parent. What the remote calls its default
+	// closes that gap without the store having to know anything yet.
+	if untracked := !discovery.Graph.Tracked(discovery.Target); untracked && isTrunk(discovery) {
+		view = view.note(fmt.Sprintf("%s is this repository's default branch · stack on it with g2g track --branch <child> --parent %s.", discovery.Target, discovery.Target), severityNeutral)
+	} else if untracked && !discovery.Graph.IsTrunk(discovery.Target) {
 		view = view.note("This branch has no recorded parent · run g2g track to adopt one.", severityNeutral)
 	}
 	if hidden := hiddenDescendants(discovery); hidden != 0 {
@@ -140,4 +147,10 @@ func hiddenDescendants(discovery graph.Discovery) int {
 		}
 	}
 	return hidden
+}
+
+// isTrunk reports a target nothing should be asked to hang under: the graph
+// already treats it as a root, or the remote calls it the default branch.
+func isTrunk(discovery graph.Discovery) bool {
+	return discovery.Graph.IsTrunk(discovery.Target) || discovery.Target == discovery.DefaultTrunk
 }

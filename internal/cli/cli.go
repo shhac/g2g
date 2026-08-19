@@ -95,14 +95,15 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	githubClient := githubstack.Client{Runner: runner}
 	gitClient := localgit.Client{Runner: runner}
 	graphiteClient := graphite.Client{Runner: runner}
-	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient}
+	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient, Trunks: gitClient}
 	// Precedence is declared here and nowhere else. Adopting a branch into
 	// g2g's own store is the user saying they want g2g to own it, so that
 	// is asked first; Graphite answers for everything it still tracks.
 	restackService := restack.Service{Git: gitClient, Graph: graphService, Journal: restack.FileJournal{Git: gitClient}}
 	graphiteConfigured := func(ctx context.Context) (bool, error) { return graphite.Configured(ctx, gitClient) }
 	selector := stack.Resolver{
-		Git: gitClient,
+		Git:    gitClient,
+		Trunks: gitClient,
 		Selectors: []stack.Selector{
 			stack.G2GSelector{Service: graphService},
 			stack.GraphiteSelector{Git: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},

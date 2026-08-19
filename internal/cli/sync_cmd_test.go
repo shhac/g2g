@@ -66,9 +66,13 @@ type syncCLIRestack struct {
 	stopped  bool
 
 	applies int
+	// scopes records the scope each replay was planned at, which is the only
+	// way to see that the flag reached the step it is meant to widen.
+	scopes []string
 }
 
-func (r *syncCLIRestack) Plan(_ context.Context, _ graph.Selection, onto string, _ bool) (restack.Plan, error) {
+func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto string, _ bool) (restack.Plan, error) {
+	r.scopes = append(r.scopes, string(selection.Scope))
 	plan := restack.Plan{Onto: onto}
 	for _, branch := range r.steps {
 		plan.Steps = append(plan.Steps, restack.Step{Branch: branch, Parent: "synthetic-main", Base: "base-local", ForkPoint: "fork", Tip: "tip"})
@@ -235,5 +239,59 @@ func TestSyncReportsAFailedReplayThatLeftNothingResumable(t *testing.T) {
 	}
 	if !strings.Contains(out, "Not applied") {
 		t.Errorf("the ordinary failure path did not run:\n%s", out)
+	}
+}
+
+// sync was the only mutating stack command with no scope at all, so the
+// boundary it acted on was whatever it hardcoded. Only two values mean
+// anything: replaying less than a whole stack leaves the branches below it on
+// the old base, and the subtree's own fork point did not move, so the replay
+// would do nothing.
+func TestSyncOffersOnlyTheTwoScopesThatMeanSomething(t *testing.T) {
+	for _, test := range []struct {
+		scope   string
+		refused bool
+	}{
+		{scope: "stack"},
+		{scope: "trunk"},
+		{scope: "subtree", refused: true},
+		{scope: "path", refused: true},
+		{scope: "branch", refused: true},
+		{scope: "all", refused: true},
+	} {
+		t.Run(test.scope, func(t *testing.T) {
+			git := &syncCLIGit{remoteTip: "base-remote"}
+			replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
+
+			out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", test.scope)
+
+			if !test.refused {
+				if err != nil {
+					t.Fatalf("sync --scope %s: %v\n%s", test.scope, err, out)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("sync --scope %s was accepted", test.scope)
+			}
+			if !strings.Contains(err.Error(), "stack, trunk") {
+				t.Errorf("refusal does not list what sync takes: %v", err)
+			}
+		})
+	}
+}
+
+// The widening is the whole point of the flag: trunk brings every stack on the
+// trunk up to date, not just the one the target sits in.
+func TestSyncTrunkScopeReachesTheWholeTrunk(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote"}
+	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
+
+	if _, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", "trunk", "--apply"); err != nil {
+		t.Fatalf("sync --scope trunk --apply: %v", err)
+	}
+
+	if replay.scopes[len(replay.scopes)-1] != "trunk" {
+		t.Errorf("the replay was planned at scope %q, want trunk", replay.scopes[len(replay.scopes)-1])
 	}
 }

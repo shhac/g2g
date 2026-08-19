@@ -80,8 +80,9 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	}
 	// The stack being synced: its trunk, so there is a base to advance, and
 	// everything above the target, so the replay covers what depends on it.
-	// Cousins that merely share the trunk are somebody else's stack.
-	discovery, err := s.Graph.Discover(ctx, graph.Selection{Branch: selection.Branch, Scope: graph.ScopeStack})
+	// Cousins that merely share the trunk are somebody else's stack — unless
+	// the caller asked for trunk, which is exactly the request to include them.
+	discovery, err := s.Graph.Discover(ctx, graph.Selection{Branch: selection.Branch, Scope: syncScope(selection.Scope)})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -195,4 +196,18 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		}
 	}
 	return nil
+}
+
+// syncScope is the boundary this sync acts on.
+//
+// The default is the stack: the trunk moved, so everything above it is stale.
+// trunk widens that to every stack on the same trunk, which is the whole of
+// what a person means by "the trunk moved, bring everything up to date". The
+// value is validated at the flag, so anything else here is a caller that did
+// not go through it, and the default is the safe reading.
+func syncScope(scope graph.Scope) graph.Scope {
+	if scope == graph.ScopeTrunk {
+		return graph.ScopeTrunk
+	}
+	return graph.ScopeStack
 }

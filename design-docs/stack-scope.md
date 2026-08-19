@@ -173,12 +173,19 @@ path is visible as part of the whole rather than instead of it.
 
 ## Deferred
 
-**`trunk` and `all` on `restack`.** "Restack everything on this trunk" is a
-reasonable thing to want and is the same as running restack from the trunk. It
-waits for deliberate worktree handling: a wide rewrite is far more likely to
-reach a branch checked out in another worktree, and Git refuses to check out a
-branch that is already checked out elsewhere. `restack` therefore offers
-`branch | subtree | stack`.
+**`trunk` on `restack`, and `sync`'s scope.** Both shipped once the worktree
+handling they waited on existed. A wide rewrite is far more likely to reach a
+branch checked out in another worktree, and a rewrite moves a ref without
+checking anything out, so nothing stopped it corrupting that worktree's view.
+`git.Client.CheckedOutElsewhere` is that handling: the rewrite refuses, naming
+the branch and the worktree. `restack` offers `branch | path | subtree | stack |
+trunk`.
+
+`sync` offers `stack | trunk` and nothing narrower, because nothing narrower
+means anything: it advances the base and replays what sits on it, so replaying a
+subtree would leave the branches below it on the old base while the subtree's own
+fork point had not moved — a replay that does nothing.
 
 **`all` on anything that mutates.** It exists so a repository with several
-trunks can be seen whole, which is a reading problem.
+trunks can be seen whole, which is a reading problem. A rewrite acts on one
+trunk, so spanning them is not a wider version of the same request.

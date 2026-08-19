@@ -51,11 +51,18 @@ var Scopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrun
 // ReadScopes is Scopes plus ScopeAll, for commands that only ever display.
 var ReadScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk, ScopeAll}
 
-// RewriteScopes is what a command that rewrites history may offer. trunk and
-// all wait for deliberate worktree handling: a wide rewrite is far more likely
-// to reach a branch checked out in another worktree, and Git refuses to check
-// out a branch that is already checked out elsewhere.
-var RewriteScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack}
+// RewriteScopes is what a command that rewrites history may offer. all is
+// absent because it spans trunks, and a rewrite acts on one.
+var RewriteScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk}
+
+// SyncScopes is what sync may offer, and it is deliberately only the two.
+//
+// sync advances the base and replays what sits on it, so anything narrower than
+// the whole stack is incoherent: replaying a subtree leaves the branches below
+// it on the old base, and the subtree's own fork point did not move, so the
+// replay would do nothing at all. The only meaningful widening is trunk —
+// "the trunk moved, bring every stack on it up to date".
+var SyncScopes = []Scope{ScopeStack, ScopeTrunk}
 
 // ProjectScopes is what a command that projects onto a GitHub native stack may
 // offer. A native stack is linear, so these are the two that can produce one —

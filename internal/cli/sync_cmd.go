@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
@@ -21,6 +23,9 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validateScope(); err != nil {
+			return err
+		}
 		ctx := commandContext(cmd.Context(), cmd, "sync", applyMode(apply), selection.branch, "")
 		flow := applyFlow[syncer.Plan]{
 			guard: guard,
@@ -60,6 +65,10 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
 	selection.registerBranch(cmd, service.Graph)
+	// sync was the only mutating stack command with no scope at all, so the
+	// boundary it acts on was whatever it hardcoded. Only two values mean
+	// anything here: see shape.SyncScopes.
+	selection.registerScope(cmd, shape.SyncScopes, stack.ScopeStack, scopeUsage("sync", shape.SyncScopes))
 	return cmd
 }
 

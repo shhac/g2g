@@ -81,6 +81,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the plan observed. The
   forest model, per-branch authority, derived (never stored) graph identity,
   and the deliberate absence of restack are decisions, not accidents.
+- `graph --from` reads another record and draws it in g2g's own format, which
+  is how a divergence between the two becomes visible on a real repository
+  rather than only in `internal/stack/parity_test.go`'s fixtures. It offers
+  `stack.OfflineSources` and refuses `pull-request`, because reading a base
+  invokes `gh` and answering without a network is why this command exists apart
+  from `status`. The flag is on the command, in `internal/cli`; it does not
+  breach the rule below, which is about the package.
 - `internal/graph` must depend on Git alone. Importing Graphite or GitHub into
   it, or making any of `graph`/`track`/`untrack` need a network, removes the
   only reason the package exists. The scope vocabulary and the forest traversal

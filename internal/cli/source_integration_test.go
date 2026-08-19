@@ -311,6 +311,9 @@ var stackCommands = []struct {
 	{name: "push", pullRequests: ownedPullRequests},
 	{name: "submit", pullRequests: ownedPullRequests},
 	{name: "retarget", pullRequests: ownedPullRequests},
+	// graph resolves through a source too now, and reads no pull requests at
+	// all: its whole point is answering without a network.
+	{name: "graph", pullRequests: ownedPullRequests},
 }
 
 // The list above is hand-maintained, because each command needs its own
@@ -341,6 +344,12 @@ func TestEveryStackCommandCompletesWithoutGraphite(t *testing.T) {
 	for _, command := range stackCommands {
 		for flag, want := range map[string]string{"--branch": "synthetic-top", "--trunk": "synthetic-trunk"} {
 			t.Run(command.name+" "+flag, func(t *testing.T) {
+				// --trunk says which base a projection sits on, so a command
+				// that projects nothing does not have one. Asserting on a flag
+				// a command never registered would fail for the wrong reason.
+				if !offersFlag(t, command.name, strings.TrimPrefix(flag, "--")) {
+					t.Skipf("%s has no %s", command.name, flag)
+				}
 				recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
 				stdout, _, err := run(t, "__complete", command.name, flag, "")
@@ -665,4 +674,18 @@ func TestPushNeverReachesGitHubWhateverSourceIsNamed(t *testing.T) {
 			recorder.AssertNone("gh ")
 		})
 	}
+}
+
+// offersFlag reports whether a command registered a flag, so a table covering
+// several commands can assert only what each actually has.
+func offersFlag(t *testing.T, command, flag string) bool {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	for _, candidate := range cli.New("v0.0.0-test", &stdout, &stderr).Commands() {
+		if candidate.Name() == command {
+			return candidate.Flags().Lookup(flag) != nil
+		}
+	}
+	t.Fatalf("no command named %q", command)
+	return false
 }

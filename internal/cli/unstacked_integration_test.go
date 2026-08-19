@@ -121,3 +121,28 @@ func TestTheUnstackedStateIsDescribedInJSONToo(t *testing.T) {
 		}
 	}
 }
+
+// graph answers without a network. It gained --from so the two records can be
+// compared in one format, and that must not have brought gh in with it.
+func TestGraphReachesNoGitHubWhateverSourceIsNamed(t *testing.T) {
+	for _, from := range []string{"", "g2g", "graphite", "pull-request"} {
+		name := from
+		if name == "" {
+			name = "default"
+		}
+		t.Run(name, func(t *testing.T) {
+			recorder, _ := g2gOwnedRepository(t, ownedGraph)
+
+			args := []string{"graph"}
+			if from != "" {
+				args = append(args, "--from", from)
+			}
+			_, _, err := run(t, args...)
+
+			if from == "pull-request" && err == nil {
+				t.Error("graph --from pull-request was allowed")
+			}
+			recorder.AssertNone("gh ")
+		})
+	}
+}

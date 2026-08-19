@@ -204,7 +204,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newSubmit(options.Submit, completions, guard, presentation))
 	}
 	if options.Graph.Git != nil && options.Graph.Store != nil {
-		root.AddCommand(newGraph(options.Graph, presentation))
+		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
 	}

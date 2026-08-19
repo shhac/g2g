@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // graphGit answers the ancestry questions without a repository. The forest
@@ -419,4 +420,79 @@ func forkedGraph(t *testing.T) graph.Graph {
 		recorded = updated
 	}
 	return recorded
+}
+
+// The parity table compares the two records on synthetic fixtures. Rendering
+// both in one format compares them on the repository in front of you, which is
+// the check no fixture can stand in for.
+func TestGraphReadsAnotherRecordInItsOwnFormat(t *testing.T) {
+	snapshot := stack.Snapshot{
+		Target:       "synthetic-b",
+		TargetSource: "current Git branch",
+		Base:         "synthetic-trunk",
+		Branches:     []string{"synthetic-a", "synthetic-b", "synthetic-cousin"},
+		Parents: map[string]string{
+			"synthetic-a":      "synthetic-trunk",
+			"synthetic-b":      "synthetic-a",
+			"synthetic-cousin": "synthetic-trunk",
+		},
+		Scope:  stack.ScopeTrunk,
+		Source: stack.SourceGraphite,
+	}
+
+	var out bytes.Buffer
+	if err := writeStackView(&out, structureNote(sourceGraphView(snapshot), snapshot), Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, want := range []string{"synthetic-trunk", "synthetic-a", "synthetic-cousin", "Structure from graphite"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("output does not contain %q:\n%s", want, rendered)
+		}
+	}
+	// The fork is drawn, which is the shape a comparison is actually about.
+	if !strings.Contains(rendered, "├─") {
+		t.Errorf("the fork was flattened:\n%s", rendered)
+	}
+	// State comes from recorded fork points, which only g2g's store has.
+	// Inventing one for another record would be the drift this view exists to
+	// find, reported as a fact.
+	for _, absent := range []string{"needs restack", "moved off parent", "fork point lost", "untracked"} {
+		if strings.Contains(rendered, absent) {
+			t.Errorf("annotated %q for a record with no fork points:\n%s", absent, rendered)
+		}
+	}
+}
+
+// graph answers without a network, which is the whole reason it exists apart
+// from status. A pull request base is read by invoking gh, so it is refused
+// before any discovery runs and the refusal names the command that does read it.
+func TestGraphRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
+	for _, test := range []struct {
+		from string
+		want string
+	}{
+		{from: "", want: ""},
+		{from: "g2g", want: ""},
+		{from: "graphite", want: ""},
+		{from: "pull-request", want: "g2g status --from pull-request does read it"},
+		{from: "synthetic-nonsense", want: "unknown source"},
+	} {
+		t.Run(test.from, func(t *testing.T) {
+			err := validateOfflineSource(test.from)
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("validateOfflineSource(%q) = %v, want accepted", test.from, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validateOfflineSource(%q) = nil", test.from)
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("refusal %q does not contain %q", err, test.want)
+			}
+		})
+	}
 }

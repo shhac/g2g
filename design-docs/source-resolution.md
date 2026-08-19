@@ -125,6 +125,24 @@ rewrite, or link, so it is carried on the snapshot as `Absent`, rendered as
 refusal lives on the snapshot rather than in each command, because "which
 commands remembered to check" is not a property worth depending on.
 
+### Reading one record in another's format
+
+`graph --from` renders a record other than g2g's own store, in the shape g2g
+draws its own graph in. Seeing both in one format is what makes a divergence
+visible on the repository in front of you; the parity table can only compare
+them on fixtures it was given.
+
+It draws shape and no state. `needs restack`, `moved off parent` and
+`fork point lost` are computed from recorded fork points, which only the g2g
+store has. Another record says where branches sit and cannot say whether their
+contents have drifted, so annotating one would report the drift this view exists
+to find as a fact.
+
+It offers the offline records only. Reading a pull request base invokes `gh`,
+and `graph` answering without a network is the whole reason it exists apart from
+`status` — so the refusal names `g2g status --from pull-request`, which does
+read it.
+
 **GitHub's native stack is not a source at all.** Nothing defines a stack by
 editing it; branches and bases are edited and the native stack is written from
 them. It is a projection artifact, and its only role here is drift detection —

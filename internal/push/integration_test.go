@@ -38,6 +38,15 @@ if [ "$1" = "ls-remote" ]; then printf '1111111111111111111111111111111111111111
 if [ "$1 $2" = "branch --show-current" ]; then printf 'beta\n'; exit 0; fi
 if [ "$1" = "branch" ]; then printf 'main\nalpha\nbeta\nbeta-top\nbeta-side\ngamma\ngamma-deep\n'; exit 0; fi
 if [ "$1" = "push" ]; then printf '%s\n' "$*" >> "$GIT_ARGUMENTS"; exit 0; fi
+if [ "$1 $2" = "rev-parse --verify" ]; then
+  case "$3" in
+    alpha) printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' ;;
+    beta) printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n' ;;
+    *) printf '%s\n' "$3" ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "rev-list" ]; then printf '0\t1\n'; exit 0; fi
 exit 9`,
 	})
 	var debug bytes.Buffer

@@ -60,6 +60,12 @@ func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
 	plan := push.Plan{
 		Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-main", Branches: []string{"synthetic-lower", "synthetic-top"}},
 		Remote:   "origin",
+		// The two states the ordinary preview shows: one branch the remote has
+		// never seen, and one with work to publish.
+		Publishing: map[string]push.Publication{
+			"synthetic-lower": {Ours: 2},
+			"synthetic-top":   {New: true},
+		},
 	}
 	for _, test := range []struct {
 		name         string
@@ -238,3 +244,12 @@ func (f cliPushGraphite) ReadForest(context.Context) (graphite.Forest, error) {
 	}
 	return forest, nil
 }
+
+// Resolve and Divergence describe a branch with work the remote does not have,
+// which is the ordinary case these tests are about: something to publish, and
+// nothing on the remote that publishing would overwrite.
+func (f *cliPushGit) Resolve(_ context.Context, rev string) (string, error) {
+	return "object-" + rev, nil
+}
+
+func (f *cliPushGit) Divergence(context.Context, string, string) (int, int, error) { return 0, 1, nil }

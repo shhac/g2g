@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/shhac/g2g/internal/stack"
 	"strings"
 	"testing"
@@ -313,4 +314,129 @@ func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) 
 	}
 	f.calls++
 	return forest.OfStacks(map[string]graphite.Stack{"middle": declared}), nil
+}
+
+// Resolve and Divergence describe a branch with work the remote does not have,
+// which is the ordinary case these tests are about: something to publish, and
+// nothing on the remote that publishing would overwrite.
+func (f *fakeGit) Resolve(_ context.Context, rev string) (string, error) { return "object-" + rev, nil }
+
+func (f *fakeGit) Divergence(context.Context, string, string) (int, int, error) { return 0, 1, nil }
+
+// comparingGit answers the two reads that turn observed remote tips into a
+// statement about what the push would do.
+type comparingGit struct {
+	fakeGit
+	// local maps a branch to its tip, and known lists the objects this
+	// repository has. A remote tip that is absent from known is what being
+	// behind looks like before a fetch.
+	local  map[string]string
+	known  map[string]bool
+	ours   map[string]int
+	theirs map[string]int
+	divErr error
+}
+
+func (g *comparingGit) Resolve(_ context.Context, rev string) (string, error) {
+	if tip, ok := g.local[rev]; ok {
+		return tip, nil
+	}
+	if g.known[rev] {
+		return rev, nil
+	}
+	return "", fmt.Errorf("revision %q is not a commit in this repository", rev)
+}
+
+func (g *comparingGit) Divergence(_ context.Context, _, target string) (int, int, error) {
+	return g.theirs[target], g.ours[target], g.divErr
+}
+
+// The preview rendered the same lines whether a branch was ahead, already
+// published, or about to overwrite somebody else's commit. The last of those
+// is a force-push, and the lease rejecting it is not the same as the preview
+// saying so.
+func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		git      *comparingGit
+		want     Publication
+		rejected bool
+	}{
+		{
+			name: "work to publish",
+			git: &comparingGit{
+				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{"synthetic-top": "remote-tip"}},
+				local:   map[string]string{"synthetic-top": "local-tip"},
+				known:   map[string]bool{"remote-tip": true},
+				ours:    map[string]int{"synthetic-top": 2},
+			},
+			want: Publication{Ours: 2},
+		},
+		{
+			name: "already published",
+			git: &comparingGit{
+				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{"synthetic-top": "same-tip"}},
+				local:   map[string]string{"synthetic-top": "same-tip"},
+				known:   map[string]bool{"same-tip": true},
+			},
+			want: Publication{},
+		},
+		{
+			name: "the remote has moved on",
+			git: &comparingGit{
+				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{"synthetic-top": "remote-tip"}},
+				local:   map[string]string{"synthetic-top": "local-tip"},
+				known:   map[string]bool{"remote-tip": true},
+				theirs:  map[string]int{"synthetic-top": 1},
+			},
+			want:     Publication{Theirs: 1},
+			rejected: true,
+		},
+		{
+			name: "the remote is on a commit we do not have",
+			git: &comparingGit{
+				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{"synthetic-top": "unfetched"}},
+				local:   map[string]string{"synthetic-top": "local-tip"},
+			},
+			want:     Publication{Unknown: true},
+			rejected: true,
+		},
+		{
+			name: "not on the remote at all",
+			git: &comparingGit{
+				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{}},
+				local:   map[string]string{"synthetic-top": "local-tip"},
+			},
+			want: Publication{New: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			test.git.fakeGit.branches = []string{"main", "synthetic-top"}
+			selector := graphiteSelector(test.git, fakeGraphite{paths: map[string]graphite.Stack{
+				"synthetic-top": {Path: []string{"main", "synthetic-top"}, Trunks: []string{"main"}},
+			}})
+			plan, err := Service{Git: test.git, Selector: selector}.Plan(context.Background(), link.Selection{}, "origin")
+			if err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+
+			if got := plan.Publishing["synthetic-top"]; got != test.want {
+				t.Errorf("Publishing = %+v, want %+v", got, test.want)
+			}
+			if blocked := plan.Blocked != ""; blocked != test.rejected {
+				t.Errorf("Blocked = %q, want rejected=%t", plan.Blocked, test.rejected)
+			}
+		})
+	}
+}
+
+// A plan whose comparison never ran must not claim the remote already has
+// everything. The zero Publication reads as "up to date", which is the most
+// reassuring thing it could mean and the one thing it must not say.
+func TestAnUncomparedPlanDoesNotClaimTheRemoteIsCurrent(t *testing.T) {
+	plan := Plan{Snapshot: stack.Snapshot{Branches: []string{"synthetic-top"}}}
+
+	if plan.NothingToPublish() {
+		t.Error("a plan with no comparison reported the remote already has every branch")
+	}
 }

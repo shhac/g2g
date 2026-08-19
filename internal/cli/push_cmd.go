@@ -34,8 +34,14 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				guard:    guard,
 				execute:  service.Execute,
 				branches: func(plan push.Plan) int { return len(plan.Branches) },
+				// The lease rejects a push the remote has moved under, so this
+				// changes no outcome — it moves the refusal in front of the
+				// network call and names the branch.
+				blocked: func(plan push.Plan) string { return plan.Blocked },
+				noOp:    func(plan push.Plan) bool { return plan.NothingToPublish() },
 				notices: flowNotices{
 					preview:  "Re-run with --apply to push.",
+					noOp:     "The remote already has every selected branch.",
 					applied:  "Applied — remote refs updated atomically",
 					changed:  "Changes were made.",
 					recovery: "The push is atomic, so every selected ref advanced or none did; re-run g2g push to see which.",

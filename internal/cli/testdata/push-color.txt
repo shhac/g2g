@@ -2,8 +2,8 @@
 
   [1;33m○[0m [1;33msynthetic-main[0m   [2mtrunk[0m
   [2m│[0m
-  [2m●[0m [1;37msynthetic-lower[0m
-  [2m●[0m [1;37msynthetic-top[0m    [2m← target[0m
+  [2m●[0m [1;37msynthetic-lower[0m  [32m2 commits to publish[0m
+  [2m●[0m [1;37msynthetic-top[0m    [32mnew branch on the remote[0m  [2m← target[0m
 
 [1;36mCommand to run[0m
 [1;97;48;5;236mgit push --atomic --force-with-lease origin synthetic-lower synthetic-top    [0m

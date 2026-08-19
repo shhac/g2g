@@ -2,8 +2,8 @@ Target  synthetic-top
 
   ○ synthetic-main   trunk
   │
-  ● synthetic-lower
-  ● synthetic-top    ← target
+  ● synthetic-lower  2 commits to publish
+  ● synthetic-top    new branch on the remote  ← target
 
 Command to run
 git push --atomic --force-with-lease origin synthetic-lower synthetic-top

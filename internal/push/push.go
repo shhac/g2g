@@ -17,6 +17,12 @@ type Git interface {
 	Remote(context.Context, string) error
 	RemoteTips(context.Context, string, []string) (map[string]string, error)
 	PushAtomic(context.Context, string, []localgit.Lease) error
+	// Resolve and Divergence are what turn the observed remote tips into a
+	// statement about what the push would do. Both read locally: the tips are
+	// already in hand from the one ls-remote, so saying what they mean costs
+	// nothing more over the network.
+	Resolve(context.Context, string) (string, error)
+	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
 }
 
 type Service struct {
@@ -33,6 +39,54 @@ type Plan struct {
 	// lease the push asserts, so a branch that moved in between is rejected
 	// rather than overwritten.
 	RemoteTips map[string]string
+	// Publishing says what the push would do to each branch. The tips alone
+	// could not: the preview rendered the same three lines whether a branch was
+	// two commits ahead, already published, or behind a commit somebody else
+	// pushed — and the last of those is a force-push the lease would reject,
+	// previewed without a word about it.
+	Publishing map[string]Publication
+	// Blocked is why an apply would refuse, empty when it would proceed.
+	Blocked string
+}
+
+// Publication is what pushing one branch would do.
+type Publication struct {
+	// Ours is how many commits the local branch has that the remote does not.
+	// Theirs is how many the remote has that this repository does not.
+	Ours, Theirs int
+	// New means the remote has no such branch yet, so there is nothing to
+	// compare and nothing to overwrite.
+	New bool
+	// Unknown means the remote is on a commit this repository does not have,
+	// so the two cannot be compared without fetching. It is treated exactly
+	// like being behind, because that is what it most likely is.
+	Unknown bool
+}
+
+// NothingToPublish reports a plan where the remote already holds every selected
+// branch exactly. Pushing would be a no-op, and saying so beats reporting a
+// successful push that moved nothing.
+func (p Plan) NothingToPublish() bool {
+	for _, branch := range p.Branches {
+		// A branch with no entry was never compared, and the zero Publication
+		// reads as "up to date" — the most reassuring thing it could possibly
+		// mean. Requiring the entry is what stops a plan that skipped the
+		// comparison from claiming the remote already has everything.
+		publication, compared := p.Publishing[branch]
+		if !compared || !publication.UpToDate() {
+			return false
+		}
+	}
+	return len(p.Branches) != 0
+}
+
+// Rejected reports a branch the lease would refuse: the remote holds something
+// this push would overwrite.
+func (p Publication) Rejected() bool { return p.Theirs > 0 || p.Unknown }
+
+// UpToDate reports a branch the remote already has exactly.
+func (p Publication) UpToDate() bool {
+	return !p.New && !p.Unknown && p.Ours == 0 && p.Theirs == 0
 }
 
 // pushArgs is the exact invocation Execute makes, so a diagnostic never
@@ -78,7 +132,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips}
+	publishing, err := s.publications(ctx, snapshot.Branches, tips)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Blocked: blockedBy(snapshot.Branches, publishing)}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -90,6 +148,58 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
 	return plan, nil
+}
+
+// publications compares each selected branch with the tip the remote holds.
+//
+// A remote tip this repository does not have is not an error: it is what being
+// behind looks like before a fetch, and refusing to plan would be a worse
+// answer than saying so.
+func (s Service) publications(ctx context.Context, branches []string, tips map[string]string) (map[string]Publication, error) {
+	publishing := make(map[string]Publication, len(branches))
+	for _, branch := range branches {
+		tip, published := tips[branch]
+		if !published || tip == "" {
+			publishing[branch] = Publication{New: true}
+			continue
+		}
+		local, err := s.Git.Resolve(ctx, branch)
+		if err != nil {
+			return nil, err
+		}
+		if local == tip {
+			publishing[branch] = Publication{}
+			continue
+		}
+		if _, err := s.Git.Resolve(ctx, tip); err != nil {
+			publishing[branch] = Publication{Unknown: true}
+			continue
+		}
+		theirs, ours, err := s.Git.Divergence(ctx, tip, branch)
+		if err != nil {
+			return nil, err
+		}
+		publishing[branch] = Publication{Ours: ours, Theirs: theirs}
+	}
+	return publishing, nil
+}
+
+// blockedBy refuses a push the remote would reject.
+//
+// The lease already rejects it, so this changes no outcome — it moves the
+// refusal in front of the network call and says which branch, instead of
+// inviting an --apply that fails at git.
+func blockedBy(branches []string, publishing map[string]Publication) string {
+	rejected := make([]string, 0, len(branches))
+	for _, branch := range branches {
+		if publishing[branch].Rejected() {
+			rejected = append(rejected, branch)
+		}
+	}
+	if len(rejected) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the remote has moved on %s · fetch and reconcile before publishing, or run g2g sync", strings.Join(rejected, ", "))
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
@@ -126,6 +236,8 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 // preview and apply must stop the push, not be overwritten by it.
 func (p Plan) Equal(other Plan) bool {
 	return p.Snapshot.Equal(other.Snapshot) &&
+		p.Blocked == other.Blocked &&
+		maps.Equal(p.Publishing, other.Publishing) &&
 		p.Remote == other.Remote &&
 		maps.Equal(p.RemoteTips, other.RemoteTips)
 }

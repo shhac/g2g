@@ -3,9 +3,9 @@ package graphite
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/shape"
 
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -22,28 +22,24 @@ type Forest struct {
 	Roots   []string
 }
 
-// Branches returns every branch the forest names, sorted.
-func (f Forest) Branches() []string {
-	branches := make([]string, 0, len(f.Parents))
-	for branch := range f.Parents {
-		branches = append(branches, branch)
-	}
-	sort.Strings(branches)
-	return branches
-}
+// Shape exposes the declared edges as the shared traversal, the way
+// graph.Graph does.
+//
+// This was the last structure source walking its own copy. The copies had
+// already lost something: Children omitted the self-loop guard, so a branch
+// Graphite declared as its own parent would have come back as its own child.
+// The g2g store cannot produce that — Track refuses a self-parent — but a
+// parsed display has no such gate, and every caller was relying on its own
+// visited set to survive it.
+func (f Forest) Shape() shape.Forest { return shape.Forest{Parents: f.Parents} }
+
+// Branches returns every branch the forest names, sorted, including one that
+// appears only as somebody's parent.
+func (f Forest) Branches() []string { return f.Shape().Branches() }
 
 // Children returns the branches declared under branch, sorted. Untracking
 // cascades to them, so a caller that removes anything has to know them.
-func (f Forest) Children(branch string) []string {
-	children := make([]string, 0)
-	for candidate, parent := range f.Parents {
-		if parent == branch {
-			children = append(children, candidate)
-		}
-	}
-	sort.Strings(children)
-	return children
-}
+func (f Forest) Children(branch string) []string { return f.Shape().Children(branch) }
 
 // ReadForest returns Graphite's whole declared forest.
 func (c Client) ReadForest(ctx context.Context) (Forest, error) {

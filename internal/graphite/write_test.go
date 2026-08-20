@@ -182,3 +182,30 @@ exit 1`,
 		t.Error("Untrack() error = nil when gt exited non-zero")
 	}
 }
+
+// The forest is parsed from another tool's display, so it can hold a shape the
+// g2g store cannot: graph.Track refuses a self-parent, a rendered line does not.
+// Walking it with a local copy that omitted the shared self-loop guard made a
+// branch its own child, and every caller was surviving that on its own visited
+// set rather than on the walk being correct.
+func TestABranchDeclaredAsItsOwnParentIsNotItsOwnChild(t *testing.T) {
+	forest := Forest{Parents: map[string]string{
+		"synthetic-loop": "synthetic-loop",
+		"synthetic-a":    "synthetic-loop",
+	}}
+
+	if children := forest.Children("synthetic-loop"); len(children) != 1 || children[0] != "synthetic-a" {
+		t.Errorf("Children() = %v, want only synthetic-a", children)
+	}
+}
+
+// A branch named only as somebody's parent is still a branch the forest knows.
+// The local copy walked map keys alone and dropped it.
+func TestAParentWithNoEntryOfItsOwnIsStillNamed(t *testing.T) {
+	forest := Forest{Parents: map[string]string{"synthetic-a": "synthetic-trunk"}}
+
+	branches := forest.Branches()
+	if len(branches) != 2 || branches[0] != "synthetic-a" || branches[1] != "synthetic-trunk" {
+		t.Errorf("Branches() = %v, want both the child and the parent", branches)
+	}
+}

@@ -334,11 +334,13 @@ func keepsAChild(branch string, forest graphite.Forest, removing map[string]bool
 }
 
 func depth(branch string, forest graphite.Forest) int {
-	seen := map[string]bool{}
-	steps := 0
-	for parent := forest.Parents[branch]; parent != "" && !seen[parent]; parent = forest.Parents[parent] {
-		seen[parent] = true
-		steps++
+	// The shared walk reports a cycle rather than stopping quietly, and a
+	// forest parsed from another tool's display is exactly where one could
+	// arrive. Depth is only an ordering key, so a cycle answers zero and the
+	// branch sorts first, which is where a caller will notice it.
+	path, err := forest.Shape().Path(branch)
+	if err != nil {
+		return 0
 	}
-	return steps
+	return len(path) - 1
 }

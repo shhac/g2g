@@ -212,7 +212,13 @@ func (p ImportPlan) Equal(other ImportPlan) bool {
 
 // declaredOrder walks Graphite's forest from its roots down, so a parent is
 // always considered before the branches that name it.
+//
+// It seeds from the roots the display named rather than from the ones parentage
+// implies. Those agree today, because the parser maps a root to an empty
+// parent — but which one is authoritative is a real choice, and this is reading
+// Graphite's own claim rather than re-deriving it.
 func declaredOrder(forest graphite.Forest) []string {
+	shape := forest.Shape()
 	ordered := make([]string, 0, len(forest.Parents))
 	queue := append([]string(nil), forest.Roots...)
 	sort.Strings(queue)
@@ -225,7 +231,7 @@ func declaredOrder(forest graphite.Forest) []string {
 		}
 		seen[branch] = true
 		ordered = append(ordered, branch)
-		queue = append(queue, forest.Children(branch)...)
+		queue = append(queue, shape.Children(branch)...)
 	}
 	// A forest whose display named no root still has branches worth reporting.
 	for _, branch := range forest.Branches() {

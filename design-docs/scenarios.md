@@ -73,8 +73,14 @@ from it by content, which is what makes it still yours, so theirs supersedes.
 That is a reset rather than a fast-forward, and the plan names the two
 differently because one replaces what you have and the other adds to it.
 
-**both moved.** You have work the published version does not, and it has work
-you do not. `sync` refuses by default: choosing between two versions of your own
+**both moved.** Each side holds commits the other does not. The message says
+exactly that, with the count on both sides, because "you have work the remote
+does not" is true of every ordinary commit and a reader who has just made one
+cannot otherwise tell whether that is what it means. An ordinary commit leaves
+the published tip an ancestor of yours, which `sync` ignores: publishing is
+`push`'s business.
+
+`sync` refuses by default: choosing between two versions of your own
 branch is not something to do behind your back. The refusal names the way
 through rather than being a dead end.
 

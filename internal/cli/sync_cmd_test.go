@@ -193,7 +193,7 @@ func TestSyncRefusesADivergedBaseInBothPreviewAndApply(t *testing.T) {
 
 			out, _ := runSync(t, git, replay, test.args...)
 
-			if !strings.Contains(out, "diverged") {
+			if !strings.Contains(out, "both sides have moved") {
 				t.Errorf("output does not name the divergence:\n%s", out)
 			}
 			if !strings.Contains(out, test.want) {

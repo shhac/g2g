@@ -112,7 +112,7 @@ func TestJourneyTheTrunkWasRewrittenUpstream(t *testing.T) {
 	if err == nil {
 		t.Fatal("sync reconciled a diverged trunk instead of refusing")
 	}
-	if !strings.Contains(err.Error(), "diverged") {
+	if !strings.Contains(err.Error(), "both sides have moved") {
 		t.Errorf("refusal does not say what is wrong: %v", err)
 	}
 	if after := w.tip(w.Local, "synthetic-a"); after != before {
@@ -417,8 +417,12 @@ func TestJourneyBothYouAndTheRemoteMovedYourBranch(t *testing.T) {
 	if err == nil {
 		t.Fatal("sync chose between two versions of your branch")
 	}
-	if !strings.Contains(stdout+err.Error(), "diverged") {
-		t.Errorf("the refusal does not name the state:\n%s\n%v", stdout, err)
+	// Both counts, because "you have work the remote does not" is true of every
+	// ordinary commit and a reader who just made one cannot tell them apart.
+	for _, want := range []string{"both sides have moved", "not published", "not here"} {
+		if !strings.Contains(stdout+err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%s\n%v", want, stdout, err)
+		}
 	}
 	if after := w.tip(w.Local, "synthetic-a"); after != before {
 		t.Errorf("a refused sync moved synthetic-a from %s to %s", before, after)
@@ -427,6 +431,46 @@ func TestJourneyBothYouAndTheRemoteMovedYourBranch(t *testing.T) {
 	if !strings.Contains(stdout+err.Error(), "--take published") {
 		t.Errorf("the refusal does not name the choice available:\n%s\n%v", stdout, err)
 	}
+	w.assertClean(w.Local)
+}
+
+// The commonest thing anybody does: commit on a published branch and sync.
+//
+// sync must ignore it. Local being ahead of its published version is
+// unpublished work, which is push's business, and a refusal here would fire on
+// every ordinary commit and make the command unusable. The refusal needs both
+// sides to have moved, and this asserts the near miss.
+func TestJourneyAnOrdinaryCommitDoesNotBlockSync(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.commit(w.Local, "synthetic-a", "ordinary.txt", "ordinary")
+	unpublished := w.tip(w.Local, "synthetic-a")
+
+	stdout := mustRun(t, "sync")
+	if strings.Contains(stdout, "diverged") || strings.Contains(stdout, "blocked") {
+		t.Fatalf("an ordinary commit was treated as a divergence:\n%s", stdout)
+	}
+
+	mustRun(t, "sync", "--apply")
+	if now := w.tip(w.Local, "synthetic-a"); now != unpublished {
+		t.Errorf("sync moved a branch that was simply ahead: %s to %s", unpublished, now)
+	}
+	w.assertHas(w.Local, "synthetic-a", "ordinary.txt")
+	w.assertClean(w.Local)
+
+	// And again with the trunk having moved, which is the ordinary reason to
+	// sync at all: still a replay, still no refusal.
+	w.commit(w.Other, "main", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	mustRun(t, "sync", "--apply")
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Error("the stack was not replayed onto the advanced trunk")
+	}
+	w.assertHas(w.Local, "synthetic-a", "ordinary.txt")
 	w.assertClean(w.Local)
 }
 

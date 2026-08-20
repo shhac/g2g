@@ -264,7 +264,7 @@ func (c Client) FastForward(ctx context.Context, branch, to string) error {
 		return err
 	}
 	if !contains {
-		return fmt.Errorf("%s has diverged from %s and cannot be fast-forwarded; reconcile it yourself", branch, to)
+		return fmt.Errorf("%s and %s have each moved where the other has not, so %s cannot be fast-forwarded; reconcile it yourself", branch, to, branch)
 	}
 	if err := c.UpdateBranch(ctx, branch, target); err != nil {
 		return err

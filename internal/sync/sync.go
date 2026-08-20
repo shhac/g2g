@@ -198,7 +198,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	if plan.Diverged {
-		plan.Blocked = fmt.Sprintf("%s has diverged from %s/%s · reconcile it yourself, then rerun", plan.Base, remote, plan.Base)
+		// Same reasoning as a branch: say that both sides moved, not that you
+		// have something the remote does not, which is true of any commit.
+		plan.Blocked = fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not · take the published trunk with g2g sync --take published, which discards yours, or reconcile it yourself",
+			plan.Base, remote, plan.Base)
 		return plan, nil
 	}
 
@@ -380,7 +383,7 @@ func syncScope(scope graph.Scope) graph.Scope {
 //     choosing between them is not something to do behind your back.
 func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, string, error) {
 	collect := make([]Collection, 0, len(branches))
-	stuck := make([]string, 0)
+	stuck := make([]divergence, 0)
 	for _, branch := range branches {
 		if branch == base {
 			continue
@@ -427,11 +430,17 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true, Discards: ours})
 			continue
 		}
-		stuck = append(stuck, branch)
+		// Both sides moved, so say both. "You have work the remote does not" is
+		// true of every ordinary commit, and a reader who has just made one has
+		// no way to tell that from this.
+		theirs, _, err := s.Git.Cherry(ctx, branch, localgit.IsolatedRef(remote, branch), "")
+		if err != nil {
+			return nil, "", err
+		}
+		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: len(theirs)})
 	}
 	if len(stuck) != 0 {
-		return nil, fmt.Sprintf("%s has diverged from %s · you have work the published version does not · take the published version with g2g sync --take published, or reconcile it yourself",
-			strings.Join(stuck, ", "), remote), nil
+		return nil, divergenceReason(stuck), nil
 	}
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
 	return collect, "", nil
@@ -462,4 +471,38 @@ func collectionsEqual(left, right []Collection) bool {
 		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
 			slices.Equal(a.Discards, b.Discards)
 	})
+}
+
+// divergence is one branch both sides have moved, and by how much.
+type divergence struct {
+	Branch       string
+	Ours, Theirs int
+}
+
+// divergenceReason says which branches both sides moved, and what each side
+// holds that the other does not.
+//
+// Naming only one side was the problem: "you have work the published version
+// does not" is true of every ordinary commit, so a reader who had just made one
+// could not tell whether that was what the message meant. Both counts make it
+// unambiguous, and the counts are by content, so a commit the other side
+// already has under a different id is not counted against you.
+func divergenceReason(stuck []divergence) string {
+	parts := make([]string, 0, len(stuck))
+	for _, moved := range stuck {
+		parts = append(parts, fmt.Sprintf("%s (%d here that %s not published, %d published that %s not here)",
+			moved.Branch,
+			moved.Ours, pick(moved.Ours, "is", "are"),
+			moved.Theirs, pick(moved.Theirs, "is", "are")))
+	}
+	return fmt.Sprintf("both sides have moved on %s · take the published version with g2g sync --take published, which discards yours, or reconcile it yourself",
+		strings.Join(parts, ", "))
+}
+
+// pick chooses the form that agrees with a count.
+func pick(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+	return many
 }

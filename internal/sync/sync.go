@@ -61,8 +61,14 @@ type Plan struct {
 	// the remote has moved past where it currently is.
 	Base    string
 	Advance bool
-	// Diverged means the base cannot be fast-forwarded. Nothing is attempted
-	// in that case: reconciling it is the user's call, not a side effect.
+	// Supersede means the published trunk is not a descendant of this one but
+	// contains everything it has by content — somebody rewrote the trunk and
+	// pushed it. Taking theirs loses nothing, so the stack is replayed onto it
+	// rather than the whole sync refusing.
+	Supersede bool
+	// Diverged means the base cannot be reconciled without losing commits.
+	// Nothing is attempted in that case: choosing between them is the user's
+	// call, not a side effect.
 	Diverged bool
 	// Collect is the branches of your own whose published version is ahead of
 	// the one here, and where it is.
@@ -92,7 +98,7 @@ type Collection struct {
 // advanced it is still where it was, so the fetched ref is what the replay has
 // to target; when it is already level, the recorded structure already says.
 func (p Plan) onto() string {
-	if !p.Advance {
+	if !p.Advance && !p.Supersede {
 		return ""
 	}
 	return localgit.IsolatedRef(p.Remote, p.Base)
@@ -141,7 +147,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 			return Plan{}, err
 		}
 	}
-	plan.Advance, plan.Diverged, err = s.compare(ctx, plan.Base, remote)
+	plan.Advance, plan.Supersede, plan.Diverged, err = s.compare(ctx, plan.Base, remote)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -175,32 +181,47 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 }
 
 // compare asks how the base stands against the remote without changing it.
-func (s Service) compare(ctx context.Context, base, remote string) (advance, diverged bool, err error) {
+func (s Service) compare(ctx context.Context, base, remote string) (advance, supersede, diverged bool, err error) {
 	fetched := localgit.IsolatedRef(remote, base)
 	local, err := s.Git.Resolve(ctx, base)
 	if err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
 	upstream, err := s.Git.Resolve(ctx, fetched)
 	if err != nil {
 		// The base is not on the remote at all, which is ordinary for a local
 		// trunk that was never pushed.
-		return false, false, nil
+		return false, false, false, nil
 	}
 	if local == upstream {
-		return false, false, nil
+		return false, false, false, nil
 	}
 	behind, err := s.Git.IsAncestor(ctx, base, fetched)
 	if err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
-	return behind, !behind, nil
+	if behind {
+		return true, false, false, nil
+	}
+	// Neither side is an ancestor of the other, which is what somebody
+	// force-pushing the trunk looks like — usually after rebasing or squashing
+	// it. If everything the local trunk has is in the published one by content,
+	// nothing is lost by taking theirs, and that is the whole of the recovery:
+	// remote trunk, local stack replayed onto it.
+	ours, _, err := s.Git.Cherry(ctx, fetched, base, "")
+	if err != nil {
+		return false, false, true, nil
+	}
+	if len(ours) == 0 {
+		return false, true, false, nil
+	}
+	return false, false, true, nil
 }
 
 // Nothing reports a plan with no step to take: the base is level and there is
 // nothing to replay.
 func (p Plan) Nothing() bool {
-	return !p.Advance && len(p.Collect) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Restack.Steps) == 0
 }
 
 // Equal compares every fact that changes what the sync does.
@@ -210,6 +231,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Base == other.Base &&
 		p.Advance == other.Advance &&
 		p.Diverged == other.Diverged &&
+		p.Supersede == other.Supersede &&
 		p.Blocked == other.Blocked &&
 		p.Restack.Equal(other.Restack)
 }
@@ -241,9 +263,18 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot sync: %s", plan.Blocked)
 	}
-	if plan.Advance {
-		diagnostic.Event(ctx, "sync.advance", diagnostic.Field{Key: "base", Value: plan.Base})
-		if err := s.Git.FastForward(ctx, plan.Base, localgit.IsolatedRef(plan.Remote, plan.Base)); err != nil {
+	if plan.Advance || plan.Supersede {
+		diagnostic.Event(ctx, "sync.advance",
+			diagnostic.Field{Key: "base", Value: plan.Base},
+			diagnostic.Field{Key: "supersede", Value: fmt.Sprintf("%t", plan.Supersede)},
+		)
+		move := s.Git.FastForward
+		if plan.Supersede {
+			// The published trunk is not a descendant of this one, so this is a
+			// reset. FastForward would refuse it, correctly.
+			move = s.Git.ResetBranch
+		}
+		if err := move(ctx, plan.Base, localgit.IsolatedRef(plan.Remote, plan.Base)); err != nil {
 			return err
 		}
 	}

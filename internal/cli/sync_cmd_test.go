@@ -316,9 +316,15 @@ func (g *syncCLIGit) ResetBranch(_ context.Context, branch, to string) error {
 	return nil
 }
 
-// Cherry reports nothing absent, so a branch these tests do not set up as
-// published never reads as diverged.
+// Cherry reports what this side has that the other does not, by content.
+//
+// A diverged base only refuses when taking the published version would lose
+// something; where it would lose nothing, it supersedes instead. So a case that
+// means "refuse" has to say it has work of its own.
 func (g *syncCLIGit) Cherry(context.Context, string, string, string) ([]string, []string, error) {
+	if g.diverged {
+		return []string{"synthetic-commit-only-here"}, nil, nil
+	}
 	return nil, nil, nil
 }
 

@@ -218,6 +218,9 @@ func TestPlanFetchesButAdvancesNothing(t *testing.T) {
 func TestPlanRefusesADivergedBase(t *testing.T) {
 	git := behindGit()
 	git.ancestors[localgit.IsolatedRef("origin", "synthetic-trunk")] = nil
+	// Diverged and lossy: the published trunk does not have what this one has.
+	// Where it does, the trunk is superseded instead, which is its own test.
+	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
 	service, _ := newService(git, nil)
 
 	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
@@ -239,6 +242,7 @@ func TestPlanRefusesADivergedBase(t *testing.T) {
 func TestApplyRefusesABlockedPlan(t *testing.T) {
 	git := behindGit()
 	git.ancestors[localgit.IsolatedRef("origin", "synthetic-trunk")] = nil
+	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
 	service, store := newService(git, nil)
 	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
 	if err != nil {

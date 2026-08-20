@@ -48,13 +48,22 @@ func collectNote(plan syncer.Plan) string {
 }
 
 func baseNote(plan syncer.Plan) string {
-	if !plan.Advance {
-		return fmt.Sprintf("%s is already level with %s.", plan.Base, plan.Remote)
+	switch {
+	case plan.Supersede:
+		// Worth spelling out: this is the one place sync discards commits, and
+		// it only does so because the published trunk already has their content
+		// under different ids.
+		return fmt.Sprintf("Replaces %s with %s/%s, which was rewritten and already has everything here · your stack is replayed onto it.", plan.Base, plan.Remote, plan.Base)
+	case plan.Advance:
+		return fmt.Sprintf("Fast-forwards %s to %s · nothing is merged or rewritten.", plan.Base, plan.Remote)
 	}
-	return fmt.Sprintf("Fast-forwards %s to %s · nothing is merged or rewritten.", plan.Base, plan.Remote)
+	return fmt.Sprintf("%s is already level with %s.", plan.Base, plan.Remote)
 }
 
 func baseSeverity(plan syncer.Plan) severity {
+	if plan.Supersede {
+		return severityWarn
+	}
 	if plan.Advance {
 		return severityOK
 	}

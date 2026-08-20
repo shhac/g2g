@@ -45,10 +45,17 @@ trunk still advances, because it was going to either way; the replay stops and
 says where. Half-applied is the honest state and the message says so rather
 than "nothing happened".
 
-**remote history reverter.** The trunk is rewritten upstream. Neither side is an
-ancestor of the other, so there is nothing to fast-forward. `sync` refuses and
-touches nothing. *We would rather it offered a resolution: take the remote
-trunk, keep the local stack. It does not.*
+**remote history reverter.** The trunk is rewritten upstream — a rebase or a
+squash cleanup, force-pushed. Neither side is an ancestor of the other, so there
+is nothing to fast-forward.
+
+If everything the local trunk has is in the published one by content, nothing is
+lost by taking theirs: the trunk is replaced and the stack is replayed onto it.
+That is the same supersede rule the branch case uses, and it is the only place
+`sync` discards commits, so the preview says so plainly.
+
+If the published trunk does *not* have what this one has, it refuses. Choosing
+which commits die is not a side effect.
 
 **borrower.** Someone cherry-picked your commits into their branch and it landed
 first. Your commits are in the trunk under different object ids. Replaying drops

@@ -51,9 +51,47 @@ func TestJourneyTrunkMovesUpstreamWhileYouWork(t *testing.T) {
 	w.assertHas(w.Local, "synthetic-b", "colleague.txt")
 }
 
-// Somebody rewrote the trunk. Nothing g2g does can reconcile that safely, so
-// the journey ends in a refusal that says so — with the repository untouched,
-// which is the part worth proving.
+// remote history reverter: somebody rewrote the trunk and force-pushed it,
+// which is what a rebase or a squash cleanup of the trunk looks like.
+//
+// Everything the local trunk has is in the published one under different object
+// ids, so taking theirs loses nothing: the trunk is replaced and the stack is
+// replayed onto it. This used to refuse, which left no way through at all.
+func TestJourneyTheTrunkWasRewrittenAndHasEverythingYouHave(t *testing.T) {
+	w := newWorld(t)
+	// A trunk commit that then gets rewritten upstream, so both sides carry its
+	// content under different ids.
+	w.commit(w.Local, "main", "shared-work.txt", "shared")
+	w.git(w.Local, "push", "-q", "origin", "main")
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	// Upstream, the trunk is rebuilt: same content, new commit.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "reset", "-q", "--hard", "origin/main")
+	w.git(w.Other, "commit", "-q", "--amend", "-m", "synthetic rewritten trunk")
+	w.git(w.Other, "push", "-q", "--force", "origin", "main")
+	theirs := w.tip(w.Other, "main")
+
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	stdout := mustRun(t, "sync", "--apply")
+
+	if !strings.Contains(stdout, "rewritten") {
+		t.Errorf("the preview does not say the trunk was replaced:\n%s", stdout)
+	}
+	if now := w.tip(w.Local, "main"); now != theirs {
+		t.Errorf("main is at %s, want the published %s", now, theirs)
+	}
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Error("the stack was not replayed onto the replaced trunk")
+	}
+	w.assertHas(w.Local, "synthetic-a", "a.txt")
+	w.assertClean(w.Local)
+}
+
+// The refusal is still there for the case that would cost something: the
+// rewritten trunk does not have what this one does.
 func TestJourneyTheTrunkWasRewrittenUpstream(t *testing.T) {
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "a.txt")

@@ -156,6 +156,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the replay target instead put `refs/g2g/remotes/origin/main` in the store on
   the ordinary sync path, so every synced stack reported "parent missing"
   immediately after a sync that said it succeeded.
+- Which side wins a divergence is normally answered by which command runs:
+  `sync` only moves toward this checkout, `push` only toward the remote. Keep
+  that one-direction-per-command rule — it is what makes the model legible.
+  `sync --take <enum>` exists only for the outcome neither command can otherwise
+  reach, is an enum so the vocabulary can grow, and has no `mine` value. It is
+  the one path where `sync` discards work that exists nowhere else, so the
+  preview names every commit it would lose rather than counting them.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

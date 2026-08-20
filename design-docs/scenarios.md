@@ -74,8 +74,20 @@ That is a reset rather than a fast-forward, and the plan names the two
 differently because one replaces what you have and the other adds to it.
 
 **both moved.** You have work the published version does not, and it has work
-you do not. `sync` refuses: choosing between two versions of your own branch is
-not something to do behind your back.
+you do not. `sync` refuses by default: choosing between two versions of your own
+branch is not something to do behind your back. The refusal names the way
+through rather than being a dead end.
+
+`sync --take published` is that way through. It is the one path where `sync`
+loses work that exists nowhere else, so the preview lists every commit it would
+discard by name — a count would not be enough to decide on.
+
+There is deliberately no `--take mine`. `sync` only ever moves toward this
+checkout and `push` only ever moves toward the remote, so which side wins is
+normally answered by which command you run; `push` already prints the
+`git push --force-with-lease` line for the other direction. `--take` is an enum
+rather than a boolean because the question has more answers than the one
+implemented.
 
 ## Merges that land out of order
 

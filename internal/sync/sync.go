@@ -66,6 +66,9 @@ type Plan struct {
 	// pushed it. Taking theirs loses nothing, so the stack is replayed onto it
 	// rather than the whole sync refusing.
 	Supersede bool
+	// DiscardsBase are the trunk commits taking the published trunk would lose,
+	// only ever non-empty when the caller asked for that.
+	DiscardsBase []string
 	// Diverged means the base cannot be reconciled without losing commits.
 	// Nothing is attempted in that case: choosing between them is the user's
 	// call, not a side effect.
@@ -81,11 +84,54 @@ type Plan struct {
 	Blocked string
 }
 
+// Take is which side wins where sync would otherwise refuse.
+//
+// It is an enum rather than a boolean flag because the question has more
+// answers than the one implemented, and naming the value leaves room for them.
+// There is deliberately no "mine": sync only ever moves toward this checkout
+// and push only ever moves toward the remote, so which side wins is normally
+// answered by which command you run. This exists for the case neither command
+// can otherwise reach.
+type Take string
+
+const (
+	// TakeNothing is the default: a divergence that would cost commits is
+	// reported rather than resolved.
+	TakeNothing Take = ""
+	// TakePublished discards local commits the published version does not have,
+	// on the branches where the two have genuinely diverged.
+	TakePublished Take = "published"
+)
+
+// Takes are the values a caller may name.
+var Takes = []Take{TakePublished}
+
+// ParseTake validates a flag value.
+func ParseTake(value string) (Take, error) {
+	if value == "" {
+		return TakeNothing, nil
+	}
+	for _, take := range Takes {
+		if Take(value) == take {
+			return take, nil
+		}
+	}
+	names := make([]string, 0, len(Takes))
+	for _, take := range Takes {
+		names = append(names, string(take))
+	}
+	return TakeNothing, fmt.Errorf("unsupported --take %q (want %s)", value, strings.Join(names, ", "))
+}
+
 // Collection is one branch of yours the remote has moved on, and how.
 type Collection struct {
 	Branch string
 	// To is the published tip this branch would be brought to.
 	To string
+	// Discards are the commits taking the published version would lose. It is
+	// only ever non-empty when the caller asked for that with --take, and the
+	// preview names every one of them: this is the only way sync loses work.
+	Discards []string
 	// Superseded means the published version is not a descendant of this one
 	// but contains everything it has by content — somebody rebased or amended
 	// your branch and published it. Taking theirs keeps their work and loses
@@ -107,7 +153,7 @@ func (p Plan) onto() string {
 // Plan works out the whole sequence without performing any of it. The fetch is
 // the one step that reaches the network, and it writes only into g2g's own
 // ref namespace, so previewing costs the repository nothing.
-func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string, take Take) (Plan, error) {
 	if s.Git == nil || s.Restack == nil {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
@@ -147,7 +193,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 			return Plan{}, err
 		}
 	}
-	plan.Advance, plan.Supersede, plan.Diverged, err = s.compare(ctx, plan.Base, remote)
+	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, take)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -160,7 +206,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// fetch and the fast-forward assessment come first.
 	// A location, never a parent: the trunk is about to be here, and recording
 	// a ref under refs/g2g/ as the parent is what broke every synced stack.
-	plan.Collect, plan.Blocked, err = s.collect(ctx, remote, plan.Base, discovery.Branches)
+	plan.Collect, plan.Blocked, err = s.collect(ctx, remote, plan.Base, discovery.Branches, take)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -181,27 +227,27 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 }
 
 // compare asks how the base stands against the remote without changing it.
-func (s Service) compare(ctx context.Context, base, remote string) (advance, supersede, diverged bool, err error) {
+func (s Service) compare(ctx context.Context, base, remote string, take Take) (advance, supersede, diverged bool, discards []string, err error) {
 	fetched := localgit.IsolatedRef(remote, base)
 	local, err := s.Git.Resolve(ctx, base)
 	if err != nil {
-		return false, false, false, err
+		return false, false, false, nil, err
 	}
 	upstream, err := s.Git.Resolve(ctx, fetched)
 	if err != nil {
 		// The base is not on the remote at all, which is ordinary for a local
 		// trunk that was never pushed.
-		return false, false, false, nil
+		return false, false, false, nil, nil
 	}
 	if local == upstream {
-		return false, false, false, nil
+		return false, false, false, nil, nil
 	}
 	behind, err := s.Git.IsAncestor(ctx, base, fetched)
 	if err != nil {
-		return false, false, false, err
+		return false, false, false, nil, err
 	}
 	if behind {
-		return true, false, false, nil
+		return true, false, false, nil, nil
 	}
 	// Neither side is an ancestor of the other, which is what somebody
 	// force-pushing the trunk looks like — usually after rebasing or squashing
@@ -210,12 +256,15 @@ func (s Service) compare(ctx context.Context, base, remote string) (advance, sup
 	// remote trunk, local stack replayed onto it.
 	ours, _, err := s.Git.Cherry(ctx, fetched, base, "")
 	if err != nil {
-		return false, false, true, nil
+		return false, false, true, nil, nil
 	}
 	if len(ours) == 0 {
-		return false, true, false, nil
+		return false, true, false, nil, nil
 	}
-	return false, false, true, nil
+	if take == TakePublished {
+		return false, true, false, ours, nil
+	}
+	return false, false, true, nil, nil
 }
 
 // Nothing reports a plan with no step to take: the base is level and there is
@@ -227,11 +276,12 @@ func (p Plan) Nothing() bool {
 // Equal compares every fact that changes what the sync does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
-		slices.Equal(p.Collect, other.Collect) &&
+		collectionsEqual(p.Collect, other.Collect) &&
 		p.Base == other.Base &&
 		p.Advance == other.Advance &&
 		p.Diverged == other.Diverged &&
 		p.Supersede == other.Supersede &&
+		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
 		p.Blocked == other.Blocked &&
 		p.Restack.Equal(other.Restack)
 }
@@ -243,8 +293,8 @@ func (p Plan) Equal(other Plan) bool {
 // preview-and-apply sequence instead of using the shared flow, and the copy
 // left this step out — so it could fetch, advance a base and replay against a
 // plan the reader had approved some time earlier.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, remote string, preview Plan) (Plan, error) {
-	current, err := s.Plan(ctx, selection, remote)
+func (s Service) Revalidate(ctx context.Context, selection graph.Selection, remote string, take Take, preview Plan) (Plan, error) {
+	current, err := s.Plan(ctx, selection, remote, take)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -328,7 +378,7 @@ func syncScope(scope graph.Scope) graph.Scope {
 //     rebased or amended your branch and published it, so theirs supersedes.
 //   - genuinely diverged: you have work the published version does not, and
 //     choosing between them is not something to do behind your back.
-func (s Service) collect(ctx context.Context, remote, base string, branches []string) ([]Collection, string, error) {
+func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, string, error) {
 	collect := make([]Collection, 0, len(branches))
 	stuck := make([]string, 0)
 	for _, branch := range branches {
@@ -371,10 +421,16 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue
 		}
+		if take == TakePublished {
+			// Asked for explicitly, and the commits it costs are carried so the
+			// preview can name every one before anything happens.
+			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true, Discards: ours})
+			continue
+		}
 		stuck = append(stuck, branch)
 	}
 	if len(stuck) != 0 {
-		return nil, fmt.Sprintf("%s has diverged from %s · you have work the published version does not, so reconcile it yourself and rerun",
+		return nil, fmt.Sprintf("%s has diverged from %s · you have work the published version does not · take the published version with g2g sync --take published, or reconcile it yourself",
 			strings.Join(stuck, ", "), remote), nil
 	}
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
@@ -396,4 +452,14 @@ func fetchList(base string, branches []string) []string {
 		}
 	}
 	return wanted
+}
+
+// collectionsEqual compares collections, including the commits each would
+// discard. A plan that would lose different work is a different plan, and
+// revalidation has to see that.
+func collectionsEqual(left, right []Collection) bool {
+	return slices.EqualFunc(left, right, func(a, b Collection) bool {
+		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
+			slices.Equal(a.Discards, b.Discards)
+	})
 }

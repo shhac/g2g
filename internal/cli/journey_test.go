@@ -423,7 +423,59 @@ func TestJourneyBothYouAndTheRemoteMovedYourBranch(t *testing.T) {
 	if after := w.tip(w.Local, "synthetic-a"); after != before {
 		t.Errorf("a refused sync moved synthetic-a from %s to %s", before, after)
 	}
+	// The refusal names the way through rather than being a dead end.
+	if !strings.Contains(stdout+err.Error(), "--take published") {
+		t.Errorf("the refusal does not name the choice available:\n%s\n%v", stdout, err)
+	}
 	w.assertClean(w.Local)
+}
+
+// The same divergence, resolved by naming which side wins. This is the one path
+// where sync loses work that exists nowhere else, so the preview lists every
+// commit it would discard before anything happens.
+func TestJourneyTakingThePublishedVersionOfADivergedBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+	theirs := w.tip(w.Other, "synthetic-a")
+
+	w.commit(w.Local, "synthetic-a", "yours.txt", "yours")
+	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic yours, revised")
+
+	preview := mustRun(t, "sync", "--take", "published")
+	if !strings.Contains(preview, "discards") {
+		t.Errorf("the preview does not say what it would lose:\n%s", preview)
+	}
+
+	mustRun(t, "sync", "--take", "published", "--apply")
+
+	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
+		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
+	}
+	w.assertHas(w.Local, "synthetic-a", "theirs.txt")
+	w.assertClean(w.Local)
+}
+
+// An unknown value is refused before anything runs, and the refusal lists what
+// the flag does take.
+func TestJourneyAnUnknownTakeIsRefused(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	_, _, err := run(t, "sync", "--take", "synthetic-nonsense")
+	if err == nil {
+		t.Fatal("sync accepted --take synthetic-nonsense")
+	}
+	if !strings.Contains(err.Error(), "published") {
+		t.Errorf("the refusal does not list what --take accepts: %v", err)
+	}
 }
 
 // history reverter: you drop your last commit locally on purpose. It is already

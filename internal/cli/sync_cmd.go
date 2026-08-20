@@ -14,6 +14,7 @@ import (
 func newSync(service syncer.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var remote string
+	var take string
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "sync",
@@ -26,14 +27,18 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 		if err := selection.validateScope(); err != nil {
 			return err
 		}
+		chosen, err := syncer.ParseTake(take)
+		if err != nil {
+			return err
+		}
 		ctx := commandContext(cmd.Context(), cmd, "sync", applyMode(apply), selection.branch, "")
 		flow := applyFlow[syncer.Plan]{
 			guard: guard,
 			plan: func(ctx context.Context) (syncer.Plan, error) {
-				return service.Plan(ctx, selection.Selection(), remote)
+				return service.Plan(ctx, selection.Selection(), remote, chosen)
 			},
 			revalidate: func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
-				return service.Revalidate(ctx, selection.Selection(), remote, preview)
+				return service.Revalidate(ctx, selection.Selection(), remote, chosen, preview)
 			},
 			render:   func(w io.Writer, plan syncer.Plan, p Presentation) error { return writeStackView(w, syncView(plan), p) },
 			execute:  service.Apply,
@@ -64,6 +69,18 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	}
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
+	// An enum rather than a boolean, because which side wins has more answers
+	// than the one implemented and naming the value leaves room for them. There
+	// is no "mine": sync moves toward this checkout and push moves toward the
+	// remote, so that choice is already made by which command you run.
+	cmd.Flags().StringVar(&take, "take", "", "resolve a divergence by taking one side: published (discards local commits the remote does not have)")
+	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(func(context.Context, string) ([]string, error) {
+		values := make([]string, 0, len(syncer.Takes))
+		for _, value := range syncer.Takes {
+			values = append(values, string(value))
+		}
+		return values, nil
+	}))
 	selection.registerBranch(cmd, service.Graph)
 	// sync was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean

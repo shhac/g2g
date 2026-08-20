@@ -18,6 +18,9 @@ func syncView(plan syncer.Plan) stackView {
 	if note := collectNote(plan); note != "" {
 		view = view.note(note, severityOK)
 	}
+	if note := discardNote(plan); note != "" {
+		view = view.note(note, severityBad)
+	}
 	view = view.note(replayNote(plan), severityNeutral)
 	return view
 }
@@ -29,22 +32,61 @@ func syncView(plan syncer.Plan) stackView {
 // supersede is called out separately because it replaces what you have rather
 // than adding to it.
 func collectNote(plan syncer.Plan) string {
-	advanced, superseded := make([]string, 0), make([]string, 0)
+	advanced, superseded, taken := make([]string, 0), make([]string, 0), make([]string, 0)
 	for _, collection := range plan.Collect {
-		if collection.Superseded {
+		switch {
+		case len(collection.Discards) != 0:
+			// Asked for. Saying it "already has everything here" would be false
+			// of exactly this case, which is the one that loses work.
+			taken = append(taken, collection.Branch)
+		case collection.Superseded:
 			superseded = append(superseded, collection.Branch)
-			continue
+		default:
+			advanced = append(advanced, collection.Branch)
 		}
-		advanced = append(advanced, collection.Branch)
 	}
-	notes := make([]string, 0, 2)
+	notes := make([]string, 0, 3)
 	if len(advanced) != 0 {
 		notes = append(notes, "Brings "+branchList(advanced)+" up to what is published.")
 	}
 	if len(superseded) != 0 {
 		notes = append(notes, "Replaces "+branchList(superseded)+" with the published version, which already has everything here.")
 	}
+	if len(taken) != 0 {
+		notes = append(notes, "Replaces "+branchList(taken)+" with the published version.")
+	}
 	return strings.Join(notes, " ")
+}
+
+// discardNote names every commit --take would throw away.
+//
+// A count would not be enough. This is the one path where sync loses work that
+// exists nowhere else, so the preview lists what dies rather than how much, and
+// it is a problem rather than a notice.
+func discardNote(plan syncer.Plan) string {
+	losses := make([]string, 0)
+	for _, commit := range plan.DiscardsBase {
+		losses = append(losses, plan.Base+" "+shortObject(commit))
+	}
+	for _, collection := range plan.Collect {
+		for _, commit := range collection.Discards {
+			losses = append(losses, collection.Branch+" "+shortObject(commit))
+		}
+	}
+	if len(losses) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("--take published discards %s that %s nowhere else: %s.",
+		count(len(losses), "commit", "commits"), pick(len(losses), "exists", "exist"), strings.Join(losses, ", "))
+}
+
+// shortObject trims an object id to the length a person reads, leaving anything
+// that is not one alone.
+func shortObject(object string) string {
+	if len(object) <= 12 {
+		return object
+	}
+	return object[:12]
 }
 
 func baseNote(plan syncer.Plan) string {

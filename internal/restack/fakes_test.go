@@ -351,3 +351,7 @@ type holdingGit struct {
 func (g holdingGit) CheckedOutElsewhere(context.Context) (map[string]string, error) {
 	return g.elsewhere, g.err
 }
+
+// Absorbed answers of a whole branch what Cherry answers per commit, which is
+// what a squash merge needs. Nothing here is absorbed unless a case says so.
+func (f *fakeGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }

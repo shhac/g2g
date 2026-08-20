@@ -34,6 +34,7 @@ type Git interface {
 	SwitchTree(ctx context.Context, from, to string) error
 	CherryDropped(context.Context, string, string) ([]string, error)
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 	PinForkPoint(context.Context, string, string) error
 	UpdateBranch(context.Context, string, string) error
 }

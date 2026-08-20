@@ -752,6 +752,89 @@ func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
 	}
 }
 
+// Your parent was squash-merged, and it had more than one commit.
+//
+// This is the commonest way a branch lands and the case per-commit detection
+// cannot see: a squash combines the commits into one, so that commit is
+// equivalent to none of them and each is offered to the rewrite engine
+// individually — where it conflicts with the squashed version of itself. Found
+// by landing this repository's own stack.
+func TestJourneyYourParentWasSquashMergedWithSeveralCommits(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "first.txt")
+	w.commit(w.Local, "synthetic-a", "second.txt", "second")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// Squashed on the remote, then the trunk moves on, so nothing as crude as
+	// a tree comparison would see it either.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "merge", "-q", "--squash", "origin/synthetic-a")
+	w.git(w.Other, "commit", "-qm", "synthetic squash of a")
+	w.commit(w.Other, "main", "elsewhere.txt", "elsewhere")
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	mustRun(t, "sync", "--apply")
+
+	w.assertClean(w.Local)
+	if !w.contains(w.Local, "main", "synthetic-b") {
+		t.Fatal("synthetic-b was not brought onto the squashed trunk")
+	}
+	// Its own work and nothing else: the parent's two commits are in the trunk
+	// as one, and replaying them again is what used to conflict.
+	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-b"); own != "1" {
+		t.Errorf("synthetic-b has %s commits above the trunk, want 1", own)
+	}
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	w.assertHas(w.Local, "synthetic-b", "first.txt")
+	w.assertHas(w.Local, "synthetic-b", "second.txt")
+
+	// And the parent reads as finished rather than as needing repair.
+	graph := mustRun(t, "graph", "--scope", "trunk")
+	if strings.Contains(graph, "needs restack") {
+		t.Errorf("a squash-merged parent still reads as needing a restack:\n%s", graph)
+	}
+}
+
+// The same squash, restacked directly rather than through sync.
+//
+// sync replays onto a fetched ref and takes a different path, so it passes
+// whether or not a squashed parent collapses. This is the path that failed:
+// the parent stays in the replay range, its commits are offered to the engine
+// one at a time, and each conflicts with the squashed version of itself.
+func TestJourneyRestackingOntoASquashedParentDirectly(t *testing.T) {
+	w := newWorld(t)
+	// Successive edits to one file, which is what a real branch looks like and
+	// what makes this fail: replaying the first onto a trunk that already holds
+	// the combined result conflicts, where two commits touching different files
+	// would each replay as a no-op and be dropped as empty.
+	w.branchOff("main", "synthetic-a", "work.txt")
+	w.commit(w.Local, "synthetic-a", "work.txt", "work\nand more work")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+
+	// Squashed locally, as landing a pull request and pulling would leave it.
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "merge", "-q", "--squash", "synthetic-a")
+	w.git(w.Local, "commit", "-qm", "synthetic squash of a")
+	w.commit(w.Local, "main", "elsewhere.txt", "elsewhere")
+
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	mustRun(t, "restack", "--scope", "stack", "--apply")
+
+	w.assertClean(w.Local)
+	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-b"); own != "1" {
+		t.Errorf("synthetic-b has %s commits above the trunk, want 1 · the squashed parent was replayed", own)
+	}
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	w.assertHas(w.Local, "synthetic-b", "work.txt")
+}
+
 // The world moves between preview and apply. Revalidation exists precisely for
 // this, and it had never been tested against a remote that actually moved.
 func TestJourneyTheRemoteMovesBetweenPreviewAndApply(t *testing.T) {

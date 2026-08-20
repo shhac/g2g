@@ -225,3 +225,56 @@ func TestDivergenceReportsADescendantWithNothingBehind(t *testing.T) {
 		t.Errorf("behind = %d, want 0 for a descendant", behind)
 	}
 }
+
+// A squash merge is the commonest way a branch lands and the one git cherry
+// cannot see: it combines the branch's commits into one, so that commit is
+// content-equivalent to none of them and every one reads as new.
+func TestAbsorbedSeesASquashCherryCannot(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "base.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic first", "work.txt", "one")
+	repo.Commit("synthetic second", "work.txt", "one\ntwo")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	repo.Run("merge", "-q", "--squash", "synthetic-a")
+	repo.Run("commit", "-qm", "synthetic squash")
+	// And the trunk moves on, so a plain tree comparison would differ.
+	repo.Commit("synthetic other", "other.txt", "other")
+
+	inRepo(t, repo.Dir)
+	client := Client{Runner: subprocess.ExecRunner{}}
+
+	// Per-commit sees nothing: both are marked as having no equivalent.
+	absent, _, err := client.Cherry(context.Background(), "synthetic-trunk", "synthetic-a", "")
+	if err != nil {
+		t.Fatalf("Cherry() error = %v", err)
+	}
+	if len(absent) != 2 {
+		t.Errorf("Cherry reports %d commits absent, want 2 · this is the case it cannot answer", len(absent))
+	}
+
+	absorbed, err := client.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if !absorbed {
+		t.Error("a squash-merged branch was not seen as absorbed")
+	}
+}
+
+// A branch with work of its own is not absorbed, however much it shares.
+func TestABranchWithWorkOfItsOwnIsNotAbsorbed(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "base.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic own", "own.txt", "own")
+
+	inRepo(t, repo.Dir)
+	absorbed, err := Client{Runner: subprocess.ExecRunner{}}.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if absorbed {
+		t.Error("a branch carrying work the trunk lacks was reported as absorbed")
+	}
+}

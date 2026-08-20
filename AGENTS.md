@@ -142,6 +142,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   considers reachable or actually produces. Those cases build a throwaway local
   repository — synthetic branch names, no remote, nothing that leaves the
   machine.
+- "Has this landed" has two forms and needs both. `Cherry` answers per commit
+  and cannot see a squash merge, which combines a branch's commits into one so
+  the result is equivalent to none of them — on the commonest way a branch
+  lands. `git.Client.Absorbed` merges the branch into the base and checks for
+  the base's own tree back, which answers it of the whole branch at once. Both
+  the landed state and a step's collapse consult it; without the second, a
+  child's replay range starts below its parent's landed work and each of those
+  commits conflicts with the squashed version of itself.
 - `internal/restack` is the only package allowed to rewrite history. The replay
   range is `forkPoint..branch`; the fork point must be an ancestor of the
   branch before any rewrite, or the range silently widens to include the base's

@@ -436,3 +436,7 @@ func TestImportReportsAFailedGraphWrite(t *testing.T) {
 func (f fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
 	return testutil.OwnCommits(head), nil, nil
 }
+
+// Absorbed answers of a whole branch what Cherry answers per commit, which is
+// what a squash merge needs. Nothing here is absorbed unless a case says so.
+func (f fakeGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }

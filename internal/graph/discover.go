@@ -12,8 +12,12 @@ import (
 type Ancestry interface {
 	CurrentBranch(context.Context) (string, error)
 	// Cherry answers whether commits are present on the other side by content,
-	// which is the only way to see a squash or a cherry-pick.
+	// which is the only way to see a cherry-pick.
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	// Absorbed answers the same question of a whole branch at once, which is the
+	// only way to see a squash: it combines a branch's commits into one, so the
+	// result is equivalent to none of them and Cherry marks every one as new.
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 	LocalBranches(context.Context) ([]string, error)
 	AncestorBranches(context.Context, string) ([]string, error)
 	Divergence(context.Context, string, string) (ahead, behind int, err error)

@@ -139,6 +139,20 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 		// Nothing of this branch's own is missing from its new base, so it has
 		// nothing left to replay and its ref simply moves there.
 		step.Collapses = len(own) == 0
+		if !step.Collapses {
+			// Per-commit is not enough on the commonest way a branch lands. A
+			// squash combines its commits into one, so that commit is
+			// equivalent to none of them and each is offered to the engine
+			// individually — where they conflict with the squashed version of
+			// themselves. Asking of the whole branch at once is what sees it,
+			// and collapsing here is what keeps a child's replay range from
+			// starting below its parent's landed work.
+			absorbed, err := s.Git.Absorbed(ctx, step.Base, branch)
+			if err != nil {
+				return nil, err
+			}
+			step.Collapses = absorbed
+		}
 		if step.Collapses {
 			landing[branch] = step.Base
 		}

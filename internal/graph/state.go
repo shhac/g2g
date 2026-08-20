@@ -195,6 +195,17 @@ func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[stri
 		if len(absent) == 0 {
 			return true, nil
 		}
+		// Per-commit is not enough on the commonest way a branch lands. A squash
+		// merge combines its commits into one, so that commit is equivalent to
+		// none of them and every one reads as new — while the branch as a whole
+		// contributes nothing.
+		absorbed, err := git.Absorbed(ctx, trunk, branch)
+		if err != nil {
+			return false, nil
+		}
+		if absorbed {
+			return true, nil
+		}
 	}
 	return false, nil
 }

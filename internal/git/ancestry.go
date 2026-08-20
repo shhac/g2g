@@ -195,3 +195,55 @@ func (c Client) Cherry(ctx context.Context, upstream, head, limit string) (absen
 	}
 	return absent, present, nil
 }
+
+// absorbedMinorVersion is the first Git minor release with
+// git merge-tree --write-tree.
+const absorbedMinorVersion = 38
+
+// Absorbed reports whether merging a branch into a base would change the base
+// at all: its work is already there, however it arrived.
+//
+// This is the question git cherry cannot answer. A squash merge combines a
+// branch's commits into one, so the result is content-equivalent to none of
+// them individually and cherry marks every one as new — on the commonest way a
+// branch lands. Merging the branch in and finding the base's own tree back is
+// the whole-branch equivalent of the per-commit test.
+//
+// A merge that conflicts exits non-zero, which is an answer rather than a
+// failure: content that conflicts is content the base does not already have.
+func (c Client) Absorbed(ctx context.Context, base, branch string) (bool, error) {
+	if err := safeRef(base); err != nil {
+		return false, err
+	}
+	if err := safeRef(branch); err != nil {
+		return false, err
+	}
+	supported, err := c.supportsMergeTree(ctx)
+	if err != nil || !supported {
+		return false, err
+	}
+	merged, err := c.run(ctx, "merge-tree", "--write-tree", base, branch)
+	if err != nil {
+		return false, nil
+	}
+	baseTree, err := c.run(ctx, "rev-parse", base+"^{tree}")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(merged)) == strings.TrimSpace(string(baseTree)), nil
+}
+
+// supportsMergeTree gates the question the same way replay is gated: verified
+// versions only, and answering false costs the squash-merge case and nothing
+// else.
+func (c Client) supportsMergeTree(ctx context.Context) (bool, error) {
+	output, err := c.run(ctx, "--version")
+	if err != nil {
+		return false, err
+	}
+	major, minor, err := parseGitVersion(output)
+	if err != nil {
+		return false, err
+	}
+	return major > 2 || (major == 2 && minor >= absorbedMinorVersion), nil
+}

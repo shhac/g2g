@@ -57,6 +57,21 @@ That is the same supersede rule the branch case uses, and it is the only place
 If the published trunk does *not* have what this one has, it refuses. Choosing
 which commits die is not a side effect.
 
+**squashed parent.** Your parent was squash-merged, and it had more than one
+commit. This is the commonest way a branch lands and the one `git cherry` cannot
+see: a squash combines the commits into one, so that commit is content-equivalent
+to *none* of them, every one reads as new, and each is offered to the rewrite
+engine individually — where it conflicts with the squashed version of itself.
+
+`git merge-tree --write-tree` answers of the whole branch what cherry answers per
+commit: merge it into the trunk and get the trunk's own tree back, and it has
+contributed nothing however it arrived. The parent then collapses instead of
+replaying, so the child's range starts above it.
+
+Found by landing this repository's own stack. Its two-commit branch conflicted;
+its one-commit branch did not, because a squash of one commit *is* equivalent to
+that commit.
+
 **borrower.** Someone cherry-picked your commits into their branch and it landed
 first. Your commits are in the trunk under different object ids. Replaying drops
 them by content rather than applying them twice.

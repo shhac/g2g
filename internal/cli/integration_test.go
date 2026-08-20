@@ -49,6 +49,10 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
+			// push asks whether a branch has work its base does not, which is
+			// how a branch that merged and was deleted is told from a new one.
+			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
+			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},

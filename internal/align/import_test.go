@@ -429,3 +429,9 @@ func TestImportReportsAFailedGraphWrite(t *testing.T) {
 		t.Errorf("pinned %v for a graph that was never saved", refs.pinned)
 	}
 }
+
+// Cherry reports every commit as absent from the trunk, so nothing here reads
+// as landed by content unless a case is about that.
+func (f fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

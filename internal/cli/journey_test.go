@@ -299,10 +299,9 @@ func TestJourneyYourParentWasSquashMergedAndDeleted(t *testing.T) {
 
 // friendly-fixer: a reviewer pushes a fix straight onto a branch you own.
 //
-// Today there is no way to collect it. sync fetches exactly one ref — the base
-// — so your branch is never brought down, and push then refuses because the
-// remote is ahead. The reviewer's commit stays on the remote and your local
-// branch never learns about it.
+// There used to be no way to collect it. sync fetched exactly one ref — the
+// base — so a branch of yours was never brought down, and push then refused
+// because the remote was ahead. Their commit was unreachable from here.
 func TestJourneyAReviewerPushesToYourBranch(t *testing.T) {
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "a.txt")
@@ -317,16 +316,74 @@ func TestJourneyAReviewerPushesToYourBranch(t *testing.T) {
 
 	mustRun(t, "sync", "--apply")
 
-	// Recorded, not desired: their commit is on the remote and not here.
-	if w.contains(w.Local, w.tip(w.Other, "synthetic-a"), "synthetic-a") {
-		t.Error("BEHAVIOUR CHANGED: sync now collects a reviewer's commit · update this test")
+	w.assertClean(w.Local)
+	w.assertHas(w.Local, "synthetic-a", "review-fix.txt")
+	w.assertHas(w.Local, "synthetic-a", "a.txt")
+	// And with their commit here, publishing is a no-op rather than a refusal.
+	stdout := mustRun(t, "push")
+	if !strings.Contains(stdout, "up to date") {
+		t.Errorf("after collecting the fix the branch is not level with the remote:\n%s", stdout)
 	}
-	stdout, _, err := run(t, "push", "--apply")
+}
+
+// extra-friendly-fixer: the reviewer rebases your branch as well as adding to
+// it, so the published version shares no commit ids with yours.
+//
+// Nothing of yours is missing from it — that is what makes it yours still — so
+// theirs supersedes. It is a reset rather than a fast-forward, which is why the
+// plan names the two differently.
+func TestJourneyAReviewerRebasesYourBranchAndPublishesIt(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// They add a fix and rewrite the whole branch, then publish it.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "review-fix.txt", "fixed")
+	w.git(w.Other, "rebase", "-q", "--force-rebase", "main")
+	w.git(w.Other, "push", "-q", "--force", "origin", "synthetic-a")
+	theirs := w.tip(w.Other, "synthetic-a")
+
+	mustRun(t, "sync", "--apply")
+
+	w.assertClean(w.Local)
+	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
+		t.Errorf("local is at %s, want the published %s · their rebase did not survive", now, theirs)
+	}
+	w.assertHas(w.Local, "synthetic-a", "review-fix.txt")
+	w.assertHas(w.Local, "synthetic-a", "a.txt")
+}
+
+// The refusal that separates the two: you have work the published version does
+// not, so which one wins is not a decision to take behind your back.
+func TestJourneyBothYouAndTheRemoteMovedYourBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+
+	w.commit(w.Local, "synthetic-a", "yours.txt", "yours")
+	// Amend so neither side is an ancestor of the other and yours is not in
+	// theirs by content either.
+	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic yours, revised")
+	before := w.tip(w.Local, "synthetic-a")
+
+	stdout, _, err := run(t, "sync", "--apply")
 	if err == nil {
-		t.Fatal("push overwrote the reviewer's commit")
+		t.Fatal("sync chose between two versions of your branch")
 	}
-	if !strings.Contains(stdout+err.Error(), "remote has moved") {
-		t.Errorf("the refusal does not explain the state:\n%s\n%v", stdout, err)
+	if !strings.Contains(stdout+err.Error(), "diverged") {
+		t.Errorf("the refusal does not name the state:\n%s\n%v", stdout, err)
+	}
+	if after := w.tip(w.Local, "synthetic-a"); after != before {
+		t.Errorf("a refused sync moved synthetic-a from %s to %s", before, after)
 	}
 	w.assertClean(w.Local)
 }
@@ -383,11 +440,28 @@ func TestJourneyYourBranchWasDeletedAfterItMerged(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-a")
 
+	// You sync, which is what you would do next, and it must survive the branch
+	// having gone from the remote: naming a deleted ref fails a whole fetch.
+	mustRun(t, "sync", "--apply")
 	stdout := mustRun(t, "push")
 
-	// Recorded, not desired: it offers to put the branch back.
-	if !strings.Contains(stdout, "new branch on the remote") {
-		t.Errorf("BEHAVIOUR CHANGED: push no longer offers to recreate a deleted merged branch · update this test\n%s", stdout)
+	// Absent from the remote has two meanings and they want opposite answers.
+	// This branch is gone because it is finished, so putting it back is the
+	// wrong reading.
+	if strings.Contains(stdout, "new branch on the remote") {
+		t.Errorf("push offered to recreate a branch that merged and was deleted:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "already in the trunk") {
+		t.Errorf("push does not say the work has landed:\n%s", stdout)
+	}
+	// It reads as finished rather than broken, and the command that closes it
+	// offers to.
+	graph := mustRun(t, "graph")
+	if strings.Contains(graph, "parent missing") {
+		t.Errorf("a merged branch reads as broken:\n%s", graph)
+	}
+	if prune := mustRun(t, "prune"); !strings.Contains(prune, "synthetic-a") {
+		t.Errorf("prune does not offer to forget the merged branch:\n%s", prune)
 	}
 	w.assertClean(w.Local)
 }
@@ -516,17 +590,26 @@ func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
 	t.Logf("sync after an out-of-order merge: err=%v\n%s", err, stdout)
 
 	w.assertClean(w.Local)
-	// Recorded: synthetic-c reaches the trunk and keeps only its own work. Its
-	// parent's commits are in the trunk by content, so they must not reappear.
 	if !w.contains(w.Local, "main", "synthetic-c") {
-		t.Error("BEHAVIOUR: synthetic-c was not brought onto the merged trunk · this is the case to improve")
+		t.Error("synthetic-c was not brought onto the merged trunk")
 	}
 	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-c"); own != "1" {
-		t.Errorf("BEHAVIOUR: synthetic-c has %s commits above the trunk, want 1", own)
+		t.Errorf("synthetic-c has %s commits above the trunk, want 1", own)
 	}
-	// And the branches it no longer needs are visible as landed.
+	// The branches the merge carried must not read as broken. Telling someone
+	// to retrack a branch that has already served its purpose sends them to
+	// repair something that is finished.
 	graph := mustRun(t, "graph", "--scope", "trunk")
-	t.Logf("graph after an out-of-order merge:\n%s", graph)
+	if strings.Contains(graph, "parent missing") {
+		t.Errorf("a branch the merge carried reads as broken:\n%s", graph)
+	}
+	// And the command that closes them offers to.
+	prune := mustRun(t, "prune", "--scope", "trunk")
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		if !strings.Contains(prune, branch) {
+			t.Errorf("prune does not offer to forget %s:\n%s", branch, prune)
+		}
+	}
 }
 
 // The world moves between preview and apply. Revalidation exists precisely for

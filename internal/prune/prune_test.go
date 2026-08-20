@@ -215,3 +215,9 @@ func TestApplyReportsAFailedUnpin(t *testing.T) {
 		t.Fatal("Apply() error = nil when releasing a fork point failed")
 	}
 }
+
+// Cherry reports every commit as absent from the trunk, so nothing here reads
+// as landed by content unless a case is about that.
+func (a pruneAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

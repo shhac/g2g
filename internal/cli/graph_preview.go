@@ -45,6 +45,8 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 		return "fork point lost", severityBad
 	case graph.StateParentMissing:
 		return "parent missing", severityWarn
+	case graph.StateLanded:
+		return "landed", severityOK
 	case graph.StateUntracked:
 		if discovery.Graph.IsTrunk(branch) {
 			return "trunk", severityNeutral
@@ -101,6 +103,9 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	}
 	if missing := discovery.MissingParents(); len(missing) != 0 {
 		view = view.note("Recorded parent is no longer a local branch for "+branchList(missing)+" · retrack onto its new parent.", severityWarn)
+	}
+	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
+		view = view.note("Already in the trunk: "+branchList(landed)+" · run g2g prune to forget them.", severityNeutral)
 	}
 	if orphans := discovery.Orphans(); len(orphans) != 0 {
 		view = view.note("No tracked parent for "+branchList(orphans)+".", severityWarn)

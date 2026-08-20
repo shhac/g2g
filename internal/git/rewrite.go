@@ -266,7 +266,61 @@ func (c Client) FastForward(ctx context.Context, branch, to string) error {
 	if !contains {
 		return fmt.Errorf("%s has diverged from %s and cannot be fast-forwarded; reconcile it yourself", branch, to)
 	}
-	return c.UpdateBranch(ctx, branch, target)
+	if err := c.UpdateBranch(ctx, branch, target); err != nil {
+		return err
+	}
+	return c.followCheckout(ctx, branch, current, target)
+}
+
+// ResetBranch points a branch at a commit that does not contain it, bringing
+// the checkout with it.
+//
+// It is the deliberate counterpart to FastForward. Taking a published version
+// that supersedes the local one — somebody rebased your branch and pushed it —
+// is neither a merge nor a fast-forward, so FastForward would refuse it and
+// calling it one would be a lie. Naming it separately is what keeps "you are
+// behind" and "this replaces what you have" from becoming the same call.
+func (c Client) ResetBranch(ctx context.Context, branch, to string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	if err := safeRef(to); err != nil {
+		return err
+	}
+	current, err := c.Resolve(ctx, branch)
+	if err != nil {
+		return err
+	}
+	target, err := c.Resolve(ctx, to)
+	if err != nil {
+		return err
+	}
+	if current == target {
+		return nil
+	}
+	if err := c.UpdateBranch(ctx, branch, target); err != nil {
+		return err
+	}
+	return c.followCheckout(ctx, branch, current, target)
+}
+
+// followCheckout brings the index and working tree with a branch whose ref has
+// just moved, when that branch is the one checked out here.
+//
+// Moving a ref does not touch the working tree, so advancing the branch you are
+// standing on leaves the tree describing the commit before — reported by git as
+// changes nobody made, and enough to block the next git switch. This has been
+// found four times in four places now, so it lives with the move rather than
+// with each caller that performs one.
+//
+// A detached HEAD has no branch to follow and CurrentBranch says so by failing,
+// which is not a reason to fail the move that already succeeded.
+func (c Client) followCheckout(ctx context.Context, branch, from, to string) error {
+	head, err := c.CurrentBranch(ctx)
+	if err != nil || head != branch || from == to {
+		return nil
+	}
+	return c.SwitchTree(ctx, from, to)
 }
 
 // SwitchTree updates the index and working tree from one commit to another,

@@ -274,3 +274,9 @@ func (s *g2gStore) Save(_ context.Context, g graph.Graph) error {
 func (s *g2gStore) Path(context.Context) (string, error) {
 	return "/synthetic/repo/.git/g2g/graph.json", nil
 }
+
+// Cherry reports every commit as absent from the trunk unless a case says
+// otherwise, so a branch reads as landed only where that is the subject.
+func (f g2gAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

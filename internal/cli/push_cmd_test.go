@@ -253,3 +253,9 @@ func (f *cliPushGit) Resolve(_ context.Context, rev string) (string, error) {
 }
 
 func (f *cliPushGit) Divergence(context.Context, string, string) (int, int, error) { return 0, 1, nil }
+
+// Cherry reports work the base does not have, so a branch absent from the
+// remote reads as new rather than as one that merged and was deleted.
+func (f *cliPushGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

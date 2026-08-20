@@ -183,6 +183,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 
 ## Journeys
 
+`design-docs/scenarios.md` names the situations and says what each one should
+do. Use those names: a bug report, a test, and a design argument saying
+"friendly-fixer" all mean the same thing, and the entries record where today's
+answer is not the wanted one.
+
 `internal/cli/journey_test.go` drives a person through a stack while the remote
 moves under them, against a real bare remote and a real second clone standing in
 for a colleague. Everything is real except GitHub, which has no local stand-in.

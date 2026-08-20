@@ -40,6 +40,9 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-other", "synthetic-side", "synthetic-top", "synthetic-trunk"}},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			{Prefix: "merge-base --is-ancestor"},
+			// push asks whether a branch has work the base does not, which is
+			// how a branch that merged and was deleted is told from a new one.
+			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			{Prefix: "ls-remote"},
@@ -215,6 +218,9 @@ func dualSourceRepository(t *testing.T) *testutil.Recorder {
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-other", "synthetic-side", "synthetic-top", "synthetic-trunk"}},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			{Prefix: "merge-base --is-ancestor"},
+			// push asks whether a branch has work the base does not, which is
+			// how a branch that merged and was deleted is told from a new one.
+			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			{Prefix: "ls-remote"},

@@ -11,6 +11,9 @@ import (
 // and never checks a branch out.
 type Ancestry interface {
 	CurrentBranch(context.Context) (string, error)
+	// Cherry answers whether commits are present on the other side by content,
+	// which is the only way to see a squash or a cherry-pick.
+	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	LocalBranches(context.Context) ([]string, error)
 	AncestorBranches(context.Context, string) ([]string, error)
 	Divergence(context.Context, string, string) (ahead, behind int, err error)
@@ -127,6 +130,14 @@ const (
 	// StateParentMissing means the recorded parent is no longer a local
 	// branch, which is what a merged and deleted parent looks like.
 	StateParentMissing NodeState = "parent missing"
+	// StateLanded means this branch's own work is already in a trunk, by
+	// content rather than by object id, so there is nothing left for it to
+	// contribute.
+	//
+	// It is distinguished from a missing parent because the remedy is the
+	// opposite. "Retrack onto its new parent" tells someone to repair a branch
+	// that has already served its purpose; what they want is to forget it.
+	StateLanded NodeState = "landed"
 	// StateForkUnresolvable means the recorded fork point is no longer an
 	// object in this repository, usually because it was collected after the
 	// parent branch went away.
@@ -136,7 +147,14 @@ const (
 )
 
 // Restackable reports whether a state describes a branch a rebase may act on.
-func (s NodeState) Restackable() bool { return s == StateAligned || s == StateNeedsRestack }
+//
+// A landed branch is very much one of them: a stack whose base has landed is
+// the recovery restack exists for, and the branch collapses onto its new base
+// rather than being replayed. Leaving it out refused exactly the case the tool
+// is for.
+func (s NodeState) Restackable() bool {
+	return s == StateAligned || s == StateNeedsRestack || s == StateLanded
+}
 
 // Assess reports each branch's state against Git.
 //
@@ -187,7 +205,7 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 		return StateUntracked, nil
 	}
 	if !present[edge.Parent] {
-		return StateParentMissing, nil
+		return drifted(ctx, git, g, present, branch, StateParentMissing)
 	}
 	parentTip, err := git.Resolve(ctx, edge.Parent)
 	if err != nil {
@@ -204,7 +222,7 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 		if built {
 			return StateAligned, nil
 		}
-		return StateNeedsRestack, nil
+		return drifted(ctx, git, g, present, branch, StateNeedsRestack)
 	}
 	forkPoint, err := git.Resolve(ctx, edge.ForkPoint)
 	if err != nil {
@@ -215,10 +233,57 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 		return "", err
 	}
 	if !intact {
-		return StateMovedOffParent, nil
+		return drifted(ctx, git, g, present, branch, StateMovedOffParent)
 	}
 	if forkPoint == parentTip {
 		return StateAligned, nil
 	}
-	return StateNeedsRestack, nil
+	return drifted(ctx, git, g, present, branch, StateNeedsRestack)
+}
+
+// drifted reports a branch that no longer sits where it was recorded, and
+// distinguishes the two reasons that look identical from the graph's side.
+//
+// A branch drifts because the world moved and it needs repairing, or because
+// its work landed and it is finished. The remedies are opposite — restack or
+// retrack, against prune — so telling someone to repair a branch that has
+// already served its purpose sends them to fix something that is not broken.
+//
+// Only a drifted branch is asked, which is what bounds the cost: a branch
+// sitting exactly where it was recorded cannot have landed without also having
+// no work of its own.
+func drifted(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string, otherwise NodeState) (NodeState, error) {
+	landed, err := landedInATrunk(ctx, git, g, present, branch)
+	if err != nil {
+		return "", err
+	}
+	if landed {
+		return StateLanded, nil
+	}
+	return otherwise, nil
+}
+
+// landedInATrunk reports a branch whose own work is already in a trunk by
+// content, which is what a squash merge or a cherry-picked series leaves
+// behind: the same change under a different object id.
+//
+// Every trunk the graph knows is asked, because the branch's own trunk may be
+// exactly the one that has gone. A trunk that is not a local branch is skipped
+// rather than failing the read.
+func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string) (bool, error) {
+	for _, trunk := range g.Trunks {
+		if !present[trunk] || trunk == branch {
+			continue
+		}
+		absent, _, err := git.Cherry(ctx, trunk, branch, "")
+		if err != nil {
+			// A branch the trunk shares no history with cannot be compared,
+			// which is an answer rather than a failure.
+			return false, nil
+		}
+		if len(absent) == 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }

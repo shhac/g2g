@@ -21,6 +21,7 @@ func unstackedRepository(t *testing.T, defaultHead string) *testutil.Recorder {
 			{Prefix: "branch --format", Lines: []string{"main"}},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			{Prefix: "merge-base --is-ancestor"},
+			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
 			{Prefix: "status --porcelain"},
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			{Prefix: "symbolic-ref --quiet refs/remotes/origin/HEAD", Output: defaultHead},

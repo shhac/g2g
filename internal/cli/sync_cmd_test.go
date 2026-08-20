@@ -26,6 +26,9 @@ type syncCLIGit struct {
 
 	fetches      int
 	fastForwards []string
+	// published maps a branch to the tip the remote holds for it. Only what a
+	// case sets is on the remote at all.
+	published map[string]string
 }
 
 func (g *syncCLIGit) Remote(context.Context, string) error { return nil }
@@ -41,11 +44,14 @@ func (g *syncCLIGit) FastForward(_ context.Context, branch, to string) error {
 }
 
 func (g *syncCLIGit) Resolve(_ context.Context, revision string) (string, error) {
-	if strings.HasPrefix(revision, "refs/g2g/remotes/") {
-		if g.remoteTip == "" {
-			return "", fmt.Errorf("synthetic: no such ref %q", revision)
+	if branch, isolated := strings.CutPrefix(revision, "refs/g2g/remotes/origin/"); isolated {
+		if tip := g.published[branch]; tip != "" {
+			return tip, nil
 		}
-		return g.remoteTip, nil
+		if branch == "synthetic-main" && g.remoteTip != "" {
+			return g.remoteTip, nil
+		}
+		return "", fmt.Errorf("synthetic: no such ref %q", revision)
 	}
 	return "base-local", nil
 }
@@ -130,7 +136,7 @@ func runSync(t *testing.T, git *syncCLIGit, replay *syncCLIRestack, args ...stri
 // assertion below is about the sequence rather than any one step, which is the
 // only thing sync itself owns.
 func TestSyncPreviewChangesNothing(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote"}
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
 	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login")
@@ -147,7 +153,7 @@ func TestSyncPreviewChangesNothing(t *testing.T) {
 }
 
 func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote"}
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
 	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
@@ -182,7 +188,7 @@ func TestSyncRefusesADivergedBaseInBothPreviewAndApply(t *testing.T) {
 		{name: "apply", args: []string{"sync", "--branch", "synthetic-login", "--apply"}, want: "Not applied"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			git := &syncCLIGit{remoteTip: "base-remote", diverged: true}
+			git := &syncCLIGit{remoteTip: "base-remote", diverged: true, published: map[string]string{"synthetic-main": "base-remote"}}
 			replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
 			out, _ := runSync(t, git, replay, test.args...)
@@ -208,7 +214,7 @@ func TestSyncRefusesADivergedBaseInBothPreviewAndApply(t *testing.T) {
 // reported once, and the exit is clean because there is nothing to retry:
 // the remedy is g2g restack --continue.
 func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote"}
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{
 		steps:    []string{"synthetic-login"},
 		applyErr: errors.New("synthetic conflict"),
@@ -234,7 +240,7 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 // A replay that fails without leaving a resumable rewrite is an ordinary
 // failure, and must still take the ordinary failure path.
 func TestSyncReportsAFailedReplayThatLeftNothingResumable(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote"}
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{
 		steps:    []string{"synthetic-login"},
 		applyErr: errors.New("synthetic replay failure"),
@@ -268,7 +274,7 @@ func TestSyncOffersOnlyTheTwoScopesThatMeanSomething(t *testing.T) {
 		{scope: "all", refused: true},
 	} {
 		t.Run(test.scope, func(t *testing.T) {
-			git := &syncCLIGit{remoteTip: "base-remote"}
+			git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 			replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
 			out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", test.scope)
@@ -292,7 +298,7 @@ func TestSyncOffersOnlyTheTwoScopesThatMeanSomething(t *testing.T) {
 // The widening is the whole point of the flag: trunk brings every stack on the
 // trunk up to date, not just the one the target sits in.
 func TestSyncTrunkScopeReachesTheWholeTrunk(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote"}
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
 	if _, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", "trunk", "--apply"); err != nil {
@@ -302,4 +308,29 @@ func TestSyncTrunkScopeReachesTheWholeTrunk(t *testing.T) {
 	if replay.scopes[len(replay.scopes)-1] != "trunk" {
 		t.Errorf("the replay was planned at scope %q, want trunk", replay.scopes[len(replay.scopes)-1])
 	}
+}
+
+// ResetBranch takes a published version that supersedes the local one.
+func (g *syncCLIGit) ResetBranch(_ context.Context, branch, to string) error {
+	g.fastForwards = append(g.fastForwards, branch+"<-"+to)
+	return nil
+}
+
+// Cherry reports nothing absent, so a branch these tests do not set up as
+// published never reads as diverged.
+func (g *syncCLIGit) Cherry(context.Context, string, string, string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+// RemoteTips reports the base as published and nothing else, so these tests
+// stay about the sequence. A branch the remote has moved on is collection's
+// subject, and it has its own tests.
+func (g *syncCLIGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+	tips := map[string]string{}
+	for _, branch := range branches {
+		if g.published[branch] != "" {
+			tips[branch] = g.published[branch]
+		}
+	}
+	return tips, nil
 }

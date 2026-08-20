@@ -47,6 +47,7 @@ if [ "$1 $2" = "rev-parse --verify" ]; then
   exit 0
 fi
 if [ "$1" = "rev-list" ]; then printf '0\t1\n'; exit 0; fi
+if [ "$1" = "cherry" ]; then printf '+ 1111111111111111111111111111111111111111\n'; exit 0; fi
 exit 9`,
 	})
 	var debug bytes.Buffer

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -14,8 +15,36 @@ func syncView(plan syncer.Plan) stackView {
 		return view.blockedBy(plan.Blocked)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
+	if note := collectNote(plan); note != "" {
+		view = view.note(note, severityOK)
+	}
 	view = view.note(replayNote(plan), severityNeutral)
 	return view
+}
+
+// collectNote says which of your branches the remote has moved on, and how.
+//
+// Bringing somebody else's commit onto a branch of yours is a change to your
+// work, so it is named in the preview rather than folded into "synced". A
+// supersede is called out separately because it replaces what you have rather
+// than adding to it.
+func collectNote(plan syncer.Plan) string {
+	advanced, superseded := make([]string, 0), make([]string, 0)
+	for _, collection := range plan.Collect {
+		if collection.Superseded {
+			superseded = append(superseded, collection.Branch)
+			continue
+		}
+		advanced = append(advanced, collection.Branch)
+	}
+	notes := make([]string, 0, 2)
+	if len(advanced) != 0 {
+		notes = append(notes, "Brings "+branchList(advanced)+" up to what is published.")
+	}
+	if len(superseded) != 0 {
+		notes = append(notes, "Replaces "+branchList(superseded)+" with the published version, which already has everything here.")
+	}
+	return strings.Join(notes, " ")
 }
 
 func baseNote(plan syncer.Plan) string {

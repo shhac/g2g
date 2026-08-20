@@ -43,6 +43,8 @@ func publicationState(publication push.Publication, compared bool) (string, seve
 			count(publication.Ours, "commit", "commits"), count(publication.Theirs, "commit", "commits")), severityBad
 	case publication.Theirs > 0:
 		return fmt.Sprintf("remote is %s ahead · the lease will reject this", count(publication.Theirs, "commit", "commits")), severityBad
+	case publication.Landed:
+		return "already in the trunk · nothing to publish", severityNeutral
 	case publication.New:
 		return "new branch on the remote", severityOK
 	case publication.UpToDate():

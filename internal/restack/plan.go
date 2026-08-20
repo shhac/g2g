@@ -485,7 +485,17 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 	if !supported {
 		return nil, false, false, nil
 	}
-	updates, clean, err = s.Git.PreviewReplay(ctx, plan.Steps[0].Base, plan.ranges())
+	ranges := plan.ranges()
+	if len(ranges) == 0 {
+		// Every step collapses: each branch's work is already in its new base
+		// by content, so their refs move and nothing is replayed at all. There
+		// is no range to predict and nothing that could conflict, and asking
+		// the engine anyway failed the whole command with "no commit ranges
+		// selected for replay" — on precisely the case where a stack has
+		// finished landing.
+		return nil, true, true, nil
+	}
+	updates, clean, err = s.Git.PreviewReplay(ctx, plan.Steps[0].Base, ranges)
 	if err != nil {
 		return nil, false, false, err
 	}

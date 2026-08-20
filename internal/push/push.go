@@ -23,6 +23,10 @@ type Git interface {
 	// nothing more over the network.
 	Resolve(context.Context, string) (string, error)
 	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
+	// Cherry says whether a branch has work the base does not, by content. A
+	// branch whose work is entirely in the base has nothing to publish, however
+	// absent it is from the remote.
+	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 }
 
 type Service struct {
@@ -57,6 +61,11 @@ type Publication struct {
 	// New means the remote has no such branch yet, so there is nothing to
 	// compare and nothing to overwrite.
 	New bool
+	// Landed means the branch has no work the base does not already have. A
+	// branch that merged and was deleted looks exactly like a new one from the
+	// remote's side, and offering to put it back is the wrong reading: it is
+	// gone because it is finished.
+	Landed bool
 	// Unknown means the remote is on a commit this repository does not have,
 	// so the two cannot be compared without fetching. It is treated exactly
 	// like being behind, because that is what it most likely is.
@@ -84,8 +93,12 @@ func (p Plan) NothingToPublish() bool {
 // this push would overwrite.
 func (p Publication) Rejected() bool { return p.Theirs > 0 || p.Unknown }
 
-// UpToDate reports a branch the remote already has exactly.
+// UpToDate reports a branch the remote needs nothing from: either it already
+// has it exactly, or the branch has nothing left to give.
 func (p Publication) UpToDate() bool {
+	if p.Landed {
+		return true
+	}
 	return !p.New && !p.Unknown && p.Ours == 0 && p.Theirs == 0
 }
 
@@ -132,7 +145,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	publishing, err := s.publications(ctx, snapshot.Branches, tips)
+	publishing, err := s.publications(ctx, snapshot.Base, snapshot.Branches, tips)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -155,12 +168,19 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 // A remote tip this repository does not have is not an error: it is what being
 // behind looks like before a fetch, and refusing to plan would be a worse
 // answer than saying so.
-func (s Service) publications(ctx context.Context, branches []string, tips map[string]string) (map[string]Publication, error) {
+func (s Service) publications(ctx context.Context, base string, branches []string, tips map[string]string) (map[string]Publication, error) {
 	publishing := make(map[string]Publication, len(branches))
 	for _, branch := range branches {
 		tip, published := tips[branch]
 		if !published || tip == "" {
-			publishing[branch] = Publication{New: true}
+			// Absent from the remote has two meanings, and they want opposite
+			// answers: work nobody has seen, or work that merged and took the
+			// branch with it.
+			own, _, err := s.Git.Cherry(ctx, base, branch, "")
+			if err != nil {
+				return nil, err
+			}
+			publishing[branch] = Publication{New: len(own) != 0, Landed: len(own) == 0}
 			continue
 		}
 		local, err := s.Git.Resolve(ctx, branch)

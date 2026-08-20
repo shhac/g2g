@@ -24,12 +24,29 @@ type fakeGit struct {
 
 	fetched      []string
 	fastForwards []string
+	// absentOnRemote marks branches the remote no longer has, which is what a
+	// merged and deleted branch looks like.
+	absentOnRemote map[string]bool
+	reset          []string
+	// ownCommits maps a branch to the commits it has that the published
+	// version does not, by content.
+	ownCommits map[string][]string
 }
 
 func (f *fakeGit) Remote(_ context.Context, _ string) error { return f.remoteErr }
 
-func (f *fakeGit) RemoteTips(context.Context, string, []string) (map[string]string, error) {
-	return nil, nil
+// RemoteTips says which branches the remote still has. Everything asked for is
+// present unless a case removes it, because a branch being gone is the subject
+// of only some of these tests.
+func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+	tips := map[string]string{}
+	for _, branch := range branches {
+		if f.absentOnRemote[branch] {
+			continue
+		}
+		tips[branch] = "remote-" + branch
+	}
+	return tips, nil
 }
 
 func (f *fakeGit) FetchIsolated(_ context.Context, _ string, branches []string) error {
@@ -43,6 +60,20 @@ func (f *fakeGit) FastForward(_ context.Context, branch, _ string) error {
 	}
 	f.fastForwards = append(f.fastForwards, branch)
 	return nil
+}
+
+// ResetBranch takes a published version that supersedes the local one, which
+// FastForward would refuse because it is not a descendant.
+func (f *fakeGit) ResetBranch(_ context.Context, branch, to string) error {
+	f.reset = append(f.reset, branch+"<-"+to)
+	return nil
+}
+
+// Cherry reports the local commits absent from the published side. An empty
+// answer means the published version already has everything by content, which
+// is what a branch somebody else rebased and pushed looks like.
+func (f *fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return f.ownCommits[head], nil, nil
 }
 
 func (f *fakeGit) Resolve(_ context.Context, revision string) (string, error) {
@@ -436,4 +467,10 @@ func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 	if !validated.Equal(preview) {
 		t.Error("an unchanged repository revalidated to a different plan")
 	}
+}
+
+// Cherry reports every commit as absent from the trunk, so nothing here reads
+// as landed by content unless a case is about that.
+func (a stubAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
 }

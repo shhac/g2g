@@ -440,3 +440,9 @@ func TestAnUncomparedPlanDoesNotClaimTheRemoteIsCurrent(t *testing.T) {
 		t.Error("a plan with no comparison reported the remote already has every branch")
 	}
 }
+
+// Cherry reports work the base does not have, so a branch absent from the
+// remote reads as new rather than as one that merged and was deleted.
+func (f *fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

@@ -383,3 +383,9 @@ func TestAssessToleratesAnEdgeWithNoForkPoint(t *testing.T) {
 		t.Errorf("state = %q, want %q", states["synthetic-child"], StateAligned)
 	}
 }
+
+// Cherry reports every commit as absent from the trunk unless a case says
+// otherwise, so a branch reads as landed only where that is the subject.
+func (f fakeAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return []string{head + "-own-commit"}, nil, nil
+}

@@ -512,3 +512,54 @@ func (g graphGit) Cherry(_ context.Context, _, head, _ string) (absent, present 
 // Absorbed answers of a whole branch what Cherry answers per commit, which is
 // what a squash merge needs. Nothing here is absorbed unless a case says so.
 func (g graphGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// A branch the graph does not record gets one note, and which one depends on
+// what is around it. Three states used to be two, and both mistakes were
+// visible on an ordinary read: a trunk with a forest on it was told to record a
+// parent for itself, and a target absent from the drawing was named in the
+// header and explained by a note about parents.
+func TestAnUntrackedTargetIsExplainedByWhatIsAroundIt(t *testing.T) {
+	stacked := graph.Graph{
+		Edges:  map[string]graph.Edge{"synthetic-auth": {Parent: "synthetic-main"}},
+		Trunks: []string{"synthetic-main"},
+	}
+	for _, test := range []struct {
+		name      string
+		discovery graph.Discovery
+		want      string
+	}{
+		{
+			name:      "a trunk with a forest on it needs no advice",
+			discovery: graph.Discovery{Graph: stacked, Target: "synthetic-main", Branches: []string{"synthetic-main", "synthetic-auth"}, DefaultTrunk: "synthetic-main"},
+			want:      "",
+		},
+		{
+			name:      "a trunk with nothing on it is where a stack starts",
+			discovery: graph.Discovery{Graph: graph.New(), Target: "synthetic-main", Branches: []string{"synthetic-main"}, DefaultTrunk: "synthetic-main"},
+			want:      "default branch",
+		},
+		{
+			name:      "a target the drawing omits says so",
+			discovery: graph.Discovery{Graph: stacked, Target: "synthetic-elsewhere", Branches: []string{"synthetic-main", "synthetic-auth"}},
+			want:      "not drawn above",
+		},
+		{
+			name:      "an ordinary branch is missing a parent",
+			discovery: graph.Discovery{Graph: graph.New(), Target: "synthetic-feature", Branches: []string{"synthetic-feature"}},
+			want:      "no recorded parent",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			note := untrackedNote(test.discovery)
+			if test.want == "" {
+				if note != "" {
+					t.Errorf("untrackedNote() = %q, want nothing", note)
+				}
+				return
+			}
+			if !strings.Contains(note, test.want) {
+				t.Errorf("untrackedNote() = %q, want it to contain %q", note, test.want)
+			}
+		})
+	}
+}

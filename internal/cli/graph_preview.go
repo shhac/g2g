@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
 )
@@ -128,10 +129,14 @@ func graphStatusView(discovery graph.Discovery) stackView {
 	// has none — which is exactly the repository where somebody standing on
 	// main was told to give it a parent. What the remote calls its default
 	// closes that gap without the store having to know anything yet.
-	if untracked := !discovery.Graph.Tracked(discovery.Target); untracked && isTrunk(discovery) {
-		view = view.note(fmt.Sprintf("%s is this repository's default branch · stack on it with g2g track --branch <child> --parent %s.", discovery.Target, discovery.Target), severityNeutral)
-	} else if untracked && !discovery.Graph.IsTrunk(discovery.Target) {
-		view = view.note("This branch has no recorded parent · run g2g track to adopt one.", severityNeutral)
+	untracked := !discovery.Graph.Tracked(discovery.Target)
+	// Only when nothing is stacked on it. This told anybody standing on main to
+	// start a stack there, on every read, including ones showing the forest
+	// already on it — advice for an empty trunk, given to a full one.
+	if untracked {
+		if note := untrackedNote(discovery); note != "" {
+			view = view.note(note, severityNeutral)
+		}
 	}
 	if hidden := hiddenDescendants(discovery); hidden != 0 {
 		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", count(hidden, "branch", "branches")), severityNeutral)
@@ -163,4 +168,34 @@ func hiddenDescendants(discovery graph.Discovery) int {
 // already treats it as a root, or the remote calls it the default branch.
 func isTrunk(discovery graph.Discovery) bool {
 	return discovery.Graph.IsTrunk(discovery.Target) || discovery.Target == discovery.DefaultTrunk
+}
+
+// untrackedNote says the one true thing about a target the graph does not
+// record, which differs by what is around it.
+//
+// Three states used to be two. A trunk with a forest already on it was told to
+// start a stack there, which is advice for an empty one; and a target absent
+// from the drawing was named in the header, omitted from the tree, and
+// explained by a note about parents — which reads as a rendering fault rather
+// than as the branch simply not being recorded.
+func untrackedNote(discovery graph.Discovery) string {
+	switch {
+	case isTrunk(discovery):
+		if len(discovery.Graph.Children(discovery.Target)) != 0 {
+			// Nothing sits under a trunk, and this one plainly is one: there is
+			// a forest drawn on it. Telling its owner to record a parent for it
+			// contradicts the picture they are looking at.
+			return ""
+		}
+		return fmt.Sprintf("%s is this repository's default branch · stack on it with g2g track --branch <child> --parent %s.", discovery.Target, discovery.Target)
+	case !slices.Contains(discovery.Branches, discovery.Target):
+		// Not in the drawing at all. A trunk is untracked and still drawn, so
+		// the question is what the selection contains rather than whether the
+		// graph records an edge. The widest scopes are where this shows: all
+		// promises every stack, so a reader has no reason to suspect the one
+		// they are standing on is missing.
+		return fmt.Sprintf("%s is not in the graph, so it is not drawn above · run g2g track to record it.", discovery.Target)
+	default:
+		return "This branch has no recorded parent · run g2g track to adopt one."
+	}
 }

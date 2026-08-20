@@ -49,7 +49,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   selects within it: `graphite.ReadForest`, `graph.Graph.Shape`,
   `githubstack.BuildForest`. Each keeps its own type and exposes the edges
   through `Shape()`, delegating every walk to `internal/shape` rather than
-  carrying a copy. `graphite.Forest` was the last one walking its own, and the
+  carrying a copy. Each also owns one file named for it —
+  `internal/stack/graphite.go`, `g2g.go`, `pullrequest.go` — while `stack.go`
+  holds only what every command shares. Graphite's lived in `stack.go` for
+  historical reasons, which made the file named for the package the file
+  describing one particular record. `graphite.Forest` was the last one walking its own, and the
   copy had lost the self-loop guard — which matters there and nowhere else,
   because a parsed display can name a branch as its own parent and the g2g store
   cannot. Do not assemble a structure inside

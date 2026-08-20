@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+// SelectBoundary is the Graphite trunk rule: which declared trunk on an
+// ancestry a selection hangs from. It was tested from stack_test.go, so the
+// file named for the package tested one source's boundary and nothing else.
+
 func TestSelectBoundaryUsesOnlyDeclaredGraphiteTrunks(t *testing.T) {
 	path := []string{"main", "feature-one", "feature-two"}
 	base, source, branches, err := SelectBoundary(path, []string{"main", "develop", "staging"}, "")

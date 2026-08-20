@@ -229,34 +229,3 @@ func (r Resolver) pinnedRemedy(ctx context.Context, from Source, branch string) 
 	}
 	return "and no other source describes it either · " + r.remedy(ctx, branch)
 }
-
-// GraphiteSelector describes branches Graphite declares.
-type GraphiteSelector struct {
-	Git      Git
-	Graphite Graphite
-	// Configured reports whether this repository already uses Graphite. It is
-	// asked before anything else, because Graphite's discovery command creates
-	// state in a repository that has never used it — so a repository that
-	// deliberately has no Graphite would be enrolled into it merely by being
-	// asked a question.
-	Configured func(ctx context.Context) (bool, error)
-}
-
-func (s GraphiteSelector) Source() Source { return SourceGraphite }
-
-// Describes reports whether Graphite is in use here at all. Whether it knows
-// this particular branch is left to Select, which is the call that has to run
-// Graphite anyway.
-func (s GraphiteSelector) Describes(ctx context.Context, _ string) (bool, error) {
-	if s.Git == nil || s.Graphite == nil {
-		return false, nil
-	}
-	if s.Configured == nil {
-		return true, nil
-	}
-	return s.Configured(ctx)
-}
-
-func (s GraphiteSelector) Select(ctx context.Context, selection Selection, command string) (Snapshot, error) {
-	return resolveGraphiteSelection(ctx, s.Git, s.Graphite, selection, command)
-}

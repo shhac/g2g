@@ -165,10 +165,10 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 	selection := options.selector.Selection()
 	flow := applyFlow[restack.Plan]{
 		plan: func(ctx context.Context) (restack.Plan, error) {
-			return service.Plan(ctx, selection, options.onto, options.absorb)
+			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb)
 		},
 		revalidate: func(ctx context.Context, preview restack.Plan) (restack.Plan, error) {
-			return service.Revalidate(ctx, selection, options.onto, options.absorb, preview)
+			return service.Revalidate(ctx, selection, restack.ToBranch(options.onto), options.absorb, preview)
 		},
 		render: func(w io.Writer, plan restack.Plan, p Presentation) error {
 			return writeStackView(w, restackView(plan), p)

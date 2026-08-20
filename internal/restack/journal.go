@@ -30,9 +30,10 @@ const journalFileName = "restack.json"
 // running, so rolling back paths that already completed needs our own record.
 type Record struct {
 	SchemaVersion int `json:"schemaVersion"`
-	// Onto is an explicit --onto target, empty when the structure already says
+	// OntoParent is the branch an explicit --onto asked the graph to record,
+	// empty when the structure already says
 	// where each branch belongs.
-	Onto string `json:"onto,omitempty"`
+	OntoParent string `json:"onto,omitempty"`
 	// Absorb records whether the user chose to keep commits their parent
 	// dropped, so continuing does not silently change that decision.
 	Absorb bool `json:"absorb,omitempty"`

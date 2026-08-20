@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -288,4 +289,405 @@ func TestJourneyYourParentWasSquashMergedAndDeleted(t *testing.T) {
 	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-b"); own != "1" {
 		t.Errorf("synthetic-b has %s commits above the trunk, want 1: the squashed parent was replayed again", own)
 	}
+}
+
+// --- Scenarios recorded rather than wished for -------------------------------
+//
+// The tests below assert what g2g does today. Where that is not what we would
+// want, the comment says so and the assertion still pins the current answer, so
+// changing it is a visible decision rather than a silent drift.
+
+// friendly-fixer: a reviewer pushes a fix straight onto a branch you own.
+//
+// Today there is no way to collect it. sync fetches exactly one ref — the base
+// — so your branch is never brought down, and push then refuses because the
+// remote is ahead. The reviewer's commit stays on the remote and your local
+// branch never learns about it.
+func TestJourneyAReviewerPushesToYourBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// The reviewer fixes something on your branch.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "review-fix.txt", "fixed")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+
+	mustRun(t, "sync", "--apply")
+
+	// Recorded, not desired: their commit is on the remote and not here.
+	if w.contains(w.Local, w.tip(w.Other, "synthetic-a"), "synthetic-a") {
+		t.Error("BEHAVIOUR CHANGED: sync now collects a reviewer's commit · update this test")
+	}
+	stdout, _, err := run(t, "push", "--apply")
+	if err == nil {
+		t.Fatal("push overwrote the reviewer's commit")
+	}
+	if !strings.Contains(stdout+err.Error(), "remote has moved") {
+		t.Errorf("the refusal does not explain the state:\n%s\n%v", stdout, err)
+	}
+	w.assertClean(w.Local)
+}
+
+// history reverter: you drop your last commit locally on purpose. It is already
+// published, so the remote is now ahead of you.
+//
+// push refuses, which is the agreed behaviour — the preview has to be loud
+// enough that you can choose the command that does what you meant.
+func TestJourneyYouDropACommitYouAlreadyPublished(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.commit(w.Local, "synthetic-a", "regret.txt", "regret")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Local, "reset", "-q", "--hard", "HEAD~1")
+	published := w.tip(w.Remote, "synthetic-a")
+
+	stdout := mustRun(t, "push")
+
+	if !strings.Contains(stdout, "remote is 1 commit ahead") {
+		t.Errorf("preview does not say the remote is ahead:\n%s", stdout)
+	}
+	// Loud enough to act on: the command that does what you meant has to be in
+	// the preview, because no g2g command does it.
+	if !strings.Contains(stdout, "git push --force-with-lease") {
+		t.Errorf("preview does not name the command that would republish:\n%s", stdout)
+	}
+	if _, _, err := run(t, "push", "--apply"); err == nil {
+		t.Error("push rewound a published branch without being asked twice")
+	}
+	if now := w.tip(w.Remote, "synthetic-a"); now != published {
+		t.Errorf("the remote moved from %s to %s", published, now)
+	}
+}
+
+// Your remote branch was deleted after its pull request merged, and you still
+// have it locally with no work of your own left.
+//
+// Recorded: push treats it as a branch the remote has never seen and would
+// recreate it. We would rather it did not, unless local carries work that is
+// not in the trunk.
+func TestJourneyYourBranchWasDeletedAfterItMerged(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// It merges and the remote branch is deleted, as GitHub does on merge.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "merge", "-q", "--no-ff", "-m", "synthetic merge of a", "origin/synthetic-a")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-a")
+
+	stdout := mustRun(t, "push")
+
+	// Recorded, not desired: it offers to put the branch back.
+	if !strings.Contains(stdout, "new branch on the remote") {
+		t.Errorf("BEHAVIOUR CHANGED: push no longer offers to recreate a deleted merged branch · update this test\n%s", stdout)
+	}
+	w.assertClean(w.Local)
+}
+
+// multi-user-conflict: the trunk moves upstream and your work collides with it.
+//
+// sync is fetch, advance, replay, and only the replay can conflict. The base
+// still advances, because it was going to advance either way — so the recorded
+// answer is a half-finished sync that says exactly where it stopped.
+func TestJourneyTheAdvancedTrunkConflictsWithYourWork(t *testing.T) {
+	w := newWorld(t)
+	w.git(w.Local, "switch", "-qc", "synthetic-a")
+	w.commit(w.Local, "synthetic-a", "shared.txt", "your version")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	w.commit(w.Other, "main", "shared.txt", "their version")
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	stdout, _, _ := run(t, "sync", "--apply")
+
+	if !strings.Contains(stdout, "stopped") {
+		t.Fatalf("a conflicting sync did not say it stopped part-way:\n%s", stdout)
+	}
+	// The trunk advanced, which is what "half applied" means here and why the
+	// message must not read as "nothing happened".
+	if local, remote := w.tip(w.Local, "main"), w.tip(w.Other, "main"); local != remote {
+		t.Errorf("the base was not advanced before the replay stopped: %s vs %s", local, remote)
+	}
+	mustRun(t, "restack", "--abort")
+	w.assertClean(w.Local)
+}
+
+// self-conflict: you amend a branch low in the stack and the change collides
+// with the branches above it.
+//
+// Recorded: restack refuses the whole thing when the selection forks, and names
+// --scope path. A straight line has no fork, so it stops on the conflict and
+// waits, which is the resumable engine doing its job.
+func TestJourneyFixingALowBranchConflictsWithTheOnesAboveIt(t *testing.T) {
+	w := newWorld(t)
+	w.git(w.Local, "switch", "-qc", "synthetic-a")
+	w.commit(w.Local, "synthetic-a", "shared.txt", "first")
+	w.git(w.Local, "switch", "-qc", "synthetic-b")
+	w.commit(w.Local, "synthetic-b", "shared.txt", "second")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+
+	// Rewrite the lower branch so the upper one's edit no longer applies.
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	w.commit(w.Local, "synthetic-a", "shared.txt", "first, revised")
+	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic revised first")
+
+	before := w.tip(w.Local, "synthetic-b")
+	stdout, _, _ := run(t, "restack", "--scope", "stack", "--apply")
+
+	if !strings.Contains(stdout, "conflict") && !strings.Contains(stdout, "stopped") {
+		t.Fatalf("a cascading conflict was neither reported nor stopped on:\n%s", stdout)
+	}
+	if _, _, err := run(t, "restack", "--abort"); err == nil {
+		if after := w.tip(w.Local, "synthetic-b"); after != before {
+			t.Errorf("abort left synthetic-b at %s, want %s", after, before)
+		}
+	}
+	w.assertClean(w.Local)
+}
+
+// borrower: somebody cherry-picked your commits into their branch and it landed
+// first. Your commits are in the trunk under different object ids.
+//
+// This is what --no-reapply-cherry-picks is for: replaying must drop them by
+// content rather than apply them twice.
+func TestJourneySomeoneElseLandedYourCommitsFirst(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "borrowed.txt")
+	w.commit(w.Local, "synthetic-a", "mine.txt", "mine")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// They take the first commit only, and land it on the trunk.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	borrowed := w.git(w.Local, "rev-parse", "synthetic-a~1")
+	w.git(w.Other, "cherry-pick", borrowed)
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	mustRun(t, "sync", "--apply")
+
+	w.assertClean(w.Local)
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Fatal("synthetic-a was not brought onto the advanced trunk")
+	}
+	// One commit left of its own: the borrowed one is already in the trunk by
+	// content, so replaying it would duplicate the change.
+	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-a"); own != "1" {
+		t.Errorf("synthetic-a has %s commits above the trunk, want 1: the borrowed commit was applied again", own)
+	}
+	w.assertHas(w.Local, "synthetic-a", "mine.txt")
+}
+
+// Out-of-order merge: the middle branch lands first, so the branch above it
+// hangs from something that no longer exists and the one below is still open.
+//
+// Recorded. What we would want is for the branch below to be recognised as
+// superseded by the merge and for the one above to land on the trunk.
+func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	w.branchOff("synthetic-b", "synthetic-c", "c.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-c", "--parent", "synthetic-b", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// synthetic-b merges, which carries synthetic-a with it, and is deleted.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "merge", "-q", "--no-ff", "-m", "synthetic merge of b", "origin/synthetic-b")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-b")
+
+	w.git(w.Local, "switch", "-q", "synthetic-c")
+	stdout, _, err := run(t, "sync", "--apply")
+	t.Logf("sync after an out-of-order merge: err=%v\n%s", err, stdout)
+
+	w.assertClean(w.Local)
+	// Recorded: synthetic-c reaches the trunk and keeps only its own work. Its
+	// parent's commits are in the trunk by content, so they must not reappear.
+	if !w.contains(w.Local, "main", "synthetic-c") {
+		t.Error("BEHAVIOUR: synthetic-c was not brought onto the merged trunk · this is the case to improve")
+	}
+	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-c"); own != "1" {
+		t.Errorf("BEHAVIOUR: synthetic-c has %s commits above the trunk, want 1", own)
+	}
+	// And the branches it no longer needs are visible as landed.
+	graph := mustRun(t, "graph", "--scope", "trunk")
+	t.Logf("graph after an out-of-order merge:\n%s", graph)
+}
+
+// The world moves between preview and apply. Revalidation exists precisely for
+// this, and it had never been tested against a remote that actually moved.
+func TestJourneyTheRemoteMovesBetweenPreviewAndApply(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	mustRun(t, "push")
+
+	// Between the two invocations, somebody publishes.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+	theirs := w.tip(w.Other, "synthetic-a")
+
+	w.commit(w.Local, "synthetic-a", "yours.txt", "yours")
+	if _, _, err := run(t, "push", "--apply"); err == nil {
+		t.Fatal("push applied a plan the world had moved under")
+	}
+	if now := w.tip(w.Remote, "synthetic-a"); now != theirs {
+		t.Errorf("the remote branch changed from %s to %s", theirs, now)
+	}
+}
+
+// Atomicity: push claims every selected ref advances together or none does.
+// One branch's lease failing has to leave the other exactly where it was.
+func TestJourneyOneRejectedBranchStopsTheWholePush(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// Only the lower branch moves under us.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+
+	// And we add work to the upper one, which on its own would push cleanly.
+	w.commit(w.Local, "synthetic-b", "more.txt", "more")
+	untouched := w.tip(w.Remote, "synthetic-b")
+
+	if _, _, err := run(t, "push", "--apply"); err == nil {
+		t.Fatal("push proceeded with one branch the remote had moved")
+	}
+	if now := w.tip(w.Remote, "synthetic-b"); now != untouched {
+		t.Errorf("synthetic-b advanced to %s despite the push being refused, want %s", now, untouched)
+	}
+}
+
+// A detached HEAD has no branch for a rewrite to move underneath it, so the
+// reconciliation that follows a rewrite has nothing to reconcile.
+func TestJourneyWorkingFromADetachedHead(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.commit(w.Local, "main", "moved.txt", "moved")
+
+	w.git(w.Local, "checkout", "-q", "--detach", "main")
+	mustRun(t, "restack", "--branch", "synthetic-a", "--apply")
+
+	w.assertClean(w.Local)
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Error("synthetic-a was not replayed while HEAD was detached")
+	}
+}
+
+// A branch another worktree has checked out is refused, because a rewrite moves
+// a ref without checking anything out and would strand that worktree.
+func TestJourneyABranchIsOpenInASecondWorktree(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+
+	// Git refuses to check a branch out twice, so step off it first: the point
+	// is a branch open elsewhere, not one open in both.
+	w.git(w.Local, "switch", "-q", "main")
+	elsewhere := filepath.Join(t.TempDir(), "second")
+	w.git(w.Local, "worktree", "add", "-q", elsewhere, "synthetic-b")
+	w.commit(w.Local, "main", "moved.txt", "moved")
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	before := w.tip(w.Local, "synthetic-b")
+
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
+	if err == nil {
+		t.Fatal("a rewrite moved a branch another worktree had checked out")
+	}
+	if !strings.Contains(stdout+err.Error(), "another worktree") {
+		t.Errorf("the refusal does not name the cause:\n%s\n%v", stdout, err)
+	}
+	if after := w.tip(w.Local, "synthetic-b"); after != before {
+		t.Errorf("synthetic-b moved from %s to %s", before, after)
+	}
+	w.assertClean(elsewhere)
+}
+
+// sync moves contents, never structure. It replays onto a ref it fetched under
+// refs/g2g/, because that is where the trunk is about to be — and recording
+// that as the parent left every synced stack hanging from an internal ref:
+//
+//	○ refs/g2g/remotes/origin/main  trunk
+//	● synthetic-a                   parent missing
+//	Recorded parent is no longer a local branch for synthetic-a · retrack.
+//
+// on the ordinary happy path, immediately after a sync that reported success.
+func TestJourneySyncLeavesTheRecordedStructureAlone(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+
+	w.commit(w.Other, "main", "colleague.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+
+	before := w.readStructure()
+	mustRun(t, "sync", "--apply")
+
+	// Fork points move, because a replay changes where each branch forks. What
+	// must not move is the structure: who hangs from whom, and what the trunks
+	// are.
+	if after := w.readStructure(); !maps.Equal(after, before) {
+		t.Errorf("sync changed the recorded structure:\nbefore: %v\nafter:  %v", before, after)
+	}
+	// And the graph reads as a healthy stack rather than a broken one.
+	graph := mustRun(t, "graph", "--scope", "trunk")
+	if strings.Contains(graph, "refs/g2g/") {
+		t.Errorf("an internal ref reached the rendered graph:\n%s", graph)
+	}
+	if strings.Contains(graph, "parent missing") {
+		t.Errorf("a freshly synced stack reads as broken:\n%s", graph)
+	}
+}
+
+// An explicit --onto is the opposite case: the user is asking for the branch to
+// move, so the graph must record it. Separating the two meanings must not have
+// cost the one that is a real reparent.
+func TestJourneyAnExplicitOntoStillRecordsTheNewParent(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-base", "base-work.txt")
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-base", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	mustRun(t, "restack", "--onto", "synthetic-base", "--apply")
+
+	if !strings.Contains(w.readStore(), `"parent": "synthetic-base"`) {
+		t.Errorf("an explicit --onto did not record the new parent:\n%s", w.readStore())
+	}
+	if !w.contains(w.Local, "synthetic-base", "synthetic-a") {
+		t.Error("synthetic-a was not replayed onto its new parent")
+	}
+	w.assertClean(w.Local)
 }

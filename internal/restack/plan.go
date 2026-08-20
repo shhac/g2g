@@ -144,9 +144,15 @@ func (p Plan) collapsing() []Step {
 // only ever the result of an explicit --onto.
 func (p Plan) reparenting() map[string]string {
 	moves := map[string]string{}
+	if !p.Onto.Reparents() {
+		// A rewrite that only moves contents records nothing. Deriving the move
+		// from the replay target instead is what put refs/g2g/remotes/origin/main
+		// in the store as a parent, on the ordinary sync path.
+		return moves
+	}
 	for _, step := range p.Steps {
-		if recorded, tracked := p.Graph.Parent(step.Branch); tracked && recorded != step.Parent {
-			moves[step.Branch] = step.Parent
+		if recorded, tracked := p.Graph.Parent(step.Branch); tracked && recorded != p.Onto.Parent {
+			moves[step.Branch] = p.Onto.Parent
 		}
 	}
 	return moves
@@ -167,10 +173,42 @@ func (p Plan) chain() bool {
 	return true
 }
 
+// Onto is where a rewrite lands, and separately what the graph should record.
+//
+// The two are not the same question, and conflating them corrupted the store.
+// sync replays onto a fetched ref under refs/g2g/ because that is where the
+// trunk is about to be; it is a location, not a parent, and recording it left
+// every synced branch hanging from an internal ref that is not a local branch.
+// A user's --onto is both: they are asking for the branch to move.
+type Onto struct {
+	// Object is what commits are replayed onto. Empty replays onto the
+	// recorded parent, which is the ordinary restack.
+	Object string
+	// Parent is the branch the graph should record instead of the one it has.
+	// Empty keeps the recorded parent, which is what a rewrite that moves
+	// contents rather than structure wants.
+	Parent string
+}
+
+// Reparents reports a rewrite that changes what the graph records.
+func (o Onto) Reparents() bool { return o.Parent != "" }
+
+// ToBranch is a rewrite the user asked for by naming a branch: it is both where
+// the commits land and what the graph should say afterwards.
+func ToBranch(branch string) Onto {
+	if branch == "" {
+		return Onto{}
+	}
+	return Onto{Object: branch, Parent: branch}
+}
+
+// ToLocation replays onto an object without claiming it as a parent.
+func ToLocation(object string) Onto { return Onto{Object: object} }
+
 // Plan is a complete rewrite, ordered parents before children.
 type Plan struct {
 	graph.Discovery
-	Onto   string
+	Onto   Onto
 	Absorb bool
 	Steps  []Step
 	// Updates is what a replay says the refs would become, and Clean reports
@@ -246,7 +284,7 @@ func (p Plan) Equal(other Plan) bool {
 }
 
 // Plan works out what has to be replayed, without changing anything.
-func (s Service) Plan(ctx context.Context, selection graph.Selection, onto string, absorb bool) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool) (Plan, error) {
 	if s.Git == nil || s.Journal == nil {
 		return Plan{}, fmt.Errorf("restack service is not fully configured")
 	}
@@ -267,7 +305,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto strin
 		plan.Blocked = held
 		return plan, nil
 	}
-	steps, err := s.steps(ctx, discovery, onto)
+	steps, err := s.steps(ctx, discovery, onto.Object)
 	if err != nil {
 		return Plan{}, err
 	}

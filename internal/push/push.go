@@ -136,7 +136,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Blocked: blockedBy(snapshot.Branches, publishing)}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Blocked: blockedBy(remote, snapshot.Branches, publishing)}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -189,7 +189,7 @@ func (s Service) publications(ctx context.Context, branches []string, tips map[s
 // The lease already rejects it, so this changes no outcome — it moves the
 // refusal in front of the network call and says which branch, instead of
 // inviting an --apply that fails at git.
-func blockedBy(branches []string, publishing map[string]Publication) string {
+func blockedBy(remote string, branches []string, publishing map[string]Publication) string {
 	rejected := make([]string, 0, len(branches))
 	for _, branch := range branches {
 		if publishing[branch].Rejected() {
@@ -199,7 +199,12 @@ func blockedBy(branches []string, publishing map[string]Publication) string {
 	if len(rejected) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("the remote has moved on %s · fetch and reconcile before publishing, or run g2g sync", strings.Join(rejected, ", "))
+	// Naming the command that does work matters more than the refusal. No g2g
+	// command republishes over a remote that has moved, and deliberately
+	// dropping a published commit is a real thing to want, so a preview that
+	// only says no leaves the reader with nowhere to go.
+	return fmt.Sprintf("the remote has moved on %s · fetch and reconcile first, or if you meant to replace what is published: git push --force-with-lease %s %s",
+		strings.Join(rejected, ", "), remote, strings.Join(rejected, " "))
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {

@@ -24,7 +24,7 @@ import (
 )
 
 // Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto string, absorb bool, preview Plan) (Plan, error) {
+func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, preview Plan) (Plan, error) {
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
@@ -201,13 +201,13 @@ func (s Service) replay(ctx context.Context, plan Plan, standing checkout) error
 // running.
 func (s Service) rebase(ctx context.Context, plan Plan) error {
 	record := Record{
-		Onto:     plan.Onto,
-		Absorb:   plan.Absorb,
-		Branch:   plan.Target,
-		Scope:    string(plan.Scope),
-		ReturnTo: plan.Target,
-		Original: map[string]string{},
-		Reparent: plan.reparenting(),
+		OntoParent: plan.Onto.Parent,
+		Absorb:     plan.Absorb,
+		Branch:     plan.Target,
+		Scope:      string(plan.Scope),
+		ReturnTo:   plan.Target,
+		Original:   map[string]string{},
+		Reparent:   plan.reparenting(),
 	}
 	for _, step := range plan.Steps {
 		record.Original[step.Branch] = step.Tip

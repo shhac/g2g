@@ -114,10 +114,16 @@ type stubRestacker struct {
 	// applyErr makes the replay fail, which is the second of sync's three
 	// steps and the one that must stop the third from running.
 	applyErr error
+	// reparented records sync asking for a structural change, which it must
+	// never do: it moves contents, not structure.
+	reparented bool
 }
 
-func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto string, _ bool) (restack.Plan, error) {
-	s.onto = append(s.onto, onto)
+func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto restack.Onto, _ bool) (restack.Plan, error) {
+	s.onto = append(s.onto, onto.Object)
+	if onto.Reparents() {
+		s.reparented = true
+	}
 	return s.plan, s.err
 }
 

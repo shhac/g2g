@@ -30,7 +30,7 @@ type Git interface {
 // itself because sync's own job is ordering, and ordering should be testable
 // without standing up a rewrite engine.
 type Restacker interface {
-	Plan(ctx context.Context, selection graph.Selection, onto string, absorb bool) (restack.Plan, error)
+	Plan(ctx context.Context, selection graph.Selection, onto restack.Onto, absorb bool) (restack.Plan, error)
 	Apply(ctx context.Context, plan restack.Plan) error
 	InProgress(ctx context.Context) (bool, error)
 }
@@ -107,7 +107,9 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 
 	// The replay is planned against the base as it will be, which is why the
 	// fetch and the fast-forward assessment come first.
-	plan.Restack, err = s.Restack.Plan(ctx, selection, plan.onto(), false)
+	// A location, never a parent: the trunk is about to be here, and recording
+	// a ref under refs/g2g/ as the parent is what broke every synced stack.
+	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false)
 	if err != nil {
 		return Plan{}, err
 	}

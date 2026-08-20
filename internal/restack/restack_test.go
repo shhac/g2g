@@ -272,7 +272,7 @@ func selection() graph.Selection {
 func TestPlanIncludesDescendantsOfARewrittenBranch(t *testing.T) {
 	service, _, _ := newService(stackGit(), stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -288,7 +288,7 @@ func TestPlanIncludesDescendantsOfARewrittenBranch(t *testing.T) {
 func TestPlanReplaysEveryRangeFromOneOrigin(t *testing.T) {
 	git := stackGit()
 	service, _, _ := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestPlanReplaysEveryRangeFromOneOrigin(t *testing.T) {
 func TestCleanApplyReplaysAndResyncsTheIndex(t *testing.T) {
 	git := stackGit()
 	service, store, journal := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestCleanApplyReplaysAndResyncsTheIndex(t *testing.T) {
 func TestForkPointsAreRecordedForTheWholeSelection(t *testing.T) {
 	git := stackGit()
 	service, store, _ := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestConflictingApplyJournalsOriginalTips(t *testing.T) {
 	git.previewClean = false
 	git.rebaseErr = errors.New("synthetic conflict")
 	service, _, journal := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +485,7 @@ func TestPlanRefusesStatesItCannotComputeARangeFrom(t *testing.T) {
 	git.ancestors["synthetic-b"] = []string{}
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -501,7 +501,7 @@ func TestApplyRefusesABlockedPlan(t *testing.T) {
 	git := stackGit()
 	git.ancestors["synthetic-b"] = []string{}
 	service, store, _ := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
 	git.previewClean = false
 	service, _, _ := newService(git, forked)
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
 }
 
 func TestRequiresAConfiguredService(t *testing.T) {
-	if _, err := (Service{}).Plan(context.Background(), selection(), "", false); err == nil {
+	if _, err := (Service{}).Plan(context.Background(), selection(), Onto{}, false); err == nil {
 		t.Fatal("Plan() error = nil for an unconfigured service")
 	}
 }
@@ -552,7 +552,7 @@ func TestPlanWithoutReplaySupportStillPlans(t *testing.T) {
 	git.replaySupported = false
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -584,7 +584,7 @@ func TestAbsorbRewritesNothingAndOnlyMovesTheForkPoint(t *testing.T) {
 	git := droppedCommitGit()
 	service, store, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", true)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, true)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -612,7 +612,7 @@ func TestAbsorbIsRefusedWhenAnOrphanWasRewrittenRatherThanRemoved(t *testing.T) 
 	git.behind["a-new..a-old"] = 2
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", true)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, true)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -627,7 +627,7 @@ func TestAbsorbIsRefusedWhenAnOrphanWasRewrittenRatherThanRemoved(t *testing.T) 
 func TestPlanReportsOrphansSoTheyAreNeverDroppedSilently(t *testing.T) {
 	service, _, _ := newService(droppedCommitGit(), stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,13 +670,13 @@ func TestSkipRefusesWhenNothingIsInProgress(t *testing.T) {
 func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 	git := stackGit()
 	service, _, _ := newService(git, stack())
-	preview, err := service.Plan(context.Background(), selection(), "", false)
+	preview, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	git.objects["synthetic-b"] = "b-moved"
-	if _, err := service.Revalidate(context.Background(), selection(), "", false, preview); err == nil {
+	if _, err := service.Revalidate(context.Background(), selection(), Onto{}, false, preview); err == nil {
 		t.Fatal("Revalidate() error = nil after a branch moved")
 	}
 }
@@ -718,7 +718,7 @@ func TestPlanWithoutReplayReportsThatNothingWasPredicted(t *testing.T) {
 	git.replaySupported = false
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -744,7 +744,7 @@ func TestACollapsedBranchIsMovedRatherThanReplayed(t *testing.T) {
 	git.collapses = map[string]bool{"synthetic-a": true}
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -775,7 +775,7 @@ func TestAWhollyCollapsedSelectionRunsNoEngine(t *testing.T) {
 	git.collapses = map[string]bool{"synthetic-a": true, "synthetic-b": true}
 	service, _, _ := newService(git, stack())
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -800,7 +800,7 @@ func TestApplyRefusesToReportSuccessWhenTheRewriteDidNotHappen(t *testing.T) {
 	// version looks like from here.
 	git.replayLeavesRefsAlone = true
 	service, _, _ := newService(git, stack())
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -957,7 +957,7 @@ func TestALegacyEdgeThatHasDriftedIsRefusedRatherThanSilentlyDoingNothing(t *tes
 	legacy.Edges["synthetic-a"] = graph.Edge{Parent: "synthetic-trunk"}
 	service, _, _ := newService(git, legacy)
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -983,7 +983,7 @@ func TestALegacyEdgeThatIsStillAlignedIsNotRefused(t *testing.T) {
 	legacy.Edges["synthetic-a"] = graph.Edge{Parent: "synthetic-trunk"}
 	service, _, _ := newService(git, legacy)
 
-	plan, err := service.Plan(context.Background(), selection(), "", false)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -1037,7 +1037,7 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 			service, _, _ := newService(git.fakeGit, stack())
 			service.Git = git
 
-			plan, err := service.Plan(context.Background(), selection(), "", false)
+			plan, err := service.Plan(context.Background(), selection(), Onto{}, false)
 			if err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}

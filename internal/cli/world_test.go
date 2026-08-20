@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,4 +126,36 @@ func runIn(t *testing.T, dir, name string, args ...string) string {
 		t.Fatalf("%s %s (in %s): %v\n%s", name, strings.Join(args, " "), dir, err, output)
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// readStore returns the recorded graph, so a test can assert that a command
+// which moves contents left the structure exactly as it found it.
+func (w *world) readStore() string {
+	w.t.Helper()
+	contents, err := os.ReadFile(filepath.Join(w.Local, ".git", "g2g", "graph.json"))
+	if err != nil {
+		w.t.Fatalf("read graph store: %v", err)
+	}
+	return string(contents)
+}
+
+// readStructure is the recorded graph with the parts a rewrite legitimately
+// changes taken out: fork points move whenever commits do, and saying so is
+// not the same as saying a branch changed parents.
+func (w *world) readStructure() map[string]string {
+	w.t.Helper()
+	var stored struct {
+		Trunks   []string `json:"trunks"`
+		Branches map[string]struct {
+			Parent string `json:"parent"`
+		} `json:"branches"`
+	}
+	if err := json.Unmarshal([]byte(w.readStore()), &stored); err != nil {
+		w.t.Fatalf("decode graph store: %v", err)
+	}
+	structure := map[string]string{"trunks": strings.Join(stored.Trunks, ",")}
+	for branch, edge := range stored.Branches {
+		structure[branch] = edge.Parent
+	}
+	return structure
 }

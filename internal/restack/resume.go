@@ -81,7 +81,7 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
 		return finishComplete, err
 	}
-	plan, err := s.Plan(ctx, record.Selection(), record.Onto, record.Absorb)
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb)
 	if err != nil {
 		return finishComplete, err
 	}

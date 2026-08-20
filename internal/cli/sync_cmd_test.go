@@ -69,10 +69,18 @@ type syncCLIRestack struct {
 	// scopes records the scope each replay was planned at, which is the only
 	// way to see that the flag reached the step it is meant to widen.
 	scopes []string
+	// reparented records that sync asked for a structural change, which it
+	// never should.
+	reparented bool
 }
 
-func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto string, _ bool) (restack.Plan, error) {
+func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool) (restack.Plan, error) {
 	r.scopes = append(r.scopes, string(selection.Scope))
+	// sync asks for a location, never a parent: recording the fetched ref as a
+	// parent is what left every synced branch hanging from refs/g2g/.
+	if onto.Reparents() {
+		r.reparented = true
+	}
 	plan := restack.Plan{Onto: onto}
 	for _, branch := range r.steps {
 		plan.Steps = append(plan.Steps, restack.Step{Branch: branch, Parent: "synthetic-main", Base: "base-local", ForkPoint: "fork", Tip: "tip"})

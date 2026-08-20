@@ -148,6 +148,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `worktree list --porcelain` and excludes the current worktree; it is an
   optional `restack.WorktreeReader`, so a Git that cannot answer leaves the
   rewrite exactly as safe as it was before the check existed.
+- Where a rewrite lands and what the graph records are two questions, and
+  `restack.Onto` keeps them apart. `ToBranch` is a user's `--onto`: they asked
+  for the branch to move, so it is both. `ToLocation` is sync's: it replays onto
+  a ref it fetched under `refs/g2g/` because that is where the trunk is about to
+  be, and that ref is a place, not a parent. Deriving the recorded parent from
+  the replay target instead put `refs/g2g/remotes/origin/main` in the store on
+  the ordinary sync path, so every synced stack reported "parent missing"
+  immediately after a sync that said it succeeded.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

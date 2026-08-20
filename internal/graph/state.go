@@ -39,6 +39,16 @@ const (
 	// opposite. "Retrack onto its new parent" tells someone to repair a branch
 	// that has already served its purpose; what they want is to forget it.
 	StateLanded NodeState = "landed"
+	// StateEmpty means the branch has no commits its parent does not, so there
+	// is nothing to publish and nothing to replay.
+	//
+	// It is deliberately not "landed". A branch that collapsed onto the trunk
+	// and one nobody has committed to yet are byte-identical from here — same
+	// tip as the parent, same fork point — and the recorded state carries
+	// nothing that separates them. Saying which it is would be a guess, and the
+	// wrong guess invites someone to prune work they are about to start. Saying
+	// what is true of both is not a guess.
+	StateEmpty NodeState = "no commits of its own"
 	// StateForkUnresolvable means the recorded fork point is no longer an
 	// object in this repository, usually because it was collected after the
 	// parent branch went away.
@@ -54,7 +64,7 @@ const (
 // rather than being replayed. Leaving it out refused exactly the case the tool
 // is for.
 func (s NodeState) Restackable() bool {
-	return s == StateAligned || s == StateNeedsRestack || s == StateLanded
+	return s == StateAligned || s == StateNeedsRestack || s == StateLanded || s == StateEmpty
 }
 
 // Assess reports each branch's state against Git.
@@ -121,7 +131,7 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 			return "", err
 		}
 		if built {
-			return StateAligned, nil
+			return emptyOrAligned(ctx, git, edge.Parent, branch)
 		}
 		return drifted(ctx, git, g, present, branch, StateNeedsRestack)
 	}
@@ -137,7 +147,7 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 		return drifted(ctx, git, g, present, branch, StateMovedOffParent)
 	}
 	if forkPoint == parentTip {
-		return StateAligned, nil
+		return emptyOrAligned(ctx, git, edge.Parent, branch)
 	}
 	return drifted(ctx, git, g, present, branch, StateNeedsRestack)
 }
@@ -187,4 +197,25 @@ func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[stri
 		}
 	}
 	return false, nil
+}
+
+// emptyOrAligned separates a branch sitting where it belongs from one sitting
+// where it belongs with nothing on it.
+//
+// A branch whose work is entirely in its parent has nothing to publish and
+// nothing to replay, which is worth saying: it is what a stack looks like after
+// the merge that carried it has landed, and reading as an ordinary branch left
+// nothing pointing at prune. Whether it is finished or not yet started is a
+// question the recorded state cannot answer, so this does not try.
+func emptyOrAligned(ctx context.Context, git Ancestry, parent, branch string) (NodeState, error) {
+	own, _, err := git.Cherry(ctx, parent, branch, "")
+	if err != nil {
+		// A branch its parent shares no history with cannot be compared, which
+		// is not a reason to fail a read.
+		return StateAligned, nil
+	}
+	if len(own) == 0 {
+		return StateEmpty, nil
+	}
+	return StateAligned, nil
 }

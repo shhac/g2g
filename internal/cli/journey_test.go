@@ -737,6 +737,12 @@ func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
 	if strings.Contains(graph, "parent missing") {
 		t.Errorf("a branch the merge carried reads as broken:\n%s", graph)
 	}
+	// They read as having nothing of their own, which is what is actually
+	// knowable: whether a branch sitting on the trunk with no commits is
+	// finished or not yet started is not something the recorded state says.
+	if !strings.Contains(graph, "no commits of its own") {
+		t.Errorf("the branches the merge carried are unremarked:\n%s", graph)
+	}
 	// And the command that closes them offers to.
 	prune := mustRun(t, "prune", "--scope", "trunk")
 	for _, branch := range []string{"synthetic-a", "synthetic-b"} {

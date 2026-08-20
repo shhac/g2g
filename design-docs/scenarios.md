@@ -98,12 +98,14 @@ implemented.
 ## Merges that land out of order
 
 **middle merges first.** `main ← A ← B ← C` and B lands, carrying A with it.
-C reaches the trunk with only its own work; A and B have nothing left and
-`prune` offers to forget them. *They read as ordinary branches rather than as
-finished ones — the graph only says "landed" for a branch that has drifted, and
-a branch that collapsed onto the trunk sits exactly on it. Distinguishing that
-from a branch nobody has committed to yet needs something the current state does
-not carry.*
+C reaches the trunk with only its own work; A and B have nothing left, read as
+"no commits of its own", and `prune` offers to forget them.
+
+They are not called landed, deliberately. A branch that collapsed onto the trunk
+and one nobody has committed to yet are byte-identical from the recorded state —
+same tip as the parent, same fork point — so saying which it is would be a guess,
+and the wrong guess invites someone to prune work they are about to start.
+Saying what is true of both is not a guess.
 
 **your branch was deleted after it merged.** You still have it locally with no
 work of its own. `push` says "already in the trunk · nothing to publish" rather

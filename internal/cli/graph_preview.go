@@ -47,6 +47,8 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 		return "parent missing", severityWarn
 	case graph.StateLanded:
 		return "landed", severityOK
+	case graph.StateEmpty:
+		return "no commits of its own", severityNeutral
 	case graph.StateUntracked:
 		if discovery.Graph.IsTrunk(branch) {
 			return "trunk", severityNeutral
@@ -106,6 +108,9 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
 		view = view.note("Already in the trunk: "+branchList(landed)+" · run g2g prune to forget them.", severityNeutral)
+	}
+	if empty := discovery.InState(graph.StateEmpty); len(empty) != 0 {
+		view = view.note("Nothing of their own on "+branchList(empty)+" · either finished, or not started yet.", severityNeutral)
 	}
 	if orphans := discovery.Orphans(); len(orphans) != 0 {
 		view = view.note("No tracked parent for "+branchList(orphans)+".", severityWarn)

@@ -259,6 +259,12 @@ property the original had.
 
 ## Change and verification workflow
 
+- An `applyFlow` closure reads the plan it is handed and nothing else. Where a
+  command needs more than the service's plan carries, wrap it — `unlinkPlan` is
+  the pattern — rather than capturing a variable the closures share. `unlink`
+  did the latter, so the stack number rendered immediately before the mutation
+  came from the preview rather than the revalidated plan, and the only thing
+  making that safe was `link.Revalidate` refusing any inequality two files away.
 - Preview/apply sequencing is a safety contract, not just presentation. When a
   command can mutate, preserve its re-discovery/revalidation and final
   render/write/flush-before-mutation tests; command-family coverage lives under

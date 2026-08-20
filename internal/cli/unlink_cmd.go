@@ -32,39 +32,34 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		}
 		root := commandContext(cmd.Context(), cmd, "unlink", applyMode(apply), selection.branch, selection.trunk)
 
-		// Resolving the stack number is part of planning: it reads the same
-		// discovery, and an unresolvable one must stop the command before
-		// anything is rendered.
-		resolved, source := 0, ""
-		plan := func(ctx context.Context) (link.Plan, error) {
-			plan, err := service.Plan(ctx, selection.Selection())
-			if err != nil {
-				return link.Plan{}, err
-			}
-			if len(plan.Issues) != 0 {
-				return link.Plan{}, fmt.Errorf("unlink preview has unresolved PR mappings; repair them before applying")
-			}
-			if resolved, source, err = resolveStackNumber(number, plan); err != nil {
-				return link.Plan{}, err
-			}
-			return plan, nil
-		}
-		flow := applyFlow[link.Plan]{
-			plan: plan,
-			revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {
-				return service.Revalidate(ctx, selection.Selection(), preview)
+		flow := applyFlow[unlinkPlan]{
+			plan: func(ctx context.Context) (unlinkPlan, error) {
+				plan, err := service.Plan(ctx, selection.Selection())
+				if err != nil {
+					return unlinkPlan{}, err
+				}
+				return newUnlinkPlan(number, plan)
 			},
-			render: func(w io.Writer, p link.Plan, presentation Presentation) error {
-				return writeUnlinkPlan(w, p, resolved, source, presentation)
+			revalidate: func(ctx context.Context, preview unlinkPlan) (unlinkPlan, error) {
+				plan, err := service.Revalidate(ctx, selection.Selection(), preview.Plan)
+				if err != nil {
+					return unlinkPlan{}, err
+				}
+				// Resolved again from the revalidated discovery, so the number
+				// rendered immediately before the mutation is that plan's own.
+				return newUnlinkPlan(number, plan)
+			},
+			render: func(w io.Writer, p unlinkPlan, presentation Presentation) error {
+				return writeUnlinkPlan(w, p.Plan, p.Number, p.Source, presentation)
 			},
 			guard: guard,
-			execute: func(ctx context.Context, _ link.Plan) error {
+			execute: func(ctx context.Context, plan unlinkPlan) error {
 				if unstacker == nil {
 					return fmt.Errorf("GitHub stack unstack is not configured")
 				}
-				return unstacker.Unstack(ctx, resolved)
+				return unstacker.Unstack(ctx, plan.Number)
 			},
-			branches: func(plan link.Plan) int { return len(plan.Branches) },
+			branches: func(plan unlinkPlan) int { return len(plan.Branches) },
 			notices: flowNotices{
 				preview:       "Re-run with --apply to unlink.",
 				applied:       "Unlinked — GitHub stack relationship removed",
@@ -108,4 +103,32 @@ func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, source string, p P
 	view.Action = []string{"gh", "stack", "unstack", fmt.Sprint(number)}
 	view = view.note(fmt.Sprintf("GitHub stack #%d · %s", number, source), severityNeutral)
 	return writeStackView(w, view.note("This removes GitHub's stack relationship only. Branches and pull requests remain unchanged.", severityNeutral), p)
+}
+
+// unlinkPlan is a link plan plus the GitHub stack number to unstack.
+//
+// The number used to live in two variables the closures captured, so render was
+// not a function of the plan it was handed and the number printed immediately
+// before the mutation was the *preview's*, not the revalidated plan's. That
+// held only because link.Revalidate refuses any inequality — a safety property
+// asserted two files away rather than visible here. Carrying it on the plan
+// makes it structural, and every other applyFlow user keeps render pure over P.
+type unlinkPlan struct {
+	link.Plan
+	Number int
+	Source string
+}
+
+// newUnlinkPlan resolves the stack number as part of planning: it reads the
+// same discovery, and an unresolvable one must stop the command before anything
+// is rendered.
+func newUnlinkPlan(requested int, plan link.Plan) (unlinkPlan, error) {
+	if len(plan.Issues) != 0 {
+		return unlinkPlan{}, fmt.Errorf("unlink preview has unresolved PR mappings; repair them before applying")
+	}
+	number, source, err := resolveStackNumber(requested, plan)
+	if err != nil {
+		return unlinkPlan{}, err
+	}
+	return unlinkPlan{Plan: plan, Number: number, Source: source}, nil
 }

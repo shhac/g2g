@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -88,5 +89,53 @@ func TestUnlinkRefusesToGuessAStackNumber(t *testing.T) {
 				t.Errorf("error = %q, want it to mention %q", err, test.want)
 			}
 		})
+	}
+}
+
+// The number rendered immediately before the mutation has to be the revalidated
+// plan's, not the preview's.
+//
+// It used to live in variables the closures captured, so render was not a
+// function of the plan it was handed: the number printed came from whichever
+// resolution ran last, and only link.Revalidate refusing any inequality kept
+// that honest — a property asserted two files away.
+func TestUnlinkResolvesTheStackNumberFromEachPlan(t *testing.T) {
+	plan := link.Plan{Discovery: stack.Discovery{
+		Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
+		PullRequests: []githubstack.PullRequest{
+			{Head: "synthetic-top", Number: 12, State: "OPEN", StackNumber: 77, StackSize: 1, StackPosition: 1},
+		},
+	}}
+
+	resolved, err := newUnlinkPlan(0, plan)
+	if err != nil {
+		t.Fatalf("newUnlinkPlan() error = %v", err)
+	}
+	if resolved.Number != 77 {
+		t.Errorf("Number = %d, want the discovered stack number", resolved.Number)
+	}
+
+	// Render reads only what it was handed, so a plan carrying a different
+	// number renders that one.
+	var out bytes.Buffer
+	other := resolved
+	other.Number, other.Source = 99, "--stack-number"
+	if err := writeUnlinkPlan(&out, other.Plan, other.Number, other.Source, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "99") {
+		t.Errorf("render did not use the number it was handed:\n%s", out.String())
+	}
+}
+
+// A plan with unresolved pull request mappings never reaches a number at all.
+func TestUnlinkRefusesAPlanWithUnresolvedMappings(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}}},
+		Issues:    []link.Issue{{Branch: "synthetic-top", Kind: link.IssueMissing, Reason: "no open PR"}},
+	}
+
+	if _, err := newUnlinkPlan(0, plan); err == nil {
+		t.Error("newUnlinkPlan() = nil for a plan with unresolved mappings")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // graphGit answers the ancestry questions without a repository. The forest
@@ -20,6 +21,11 @@ import (
 //	│  ├─ synthetic-login
 //	│  └─ synthetic-session
 //	└─ synthetic-billing
+//
+// It is a copy of the graph package's own fakeAncestry rather than a shared
+// one, for the reason recorded at internal/stack/g2g_test.go: a fake shared
+// across a package boundary is a second interface nobody declared. Only the
+// answers are shared, through internal/testutil.
 type graphGit struct {
 	current   string
 	local     []string
@@ -500,5 +506,5 @@ func TestGraphRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
 // Cherry reports every commit as absent from the trunk unless a case says
 // otherwise, so a branch reads as landed only where that is the subject.
 func (g graphGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
-	return []string{head + "-own-commit"}, nil, nil
+	return testutil.OwnCommits(head), nil, nil
 }

@@ -66,6 +66,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   it, retain context cancellation, and route opt-in diagnostics through
   `internal/diagnostic`; diagnostic tests deliberately exercise redaction and
   bounded output.
+- One fake per consumer-defined interface, and share the *answer* rather than
+  the fake. A fake shared across a package boundary is a second interface nobody
+  declared, so `testutil.RemoteTips` and `testutil.OwnCommits` are values every
+  package's own fake delegates to. `graphiteRoutes` in `internal/cli` is the
+  same rule for the PATH-fake route table, which had been written out four times
+  and had already drifted: one copy was missing the `cherry` route the others
+  carried.
 - Tests must stay offline. Use `internal/testutil.FakeCLIs` (declarative
   routes plus an invocation recorder) or the lower-level
   `WithFakeExecutables`, both PATH-backed `git`/`gt`/`gh` scripts. Prefer

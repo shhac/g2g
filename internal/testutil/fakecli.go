@@ -225,3 +225,36 @@ func GraphiteRepository(t *testing.T) string {
 	}
 	return common
 }
+
+// RemoteTips is the answer an ls-remote fake gives: every branch published at a
+// tip derived from its name, minus any the caller says the remote no longer
+// has.
+//
+// The value is shared, not the fake. Five packages each declare their own Git
+// fake against their own consumer-defined interface — a deliberate convention,
+// recorded in internal/stack/g2g_test.go — and all five had written this same
+// three-line body. Sharing the answer keeps one fake per interface while
+// leaving one place to change what "published" looks like.
+func RemoteTips(branches []string, absent ...string) map[string]string {
+	gone := make(map[string]bool, len(absent))
+	for _, branch := range absent {
+		gone[branch] = true
+	}
+	tips := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		if gone[branch] {
+			continue
+		}
+		tips[branch] = "remote-" + branch
+	}
+	return tips
+}
+
+// OwnCommits is what a Cherry fake reports a branch holds that the other side
+// does not: one commit, named for the branch.
+//
+// Eight fakes carried this same body, comment included. Answering "this branch
+// has work of its own" is the default every one of them wanted, so a case about
+// a branch whose work has landed says so by overriding rather than by being the
+// only one that spells the default out.
+func OwnCommits(head string) []string { return []string{head + "-own-commit"} }

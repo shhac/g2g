@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestApplyCreatesOnlyMissingPullsBottomToTopThenLinks(t *testing.T) {
@@ -99,11 +100,7 @@ func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 func (f *fakeGit) Clean(context.Context) error          { return f.cleanErr }
 func (f *fakeGit) Remote(context.Context, string) error { return f.remoteErr }
 func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
-	tips := map[string]string{}
-	for _, branch := range branches {
-		tips[branch] = "remote-" + branch
-	}
-	return tips, nil
+	return testutil.RemoteTips(branches), nil
 }
 
 func (f *fakeGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease) error {

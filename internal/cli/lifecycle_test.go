@@ -29,40 +29,15 @@ func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder
 func lifecycleRepositoryIn(t *testing.T, topPullRequest string) (*testutil.Recorder, string) {
 	t.Helper()
 
-	logPath := filepath.Join(t.TempDir(), "graphite-log.txt")
-	if err := os.WriteFile(logPath, []byte(graphiteLog), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	lower := `{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":1}}`
-	common := testutil.GraphiteRepository(t)
-	return testutil.FakeCLIs(t, map[string][]testutil.Route{
-		"git": {
-			// The common directory serves two questions: whether a restack is
-			// in flight, and whether this repository uses Graphite at all.
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
-			{Prefix: "branch --show-current", Output: "synthetic-top"},
-			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
-			{Prefix: "status --porcelain"},
-			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
-			// push asks whether a branch has work its base does not, which is
-			// how a branch that merged and was deleted is told from a new one.
-			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
-			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
-			{Prefix: "ls-remote"},
-			{Prefix: "push"},
-		},
-		"gt": {
-			{Prefix: "--version", Output: "1.8.6"},
-			{Prefix: "log", File: logPath},
-		},
-		"gh": {
-			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
-			{Prefix: "api graphql", Output: `{"data":{"repository":{"pr0":{"nodes":[` + lower + `]},"pr1":{"nodes":[` + topPullRequest + `]}}}}`},
-			{Prefix: "pr create"},
-			{Prefix: "stack link"},
-			{Prefix: "stack unstack"},
-		},
-	}), common
+	routes, common := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		{Prefix: "api graphql", Output: `{"data":{"repository":{"pr0":{"nodes":[` + lower + `]},"pr1":{"nodes":[` + topPullRequest + `]}}}}`},
+		{Prefix: "pr create"},
+		{Prefix: "stack link"},
+		{Prefix: "stack unstack"},
+	})
+	return testutil.FakeCLIs(t, routes), common
 }
 
 // Every mutating command must discover twice — once for the preview it renders

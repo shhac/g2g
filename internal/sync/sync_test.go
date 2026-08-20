@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // fakeGit answers the remote and ancestry questions sync asks. Whether the
@@ -39,14 +40,11 @@ func (f *fakeGit) Remote(_ context.Context, _ string) error { return f.remoteErr
 // present unless a case removes it, because a branch being gone is the subject
 // of only some of these tests.
 func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
-	tips := map[string]string{}
-	for _, branch := range branches {
-		if f.absentOnRemote[branch] {
-			continue
-		}
-		tips[branch] = "remote-" + branch
+	gone := make([]string, 0, len(f.absentOnRemote))
+	for branch := range f.absentOnRemote {
+		gone = append(gone, branch)
 	}
-	return tips, nil
+	return testutil.RemoteTips(branches, gone...), nil
 }
 
 func (f *fakeGit) FetchIsolated(_ context.Context, _ string, branches []string) error {
@@ -476,5 +474,5 @@ func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 // Cherry reports every commit as absent from the trunk, so nothing here reads
 // as landed by content unless a case is about that.
 func (a stubAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
-	return []string{head + "-own-commit"}, nil, nil
+	return testutil.OwnCommits(head), nil, nil
 }

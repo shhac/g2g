@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil"
 	"strings"
 	"testing"
 
@@ -179,11 +180,7 @@ func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (ma
 	if f.tips != nil {
 		return f.tips, nil
 	}
-	tips := map[string]string{}
-	for _, branch := range branches {
-		tips[branch] = "remote-" + branch
-	}
-	return tips, nil
+	return testutil.RemoteTips(branches), nil
 }
 
 func (f *fakeGit) PushAtomic(_ context.Context, remote string, leases []localgit.Lease) error {
@@ -444,5 +441,5 @@ func TestAnUncomparedPlanDoesNotClaimTheRemoteIsCurrent(t *testing.T) {
 // Cherry reports work the base does not have, so a branch absent from the
 // remote reads as new rather than as one that merged and was deleted.
 func (f *fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
-	return []string{head + "-own-commit"}, nil, nil
+	return testutil.OwnCommits(head), nil, nil
 }

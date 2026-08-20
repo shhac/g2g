@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil"
 	"github.com/shhac/g2g/internal/testutil/forest"
 )
 
@@ -195,11 +196,7 @@ func (f *cliPushGit) CurrentBranch(context.Context) (string, error)   { return f
 func (f *cliPushGit) LocalBranches(context.Context) ([]string, error) { return f.branches, nil }
 func (f *cliPushGit) Remote(context.Context, string) error            { return f.remoteErr }
 func (f *cliPushGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
-	tips := map[string]string{}
-	for _, branch := range branches {
-		tips[branch] = "remote-" + branch
-	}
-	return tips, nil
+	return testutil.RemoteTips(branches), nil
 }
 
 func (f *cliPushGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease) error {
@@ -257,5 +254,5 @@ func (f *cliPushGit) Divergence(context.Context, string, string) (int, int, erro
 // Cherry reports work the base does not have, so a branch absent from the
 // remote reads as new rather than as one that merged and was deleted.
 func (f *cliPushGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
-	return []string{head + "-own-commit"}, nil, nil
+	return testutil.OwnCommits(head), nil, nil
 }

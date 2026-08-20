@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // pruneGit answers by content: a branch listed in landed has nothing its parent
@@ -219,5 +220,5 @@ func TestApplyReportsAFailedUnpin(t *testing.T) {
 // Cherry reports every commit as absent from the trunk, so nothing here reads
 // as landed by content unless a case is about that.
 func (a pruneAncestry) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
-	return []string{head + "-own-commit"}, nil, nil
+	return testutil.OwnCommits(head), nil, nil
 }

@@ -32,19 +32,30 @@ func pullRequestsJSON(top string) string {
 // fakeRepository installs the three CLIs for a two-branch synthetic stack.
 // topPullRequests is the raw nodes list for the tip branch, so a test can
 // choose whether it already has a pull request.
-func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
+// graphiteRoutes is the PATH-fake repository every Graphite-backed command test
+// drives: one common directory, one branch set, one gt log fixture.
+//
+// Only the GitHub answers differ between them, so only those are a parameter.
+// It was written out three times verbatim, comments and all, and the copies had
+// already drifted — the one inside TestSubmitRetainsTheSpecWhenGitHubFails was
+// missing the cherry route the other two carry, so a test that grew to drive
+// push there would have failed for a reason that had nothing to do with it.
+//
+// The common directory is returned alongside because a caller that plants a
+// restack journal needs to know where it goes.
+func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Route, string) {
 	t.Helper()
 
 	logPath := filepath.Join(t.TempDir(), "graphite-log.txt")
 	if err := os.WriteFile(logPath, []byte(graphiteLog), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	return testutil.FakeCLIs(t, map[string][]testutil.Route{
+	common := testutil.GraphiteRepository(t)
+	return map[string][]testutil.Route{
 		"git": {
 			// The common directory serves two questions: whether a restack is
 			// in flight, and whether this repository uses Graphite at all.
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
+			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
 			{Prefix: "status --porcelain"},
@@ -60,13 +71,20 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 			{Prefix: "--version", Output: "1.8.6"},
 			{Prefix: "log", File: logPath},
 		},
-		"gh": {
-			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
-			{Prefix: "api graphql", Output: pullRequestsJSON(topPullRequests)},
-			{Prefix: "pr create"},
-			{Prefix: "stack link"},
-		},
+		"gh": gh,
+	}, common
+}
+
+func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
+	t.Helper()
+
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		{Prefix: "api graphql", Output: pullRequestsJSON(topPullRequests)},
+		{Prefix: "pr create"},
+		{Prefix: "stack link"},
 	})
+	return testutil.FakeCLIs(t, routes)
 }
 
 func run(t *testing.T, args ...string) (string, string, error) {
@@ -201,24 +219,10 @@ func TestSubmitPreviewWritesNothingAndMutatesNothing(t *testing.T) {
 // An external CLI failing must surface its own message, which is the whole
 // point of routing the bounded diagnostic through the top-level printer.
 func TestFailedGitHubCallReportsItsOwnOutput(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "graphite-log.txt")
-	if err := os.WriteFile(logPath, []byte(graphiteLog), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	testutil.FakeCLIs(t, map[string][]testutil.Route{
-		"git": {
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
-			{Prefix: "branch --show-current", Output: "synthetic-top"},
-			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
-		},
-		"gt": {
-			{Prefix: "--version", Output: "1.8.6"},
-			{Prefix: "log", File: logPath},
-		},
-		"gh": {
-			{Prefix: "repo view", Stderr: "gh auth login required. To authenticate, run: gh auth login", Exit: 4},
-		},
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Stderr: "gh auth login required. To authenticate, run: gh auth login", Exit: 4},
 	})
+	testutil.FakeCLIs(t, routes)
 
 	var stdout, stderr bytes.Buffer
 	command := cli.New("v", &stdout, &stderr)

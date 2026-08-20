@@ -85,32 +85,12 @@ func TestSubmitEditRetainsTheSpecWhenTheEditorFails(t *testing.T) {
 // A GitHub failure mid-apply must also retain it: the titles are the user's
 // work, and re-running with the same spec is the documented recovery.
 func TestSubmitRetainsTheSpecWhenGitHubFails(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "graphite-log.txt")
-	if err := os.WriteFile(logPath, []byte(graphiteLog), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	testutil.FakeCLIs(t, map[string][]testutil.Route{
-		"git": {
-			// The common directory serves two questions: whether a restack is
-			// in flight, and whether this repository uses Graphite at all.
-			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: testutil.GraphiteRepository(t)},
-			{Prefix: "branch --show-current", Output: "synthetic-top"},
-			{Prefix: "branch --format", Lines: []string{"synthetic-main", "synthetic-lower", "synthetic-top"}},
-			{Prefix: "status --porcelain"},
-			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
-			{Prefix: "ls-remote"},
-			{Prefix: "push"},
-		},
-		"gt": {
-			{Prefix: "--version", Output: "1.8.6"},
-			{Prefix: "log", File: logPath},
-		},
-		"gh": {
-			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
-			{Prefix: "api graphql", Output: pullRequestsJSON("")},
-			{Prefix: "pr create", Stderr: "synthetic pull request creation failure", Exit: 1},
-		},
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		{Prefix: "api graphql", Output: pullRequestsJSON("")},
+		{Prefix: "pr create", Stderr: "synthetic pull request creation failure", Exit: 1},
 	})
+	testutil.FakeCLIs(t, routes)
 
 	specDir := t.TempDir()
 	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {

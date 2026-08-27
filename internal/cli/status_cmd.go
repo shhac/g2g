@@ -103,21 +103,17 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	return view, native
 }
 
-// statusAdvice reuses the blocked-reason logic so triage and the command that
-// fixes it never disagree, phrased for a read-only report.
-//
-// This is the machine-facing form, kept to one line because it becomes a
-// porcelain record. The human form is laid out by advice.lines.
-func statusAdvice(plan link.Plan) string {
-	return "Safe next action: " + blockedReason(plan)
-}
-
 func statusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "status")
 	if len(plan.Issues) != 0 {
-		blocked := view.block(statusAdvice(plan))
-		repair := repairAdvice(plan)
-		blocked.Advice, blocked.AdviceHeading = &repair, "Safe next action"
+		// The same reason every mutating command refuses on, under the heading
+		// a read-only report gives it. The heading used to be concatenated in
+		// here and string-replaced back out elsewhere, which is why it is a
+		// field: only its wording differs from a refusal's.
+		blocked := view.block(blockedReason(plan))
+		blocked.BlockedHeading = "Safe next action"
+		laid := repairAdvice(plan)
+		blocked.Advice = &laid
 		return structureNote(blocked, plan.Snapshot)
 	}
 	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)
@@ -205,7 +201,11 @@ func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentat
 		TargetSource: "current Git branch",
 		Nodes:        []stackNode{{Branch: undescribed.Branch, Trunk: undescribed.Trunk, Target: true, State: unstackedState(undescribed), Severity: severityNeutral}},
 	}
-	return writeStackView(writer, view.note(unstackedNote(undescribed), severityNeutral), p)
+	// The remedy goes out as structure as well as prose: this is the commonest
+	// moment someone asks what to run, and a consumer had to parse the note to
+	// find out.
+	view = view.advising(undescribed.Remedy()).note(unstackedNote(undescribed), severityNeutral)
+	return writeStackView(writer, view, p)
 }
 
 func unstackedState(undescribed stack.Undescribed) string {

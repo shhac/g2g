@@ -193,7 +193,7 @@ func submitView(plan submit.Plan, template string, draft bool) stackView {
 		view = view.note("PR template: "+template, severityNeutral)
 	}
 	if len(plan.Issues) != 0 {
-		return view.block("Apply blocked: repair the marked existing pull requests first.")
+		return view.blockedBy("repair the marked existing pull requests first.")
 	}
 	return view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 }

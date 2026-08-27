@@ -253,6 +253,10 @@ description: |
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
   on failure and state exact repair/validation/retry commands. Multiple PR
   templates require `--template <name>` or `--no-template`; never guess.
+- A refusal reaches a machine as `blocked` (the reason, no label) and `repair`
+  (the ways out, each with its command separate from the prose). Read `repair`
+  rather than parsing the sentence, and treat a way with no `command` as a real
+  answer that is not a thing to run.
 - Prefer `--json` (or `--porcelain`) over parsing the human preview. Both are
   renderers over the same validated view, they suppress colour and every
   human-facing line, and `schemaVersion` signals breaking changes. Never scrape

@@ -257,7 +257,7 @@ func TestMachineOutputSurvivesTheRealPipeline(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
 		t.Fatalf("decode: %v\n%s", err, stdout)
 	}
-	if doc.SchemaVersion != 1 || doc.Trunk != "synthetic-main" || len(doc.Branches) != 2 {
+	if doc.SchemaVersion != cli.SchemaVersion || doc.Trunk != "synthetic-main" || len(doc.Branches) != 2 {
 		t.Fatalf("document = %#v", doc)
 	}
 	if doc.Branches[1].Branch != "synthetic-top" || doc.Branches[1].PullRequest != 102 {

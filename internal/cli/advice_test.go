@@ -77,9 +77,29 @@ func TestAMachineStillReadsTheWholeRefusalInOneField(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &doc); err != nil {
 		t.Fatalf("decode: %v\n%s", err, output.String())
 	}
-	want := "Apply blocked: both sides have moved on synthetic-main · run g2g sync --take published to take the published version, or reconcile it yourself"
+	want := "both sides have moved on synthetic-main · run g2g sync --take published to take the published version, or reconcile it yourself"
 	if doc.Blocked != want {
 		t.Errorf("blocked = %q, want %q", doc.Blocked, want)
+	}
+	// The label a person is shown in front of the reason is the renderer's,
+	// and it is not even the same label everywhere: status calls the same
+	// field "Safe next action". A consumer was trimming that out.
+	if strings.HasPrefix(doc.Blocked, "Apply blocked") {
+		t.Errorf("blocked carries the label a person is shown: %q", doc.Blocked)
+	}
+	if doc.Repair == nil || len(doc.Repair.Ways) != 2 {
+		t.Fatalf("repair = %#v, want the two ways out", doc.Repair)
+	}
+	if doc.Repair.Reason != "both sides have moved on synthetic-main" {
+		t.Errorf("repair reason = %q", doc.Repair.Reason)
+	}
+	if got := doc.Repair.Ways[0]; got.Command != "g2g sync --take published" || got.Effect != "take the published version" {
+		t.Errorf("first way = %#v", got)
+	}
+	// A way out that is not a thing to run carries no command, rather than an
+	// empty one a consumer might try to execute.
+	if got := doc.Repair.Ways[1]; got.Command != "" || got.Effect != "reconcile it yourself" {
+		t.Errorf("second way = %#v", got)
 	}
 }
 

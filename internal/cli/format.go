@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // outputFormat selects which renderer consumes a stackView. Pretty output is
@@ -21,7 +23,14 @@ const (
 
 // schemaVersion is bumped when a field changes meaning or disappears. Adding a
 // field is not a breaking change and does not bump it.
-const schemaVersion = 1
+//
+// 2 narrowed "blocked" to the reason alone. It used to carry the label a person
+// is shown in front of it — "Apply blocked: ", or "Safe next action: " from
+// status, which is the same field saying two different things — and a consumer
+// was left trimming a presentation decision out of its data. The label is now
+// the renderer's. Read "repair" for the ways out, which this version added and
+// which is why the sentence no longer has to be parsed to find the command.
+const schemaVersion = 2
 
 type jsonDocument struct {
 	SchemaVersion int          `json:"schemaVersion"`
@@ -34,8 +43,30 @@ type jsonDocument struct {
 	// Blocked is the reason apply would refuse. It is reported alongside
 	// Command rather than instead of it, so a consumer can see the plan's
 	// destination and decide for itself; check this before acting on Command.
-	Blocked string     `json:"blocked,omitempty"`
-	Notes   []jsonNote `json:"notes,omitempty"`
+	Blocked string `json:"blocked,omitempty"`
+	// Repair is what to do about Blocked, with the commands separate from the
+	// prose. It is also set where nothing is blocked and there is still
+	// something to do — a branch no source describes is a state, not a refusal.
+	Repair *jsonRepair `json:"repair,omitempty"`
+	Notes  []jsonNote  `json:"notes,omitempty"`
+}
+
+// jsonRepair is repair.Note as the document carries it. The domain type is not
+// serialized directly: its shape is the renderer's business, and a JSON tag on
+// it would make every package that builds one answerable for this schema.
+type jsonRepair struct {
+	// Reason is why, without advice. It is empty when the ways say all there
+	// is to say.
+	Reason string    `json:"reason,omitempty"`
+	Ways   []jsonWay `json:"ways"`
+}
+
+// jsonWay is one way out. Command is absent when the way out is not something
+// to run — "fetch and reconcile first" — which is a whole answer rather than a
+// step with a missing field.
+type jsonWay struct {
+	Command string `json:"command,omitempty"`
+	Effect  string `json:"effect"`
 }
 
 type jsonBranch struct {
@@ -63,6 +94,7 @@ func (v stackView) document() jsonDocument {
 		TargetSource:  v.TargetSource,
 		Command:       v.Action,
 		Blocked:       plainCommands(v.Blocked),
+		Repair:        repairDocument(v.Repair),
 		Branches:      []jsonBranch{},
 	}
 	for _, node := range v.Nodes {
@@ -86,6 +118,20 @@ func (v stackView) document() jsonDocument {
 	return doc
 }
 
+// repairDocument carries a repair only where there is one. A note with no ways
+// out is a refusal nothing here fixes, and an empty array would read as a
+// promise that there is something to run.
+func repairDocument(note repair.Note) *jsonRepair {
+	if len(note.Ways) == 0 {
+		return nil
+	}
+	ways := make([]jsonWay, 0, len(note.Ways))
+	for _, way := range note.Ways {
+		ways = append(ways, jsonWay{Command: way.Command, Effect: way.Effect})
+	}
+	return &jsonRepair{Reason: note.Reason, Ways: ways}
+}
+
 func writeJSON(writer io.Writer, view stackView) error {
 	encoder := json.NewEncoder(writer)
 	encoder.SetIndent("", "  ")
@@ -106,6 +152,12 @@ func writePorcelain(writer io.Writer, view stackView) error {
 	}
 	if doc.Blocked != "" {
 		records = append(records, []string{"blocked", doc.Blocked})
+	}
+	if doc.Repair != nil {
+		records = append(records, []string{"repair", doc.Repair.Reason})
+		for _, way := range doc.Repair.Ways {
+			records = append(records, []string{"way", way.Command, way.Effect})
+		}
 	}
 	if len(doc.Command) != 0 {
 		records = append(records, append([]string{"command"}, doc.Command...))

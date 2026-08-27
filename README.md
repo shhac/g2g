@@ -501,6 +501,8 @@ g2g status --json
 #   trunk  <branch>
 #   branch <name> <pr> <state> <severity> <url> <target?> <parent?>
 #   command <argv>...
+#   repair <reason>
+#   way    <command> <effect>
 #   note   <severity> <text>
 g2g link --porcelain
 ```
@@ -514,6 +516,19 @@ before it, so an existing reader keeps working.
 see the destination and decide for itself; check `blocked` before acting on
 `command`. `schemaVersion` is bumped when a field changes meaning or
 disappears; adding a field is not a breaking change.
+
+`repair` is what to do about `blocked`, with each way out carried as a command
+and what running it achieves, so a consumer no longer has to find the command
+inside the sentence. A way out with no `command` is a whole answer that is not
+a thing to run — "fetch and reconcile first" — rather than a step with a field
+missing, and a refusal that nothing here fixes carries no `repair` at all. It
+is also reported where nothing is blocked and there is still something to do: a
+branch no source describes is a state, not a refusal.
+
+Schema 2 narrowed `blocked` to the reason alone. It used to carry the label a
+person is shown in front of it, and not even the same label everywhere —
+`status` prefixed its own — so a consumer was trimming a presentation decision
+out of its data. That label is the renderer's now.
 
 Interactive confirmation or a cancellation/cooldown period before mutation is
 intentionally deferred; it needs a separate safety design and is not implied by

@@ -170,15 +170,40 @@ func membershipStyle(membership githubstack.Membership, branch string, forked bo
 	return "", severityNeutral
 }
 
-// issueMark says which axis a refusal is about. A pull request based on the
-// wrong branch is the inverse of base✓ and says so; one that does not exist,
-// was closed, or is two of them, is not a statement about a base at all, and
-// marking it as one would answer a question nobody asked.
+// issueMark says which axis a refusal is about, and whether that axis failed.
+//
+// A pull request based on the wrong branch is the inverse of base✓ and says so.
+// The rest are not statements about a base at all — a branch with no pull
+// request has no base to be wrong about — and marking them as one would answer
+// a question nobody asked.
+//
+// Merged is the one that is not a fault. The pull request did exactly what it
+// was for, and grouping it with a missing or closed one put a red ✗ on the
+// successful outcome. What is left is a branch that no longer belongs in the
+// stack, which the advice block says and `graph` has always called neutral
+// rather than bad.
 func issueMark(issue link.Issue) stackMark {
-	if issue.Kind == link.IssueBase {
+	switch issue.Kind {
+	case link.IssueBase:
 		return stackMark{Subject: "base", Detail: issue.Reason, Severity: severityBad}
+	case link.IssueMerged:
+		return stackMark{Subject: "pr", OK: true, Detail: mergedDetail(issue), Severity: severityNeutral}
+	case link.IssueClosed:
+		return stackMark{Subject: "pr", Detail: "closed without merging", Severity: severityBad}
+	case link.IssueMissing:
+		return stackMark{Subject: "pr", Detail: "none open", Severity: severityBad}
 	}
 	return stackMark{Subject: "pr", Detail: issue.Reason, Severity: severityBad}
+}
+
+// mergedDetail names the pull request that landed. It is the one number a
+// reader is likely to want to go and look at, and the issue is already
+// carrying it.
+func mergedDetail(issue link.Issue) string {
+	if issue.Number == 0 {
+		return "merged"
+	}
+	return fmt.Sprintf("merged as #%d", issue.Number)
 }
 
 func membershipNoteSeverity(state githubstack.MembershipState) severity {

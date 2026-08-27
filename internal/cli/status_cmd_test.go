@@ -16,7 +16,7 @@ func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "base" + markYes, "pr" + markNo + " no open PR", "Safe next action", "g2g submit   opens a new PR", "  synthetic/top"} {
+	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "base" + markYes, "pr" + markNo + " none open", "Safe next action", "g2g submit   opens a new PR", "  synthetic/top"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
@@ -427,5 +427,58 @@ func TestAMembershipMarkerDoesNotSwallowTheHeadMark(t *testing.T) {
 
 	if !strings.Contains(out.String(), "head"+markNo) {
 		t.Errorf("the head mark was swallowed by the membership marker:\n%s", out.String())
+	}
+}
+
+// A merged pull request did what it was for. It used to be grouped with a
+// missing or closed one, which put a red ✗ on the successful outcome and told
+// the reader something had gone wrong with it. What is left over is a branch
+// that no longer belongs in the stack, which the advice block says.
+func TestAMergedPullRequestIsNotMarkedAsAFault(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		issue link.Issue
+		want  string
+	}{
+		{name: "merged", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMerged, Number: 7, Reason: "PR merged"}, want: "pr" + markYes + " merged as #7"},
+		{name: "closed", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueClosed, Number: 7, Reason: "PR closed"}, want: "pr" + markNo + " closed without merging"},
+		{name: "missing", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMissing, Reason: "no open PR"}, want: "pr" + markNo + " none open"},
+		{name: "ambiguous", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueAmbiguous, Reason: "2 open PRs"}, want: "pr" + markNo + " 2 open PRs"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{
+				Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}}},
+				Issues:    []link.Issue{test.issue},
+			}
+			var out bytes.Buffer
+			if err := writeStatus(&out, plan, Presentation{}); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), test.want) {
+				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
+			}
+		})
+	}
+}
+
+// The colour is the half a reader takes in without reading. A landed pull
+// request drawn in the same red as a missing one says the opposite of what
+// happened, and graph has always called an already-landed branch neutral.
+func TestALandedPullRequestIsNotDrawnAsAlarming(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}}},
+		Issues:    []link.Issue{{Branch: "synthetic-top", Kind: link.IssueMerged, Number: 7, Reason: "PR merged"}},
+	}
+
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{Color: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(out.String(), ansiProblem+"pr") {
+		t.Errorf("a merged pull request was drawn as a problem:\n%q", out.String())
+	}
+	if want := ansiSubdued + "pr" + markYes; !strings.Contains(out.String(), want) {
+		t.Errorf("a merged pull request is not drawn as the ordinary outcome it is:\n%q", out.String())
 	}
 }

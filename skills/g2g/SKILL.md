@@ -270,7 +270,9 @@ description: |
   each: `base✓`/`base✗`, `head✗`, `pr✗`, and a subject-less mark for what is
   about no axis. Build them and call `stackNode.marked`, which renders `State`
   and the worst `Severity` from them; never set `State` alongside marks, and do
-  not fold two axes into one mark, which is the failure this replaced.
+  not fold two axes into one mark, which is the failure this replaced. A merged
+  pull request is `pr✓` and neutral, never grouped with a missing or closed
+  one: it succeeded, and only the leftover branch is a problem.
 - `status` is the read-only triage entry point. It renders one selected
   path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

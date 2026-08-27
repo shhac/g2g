@@ -124,7 +124,9 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 - A branch's annotation is a list of `stackMark`, one per axis, each with its
   own severity: `base✓`/`base✗` is about a pull request's base and never its
   contents, `head✗` is about currency, and a subject-less mark carries what is
-  about neither. They used to be one string under one colour, which is how a
+  about neither. A merged pull request is `pr✓` and neutral — it did what it
+  was for, and only the branch left in the stack is a problem, which is the
+  reading `graph` has always taken of an already-landed branch. They used to be one string under one colour, which is how a
   line came to open with the word "aligned" and go on to describe a divergence,
   in whichever colour the worse of them won. `stackNode.marked` renders `State`
   and the worst `Severity` from the marks, so nothing downstream has to

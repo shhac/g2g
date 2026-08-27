@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // StackPlan records a whole linear ancestry in one step.
@@ -36,6 +38,9 @@ type StackPlan struct {
 	NewTrunk  string
 	Updated   Graph
 	Blocked   string
+	// Repair is Blocked in the shape a caller can lay out. Blocked is rendered
+	// from it, so the sentence and the column cannot name different commands.
+	Repair repair.Note
 }
 
 // Adoption is one edge a stack adoption would record.
@@ -102,7 +107,14 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	}
 	plan.Record, plan.Already, plan.Conflicts = compare(discovery.Graph, spine, edges)
 	if len(plan.Conflicts) != 0 {
-		plan.Blocked = fmt.Sprintf("the graph already records a different parent for %s · untrack to re-record, or use g2g track --parent for one branch", strings.Join(plan.Conflicts, ", "))
+		plan.Repair = repair.Note{
+			Reason: fmt.Sprintf("the graph already records a different parent for %s", strings.Join(plan.Conflicts, ", ")),
+			Ways: []repair.Step{
+				{Command: "g2g untrack", Effect: "forget the recorded parent so it can be recorded again"},
+				{Command: "g2g track --parent", Effect: "record one branch's parent deliberately"},
+			},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	if len(plan.Record) == 0 {

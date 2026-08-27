@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Source names where a branch's structure came from.
@@ -139,12 +140,28 @@ type Undescribed struct {
 	// Trunk reports that this branch is where stacks would start rather than a
 	// branch missing its parent. Nothing sits under a trunk by definition, so
 	// having no recorded parent is its ordinary state and not a gap to fill.
-	Trunk  bool
-	remedy string
+	Trunk bool
+	// remedy is why and what to do, in the shape a caller can lay out. Error
+	// renders the same values as one line, so the sentence a machine or stderr
+	// reads and the column a person reads cannot name different commands.
+	remedy repair.Note
 }
 
-func (e Undescribed) Error() string {
-	return fmt.Sprintf("no source describes %q · %s", e.Branch, e.remedy)
+// Remedy is what to do about this branch, for a caller with somewhere to put
+// it. Error says the same thing in one line.
+func (e Undescribed) Remedy() repair.Note { return e.remedy }
+
+func (e Undescribed) Error() string { return e.Sentence(nil) }
+
+// Sentence is Error with every command it names passed through decorate, for a
+// caller rendering it somewhere a command can be drawn. Error is this with no
+// decoration, so the two cannot word it differently.
+func (e Undescribed) Sentence(decorate func(string) string) string {
+	said := fmt.Sprintf("no source describes %q", e.Branch)
+	if remedy := e.remedy.SentenceWith(decorate); remedy != "" {
+		return said + " · " + remedy
+	}
+	return said
 }
 
 // looksLikeTrunk asks what the remote calls its default branch.
@@ -193,23 +210,29 @@ func (r Resolver) sources() []string {
 // telling someone to record a parent for the branch their stacks start from
 // asks them to break the one rule the graph has, and the command named would
 // refuse anyway.
-func (r Resolver) remedy(ctx context.Context, branch string) string {
+func (r Resolver) remedy(ctx context.Context, branch string) repair.Note {
 	if r.looksLikeTrunk(ctx, branch) {
-		return fmt.Sprintf("it is this repository's default branch, so nothing is stacked on it yet · start one with g2g track --branch <child> --parent %s", branch)
+		return repair.Note{
+			Reason: "it is this repository's default branch, so nothing is stacked on it yet",
+			Ways:   []repair.Step{{Command: "g2g track --branch <child> --parent " + branch, Effect: "start a stack on it"}},
+		}
 	}
-	options := make([]string, 0, len(r.Selectors))
+	ways := make([]repair.Step, 0, len(r.Selectors))
 	for _, selector := range r.Selectors {
 		switch selector.Source() {
 		case SourceG2G:
-			options = append(options, "run g2g track to record its parent")
+			ways = append(ways, repair.Step{Command: "g2g track", Effect: "record its parent"})
 		case SourceGraphite:
-			options = append(options, "track it in Graphite")
+			// Nothing here tracks a branch in Graphite — mirror declares what
+			// the g2g graph already records — so this is a place to go rather
+			// than a command to run.
+			ways = append(ways, repair.Step{Effect: "track it in Graphite"})
 		}
 	}
-	if len(options) == 0 {
-		return "no structure source is configured"
+	if len(ways) == 0 {
+		return repair.Note{Reason: "no structure source is configured"}
 	}
-	return strings.Join(options, ", or ")
+	return repair.Note{Ways: ways}
 }
 
 // pinnedRemedy answers a --from that did not match.
@@ -227,5 +250,5 @@ func (r Resolver) pinnedRemedy(ctx context.Context, from Source, branch string) 
 	if r.looksLikeTrunk(ctx, branch) {
 		return fmt.Sprintf("nothing is stacked on it yet, and no other source describes it either · start one with g2g track --branch <child> --parent %s", branch)
 	}
-	return "and no other source describes it either · " + r.remedy(ctx, branch)
+	return "and no other source describes it either · " + r.remedy(ctx, branch).Sentence()
 }

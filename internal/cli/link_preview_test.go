@@ -172,15 +172,17 @@ func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			plan := link.Plan{Issues: test.issues}
 
-			structured := repairAdvice(plan)
-			if structured.Command != test.command {
-				t.Errorf("laid-out advice names %q, want %q", structured.Command, test.command)
-			}
-			sentence := plainCommands(blockedReason(plan))
+			named := repairAdvice(plan).commands()
 			if test.command == "" {
+				if len(named) != 0 {
+					t.Errorf("laid-out advice names %v, want nothing to run", named)
+				}
 				return
 			}
-			if !strings.Contains(sentence, test.command) {
+			if len(named) != 1 || named[0] != test.command {
+				t.Errorf("laid-out advice names %v, want %q", named, test.command)
+			}
+			if sentence := plainCommands(blockedReason(plan)); !strings.Contains(sentence, test.command) {
 				t.Errorf("the sentence %q does not name %q", sentence, test.command)
 			}
 		})

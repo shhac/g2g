@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
@@ -25,7 +25,7 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	// cannot read it — that independence is the point — but it can say so, and
 	// name the command that can, which is usually the shorter road.
 	if describedElsewhere && plan.Parent == "" {
-		for _, note := range alignedCommands([2]string{"g2g import", "adopt what Graphite already records"}) {
+		for _, note := range alignedCommands(repair.Step{Command: "g2g import", Effect: "adopt what Graphite already records"}) {
 			view = view.note(note.Text, note.Severity)
 		}
 	}
@@ -77,28 +77,18 @@ func candidateNotes(plan graph.TrackPlan) []stackNote {
 		notes = append(notes, stackNote{Text: "Then: " + describeOthers(others), Severity: severityNeutral})
 	}
 	return append(notes, alignedCommands(
-		[2]string{"g2g track --parent " + nearest.Branch, "record just this edge"},
-		[2]string{"g2g track --stack", "record the whole ancestry at once"},
+		repair.Step{Command: "g2g track --parent " + nearest.Branch, Effect: "record just this edge"},
+		repair.Step{Command: "g2g track --stack", Effect: "record the whole ancestry at once"},
 	)...)
 }
 
-// alignedCommands pads each command to a common width so what they do lines up
-// in its own column. The commands vary in length with a branch name, so the
-// width is computed rather than guessed.
-//
-// The padding sits outside the mark, so what is drawn as runnable is the
-// command alone and the column it lines up in is unaffected.
-func alignedCommands(commands ...[2]string) []stackNote {
-	width := 0
-	for _, command := range commands {
-		if size := utf8.RuneCountInString(command[0]); size > width {
-			width = size
-		}
-	}
-	notes := make([]stackNote, 0, len(commands))
-	for _, command := range commands {
-		padding := strings.Repeat(" ", width-utf8.RuneCountInString(command[0]))
-		notes = append(notes, stackNote{Text: runnable(command[0]) + padding + "   " + command[1], Severity: severityNeutral})
+// alignedCommands offers the commands that decide, as notes rather than as
+// advice: track has already said what it found, and these sit among those
+// findings rather than replacing a refusal.
+func alignedCommands(ways ...repair.Step) []stackNote {
+	notes := make([]stackNote, 0, len(ways))
+	for _, line := range alignedWays(ways) {
+		notes = append(notes, stackNote{Text: line, Severity: severityNeutral})
 	}
 	return notes
 }
@@ -126,7 +116,7 @@ func describeOthers(others []graph.Candidate) string {
 func trackStackView(plan graph.StackPlan) stackView {
 	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
 	if plan.Blocked != "" {
-		return view.blockedBy(plan.Blocked)
+		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	if len(plan.Record) == 0 {
 		return view.note("The graph already records this whole ancestry.", severityNeutral)

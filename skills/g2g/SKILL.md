@@ -70,9 +70,14 @@ description: |
   command, because ANSI ends a style by returning to the default and a subdued
   hint would otherwise come back bright from its first command onwards. The
   chip's padding column is painted, never written into the sentence, so plain
-  output is unchanged. Sentences composed outside `internal/cli` — a domain
-  package's `plan.Blocked`, `stack.Undescribed`'s remedy — cannot be marked
-  from here and are the one place a named command still renders as prose.
+  output is unchanged.
+- A package that refuses says why and what to do as a `repair.Note`, and
+  derives its `Blocked` sentence from it. `internal/cli` renders the sentence
+  for a machine and lays the same values out for a person — reason on its own
+  line, one way out per line, each command drawn as a command. Do not hand-write
+  a refusal sentence beside the structure: the pair drifts, and the sentence is
+  the half a machine reads. A refusal delegated from another package carries no
+  structure here, so `refusing` takes the sentence too and still says why.
 - Linking has two halves and they must stay apart: `Presentation.hyperlink` is
   the capability (may this output carry a link), and `internal/cli/links.go` is
   the policy (what does a thing point at, and which service wins). A render site

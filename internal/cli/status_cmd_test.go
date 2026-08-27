@@ -16,7 +16,7 @@ func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open PR", "Safe next action", "g2g submit · opens a new PR", "  synthetic/top"} {
+	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open PR", "Safe next action", "g2g submit   opens a new PR", "  synthetic/top"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
@@ -301,7 +301,7 @@ func TestStatusAdvicePutsEachBranchOnItsOwnLine(t *testing.T) {
 		t.Fatalf("no line %q in:\n%s", want, out.String())
 		return -1
 	}
-	headline := index("g2g submit · opens a new PR for each of these 3 branches")
+	headline := index("g2g submit   opens a new PR for each of these 3 branches")
 	// Every branch on its own line, in selection order, under the headline.
 	for offset, want := range []string{"synthetic/lower", "synthetic/middle", "synthetic/top  · #19891 was closed"} {
 		if at := index(want); at != headline+1+offset {

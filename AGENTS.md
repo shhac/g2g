@@ -257,7 +257,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Four things exist once and must not be reimplemented locally. Each was found as
+Five things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -271,6 +271,14 @@ property the original had.
 - `githubstack.PathStep.Classify` — what one branch's pull request is. `link`
   and `submit` apply different policy to the same answer; only the policy
   differs.
+- `repair.Note` — a refusal in two shapes: why, and the ways out. A package
+  that refuses builds one and derives its `Blocked` sentence from it, so the
+  line a machine reads and the column a person reads cannot name different
+  commands. It depends on nothing, which is what lets `internal/graph` describe
+  its own repair without reaching Graphite or GitHub. The joining lives on the
+  type — `SentenceWith` takes the decoration rather than exposing the join —
+  because a caller assembling its own sentence is free to word it differently
+  from the one a machine reads, and that is the drift this replaced.
 
 ## Change and verification workflow
 

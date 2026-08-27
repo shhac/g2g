@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -51,6 +52,10 @@ type Plan struct {
 	Publishing map[string]Publication
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
+	// Repair is Blocked in the shape a caller can lay out. What it names is a
+	// git command rather than a g2g one, which is exactly the case where a
+	// reader needs to see where it starts and ends before copying it.
+	Repair repair.Note
 }
 
 // Publication is what pushing one branch would do.
@@ -149,7 +154,8 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Blocked: blockedBy(remote, snapshot.Branches, publishing)}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing)}
+	plan.Blocked = plan.Repair.Sentence()
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -209,7 +215,7 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 // The lease already rejects it, so this changes no outcome — it moves the
 // refusal in front of the network call and says which branch, instead of
 // inviting an --apply that fails at git.
-func blockedBy(remote string, branches []string, publishing map[string]Publication) string {
+func blockedBy(remote string, branches []string, publishing map[string]Publication) repair.Note {
 	rejected := make([]string, 0, len(branches))
 	for _, branch := range branches {
 		if publishing[branch].Rejected() {
@@ -217,14 +223,22 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 		}
 	}
 	if len(rejected) == 0 {
-		return ""
+		return repair.Note{}
 	}
 	// Naming the command that does work matters more than the refusal. No g2g
 	// command republishes over a remote that has moved, and deliberately
 	// dropping a published commit is a real thing to want, so a preview that
 	// only says no leaves the reader with nowhere to go.
-	return fmt.Sprintf("the remote has moved on %s · fetch and reconcile first, or if you meant to replace what is published: git push --force-with-lease %s %s",
-		strings.Join(rejected, ", "), remote, strings.Join(rejected, " "))
+	return repair.Note{
+		Reason: fmt.Sprintf("the remote has moved on %s", strings.Join(rejected, ", ")),
+		Ways: []repair.Step{
+			{Effect: "fetch and reconcile first"},
+			{
+				Command: fmt.Sprintf("git push --force-with-lease %s %s", remote, strings.Join(rejected, " ")),
+				Effect:  "replace what is published, dropping what the remote has",
+			},
+		},
+	}
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {

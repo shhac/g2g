@@ -2,11 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/repair"
 )
 
-// advice is what to run and which branches it applies to.
+// advice is what to do and which branches it applies to.
 //
 // It exists because the same content has two readers with different needs. A
 // machine wants one sentence in a single field, which is what blockedReason
@@ -18,12 +21,16 @@ import (
 // Both are built from the same predicates on the plan, so the two can differ in
 // shape and cannot differ in which command they name.
 type advice struct {
-	// Command is what to run, or empty when nothing g2g offers repairs this.
-	Command string
-	// Effect says what running it does, in the reader's terms rather than the
-	// implementation's.
-	Effect string
-	Steps  []adviceStep
+	// Reason is why, when the heading does not already say it. A refusal that
+	// names a state — both sides moved, the graph records a different parent —
+	// has to keep saying so once the sentence carrying it is replaced by this.
+	Reason string
+	// Ways are the ways out, in the order they should be considered. There is
+	// usually one; a refusal that offers a choice — take the published trunk,
+	// or reconcile it yourself — has several, and a sentence listing them is
+	// where a reader loses which words belong to which option.
+	Ways  []repair.Step
+	Steps []adviceStep
 }
 
 // adviceStep is one branch the advice covers. Note is empty for the ordinary
@@ -43,26 +50,23 @@ type adviceStep struct {
 func repairAdvice(plan link.Plan) advice {
 	if merged := plan.MergedBranches(); len(merged) != 0 {
 		return advice{
-			Command: "gt sync",
-			Effect:  "restack in Graphite first · no g2g command fixes a merged branch",
-			Steps:   steps(plan, link.IssueMerged),
+			Ways:  []repair.Step{{Command: "gt sync", Effect: "restack in Graphite first · no g2g command fixes a merged branch"}},
+			Steps: steps(plan, link.IssueMerged),
 		}
 	}
 	if plan.SyncRepairable() {
 		return advice{
-			Command: "g2g sync",
-			Effect:  "every PR is open but based on the wrong branch",
-			Steps:   steps(plan, link.IssueBase),
+			Ways:  []repair.Step{{Command: "g2g sync", Effect: "every PR is open but based on the wrong branch"}},
+			Steps: steps(plan, link.IssueBase),
 		}
 	}
 	if plan.SubmitRepairable() {
 		return advice{
-			Command: "g2g submit",
-			Effect:  pick(len(plan.Issues), "opens a new PR", fmt.Sprintf("opens a new PR for each of these %d branches", len(plan.Issues))),
-			Steps:   steps(plan, link.IssueMissing, link.IssueClosed),
+			Ways:  []repair.Step{{Command: "g2g submit", Effect: pick(len(plan.Issues), "opens a new PR", fmt.Sprintf("opens a new PR for each of these %d branches", len(plan.Issues)))}},
+			Steps: steps(plan, link.IssueMissing, link.IssueClosed),
 		}
 	}
-	return advice{Effect: "resolve every unresolved GitHub PR mapping first", Steps: steps(plan)}
+	return advice{Ways: []repair.Step{{Effect: "resolve every unresolved GitHub PR mapping first"}}, Steps: steps(plan)}
 }
 
 // steps lists the branches this advice acts on, annotating only the ones the
@@ -97,14 +101,16 @@ func steps(plan link.Plan, kinds ...link.IssueKind) []adviceStep {
 	return listed
 }
 
-// lines renders the advice for a person, one branch per line so a long name
-// never has to share one with another.
+// lines renders the advice for a person, one way out per line and one branch
+// per line, so a long name never has to share one with another.
 func (a advice) lines(heading string, p Presentation) []string {
-	headline := a.Effect
-	if a.Command != "" {
-		headline = p.chip(a.Command) + p.subdued(" · "+a.Effect)
+	rendered := []string{"", p.accent(heading)}
+	if a.Reason != "" {
+		rendered = append(rendered, "  "+p.problem(a.Reason))
 	}
-	rendered := []string{"", p.accent(heading), "  " + headline}
+	for _, way := range alignedWays(a.Ways) {
+		rendered = append(rendered, "  "+p.subdued(way))
+	}
 	for _, step := range a.Steps {
 		line := "    " + p.branch(step.Branch)
 		if step.Note != "" {
@@ -113,4 +119,43 @@ func (a advice) lines(heading string, p Presentation) []string {
 		rendered = append(rendered, line)
 	}
 	return rendered
+}
+
+// commands lists what this advice tells the reader to run. It is what must not
+// differ from the sentence a machine reads: shape may, the command may not.
+func (a advice) commands() []string {
+	named := make([]string, 0, len(a.Ways))
+	for _, way := range a.Ways {
+		if way.Command != "" {
+			named = append(named, way.Command)
+		}
+	}
+	return named
+}
+
+// alignedWays lays the ways out in two columns: what to run, and what running
+// it achieves. The commands vary in length with a branch name, so the width is
+// computed rather than guessed, and the padding sits outside the mark so what
+// is drawn as runnable is the command alone.
+//
+// A way with no command — "fetch and reconcile first", "track it in Graphite" —
+// is a whole answer rather than a remark about a command, so it takes the line
+// on its own rather than the column where effects sit.
+func alignedWays(ways []repair.Step) []string {
+	width := 0
+	for _, way := range ways {
+		if size := utf8.RuneCountInString(way.Command); size > width {
+			width = size
+		}
+	}
+	lines := make([]string, 0, len(ways))
+	for _, way := range ways {
+		if way.Command == "" {
+			lines = append(lines, way.Effect)
+			continue
+		}
+		padding := strings.Repeat(" ", width-utf8.RuneCountInString(way.Command))
+		lines = append(lines, runnable(way.Command)+padding+"   "+way.Effect)
+	}
+	return lines
 }

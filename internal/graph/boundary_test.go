@@ -26,6 +26,7 @@ func TestGraphDependsOnGitAlone(t *testing.T) {
 	permitted := map[string]bool{
 		"github.com/shhac/g2g/internal/graph":      true,
 		"github.com/shhac/g2g/internal/shape":      true,
+		"github.com/shhac/g2g/internal/repair":     true,
 		"github.com/shhac/g2g/internal/diagnostic": true,
 		"github.com/shhac/g2g/internal/subprocess": true,
 		"github.com/shhac/g2g/internal/git":        true,

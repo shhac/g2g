@@ -15,6 +15,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 )
 
@@ -82,6 +83,11 @@ type Plan struct {
 	Collect []Collection
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
+	// Repair is Blocked in the shape a caller can lay out. Where sync refuses
+	// it offers a choice — take the published trunk, or reconcile it yourself —
+	// and a sentence holding both is where a reader loses which words belong
+	// to which.
+	Repair repair.Note
 }
 
 // Take is which side wins where sync would otherwise refuse.
@@ -200,8 +206,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if plan.Diverged {
 		// Same reasoning as a branch: say that both sides moved, not that you
 		// have something the remote does not, which is true of any commit.
-		plan.Blocked = fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not · take the published trunk with g2g sync --take published, which discards yours, or reconcile it yourself",
-			plan.Base, remote, plan.Base)
+		plan.Repair = repair.Note{
+			Reason: fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not", plan.Base, remote, plan.Base),
+			Ways:   divergenceWays(),
+		}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 
@@ -209,11 +218,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// fetch and the fast-forward assessment come first.
 	// A location, never a parent: the trunk is about to be here, and recording
 	// a ref under refs/g2g/ as the parent is what broke every synced stack.
-	plan.Collect, plan.Blocked, err = s.collect(ctx, remote, plan.Base, discovery.Branches, take)
+	plan.Collect, plan.Repair, err = s.collect(ctx, remote, plan.Base, discovery.Branches, take)
 	if err != nil {
 		return Plan{}, err
 	}
-	if plan.Blocked != "" {
+	if plan.Blocked = plan.Repair.Sentence(); plan.Blocked != "" {
 		return plan, nil
 	}
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false)
@@ -381,7 +390,7 @@ func syncScope(scope graph.Scope) graph.Scope {
 //     rebased or amended your branch and published it, so theirs supersedes.
 //   - genuinely diverged: you have work the published version does not, and
 //     choosing between them is not something to do behind your back.
-func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, string, error) {
+func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, repair.Note, error) {
 	collect := make([]Collection, 0, len(branches))
 	stuck := make([]divergence, 0)
 	for _, branch := range branches {
@@ -395,14 +404,14 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		local, err := s.Git.Resolve(ctx, branch)
 		if err != nil {
-			return nil, "", err
+			return nil, repair.Note{}, err
 		}
 		if local == published {
 			continue
 		}
 		behind, err := s.Git.IsAncestor(ctx, branch, published)
 		if err != nil {
-			return nil, "", err
+			return nil, repair.Note{}, err
 		}
 		if behind {
 			collect = append(collect, Collection{Branch: branch, To: published})
@@ -410,7 +419,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		ahead, err := s.Git.IsAncestor(ctx, published, branch)
 		if err != nil {
-			return nil, "", err
+			return nil, repair.Note{}, err
 		}
 		if ahead {
 			// You have unpublished work. That is push's business, not sync's.
@@ -418,7 +427,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		ours, _, err := s.Git.Cherry(ctx, published, branch, "")
 		if err != nil {
-			return nil, "", err
+			return nil, repair.Note{}, err
 		}
 		if len(ours) == 0 {
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
@@ -435,15 +444,15 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		// no way to tell that from this.
 		theirs, _, err := s.Git.Cherry(ctx, branch, localgit.IsolatedRef(remote, branch), "")
 		if err != nil {
-			return nil, "", err
+			return nil, repair.Note{}, err
 		}
 		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: len(theirs)})
 	}
 	if len(stuck) != 0 {
-		return nil, divergenceReason(stuck), nil
+		return nil, repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays()}, nil
 	}
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
-	return collect, "", nil
+	return collect, repair.Note{}, nil
 }
 
 // fetchList is the base and the selection, each named once. The base is
@@ -487,6 +496,16 @@ type divergence struct {
 // could not tell whether that was what the message meant. Both counts make it
 // unambiguous, and the counts are by content, so a commit the other side
 // already has under a different id is not counted against you.
+// divergenceWays is the choice a divergence leaves, and there is exactly one
+// place it can be made: --take is the only path where sync discards work that
+// exists nowhere else, and it has no "mine" value.
+func divergenceWays() []repair.Step {
+	return []repair.Step{
+		{Command: "g2g sync --take published", Effect: "take the published version and discard yours"},
+		{Effect: "reconcile it yourself"},
+	}
+}
+
 func divergenceReason(stuck []divergence) string {
 	parts := make([]string, 0, len(stuck))
 	for _, moved := range stuck {
@@ -495,8 +514,7 @@ func divergenceReason(stuck []divergence) string {
 			moved.Ours, pick(moved.Ours, "is", "are"),
 			moved.Theirs, pick(moved.Theirs, "is", "are")))
 	}
-	return fmt.Sprintf("both sides have moved on %s · take the published version with g2g sync --take published, which discards yours, or reconcile it yourself",
-		strings.Join(parts, ", "))
+	return fmt.Sprintf("both sides have moved on %s", strings.Join(parts, ", "))
 }
 
 // pick chooses the form that agrees with a count.

@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // stackView is the one semantic projection every command produces. It carries
@@ -76,6 +78,24 @@ func (v stackView) block(reason string) stackView {
 // and a seventh command string-replaced it back out, so changing the wording
 // meant finding all seven and keeping them in step.
 func (v stackView) blockedBy(reason string) stackView { return v.block("Apply blocked: " + reason) }
+
+// refusing records a refusal in both shapes at once: Blocked keeps the whole
+// sentence, which is what a machine reads, and Advice is the same content laid
+// out for a person, which is what makes the command it names a command rather
+// than a run of words inside prose.
+//
+// The sentence is passed rather than rendered from the note, because a plan
+// can be blocked by a step it delegated to — sync carries restack's refusal —
+// and that one has no structure here to lay out. It must still say why.
+func (v stackView) refusing(sentence string, note repair.Note) stackView {
+	v = v.blockedBy(sentence)
+	if len(note.Ways) == 0 {
+		return v
+	}
+	laid := advice{Reason: note.Reason, Ways: note.Ways}
+	v.Advice, v.AdviceHeading = &laid, "Apply blocked"
+	return v
+}
 
 // commandHeading labels the command for what it currently is. The command is
 // still shown when apply would refuse it, so the heading has to say so rather

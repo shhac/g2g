@@ -12,7 +12,7 @@ import (
 func syncView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "sync")
 	if plan.Blocked != "" {
-		return view.blockedBy(plan.Blocked)
+		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
 	if note := collectNote(plan); note != "" {

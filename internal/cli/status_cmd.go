@@ -219,7 +219,7 @@ func unstackedNote(undescribed stack.Undescribed) string {
 	if undescribed.Trunk {
 		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+undescribed.Branch))
 	}
-	return undescribed.Error()
+	return undescribed.Sentence(runnable)
 }
 
 // currencyNote says how a branch stands against the commit its pull request is

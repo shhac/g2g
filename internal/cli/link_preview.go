@@ -6,6 +6,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func linkView(plan link.Plan) stackView {
@@ -68,6 +69,9 @@ func blockedReason(plan link.Plan) string {
 	if merged := plan.MergedBranches(); len(merged) != 0 {
 		return fmt.Sprintf("%s already merged. Run %s in Graphite to restack, then re-run.", branchList(merged), runnable("gt sync"))
 	}
+	if landed := plan.LandedBranches(); len(landed) != 0 {
+		return branchList(landed) + pick(len(landed), " has", " have") + " already landed. " + forgetSentence(plan.Source)
+	}
 	if plan.SyncRepairable() {
 		return "every pull request is open but based on the wrong branch. Run " + runnable("g2g sync") + " to preview reconciling them."
 	}
@@ -75,6 +79,17 @@ func blockedReason(plan link.Plan) string {
 		return submitAdvice(plan) + " Run " + runnable("g2g submit") + " to create " + pick(len(plan.Issues), "it", "them") + "."
 	}
 	return "resolve every unresolved GitHub PR mapping first."
+}
+
+// forgetSentence says the same thing forgetLanded lays out, for the one line a
+// machine reads. Both come from the same step, so they cannot name different
+// commands.
+func forgetSentence(source stack.Source) string {
+	way := forgetLanded(source)
+	if way.Command == "" {
+		return way.Effect + "."
+	}
+	return "Run " + runnable(way.Command) + " to " + way.Effect + "."
 }
 
 func submitAdvice(plan link.Plan) string {

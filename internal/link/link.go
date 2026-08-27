@@ -47,6 +47,11 @@ type Tips interface {
 	// reported as work of the reader's own — 1532 of them on one real stack,
 	// none of which were theirs.
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	// Absorbed answers the same question of a whole branch at once, which is
+	// what a squash merge needs: it combines the branch's commits into one, so
+	// that commit is equivalent to none of them and Cherry marks every one as
+	// new while the branch as a whole contributes nothing.
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 }
 
 // Service coordinates a safe link plan.
@@ -117,6 +122,16 @@ const (
 	IssueMerged IssueKind = "merged"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
+	// IssueLanded is a branch with no pull request to project whose work is
+	// already in the branch below it, by content.
+	//
+	// It is told apart from IssueMissing and IssueClosed because the advice for
+	// those is to open a pull request, and opening one for work already in the
+	// trunk sends somebody to submit an empty change. GitHub cannot answer
+	// this: a squash merge lands the work under a pull request with a different
+	// head, and a series cherry-picked by somebody else has no pull request at
+	// all.
+	IssueLanded IssueKind = "landed"
 )
 
 // Issue is a safe, actionable reason a displayed path node cannot be applied.
@@ -142,6 +157,19 @@ func (p Plan) MergedBranches() []string {
 		}
 	}
 	return merged
+}
+
+// LandedBranches lists branches whose work is already in the branch below them.
+// Like a merged pull request, no g2g projection fixes them: what is left is a
+// branch that no longer belongs in the stack.
+func (p Plan) LandedBranches() []string {
+	var landed []string
+	for _, issue := range p.Issues {
+		if issue.Kind == IssueLanded {
+			landed = append(landed, issue.Branch)
+		}
+	}
+	return landed
 }
 
 // SyncRepairable reports whether every blocker is a base that sync is designed
@@ -198,6 +226,9 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches, plan.Parents)
+	if err := s.markLanded(ctx, plan); err != nil {
+		return Plan{}, err
+	}
 	plan.Currency, err = s.currency(ctx, plan)
 	if err != nil {
 		return Plan{}, err
@@ -255,6 +286,62 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	}
 	diagnostic.Event(ctx, "link.apply", diagnostic.Field{Key: "decision", Value: "run"})
 	return s.GitHub.Link(ctx, plan.Base, plan.Branches)
+}
+
+// markLanded re-reads the branches whose only problem is that they have no
+// pull request to project, and says so differently where the work is already
+// below them.
+//
+// Only those are asked, which is what bounds the cost: a branch with an open
+// pull request has somewhere for its work to be, and one whose pull request
+// merged has already been answered by GitHub. Two local reads each, and only
+// for the branches where the answer changes what to do.
+func (s Service) markLanded(ctx context.Context, plan Plan) error {
+	if s.Tips == nil {
+		return nil
+	}
+	for index, issue := range plan.Issues {
+		if issue.Kind != IssueMissing && issue.Kind != IssueClosed {
+			continue
+		}
+		landed, err := s.landed(ctx, plan, issue.Branch)
+		if err != nil {
+			return err
+		}
+		if !landed {
+			continue
+		}
+		below := ownCommitsFrom(plan, issue.Branch)
+		plan.Issues[index] = Issue{
+			Branch: issue.Branch,
+			Kind:   IssueLanded,
+			Number: issue.Number,
+			Reason: "landed in " + below,
+		}
+	}
+	return nil
+}
+
+// landed reports a branch with nothing left to contribute to the branch below
+// it. The cheap per-commit question comes first; the whole-branch merge is
+// asked only of what it says no to, because that is the squash-merge case and
+// it is the more expensive read.
+func (s Service) landed(ctx context.Context, plan Plan, branch string) (bool, error) {
+	below := ownCommitsFrom(plan, branch)
+	absent, _, err := s.Tips.Cherry(ctx, below, branch, below)
+	if err != nil {
+		// A branch sharing no history with the one below it cannot be
+		// compared, which is an answer rather than a failure.
+		return false, nil
+	}
+	if len(absent) == 0 {
+		return true, nil
+	}
+	absorbed, err := s.Tips.Absorbed(ctx, below, branch)
+	if err != nil {
+		return false, nil
+	}
+	return absorbed, nil
 }
 
 func issueSummary(issues []Issue) string {

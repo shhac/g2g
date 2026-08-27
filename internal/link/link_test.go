@@ -491,6 +491,10 @@ func (t currencyTips) Cherry(_ context.Context, upstream, head, _ string) ([]str
 	return synthetic(t.theirs[upstream]), nil, nil
 }
 
+// Absorbed is the whole-branch question. These cases are about currency rather
+// than about landing, so nothing here has been absorbed into anything.
+func (currencyTips) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
 func synthetic(commits int) []string {
 	absent := make([]string, commits)
 	for index := range absent {

@@ -549,7 +549,17 @@ Each branch is annotated one axis at a time, so a mark means one thing and
 carries its own colour. `base✓` says the pull request is based where the
 resolved structure puts it, and `base✗` says it is not; `head✗` says the pull
 request is not on the commit the branch is, and only ever appears when that is
-true, so a current one stays unannotated and the stale ones stand out. `pr✗`
+true, so a current one stays unannotated and the stale ones stand out.
+
+A branch whose work is already in the branch below it reads as `landed in …`,
+in the ordinary colour, and is offered forgetting rather than submitting. That
+is a question Git answers and GitHub cannot: a squash merge lands the work
+under a pull request whose head the branch never had, and a series somebody
+cherry-picked has no pull request at all — so the branch looks like one merely
+missing a pull request, and the advice for that is to open one for a change
+already in the trunk.
+
+`pr✗`
 is a pull request that is missing, closed, merged, or ambiguous — not a
 statement about a base, because a branch with no pull request has no base to be
 wrong about. Read the column for `✗`: a wide line whose first word is green

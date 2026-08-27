@@ -486,3 +486,45 @@ func TestALandedPullRequestIsNotDrawnAsAlarming(t *testing.T) {
 		t.Errorf("a merged pull request is not drawn as the ordinary outcome it is:\n%q", out.String())
 	}
 }
+
+// A branch whose work is already below it used to read as one with no pull
+// request, and the advice for that is to open one — for a change that is
+// already in the trunk. What it needs is forgetting, and which command does
+// that depends on which record answered.
+func TestALandedBranchIsNotOfferedSubmit(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		source stack.Source
+		want   string
+	}{
+		{name: "g2g's own graph is prunable", source: stack.SourceG2G, want: "g2g prune"},
+		{name: "graphite restacks around it", source: stack.SourceGraphite, want: "gt sync"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := link.Plan{
+				Discovery: stack.Discovery{Snapshot: stack.Snapshot{
+					Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}, Source: test.source,
+				}},
+				Issues: []link.Issue{{Branch: "synthetic-top", Kind: link.IssueLanded, Reason: "landed in main"}},
+			}
+
+			var out bytes.Buffer
+			if err := writeStatus(&out, plan, Presentation{}); err != nil {
+				t.Fatal(err)
+			}
+
+			if !strings.Contains(out.String(), "landed in main") {
+				t.Errorf("the branch is not reported as landed:\n%s", out.String())
+			}
+			if !strings.Contains(out.String(), test.want) {
+				t.Errorf("output does not offer %q:\n%s", test.want, out.String())
+			}
+			if strings.Contains(out.String(), "g2g submit") {
+				t.Errorf("submit was offered for work already in the trunk:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "pr"+markNo) {
+				t.Errorf("a landed branch was marked as a pull request fault:\n%s", out.String())
+			}
+		})
+	}
+}

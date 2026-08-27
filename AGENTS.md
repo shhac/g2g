@@ -152,6 +152,17 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `internal/link/currency_real_test.go` builds a throwaway repository for this,
   because a fake answers whatever it is asked and the question is what Git
   considers equivalent.
+- `status` says a branch has landed rather than that it has no pull request,
+  because GitHub cannot answer that one: a squash merge lands the work under a
+  head the branch never had, and a cherry-picked series under no pull request
+  at all — so the branch reads as missing one, and the advice for missing is to
+  open one, for a change already in the trunk. `link.markLanded` asks only the
+  branches whose sole problem is a missing or closed pull request, which is what
+  bounds the cost, and asks Cherry before Absorbed. Which command forgets a
+  landed branch depends on the source: `g2g prune` edits g2g's own graph and
+  finds nothing in a Graphite-declared repository, where the answer is
+  `gt sync`; a structure read from pull request bases is not a record anything
+  here edits, and that case names no command rather than a wrong one.
 - `status` renders a branch nothing describes instead of refusing it, through
   the typed `stack.Undescribed`. "Nothing is stacked here" is an answer to what
   a read-only triage command was asked; only `status` renders it, and every

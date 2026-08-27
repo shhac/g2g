@@ -278,6 +278,12 @@ description: |
   ids reported every commit the trunk had gained as unpushed work of the
   reader's own. A branch replayed since it was pushed is `Currency.Rewritten`:
   nothing missing, needs pushing, and not a divergence.
+- "Landed" is a content question Git answers and GitHub cannot, and it needs
+  both halves: `Cherry` per commit, then `Absorbed` for the squash merge. A
+  landed branch is `link.IssueLanded`, never `IssueMissing` — the advice for
+  missing is `g2g submit`, and submitting work already in the trunk is the bug
+  this prevents. What forgets it depends on the source (`g2g prune` for g2g's
+  graph, `gt sync` for Graphite), so do not hardcode one.
 - `status` is the read-only triage entry point. It renders one selected
   path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

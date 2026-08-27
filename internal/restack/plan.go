@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Plan works out what has to be replayed, without changing anything.
@@ -56,7 +57,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// The resumable engine rewrites one line of descent per invocation, so
 		// a conflicting fork would need several and a journal that tracks
 		// which of them finished. Refusing is honest until it does.
-		plan.Blocked = "this selection forks and the rewrite conflicts · restack one line at a time with --scope path"
+		plan.Repair = repair.Note{
+			Reason: "this selection forks and the rewrite conflicts",
+			Ways:   []repair.Step{{Command: "g2g restack --scope path", Effect: "rewrite one line of descent at a time"}},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "restack.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")},

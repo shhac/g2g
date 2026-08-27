@@ -23,7 +23,7 @@ func pruneView(plan prune.Plan) stackView {
 		}
 	}
 	if plan.Blocked != "" {
-		return view.blockedBy(plan.Blocked)
+		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	if plan.Nothing() {
 		return view

@@ -6,6 +6,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // The package's vocabulary: the rewrite boundary, the service, and what a plan
@@ -227,6 +228,9 @@ type Plan struct {
 	Predicted bool
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
+	// Repair is Blocked in the shape a caller can lay out. Most of restack's
+	// refusals are states rather than choices and carry none.
+	Repair repair.Note
 }
 
 // Branches lists the branches this plan rewrites.

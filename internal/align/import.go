@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Adoption is one edge an import would record in the g2g graph.
@@ -45,6 +46,8 @@ type ImportPlan struct {
 	NewTrunks []string
 	Updated   graph.Graph
 	Blocked   string
+	// Repair is Blocked in the shape a caller can lay out.
+	Repair repair.Note
 }
 
 // Claims returns the branches this import would start answering for. Adoption
@@ -78,7 +81,14 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 	plan := classify(adopted, forest, local)
 	plan.Updated = adopted
 	if len(plan.Conflicts) != 0 {
-		plan.Blocked = "the g2g graph already records a different parent · untrack to take Graphite's answer, or leave it as it is"
+		plan.Repair = repair.Note{
+			Reason: "the g2g graph already records a different parent",
+			Ways: []repair.Step{
+				{Command: "g2g untrack", Effect: "drop the recorded parent and take Graphite's answer"},
+				{Effect: "leave it as it is"},
+			},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	if plan.Updated, plan.NewTrunks, err = s.adopt(ctx, adopted, plan.Adopt); err != nil {

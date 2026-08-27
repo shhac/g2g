@@ -19,6 +19,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Git compares branches by content. A branch whose own commits all have an
@@ -43,6 +44,8 @@ type Plan struct {
 	Landed []string
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
+	// Repair is Blocked in the shape a caller can lay out.
+	Repair repair.Note
 }
 
 // Nothing reports a plan with no branch to forget.
@@ -83,7 +86,14 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	// this command reports rather than reparents — the same rule untrack
 	// follows, for the same reason.
 	if stranded := s.stranded(discovery, plan.Landed); len(stranded) != 0 {
-		plan.Blocked = "forgetting " + strings.Join(stranded, ", ") + " would strand branches recorded under them · widen with --scope, or untrack them deliberately"
+		plan.Repair = repair.Note{
+			Reason: "forgetting " + strings.Join(stranded, ", ") + " would strand branches recorded under them",
+			Ways: []repair.Step{
+				{Effect: "widen the selection with --scope so the children come too"},
+				{Command: "g2g untrack", Effect: "forget them deliberately"},
+			},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "prune.plan",
 		diagnostic.Field{Key: "selected", Value: strings.Join(discovery.Branches, ",")},

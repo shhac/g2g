@@ -471,14 +471,17 @@ type currencyTips struct {
 	theirs map[string]int
 }
 
-func (t currencyTips) Resolve(_ context.Context, revision string) (string, error) {
-	if tip, ok := t.local[revision]; ok {
-		return tip, nil
+func (t currencyTips) ResolveAll(_ context.Context, revisions []string) (map[string]string, error) {
+	resolved := map[string]string{}
+	for _, revision := range revisions {
+		switch {
+		case t.local[revision] != "":
+			resolved[revision] = t.local[revision]
+		case t.known[revision]:
+			resolved[revision] = revision
+		}
 	}
-	if t.known[revision] {
-		return revision, nil
-	}
-	return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
+	return resolved, nil
 }
 
 // Cherry answers whichever side is being asked about. The branch's own commits

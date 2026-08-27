@@ -20,20 +20,20 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 	if c.Runner == nil {
 		return nil, fmt.Errorf("GitHub runner is not configured")
 	}
-	repoOutput, err := c.Runner.Run(ctx, "gh", "repo", "view", "--json", "nameWithOwner")
-	if err != nil {
-		return nil, repositoryError(err, repoOutput)
-	}
-	repo, err := parseRepositoryName(repoOutput)
-	if err != nil {
-		return nil, err
-	}
-	diagnostic.Event(ctx, "github.repository", diagnostic.Field{Key: "name", Value: repo})
-	query := graphqlQuery(repo, branches)
+	// One round trip, not two. Which repository this is was asked for
+	// separately, and it is the only thing that answer was used for: gh fills
+	// {owner} and {repo} from the repository of the current directory, which is
+	// the same resolution gh repo view performed — documented for --field, and
+	// the query names the repository back so a reader can still see which one
+	// answered.
+	query := graphqlQuery(branches)
 	diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "batched_pull_requests"}, diagnostic.Field{Key: "branches", Value: strconv.Itoa(len(branches))}, diagnostic.Field{Key: "query", Value: "omitted"})
-	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-f", "query="+query)
+	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+query)
 	if err != nil {
-		return nil, commandError("gh api graphql", err, output)
+		return nil, repositoryError(err, output)
+	}
+	if repo := repositoryName(output); repo != "" {
+		diagnostic.Event(ctx, "github.repository", diagnostic.Field{Key: "name", Value: repo})
 	}
 	prs, err := parsePullRequests(output, branches)
 	if err != nil {
@@ -69,17 +69,22 @@ func repositoryError(err error, output []byte) error {
 	case strings.Contains(strings.ToLower(detail), "authentication") || strings.Contains(detail, "gh auth login"):
 		return fmt.Errorf("GitHub rejected the request · run gh auth login, then rerun")
 	}
-	return commandError("gh repo view", err, output)
+	return commandError("gh api graphql", err, output)
 }
 
-func parseRepositoryName(output []byte) (string, error) {
-	var repo struct {
-		NameWithOwner string `json:"nameWithOwner"`
+// repositoryName reads back which repository answered, for the diagnostic. It
+// is absent from a response that failed, and saying nothing is better there
+// than reporting a repository nobody read from.
+func repositoryName(output []byte) string {
+	var response graphqlResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return ""
 	}
-	if err := json.Unmarshal(output, &repo); err != nil || !strings.Contains(repo.NameWithOwner, "/") {
-		return "", fmt.Errorf("parse gh repo view JSON")
+	var name string
+	if err := json.Unmarshal(response.Data.Repository["nameWithOwner"], &name); err != nil {
+		return ""
 	}
-	return repo.NameWithOwner, nil
+	return name
 }
 
 // graphqlResponse is the shape of one batched head-ref lookup. Naming it keeps
@@ -87,9 +92,11 @@ func parseRepositoryName(output []byte) (string, error) {
 // rather than only through a whole GraphQL envelope.
 type graphqlResponse struct {
 	Data struct {
-		Repository map[string]struct {
-			Nodes []pullRequestNode `json:"nodes"`
-		} `json:"repository"`
+		// Repository is keyed by field alias, and the fields are not all the
+		// same shape: one names the repository and the rest are pull request
+		// connections. Decoding each where it is read keeps one query able to
+		// answer both.
+		Repository map[string]json.RawMessage `json:"repository"`
 	} `json:"data"`
 	Errors []struct {
 		Message string `json:"message"`
@@ -148,9 +155,15 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 	matching := make([]PullRequest, 0)
 	for index, branch := range branches {
 		alias := fmt.Sprintf("pr%d", index)
-		result, exists := response.Data.Repository[alias]
+		raw, exists := response.Data.Repository[alias]
 		if !exists {
 			return nil, fmt.Errorf("gh api graphql response is missing %s", alias)
+		}
+		var result struct {
+			Nodes []pullRequestNode `json:"nodes"`
+		}
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return nil, fmt.Errorf("gh api graphql response has invalid %s pull requests", alias)
 		}
 		for _, node := range result.Nodes {
 			// headRefName filters server-side, so a mismatch is a stray node
@@ -184,11 +197,13 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 // after submit created its pull request, and to change between a preview and
 // its revalidation — besides matching heads loosely and drawing on the much
 // tighter search rate limit.
-func graphqlQuery(repo string, branches []string) string {
-	owner, name, _ := strings.Cut(repo, "/")
-	fields := make([]string, 0, len(branches))
+func graphqlQuery(branches []string) string {
+	fields := make([]string, 0, len(branches)+1)
+	// Named back so the diagnostic can still say which repository answered,
+	// now that nothing here resolved it.
+	fields = append(fields, "nameWithOwner")
 	for index, branch := range branches {
 		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: %s, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName headRefOid baseRefName state stack { number size } stackEntry { position } } }", index, strconv.Quote(branch)))
 	}
-	return fmt.Sprintf("query { repository(owner: %s, name: %s) { %s } }", strconv.Quote(owner), strconv.Quote(name), strings.Join(fields, " "))
+	return fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(fields, " "))
 }

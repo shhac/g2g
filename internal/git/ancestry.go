@@ -124,6 +124,86 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 	return false, err
 }
 
+// ResolveAll resolves many revisions in one process.
+//
+// Resolving them one at a time cost a process each, and a status on a
+// fourteen-branch stack asked twenty-nine times: every branch, and the commit
+// every pull request is on. git rev-parse takes them all at once and prints one
+// object id per line.
+//
+// It reports what resolved rather than failing when something does not, because
+// the caller's question is whether this repository has the commit at all — a
+// pull request may be on one nobody here has fetched. The batch cannot say
+// which one failed, so the rare mixed case is asked again one at a time, which
+// is exactly what this replaced and no worse than it.
+func (c Client) ResolveAll(ctx context.Context, revisions []string) (map[string]string, error) {
+	resolved := make(map[string]string, len(revisions))
+	asking := make([]string, 0, len(revisions))
+	for _, revision := range revisions {
+		if _, repeated := resolved[revision]; repeated || revision == "" {
+			continue
+		}
+		if err := safeRef(revision); err != nil {
+			return nil, err
+		}
+		resolved[revision] = ""
+		asking = append(asking, revision)
+	}
+	if len(asking) == 0 {
+		return map[string]string{}, nil
+	}
+
+	args := make([]string, 0, len(asking)+1)
+	args = append(args, "rev-parse")
+	for _, revision := range asking {
+		args = append(args, revision+"^{commit}")
+	}
+	lines := strings.Fields(string(mustNot(c.run(ctx, args...))))
+	if len(lines) == len(asking) && allObjectIDs(lines) {
+		for index, revision := range asking {
+			resolved[revision] = lines[index]
+		}
+		return present(resolved), nil
+	}
+	for _, revision := range asking {
+		if oid, err := c.Resolve(ctx, revision); err == nil {
+			resolved[revision] = oid
+		}
+	}
+	return present(resolved), nil
+}
+
+// mustNot drops the error and keeps the output. A batch that failed is not an
+// answer about any particular revision, and the caller falls back to asking
+// about them individually — where the error is raised properly.
+func mustNot(output []byte, _ error) []byte { return output }
+
+// allObjectIDs guards the fast path. A failed batch still prints the revisions
+// it could resolve, mixed with the ones it could not and with git's complaint
+// about them, so the answer is only trusted when every line is an object id.
+func allObjectIDs(lines []string) bool {
+	for _, line := range lines {
+		if len(line) < 40 {
+			return false
+		}
+		for _, char := range line {
+			if !strings.ContainsRune("0123456789abcdef", char) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func present(resolved map[string]string) map[string]string {
+	for revision, oid := range resolved {
+		if oid == "" {
+			delete(resolved, revision)
+		}
+	}
+	return resolved
+}
+
 // Resolve returns the object id a revision names. It is how a fork point
 // recorded as text is checked against the repository that has to contain it.
 func (c Client) Resolve(ctx context.Context, revision string) (string, error) {

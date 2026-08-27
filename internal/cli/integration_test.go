@@ -113,14 +113,20 @@ func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 		}
 	}
 	recorder.AssertNone("gh stack link", "gh pr create", "git push", "git checkout")
-	recorder.AssertOrder("gt --version", "gt log", "gh repo view", "gh api graphql")
+	// One GitHub round trip, not two: gh fills the repository in from the
+	// directory it runs in, so nothing asks which one it is first.
+	recorder.AssertOrder("gt --version", "gt log", "gh api graphql")
+	recorder.AssertNone("gh repo view")
 
 	// The fake answers any graphql call from its routes, so the response alone
 	// proves nothing about the request. Assert the recorded argv: this is what
 	// catches g2g asking GitHub the wrong question.
 	query := recorder.Find("gh api graphql")
 	for _, want := range []string{
-		`repository(owner: "example", name: "synthetic")`,
+		// The repository is a variable gh fills from the directory it runs in,
+		// which is what removed the round trip that used to name it.
+		`-F owner={owner} -F name={repo}`,
+		`repository(owner: $owner, name: $name)`,
 		`pr0: pullRequests(headRefName: "synthetic-lower"`,
 		`pr1: pullRequests(headRefName: "synthetic-top"`,
 	} {
@@ -220,7 +226,7 @@ func TestSubmitPreviewWritesNothingAndMutatesNothing(t *testing.T) {
 // point of routing the bounded diagnostic through the top-level printer.
 func TestFailedGitHubCallReportsItsOwnOutput(t *testing.T) {
 	routes, _ := graphiteRoutes(t, []testutil.Route{
-		{Prefix: "repo view", Stderr: "gh auth login required. To authenticate, run: gh auth login", Exit: 4},
+		{Prefix: "api graphql", Stderr: "gh auth login required. To authenticate, run: gh auth login", Exit: 4},
 	})
 	testutil.FakeCLIs(t, routes)
 

@@ -20,8 +20,7 @@ func TestClientUsesFakeGitHubCLIOnPATH(t *testing.T) {
 	t.Setenv("GH_ARGUMENTS", arguments)
 	testutil.WithFakeExecutables(t, map[string]string{
 		"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"
-if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/fixture"}\n'; fi
-if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}\n'; fi`,
+if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwner":"example/fixture","pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}\n'; fi`,
 	})
 	client := Client{Runner: subprocess.ExecRunner{}}
 	prs, err := client.Inspect(context.Background(), []string{"alpha"})
@@ -39,8 +38,9 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"repo view --json nameWithOwner\n",
-		`api graphql -f query=query { repository(owner: "example", name: "fixture")`,
+		// One round trip: gh fills the repository in from the directory it is
+		// run in, so nothing here asks which one it is first.
+		`api graphql -F owner={owner} -F name={repo} -f query=query($owner: String!, $name: String!) { repository(owner: $owner, name: $name)`,
 		`pr0: pullRequests(headRefName: "alpha", first: 10`,
 		"stack { number size } stackEntry { position }",
 		"stack link --base main alpha beta\n",
@@ -58,8 +58,7 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":
 
 func TestInspectDebugSummarizesGraphQLWithoutLoggingQuery(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{
-		"gh": `if [ "$1 $2" = "repo view" ]; then printf '{"nameWithOwner":"example/synthetic"}\n'; fi
-if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":{"nodes":[{"number":7,"headRefName":"synthetic-head","baseRefName":"synthetic-base","state":"OPEN"}]}}}}\n'; fi`,
+		"gh": `if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwner":"example/synthetic","pr0":{"nodes":[{"number":7,"headRefName":"synthetic-head","baseRefName":"synthetic-base","state":"OPEN"}]}}}}\n'; fi`,
 	})
 	var diagnostics bytes.Buffer
 	ctx := diagnostic.WithSink(context.Background(), diagnostic.Writer{Out: &diagnostics})
@@ -81,7 +80,7 @@ if [ "$1 $2 $3" = "api graphql -f" ]; then printf '{"data":{"repository":{"pr0":
 func TestInspectRejectsInvalidJSON(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{"gh": "printf 'not json\\n'"})
 	_, err := (Client{Runner: subprocess.ExecRunner{}}).Inspect(context.Background(), []string{"alpha"})
-	if err == nil || !strings.Contains(err.Error(), "parse gh repo view JSON") {
+	if err == nil || !strings.Contains(err.Error(), "parse gh api graphql JSON") {
 		t.Fatalf("Inspect() error = %v", err)
 	}
 }
@@ -305,7 +304,7 @@ func TestAnUnrecognisedRepositoryFailureKeepsItsCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("repositoryError() = nil")
 	}
-	if !strings.Contains(err.Error(), "gh repo view") {
+	if !strings.Contains(err.Error(), "gh api graphql") {
 		t.Errorf("error = %v, want the command named", err)
 	}
 }

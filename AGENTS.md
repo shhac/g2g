@@ -137,6 +137,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   network, both are optional capabilities (`link.Service.Tips`, `push.Git`),
   and in both the zero value must not read as the reassuring answer: an
   uncompared branch says nothing rather than "up to date".
+- Batch before parallelising. `Inspect` is one GitHub round trip: the pull
+  requests for every selected branch come back from one aliased GraphQL query,
+  and the repository is `{owner}`/`{repo}` placeholders that `gh` fills from the
+  directory it runs in — documented for `--field` — which removed the
+  `gh repo view` call that existed only to name it. `git.Client.ResolveAll`
+  is the same move locally: one `rev-parse` for every branch and every pull
+  request head, falling back to asking individually only when the batch cannot
+  say which revision it could not resolve. What is genuinely per-pair —
+  `git cherry`, `git merge-tree` — is what concurrency is for.
 - The per-branch reads run concurrently, bounded by `link.eachBranch`. They are
   independent process spawns and were two thirds of a status on a fourteen-
   branch stack; asking eight at once took it from 4.2s to 2.6s, and what is

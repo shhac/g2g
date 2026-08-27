@@ -40,7 +40,11 @@ type GitHub interface {
 // contain the work sitting in the branch, because alignment is a statement
 // about the base and never about the contents.
 type Tips interface {
-	Resolve(ctx context.Context, revision string) (string, error)
+	// ResolveAll answers for every revision in one process, and omits the ones
+	// this repository does not have. Asking per revision cost a process each,
+	// and a status asks about every branch and the commit every pull request
+	// is on.
+	ResolveAll(ctx context.Context, revisions []string) (map[string]string, error)
 	// Cherry compares by content. Counting commit ids answered this question
 	// wrongly in the ordinary case: a branch replayed onto a newer base carries
 	// the same work under new ids, so every commit the base had gained was
@@ -417,17 +421,29 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 			open[branch] = *resolution.Open
 		}
 	}
-	// Each branch is several git processes and none of them needs another
-	// branch's answer, so they are asked at once rather than in turn. The
-	// results land in a slice sized first, which is what makes that safe
-	// without a lock.
+	// Every revision this needs, in one process: each branch, and the commit
+	// each pull request is on.
+	asking := make([]string, 0, 2*len(plan.Branches))
+	for _, branch := range plan.Branches {
+		if pr, published := open[branch]; published && pr.HeadOID != "" {
+			asking = append(asking, branch, pr.HeadOID)
+		}
+	}
+	tips, err := s.Tips.ResolveAll(ctx, asking)
+	if err != nil {
+		return nil, err
+	}
+
+	// What is left is per branch and cannot be batched — git compares one pair
+	// at a time — so the branches are asked at once instead. The results land
+	// in a slice sized first, which is what makes that safe without a lock.
 	states := make([]*Currency, len(plan.Branches))
-	err := eachBranch(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
+	err = eachBranch(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
 		pr, published := open[branch]
 		if !published || pr.HeadOID == "" {
 			return nil
 		}
-		state, err := s.compareWithPullRequest(ctx, plan, branch, pr.HeadOID)
+		state, err := s.compareWithPullRequest(ctx, plan, branch, pr.HeadOID, tips)
 		if err != nil {
 			return err
 		}
@@ -448,15 +464,15 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 
 // compareWithPullRequest is one branch's whole answer, and the unit that runs
 // alongside the others.
-func (s Service) compareWithPullRequest(ctx context.Context, plan Plan, branch, head string) (Currency, error) {
-	local, err := s.Tips.Resolve(ctx, branch)
-	if err != nil {
-		return Currency{}, err
+func (s Service) compareWithPullRequest(ctx context.Context, plan Plan, branch, head string, tips map[string]string) (Currency, error) {
+	local, known := tips[branch]
+	if !known {
+		return Currency{}, fmt.Errorf("branch %q is not a commit in this repository", branch)
 	}
 	if local == head {
 		return Currency{}, nil
 	}
-	if _, err := s.Tips.Resolve(ctx, head); err != nil {
+	if _, here := tips[head]; !here {
 		// On a commit this repository has never seen, so there is nothing here
 		// to compare it with.
 		return Currency{Diverged: true}, nil

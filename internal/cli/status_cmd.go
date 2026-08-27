@@ -276,7 +276,7 @@ func currencyNote(currency map[string]link.Currency, branch string) (string, sev
 	}
 	if state.Diverged {
 		if state.Unpushed > 0 {
-			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here are not on it", count(state.Unpushed, "commit", "commits")), severityBad
+			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here %s not on it", count(state.Unpushed, "commit", "commits"), pick(state.Unpushed, "is", "are")), severityBad
 		}
 		return "PR is on a commit this branch does not have", severityBad
 	}

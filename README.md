@@ -545,6 +545,17 @@ path ends with one compact `GitHub stack #… · selected path … · aligned` l
 only missing or conflicting membership is annotated on individual nodes. It
 never changes GitHub or Graphite.
 
+Each branch is annotated one axis at a time, so a mark means one thing and
+carries its own colour. `base✓` says the pull request is based where the
+resolved structure puts it, and `base✗` says it is not; `head✗` says the pull
+request is not on the commit the branch is, and only ever appears when that is
+true, so a current one stays unannotated and the stale ones stand out. `pr✗`
+is a pull request that is missing, closed, merged, or ambiguous — not a
+statement about a base, because a branch with no pull request has no base to be
+wrong about. Read the column for `✗`: a wide line whose first word is green
+`base✓` and whose remainder is a divergence used to be one string in one
+colour, and the colour it got was decided by the worse half.
+
 `g2g unlink` previews removal of a GitHub-native stack relationship. It
 discovers the stack number from the selected path, the same batched read
 `status` uses, so the number no longer has to be copied by hand. Discovery

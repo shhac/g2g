@@ -121,9 +121,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   are branches nothing sits under, so an empty store has none at all, which is
   exactly the repository where someone standing on `main` was told to give it a
   parent.
-- "Aligned" is a statement about a pull request's *base*, never its contents,
-  so `status` reports currency separately from `githubstack.PullRequest.HeadOID`
-  — a field on a query already being made. `push` says the same thing from the
+- A branch's annotation is a list of `stackMark`, one per axis, each with its
+  own severity: `base✓`/`base✗` is about a pull request's base and never its
+  contents, `head✗` is about currency, and a subject-less mark carries what is
+  about neither. They used to be one string under one colour, which is how a
+  line came to open with the word "aligned" and go on to describe a divergence,
+  in whichever colour the worse of them won. `stackNode.marked` renders `State`
+  and the worst `Severity` from the marks, so nothing downstream has to
+  understand them; do not set `State` beside them. Currency comes from
+  `githubstack.PullRequest.HeadOID` — a field on a query already being made. `push` says the same thing from the
   other side, out of the `RemoteTips` it already reads for its leases. Both
   compare with one local read per branch and nothing extra over the network,
   both are optional capabilities (`link.Service.Tips`, `push.Git`), and in both

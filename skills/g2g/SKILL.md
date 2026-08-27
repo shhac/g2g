@@ -266,6 +266,11 @@ description: |
   missing or closed ones at `g2g submit`, and a wrong base at `g2g retarget`.
   Two open pull requests for one branch is deliberately unadvised — a person
   must choose.
+- A branch's annotation is a list of `stackMark` — one axis each, one severity
+  each: `base✓`/`base✗`, `head✗`, `pr✗`, and a subject-less mark for what is
+  about no axis. Build them and call `stackNode.marked`, which renders `State`
+  and the worst `Severity` from them; never set `State` alongside marks, and do
+  not fold two axes into one mark, which is the failure this replaced.
 - `status` is the read-only triage entry point. It renders one selected
   path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

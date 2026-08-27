@@ -16,7 +16,7 @@ func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
 	if err := writeStatus(&out, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "aligned", "blocked: no open PR", "Safe next action", "g2g submit   opens a new PR", "  synthetic/top"} {
+	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "base" + markYes, "pr" + markNo + " no open PR", "Safe next action", "g2g submit   opens a new PR", "  synthetic/top"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
@@ -340,19 +340,20 @@ func TestStatusAdviceStaysOneLineForMachines(t *testing.T) {
 }
 
 // A branch whose pull request is missing its latest work read as plain
-// "aligned", because alignment is about the base. The annotation goes on the
-// node the reader is already looking at, and only where there is something to
-// say — a current pull request stays unannotated so the stale ones stand out.
+// "aligned", because alignment is about the base. Base and head are separate
+// marks for that reason, and the head one appears only where there is
+// something to say — a current pull request stays unannotated so the stale
+// ones stand out.
 func TestStatusSaysWhenAPullRequestIsMissingTheBranchesWork(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		currency link.Currency
 		want     string
 	}{
-		{name: "current", currency: link.Currency{}, want: "aligned"},
-		{name: "unpushed", currency: link.Currency{Unpushed: 2}, want: "aligned · 2 commits not pushed"},
-		{name: "one unpushed reads singular", currency: link.Currency{Unpushed: 1}, want: "aligned · 1 commit not pushed"},
-		{name: "diverged", currency: link.Currency{Diverged: true}, want: "aligned · PR is on a commit this branch does not have"},
+		{name: "current", currency: link.Currency{}, want: "base" + markYes},
+		{name: "unpushed", currency: link.Currency{Unpushed: 2}, want: "head" + markNo + " 2 commits not pushed"},
+		{name: "one unpushed reads singular", currency: link.Currency{Unpushed: 1}, want: "head" + markNo + " 1 commit not pushed"},
+		{name: "diverged", currency: link.Currency{Diverged: true}, want: "head" + markNo + " PR is on a commit this branch does not have"},
 		{name: "diverged with local work", currency: link.Currency{Diverged: true, Unpushed: 3}, want: "3 commits here are not on it"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -371,9 +372,60 @@ func TestStatusSaysWhenAPullRequestIsMissingTheBranchesWork(t *testing.T) {
 			if !strings.Contains(out.String(), test.want) {
 				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
 			}
-			if test.name == "current" && strings.Contains(out.String(), "aligned ·") {
+			if test.name == "current" && strings.Contains(out.String(), "head") {
 				t.Errorf("a current pull request was annotated anyway:\n%s", out.String())
 			}
 		})
+	}
+}
+
+// The complaint this answers: one line said "aligned" and then described a
+// divergence, and a single colour had to choose between them — so the good
+// news and the bad news were the same colour, and the first word was the good
+// one. Two marks, two colours, and the reader can scan the column for ✗.
+func TestBaseAndHeadAreSaidSeparatelyAndColouredSeparately(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{
+			Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
+			PullRequests: []githubstack.PullRequest{{Head: "synthetic-top", Number: 12, State: "OPEN"}},
+		},
+		Currency: map[string]link.Currency{"synthetic-top": {Diverged: true}},
+	}
+
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{Color: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := ansiAligned + "base" + markYes + ansiReset; !strings.Contains(out.String(), want) {
+		t.Errorf("the base mark is not drawn as good news:\n%q", out.String())
+	}
+	if want := ansiProblem + "head" + markNo; !strings.Contains(out.String(), want) {
+		t.Errorf("the head mark is not drawn as bad news:\n%q", out.String())
+	}
+}
+
+// Which native stack a branch belongs to used to replace the annotation rather
+// than join it, so a diverged head went unsaid on exactly the branches
+// something else was also wrong with.
+func TestAMembershipMarkerDoesNotSwallowTheHeadMark(t *testing.T) {
+	plan := link.Plan{
+		Discovery: stack.Discovery{
+			Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-lower", "synthetic-top"}},
+			PullRequests: []githubstack.PullRequest{
+				{Head: "synthetic-lower", Number: 11, State: "OPEN", StackNumber: 3, StackPosition: 1},
+				{Head: "synthetic-top", Number: 12, State: "OPEN"},
+			},
+		},
+		Currency: map[string]link.Currency{"synthetic-lower": {Diverged: true}},
+	}
+
+	var out bytes.Buffer
+	if err := writeStatus(&out, plan, Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(out.String(), "head"+markNo) {
+		t.Errorf("the head mark was swallowed by the membership marker:\n%s", out.String())
 	}
 }

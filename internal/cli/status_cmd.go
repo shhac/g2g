@@ -52,9 +52,9 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 // in the notes below it, so unlink composes this rather than building status's
 // whole projection and discarding half of it.
 func membershipView(plan link.Plan, operation string) (stackView, githubstack.Membership) {
-	issues := map[string]string{}
+	issues := map[string]link.Issue{}
 	for _, issue := range plan.Issues {
-		issues[issue.Branch] = issue.Reason
+		issues[issue.Branch] = issue
 	}
 	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
 
@@ -77,28 +77,31 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		// act, so it is marked as what it is rather than as a blocked branch:
 		// nothing here is wrong with it, and no command will touch it.
 		if absent[branch] {
-			node.State, node.Severity = "on remote only", severityNeutral
-			view.Nodes = append(view.Nodes, node)
+			view.Nodes = append(view.Nodes, node.marked(stackMark{Detail: "on remote only", Severity: severityNeutral}))
 			continue
 		}
-		if reason := issues[branch]; reason != "" {
-			node.State, node.Severity = "blocked: "+reason, severityBad
-			view.Nodes = append(view.Nodes, node)
+		if issue, blocked := issues[branch]; blocked {
+			view.Nodes = append(view.Nodes, node.marked(issueMark(issue)))
 			continue
 		}
 		pr := native.Branches[branch]
 		node.PRNumber, node.PRURL = pr.Number, pr.URL
-		node.State, node.Severity = "aligned", severityOK
-		// "aligned" is a statement about the base, so it said nothing about
-		// whether the pull request has the work sitting in the branch. It read
-		// as healthy with two commits that had never been pushed.
+		// Two axes, said separately. A base is where it belongs or it is not,
+		// and that is silent about whether the pull request has the work
+		// sitting in the branch: one line used to say "aligned" and then
+		// describe a divergence, in whichever colour the worse of them won.
+		marks := []stackMark{{Subject: "base", OK: true, Severity: severityOK}}
 		if note, level := currencyNote(plan.Currency, branch); note != "" {
-			node.State, node.Severity = "aligned · "+note, level
+			marks = append(marks, stackMark{Subject: "head", Detail: note, Severity: level})
 		}
+		// Which native stack a branch is in is a third thing, and it used to
+		// replace both of the above rather than join them — so a diverged head
+		// went unsaid on exactly the branches something else was also wrong
+		// with.
 		if marker, markerSeverity := membershipStyle(native, branch, plan.Forks()); marker != "" {
-			node.State, node.Severity = marker, markerSeverity
+			marks = append(marks, stackMark{Detail: marker, Severity: markerSeverity})
 		}
-		view.Nodes = append(view.Nodes, node)
+		view.Nodes = append(view.Nodes, node.marked(marks...))
 	}
 	return view, native
 }
@@ -165,6 +168,17 @@ func membershipStyle(membership githubstack.Membership, branch string, forked bo
 		return fmt.Sprintf("stack #%d · %d/%d", pr.StackNumber, pr.StackPosition, membership.StackSize), severityOK
 	}
 	return "", severityNeutral
+}
+
+// issueMark says which axis a refusal is about. A pull request based on the
+// wrong branch is the inverse of base✓ and says so; one that does not exist,
+// was closed, or is two of them, is not a statement about a base at all, and
+// marking it as one would answer a question nobody asked.
+func issueMark(issue link.Issue) stackMark {
+	if issue.Kind == link.IssueBase {
+		return stackMark{Subject: "base", Detail: issue.Reason, Severity: severityBad}
+	}
+	return stackMark{Subject: "pr", Detail: issue.Reason, Severity: severityBad}
 }
 
 func membershipNoteSeverity(state githubstack.MembershipState) severity {

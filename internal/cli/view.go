@@ -62,13 +62,93 @@ type stackNode struct {
 	Target   bool
 	PRNumber int
 	PRURL    string
+	// State and Severity are what this branch's annotation says, as one string
+	// and one worst-case colour. Marks is the same thing said one axis at a
+	// time, and State is rendered from it wherever a command sets it.
 	State    string
 	Severity severity
+	Marks    []stackMark
 	// Parent and Depth describe a forked graph. The linear commands leave both
 	// zero, so their rendering is unchanged: a stack whose every node has one
 	// child is a tree that happens to look like a list.
 	Parent string
 	Depth  int
+}
+
+// stackMark is one statement about a branch: which axis it is about, whether
+// that axis is where it should be, and the words that explain it.
+//
+// A branch has more than one of these and they are not the same news. A pull
+// request can be based exactly where it belongs and carry a commit the branch
+// has never had — which is how the word "aligned" came to head a line
+// describing a divergence, in a single colour that had to pick one of them.
+// Each axis now says its own thing in its own colour.
+type stackMark struct {
+	// Subject names the axis — base, head — and is empty for a statement that
+	// is not about one, such as which native GitHub stack a branch is in.
+	Subject string
+	// OK reports the axis is where it should be. It is read only when Subject
+	// is set, because a statement about no axis is neither.
+	OK bool
+	// Detail explains, and is empty where the mark says everything: a base
+	// that is where it belongs has nothing to add.
+	Detail   string
+	Severity severity
+}
+
+// The mark and its inverse. A symbol carries further than a word at the right
+// of a wide line, and these two are read as opposites without being read at
+// all — which is the point, because the reader is scanning a column for the
+// rows that are not fine.
+const (
+	markYes = "✓"
+	markNo  = "✗"
+)
+
+func (m stackMark) text() string {
+	if m.Subject == "" {
+		return m.Detail
+	}
+	said := m.Subject + markNo
+	if m.OK {
+		said = m.Subject + markYes
+	}
+	if m.Detail == "" {
+		return said
+	}
+	return said + " " + m.Detail
+}
+
+// marked sets the annotation from its parts. State stays the one string a
+// machine reads and the worst severity stays the one colour it switches on, so
+// nothing downstream has to understand marks to keep working; both are
+// rendered here rather than typed out beside them.
+func (n stackNode) marked(marks ...stackMark) stackNode {
+	said := make([]string, 0, len(marks))
+	for _, mark := range marks {
+		if text := mark.text(); text != "" {
+			said = append(said, text)
+			n.Marks = append(n.Marks, mark)
+		}
+	}
+	n.State, n.Severity = strings.Join(said, "  "), worstOf(n.Marks)
+	return n
+}
+
+// worstOf is the colour a reader switching on one severity should get: the
+// worst thing said about the branch, because that is what they need to act on.
+func worstOf(marks []stackMark) severity {
+	if len(marks) == 0 {
+		return severityNeutral
+	}
+	ranked := map[severity]int{severityOK: 0, severityNeutral: 1, severityWarn: 2, severityBad: 3}
+	worst := marks[0].Severity
+	for _, mark := range marks[1:] {
+		if ranked[mark.Severity] > ranked[worst] {
+			worst = mark.Severity
+		}
+	}
+	return worst
 }
 
 type stackNote struct {
@@ -248,7 +328,12 @@ func annotation(node stackNode, repository string, p Presentation) string {
 		url := pullRequestURL(pullRequestRef{Number: node.PRNumber, URL: node.PRURL, Repository: repository})
 		parts = append(parts, p.hyperlink(url, number))
 	}
-	if node.State != "" {
+	switch {
+	case len(node.Marks) != 0:
+		for _, mark := range node.Marks {
+			parts = append(parts, styleBySeverity(p, mark.Severity, mark.text()))
+		}
+	case node.State != "":
 		parts = append(parts, styleBySeverity(p, node.Severity, node.State))
 	}
 	if node.Target {

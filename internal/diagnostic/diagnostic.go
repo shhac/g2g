@@ -70,15 +70,23 @@ func Warn(ctx context.Context, key, message string) {
 // Writer emits one stable, newline-delimited record per event.
 type Writer struct{ Out io.Writer }
 
+// Event writes one line in one call.
+//
+// It used to write the name, then each field, then the newline, which is fine
+// while one goroutine reports at a time and garbles every line the moment two
+// do. Assembling the line first is what makes a concurrent read safe to
+// describe; nothing about the output changes.
 func (w Writer) Event(name string, fields ...Field) {
 	if w.Out == nil {
 		return
 	}
-	fmt.Fprintf(w.Out, "debug event=%s", name)
+	var line strings.Builder
+	fmt.Fprintf(&line, "debug event=%s", name)
 	for _, field := range fields {
-		fmt.Fprintf(w.Out, " %s=%q", field.Key, strings.ReplaceAll(field.Value, "\n", "\\n"))
+		fmt.Fprintf(&line, " %s=%q", field.Key, strings.ReplaceAll(field.Value, "\n", "\\n"))
 	}
-	_, _ = fmt.Fprintln(w.Out)
+	line.WriteString("\n")
+	_, _ = io.WriteString(w.Out, line.String())
 }
 
 // BoundedOutput returns a compact, redacted process diagnostic. It is only

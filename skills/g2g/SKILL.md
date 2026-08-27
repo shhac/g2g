@@ -273,6 +273,10 @@ description: |
   not fold two axes into one mark, which is the failure this replaced. A merged
   pull request is `pr✓` and neutral, never grouped with a missing or closed
   one: it succeeded, and only the leftover branch is a problem.
+- Per-branch Git reads go through `link.eachBranch`, which runs them several at
+  a time and cancels the rest on the first failure. Write results into a slice
+  index the read was given, never a shared map, and keep any fake it can reach
+  safe to call concurrently. `go test -race ./internal/link ./internal/cli`.
 - Currency is counted by content (`Cherry`, never `Divergence`) and bounded to a
   branch's own commits — above its parent, not above the trunk. Counting commit
   ids reported every commit the trunk had gained as unpushed work of the

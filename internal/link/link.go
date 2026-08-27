@@ -300,26 +300,34 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	if s.Tips == nil {
 		return nil
 	}
+	asking := make([]string, len(plan.Issues))
 	for index, issue := range plan.Issues {
-		if issue.Kind != IssueMissing && issue.Kind != IssueClosed {
-			continue
+		if issue.Kind == IssueMissing || issue.Kind == IssueClosed {
+			asking[index] = issue.Branch
 		}
-		landed, err := s.landed(ctx, plan, issue.Branch)
+	}
+	// Distinct elements of a slice that already exists, so the writes need no
+	// lock: each read owns the one issue it was given.
+	return eachBranch(ctx, asking, func(ctx context.Context, index int, branch string) error {
+		if branch == "" {
+			return nil
+		}
+		landed, err := s.landed(ctx, plan, branch)
 		if err != nil {
 			return err
 		}
 		if !landed {
-			continue
+			return nil
 		}
-		below := ownCommitsFrom(plan, issue.Branch)
+		below := ownCommitsFrom(plan, branch)
 		plan.Issues[index] = Issue{
-			Branch: issue.Branch,
+			Branch: branch,
 			Kind:   IssueLanded,
-			Number: issue.Number,
+			Number: plan.Issues[index].Number,
 			Reason: "landed in " + below,
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // landed reports a branch with nothing left to contribute to the branch below
@@ -409,33 +417,51 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 			open[branch] = *resolution.Open
 		}
 	}
-	currency := make(map[string]Currency, len(plan.Branches))
-	for _, branch := range plan.Branches {
+	// Each branch is several git processes and none of them needs another
+	// branch's answer, so they are asked at once rather than in turn. The
+	// results land in a slice sized first, which is what makes that safe
+	// without a lock.
+	states := make([]*Currency, len(plan.Branches))
+	err := eachBranch(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
 		pr, published := open[branch]
 		if !published || pr.HeadOID == "" {
-			continue
+			return nil
 		}
-		local, err := s.Tips.Resolve(ctx, branch)
+		state, err := s.compareWithPullRequest(ctx, plan, branch, pr.HeadOID)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if local == pr.HeadOID {
-			currency[branch] = Currency{}
-			continue
+		states[index] = &state
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	currency := make(map[string]Currency, len(plan.Branches))
+	for index, state := range states {
+		if state != nil {
+			currency[plan.Branches[index]] = *state
 		}
-		if _, err := s.Tips.Resolve(ctx, pr.HeadOID); err != nil {
-			// On a commit this repository has never seen, so there is nothing
-			// here to compare it with.
-			currency[branch] = Currency{Diverged: true}
-			continue
-		}
-		state, err := s.compare(ctx, plan, branch, pr.HeadOID)
-		if err != nil {
-			return nil, err
-		}
-		currency[branch] = state
 	}
 	return currency, nil
+}
+
+// compareWithPullRequest is one branch's whole answer, and the unit that runs
+// alongside the others.
+func (s Service) compareWithPullRequest(ctx context.Context, plan Plan, branch, head string) (Currency, error) {
+	local, err := s.Tips.Resolve(ctx, branch)
+	if err != nil {
+		return Currency{}, err
+	}
+	if local == head {
+		return Currency{}, nil
+	}
+	if _, err := s.Tips.Resolve(ctx, head); err != nil {
+		// On a commit this repository has never seen, so there is nothing here
+		// to compare it with.
+		return Currency{Diverged: true}, nil
+	}
+	return s.compare(ctx, plan, branch, head)
 }
 
 // compare asks what each side holds that the other does not, by content.

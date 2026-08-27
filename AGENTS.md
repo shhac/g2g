@@ -137,6 +137,16 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   network, both are optional capabilities (`link.Service.Tips`, `push.Git`),
   and in both the zero value must not read as the reassuring answer: an
   uncompared branch says nothing rather than "up to date".
+- The per-branch reads run concurrently, bounded by `link.eachBranch`. They are
+  independent process spawns and were two thirds of a status on a fourteen-
+  branch stack; asking eight at once took it from 4.2s to 2.6s, and what is
+  left is four external CLI calls that cannot overlap each other. Results land
+  in a slice sized before the reads start, so each read owns one element and
+  needs no lock — keep it that way rather than adding one. Anything a read
+  touches must be safe for it: `diagnostic.Writer.Event` assembles its line and
+  writes once for exactly this reason, and a fake handed to `link.Tips` must not
+  accumulate state without synchronising. Run `go test -race` on
+  `internal/link` and `internal/cli` after touching any of it.
 - Currency is counted **by content and bounded to a branch's own commits**, so
   `link.Tips` needs `Cherry` and not `Divergence`. Counting commit ids answered
   the ordinary case wrongly in both directions: a branch replayed onto a trunk

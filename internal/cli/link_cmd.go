@@ -78,7 +78,9 @@ func writeNotApplied(writer io.Writer, presentation Presentation, err error) err
 	if errors.As(err, &commandErr) {
 		summary = commandErr.Summary()
 	}
-	fmt.Fprintln(writer, summary)
+	// A refusal's reason is the same sentence the preview showed, so a command
+	// it names is drawn the same way here.
+	fmt.Fprintln(writer, presentation.drawCommands(summary, ""))
 
 	diagnostic := commandDiagnostic(err)
 	if diagnostic == "" {

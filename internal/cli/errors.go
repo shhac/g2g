@@ -33,7 +33,11 @@ func alreadyPresented(err error) bool {
 // an external CLI failure — an authentication prompt, an unknown subcommand —
 // is discarded and only the exit status survives.
 func writeError(writer io.Writer, err error) {
-	fmt.Fprintln(writer, "error:", err)
+	// stderr carries no decoration at all, so a sentence that marked a command
+	// for the renderer has its marks dropped rather than drawn. This is the
+	// boundary that lets any sentence in this package name a command without
+	// its author having to know whether it can also become an error.
+	fmt.Fprintln(writer, "error:", plainCommands(err.Error()))
 	if !alreadyPresented(err) {
 		if diagnostic := commandDiagnostic(err); diagnostic != "" {
 			fmt.Fprintln(writer)

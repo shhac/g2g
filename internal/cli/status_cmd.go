@@ -183,11 +183,11 @@ func nativeMessage(s githubstack.Membership) string {
 	case githubstack.Aligned:
 		return fmt.Sprintf("GitHub stack #%d · selected path %d/%d · aligned", s.StackNumber, s.Selected, s.StackSize)
 	case githubstack.Partial:
-		return fmt.Sprintf("GitHub stack #%d · partial (%d/%d linked) · run g2g link to add the marked PRs.", s.StackNumber, s.Linked, s.Selected)
+		return fmt.Sprintf("GitHub stack #%d · partial (%d/%d linked) · run %s to add the marked PRs.", s.StackNumber, s.Linked, s.Selected, runnable("g2g link"))
 	case githubstack.Conflicting:
 		return "GitHub stack: conflicting membership · review the marked PRs before changing anything."
 	default:
-		return "GitHub stack: not linked · run g2g link to preview a link."
+		return "GitHub stack: not linked · run " + runnable("g2g link") + " to preview a link."
 	}
 }
 
@@ -217,7 +217,7 @@ func unstackedState(undescribed stack.Undescribed) string {
 
 func unstackedNote(undescribed stack.Undescribed) string {
 	if undescribed.Trunk {
-		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with g2g track --branch <child> --parent %s.", undescribed.Branch, undescribed.Branch)
+		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+undescribed.Branch))
 	}
 	return undescribed.Error()
 }

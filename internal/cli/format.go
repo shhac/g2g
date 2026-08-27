@@ -62,7 +62,7 @@ func (v stackView) document() jsonDocument {
 		Target:        v.Target,
 		TargetSource:  v.TargetSource,
 		Command:       v.Action,
-		Blocked:       v.Blocked,
+		Blocked:       plainCommands(v.Blocked),
 		Branches:      []jsonBranch{},
 	}
 	for _, node := range v.Nodes {
@@ -81,7 +81,7 @@ func (v stackView) document() jsonDocument {
 		})
 	}
 	for _, note := range v.Notes {
-		doc.Notes = append(doc.Notes, jsonNote{Text: note.Text, Severity: string(note.Severity)})
+		doc.Notes = append(doc.Notes, jsonNote{Text: plainCommands(note.Text), Severity: string(note.Severity)})
 	}
 	return doc
 }
@@ -139,10 +139,15 @@ func porcelainBool(value bool) string {
 
 // prose writes a human-facing line. Machine formats emit the document and
 // nothing else, so their output can be piped without post-processing.
+//
+// The line is drawn a second time here because a caller may name a command
+// outside anything it styles. Drawing is idempotent — a line whose commands
+// were already resolved carries no marks left to find — so this covers the
+// unstyled remainder without disturbing the rest.
 func prose(writer io.Writer, p Presentation, line string) error {
 	if p.machine() {
 		return nil
 	}
-	_, err := fmt.Fprintln(writer, line)
+	_, err := fmt.Fprintln(writer, p.drawCommands(line, ""))
 	return err
 }

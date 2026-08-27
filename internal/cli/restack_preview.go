@@ -50,7 +50,7 @@ func emptiedNote(view stackView, plan restack.Plan) stackView {
 	if len(emptied) == 0 {
 		return view
 	}
-	return view.note("Leaves "+branchList(emptied)+" with no commits of its own · its content is already upstream, so consider g2g untrack.", severityWarn)
+	return view.note("Leaves "+branchList(emptied)+" with no commits of its own · its content is already upstream, so consider "+runnable("g2g untrack")+".", severityWarn)
 }
 
 // engineNote is the informed-consent line. A rewrite that cannot apply cleanly
@@ -63,12 +63,12 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 	if !plan.Predicted {
 		// Saying it will conflict would be a claim we have not made: this Git
 		// cannot produce the result without performing it.
-		return view.note("This Git cannot preview the result, so applying rebases in your working tree. If it stops on a conflict, resolve it and run g2g restack --continue.", severityWarn)
+		return view.note("This Git cannot preview the result, so applying rebases in your working tree. If it stops on a conflict, resolve it and run "+runnable("g2g restack --continue")+".", severityWarn)
 	}
 	if plan.Clean {
 		return view.note("Applies without touching your working tree or checked-out branch.", severityNeutral)
 	}
-	return view.note("This will not apply cleanly. Applying rebases in your working tree and stops on the conflict for you to resolve, then g2g restack --continue.", severityWarn)
+	return view.note("This will not apply cleanly. Applying rebases in your working tree and stops on the conflict for you to resolve, then "+runnable("g2g restack --continue")+".", severityWarn)
 }
 
 // interruptedNote is what every other command shows while a restack is

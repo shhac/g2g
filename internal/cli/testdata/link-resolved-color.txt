@@ -6,4 +6,4 @@
   [2m●[0m [1;37mbeta[0m   [35m#2[0m  [2m← target[0m
 
 [1;36mCommand to run[0m
-[1;97;48;5;236mgh stack link --base main alpha beta    [0m
+[1;97;48;5;236m gh stack link --base main alpha beta    [0m

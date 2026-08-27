@@ -66,13 +66,13 @@ func blockedReason(plan link.Plan) string {
 	// fixes. The stack itself is stale, and Graphite has to restack around
 	// them before anything here can help.
 	if merged := plan.MergedBranches(); len(merged) != 0 {
-		return fmt.Sprintf("%s already merged. Run gt sync in Graphite to restack, then re-run.", branchList(merged))
+		return fmt.Sprintf("%s already merged. Run %s in Graphite to restack, then re-run.", branchList(merged), runnable("gt sync"))
 	}
 	if plan.SyncRepairable() {
-		return "every pull request is open but based on the wrong branch. Run g2g sync to preview reconciling them."
+		return "every pull request is open but based on the wrong branch. Run " + runnable("g2g sync") + " to preview reconciling them."
 	}
 	if plan.SubmitRepairable() {
-		return submitAdvice(plan) + " Run g2g submit to create " + pick(len(plan.Issues), "it", "them") + "."
+		return submitAdvice(plan) + " Run " + runnable("g2g submit") + " to create " + pick(len(plan.Issues), "it", "them") + "."
 	}
 	return "resolve every unresolved GitHub PR mapping first."
 }

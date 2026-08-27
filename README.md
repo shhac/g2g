@@ -198,7 +198,19 @@ Nothing but whitespace ever shares the line holding a copyable command: no
 prompt character, border, or annotation, so a loose, wrapped, or whole-line
 selection can only pick up spaces, which a shell ignores. In color output the
 highlight is padded a few columns past the command purely to widen the click
-target.
+target. Every highlighted command, on its own line or inside a sentence, also
+carries a column of background on each side, so the block does not butt against
+its first and last characters. Those columns are painted rather than written:
+without color there is no background to pad, and the text reads exactly as it
+was typed.
+
+A hint that names a command mid-sentence draws it with that same highlight, so
+a command looks like a command wherever it appears and the reader can see where
+it starts and ends without reading the prose around it. Which run of words is a
+command is recorded when the sentence is written rather than found by matching
+a pattern afterwards: what is highlighted is then exactly what can be copied and
+run, and no sentence has to be phrased around a rule about where a command ends.
+Plain output, `--json`, and `--porcelain` carry the sentences unchanged.
 
 ## g2g-owned graphs
 

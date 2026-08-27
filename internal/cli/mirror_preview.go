@@ -16,8 +16,8 @@ func mirrorView(plan align.MirrorPlan, prune bool) stackView {
 	view := stackView{Operation: "mirror", Target: "graphite", TargetSource: "destination"}
 	if plan.Blocked != "" {
 		if len(plan.UnknownRoots) != 0 {
-			view = view.note(fmt.Sprintf("Graphite does not track %s · track %s in Graphite first, or run gt init if it has no trunk.",
-				branchList(plan.UnknownRoots), pick(len(plan.UnknownRoots), "it", "them")), severityBad)
+			view = view.note(fmt.Sprintf("Graphite does not track %s · track %s in Graphite first, or run %s if it has no trunk.",
+				branchList(plan.UnknownRoots), pick(len(plan.UnknownRoots), "it", "them"), runnable("gt init")), severityBad)
 		}
 		return view.blockedBy(plan.Blocked)
 	}

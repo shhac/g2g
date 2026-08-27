@@ -123,7 +123,10 @@ func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "feat-c", Base: "main", Branches: []string{"feat-a", "feat-b", "feat-c"}}}, Issues: test.issues}
-			if got := blockedReason(plan); !strings.Contains(got, test.want) {
+			// The wording is what this pins, not the decoration: a command
+			// inside the sentence is marked for the renderer, and the marks
+			// sit exactly where the reader sees a highlight.
+			if got := plainCommands(blockedReason(plan)); !strings.Contains(got, test.want) {
 				t.Errorf("blockedReason() = %q, want it to contain %q", got, test.want)
 			}
 		})
@@ -173,7 +176,7 @@ func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
 			if structured.Command != test.command {
 				t.Errorf("laid-out advice names %q, want %q", structured.Command, test.command)
 			}
-			sentence := blockedReason(plan)
+			sentence := plainCommands(blockedReason(plan))
 			if test.command == "" {
 				return
 			}

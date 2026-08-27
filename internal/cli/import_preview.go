@@ -23,8 +23,8 @@ func importView(plan align.ImportPlan) stackView {
 		return agreementNote(view, plan)
 	}
 	view = view.note("Adopts "+branchList(plan.Claims())+" into the g2g graph.", severityOK)
-	view = view.note(fmt.Sprintf("g2g answers for %s from now on · run g2g status --from graphite to see Graphite's view of %s. Graphite keeps tracking %s.",
-		pick(len(plan.Adopt), "it", "them"), pick(len(plan.Adopt), "it", "them"), pick(len(plan.Adopt), "it", "them")), severityWarn)
+	view = view.note(fmt.Sprintf("g2g answers for %s from now on · run %s to see Graphite's view of %s. Graphite keeps tracking %s.",
+		pick(len(plan.Adopt), "it", "them"), runnable("g2g status --from graphite"), pick(len(plan.Adopt), "it", "them"), pick(len(plan.Adopt), "it", "them")), severityWarn)
 	if len(plan.NewTrunks) != 0 {
 		view = view.note("Records "+branchList(plan.NewTrunks)+" as "+pick(len(plan.NewTrunks), "a trunk", "trunks")+" of the g2g forest.", severityNeutral)
 	}

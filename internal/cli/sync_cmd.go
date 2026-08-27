@@ -94,5 +94,5 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 // replay is resumable through the command that owns it.
 func stoppedMidSync(cmd *cobra.Command, p Presentation) error {
 	_ = prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("The base is up to date. Finish with g2g restack --continue, or undo the replay with g2g restack --abort."))
+	return prose(cmd.OutOrStdout(), p, p.subdued("The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+"."))
 }

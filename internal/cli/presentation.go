@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -19,6 +20,25 @@ const (
 	ansiProblem   = "\x1b[1;31m"
 	ansiCommand   = "\x1b[1;97;48;5;236m"
 	ansiSubdued   = "\x1b[2m"
+
+	// A sentence that names a command marks it, so the reader can see where the
+	// command starts and ends without parsing the prose around it. The marks
+	// are placed by whoever writes the sentence rather than found by a
+	// highlighter: what is drawn as runnable is then exactly what can be
+	// copied and run, and there is no rule about where a command ends for a
+	// sentence to trip over.
+	//
+	// They are control characters no message contains, and every path that
+	// emits text resolves or strips them, so a marked sentence is safe to
+	// build anywhere in this package.
+	markCommandOpen  = "\x01"
+	markCommandClose = "\x02"
+
+	// chipPadding is a column of background on each side of a command, so the
+	// highlight does not butt against its first and last characters. It is
+	// painted rather than written into the sentence: without colour there is no
+	// background to pad, and the text has to read exactly as it was typed.
+	chipPadding = " "
 
 	// OSC 8 wraps text in a hyperlink: ESC ]8;;URL ST text ESC ]8;; ST. A
 	// terminal that does not implement it swallows the escape and prints the
@@ -106,7 +126,45 @@ func (p Presentation) hyperlink(url, text string) string {
 
 func (p Presentation) style(code, text string) string {
 	if !p.Color {
-		return text
+		return p.drawCommands(text, "")
 	}
-	return code + text + ansiReset
+	return code + p.drawCommands(text, code) + ansiReset
 }
+
+// runnable marks a command named inside a sentence. It carries no ANSI of its
+// own: the marks survive until the sentence is styled, which is the only point
+// that knows what the command is surrounded by.
+func runnable(command string) string { return markCommandOpen + command + markCommandClose }
+
+// drawCommands draws the commands marked inside text.
+//
+// enclosing is the style the rest of the sentence is being drawn in, and is
+// re-opened after every command, because ANSI ends a style by returning to the
+// default rather than to whatever was in force before it. Without that the
+// remainder of a subdued hint would come back at full brightness from the
+// first command onwards.
+func (p Presentation) drawCommands(text, enclosing string) string {
+	if !p.Color {
+		return plainCommands(text)
+	}
+	return strings.NewReplacer(
+		markCommandOpen, ansiCommand+chipPadding,
+		markCommandClose, chipPadding+ansiReset+enclosing,
+	).Replace(text)
+}
+
+// chip draws a command as a highlighted run of its own. Every command drawn
+// for a person goes through here or through commandLine, which is the same
+// highlight widened into a click target.
+func (p Presentation) chip(command string) string {
+	if !p.Color {
+		return command
+	}
+	return ansiCommand + chipPadding + command + chipPadding + ansiReset
+}
+
+// plainCommands drops the marks, leaving the sentence exactly as it was
+// written. Machine formats and an uncoloured terminal both read this.
+func plainCommands(text string) string { return unmarked.Replace(text) }
+
+var unmarked = strings.NewReplacer(markCommandOpen, "", markCommandClose, "")

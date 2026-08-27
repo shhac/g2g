@@ -96,7 +96,7 @@ func pick(total int, one, many string) string {
 // driftNotes report what g2g can see and deliberately will not repair.
 func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if stale := discovery.NeedsRestack(); len(stale) != 0 {
-		view = view.note("Parent moved under "+branchList(stale)+" · run g2g restack.", severityWarn)
+		view = view.note("Parent moved under "+branchList(stale)+" · run "+runnable("g2g restack")+".", severityWarn)
 	}
 	if moved := discovery.InState(graph.StateMovedOffParent); len(moved) != 0 {
 		view = view.note("No longer built on the recorded parent: "+branchList(moved)+" · retrack before restacking, the replay range would be wrong.", severityWarn)
@@ -108,7 +108,7 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 		view = view.note("Recorded parent is no longer a local branch for "+branchList(missing)+" · retrack onto its new parent.", severityWarn)
 	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
-		view = view.note("Already in the trunk: "+branchList(landed)+" · run g2g prune to forget them.", severityNeutral)
+		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable("g2g prune")+" to forget them.", severityNeutral)
 	}
 	if empty := discovery.InState(graph.StateEmpty); len(empty) != 0 {
 		view = view.note("Nothing of their own on "+branchList(empty)+" · either finished, or not started yet.", severityNeutral)
@@ -187,15 +187,15 @@ func untrackedNote(discovery graph.Discovery) string {
 			// contradicts the picture they are looking at.
 			return ""
 		}
-		return fmt.Sprintf("%s is this repository's default branch · stack on it with g2g track --branch <child> --parent %s.", discovery.Target, discovery.Target)
+		return fmt.Sprintf("%s is this repository's default branch · stack on it with %s.", discovery.Target, runnable("g2g track --branch <child> --parent "+discovery.Target))
 	case !slices.Contains(discovery.Branches, discovery.Target):
 		// Not in the drawing at all. A trunk is untracked and still drawn, so
 		// the question is what the selection contains rather than whether the
 		// graph records an edge. The widest scopes are where this shows: all
 		// promises every stack, so a reader has no reason to suspect the one
 		// they are standing on is missing.
-		return fmt.Sprintf("%s is not in the graph, so it is not drawn above · run g2g track to record it.", discovery.Target)
+		return fmt.Sprintf("%s is not in the graph, so it is not drawn above · run %s to record it.", discovery.Target, runnable("g2g track"))
 	default:
-		return "This branch has no recorded parent · run g2g track to adopt one."
+		return "This branch has no recorded parent · run " + runnable("g2g track") + " to adopt one."
 	}
 }

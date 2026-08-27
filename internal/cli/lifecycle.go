@@ -191,7 +191,7 @@ func writeSuggestedNextStep(writer io.Writer, p Presentation, command string) er
 	if command == "" || p.machine() {
 		return nil
 	}
-	return prose(writer, p, "\n"+p.accent("Suggested next step:")+" "+p.command(command))
+	return prose(writer, p, "\n"+p.accent("Suggested next step:")+" "+p.chip(command))
 }
 
 func (f applyFlow[P]) renderReady(cmd *cobra.Command, validated P, p Presentation) error {

@@ -102,7 +102,7 @@ func steps(plan link.Plan, kinds ...link.IssueKind) []adviceStep {
 func (a advice) lines(heading string, p Presentation) []string {
 	headline := a.Effect
 	if a.Command != "" {
-		headline = p.command(a.Command) + p.subdued(" · "+a.Effect)
+		headline = p.chip(a.Command) + p.subdued(" · "+a.Effect)
 	}
 	rendered := []string{"", p.accent(heading), "  " + headline}
 	for _, step := range a.Steps {

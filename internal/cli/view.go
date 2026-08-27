@@ -139,7 +139,7 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 		lines = append(lines, styleBySeverity(p, note.Severity, note.Text))
 	}
 
-	_, err := io.WriteString(writer, strings.Join(lines, "\n")+"\n")
+	_, err := io.WriteString(writer, p.drawCommands(strings.Join(lines, "\n"), "")+"\n")
 	return err
 }
 
@@ -215,13 +215,15 @@ func annotation(node stackNode, repository string, p Presentation) string {
 // commandLine keeps the copyable command free of any non-whitespace
 // decoration. Nothing shares its line, so a loose or wrapped selection can
 // only ever pick up spaces, which a shell ignores. In colour output the
-// highlight is padded past the text purely to widen the click target.
+// highlight is padded past the text purely to widen the click target, and by
+// the same single column every other chip carries on the side a click has no
+// use for.
 func commandLine(command string, p Presentation) string {
 	if !p.Color {
 		return command
 	}
 	const clickTarget = 4
-	return p.command(command + strings.Repeat(" ", clickTarget))
+	return p.command(chipPadding + command + strings.Repeat(" ", clickTarget))
 }
 
 func styleBySeverity(p Presentation, level severity, text string) string {

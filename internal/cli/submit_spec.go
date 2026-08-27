@@ -21,7 +21,7 @@ import (
 // re-typed. A spec is meant to be the whole request, so a --ready that only
 // lived on the command line that produced it would be silently dropped by the
 // --apply that reads it back.
-func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string, draft bool) error {
+func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string, draft bool, p Presentation) error {
 	spec := submit.NewSpec(plan.Snapshot.Branches, body)
 	spec.Draft = draft
 	path, err := submit.Write(o.writeSpec, spec)
@@ -29,7 +29,9 @@ func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body st
 		return err
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote draft submission spec: %s\n", path)
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), "Next: add a title for every PR, then run g2g submit --spec "+path+" to validate it.")
+	// Written straight out rather than through prose, because a machine format
+	// still needs to be told where the document it just asked for went.
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), p.drawCommands("Next: add a title for every PR, then run "+runnable("g2g submit --spec "+path)+" to validate it.", ""))
 	return err
 }
 

@@ -85,6 +85,9 @@ func candidateNotes(plan graph.TrackPlan) []stackNote {
 // alignedCommands pads each command to a common width so what they do lines up
 // in its own column. The commands vary in length with a branch name, so the
 // width is computed rather than guessed.
+//
+// The padding sits outside the mark, so what is drawn as runnable is the
+// command alone and the column it lines up in is unaffected.
 func alignedCommands(commands ...[2]string) []stackNote {
 	width := 0
 	for _, command := range commands {
@@ -95,7 +98,7 @@ func alignedCommands(commands ...[2]string) []stackNote {
 	notes := make([]stackNote, 0, len(commands))
 	for _, command := range commands {
 		padding := strings.Repeat(" ", width-utf8.RuneCountInString(command[0]))
-		notes = append(notes, stackNote{Text: command[0] + padding + "   " + command[1], Severity: severityNeutral})
+		notes = append(notes, stackNote{Text: runnable(command[0]) + padding + "   " + command[1], Severity: severityNeutral})
 	}
 	return notes
 }

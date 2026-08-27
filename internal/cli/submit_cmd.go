@@ -82,7 +82,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		return err
 	}
 	if o.writeSpec != "" {
-		return o.writeDraft(cmd, plan, chosenTemplate, resolveDraft(submit.DefaultDraft, o.ready, o.noReady))
+		return o.writeDraft(cmd, plan, chosenTemplate, resolveDraft(submit.DefaultDraft, o.ready, o.noReady), presentation)
 	}
 	// --edit creates the document this command then reads. Returning the path
 	// rather than assigning o.specPath as a side effect keeps the dispatch
@@ -114,7 +114,7 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
 	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: g2g submit --write-spec <private-temp-dir>"+readyFlag(draft))
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: "+runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft)))
 }
 
 func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {

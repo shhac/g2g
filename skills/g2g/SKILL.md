@@ -60,6 +60,19 @@ description: |
 - How much of the structure a command means is `--scope`, and it means the same
   thing whichever record answered. Read `design-docs/stack-scope.md` before
   changing it. `--from` pins which source answers for one invocation.
+- A command named inside a hint is marked at the point the sentence is written
+  (`runnable("g2g link")`) and drawn when the sentence is styled. Do not add a
+  highlighter that finds commands by pattern: what is drawn as runnable must be
+  exactly what can be copied and run. Marks are control characters, never
+  content, so keep them out of anything that becomes an `error` — stderr is
+  undecorated and would print them verbatim — and strip them for `--json` and
+  `--porcelain`. `Presentation.style` re-opens the enclosing style after each
+  command, because ANSI ends a style by returning to the default and a subdued
+  hint would otherwise come back bright from its first command onwards. The
+  chip's padding column is painted, never written into the sentence, so plain
+  output is unchanged. Sentences composed outside `internal/cli` — a domain
+  package's `plan.Blocked`, `stack.Undescribed`'s remedy — cannot be marked
+  from here and are the one place a named command still renders as prose.
 - Linking has two halves and they must stay apart: `Presentation.hyperlink` is
   the capability (may this output carry a link), and `internal/cli/links.go` is
   the policy (what does a thing point at, and which service wins). A render site

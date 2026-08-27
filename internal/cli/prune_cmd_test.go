@@ -10,8 +10,8 @@ import (
 	"github.com/shhac/g2g/internal/prune"
 )
 
-// pruneCLIGit answers "has this branch landed" by content, which is all prune
-// asks Git.
+// pruneCLIGit answers "has this branch landed" by content, both ways prune
+// asks: per commit, and of the whole branch at once.
 type pruneCLIGit struct{ landed map[string]bool }
 
 func (g pruneCLIGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
@@ -20,6 +20,8 @@ func (g pruneCLIGit) Cherry(_ context.Context, _, head, _ string) (absent, prese
 	}
 	return []string{"synthetic-commit"}, nil, nil
 }
+
+func (pruneCLIGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
 
 type pruneCLIRefs struct{ unpinned []string }
 

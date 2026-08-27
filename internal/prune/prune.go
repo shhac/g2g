@@ -22,12 +22,22 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 )
 
-// Git compares branches by content. A branch whose own commits all have an
-// equivalent in its parent has nothing left to contribute, which is what a
-// landed branch looks like once its work is in the trunk — whether it was
-// merged, squashed, or rebased there by somebody else.
+// Git compares branches by content, and has to do it two ways.
+//
+// Cherry answers per commit, which covers a branch rebased or cherry-picked
+// into its parent. It cannot see a squash merge: the squash combines the
+// branch's commits into one, so that commit is equivalent to none of them
+// individually and every one reads as new — while the branch as a whole
+// contributes nothing. Absorbed merges the branch in and looks for the
+// parent's own tree back, which asks it of the whole branch at once.
+//
+// This command exists to forget branches whose work has landed, and it had
+// only the half that misses the commonest way they land. graph, which has both,
+// said "already in the trunk · run g2g prune to forget them" about branches
+// prune then found nothing to forget.
 type Git interface {
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 }
 
 // Service reads the recorded graph and Git, and writes only the graph.
@@ -103,16 +113,26 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	return plan, nil
 }
 
-// landed reports whether a branch's own commits all have an equivalent in its
-// parent. The fork point limits the comparison to the branch's own work, which
-// is what separates "this branch has nothing left to contribute" from "some
-// commit below it is already upstream".
+// landed reports a branch with nothing left to contribute to its parent.
+//
+// The per-commit question comes first because it is the cheaper one and
+// answers the ordinary case. The fork point limits it to the branch's own
+// work, which is what separates "this branch has nothing left to contribute"
+// from "some commit below it is already upstream".
+//
+// A squash merge answers no to that and yes to this: its commits have no
+// individual equivalent in the parent, and merging the branch in changes the
+// parent not at all. A Git too old to be asked says no, which costs the
+// squash-merge case and nothing else.
 func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bool, error) {
 	absent, _, err := s.Git.Cherry(ctx, edge.Parent, branch, edge.ForkPoint)
 	if err != nil {
 		return false, err
 	}
-	return len(absent) == 0, nil
+	if len(absent) == 0 {
+		return true, nil
+	}
+	return s.Git.Absorbed(ctx, edge.Parent, branch)
 }
 
 // stranded names the branches that would be forgotten while something recorded

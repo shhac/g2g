@@ -12,10 +12,16 @@ import (
 
 // pruneGit answers by content: a branch listed in landed has nothing its parent
 // does not already carry.
+//
+// squashed is the other way a branch lands, and the one Cherry cannot see: its
+// commits have no individual equivalent in the parent, and merging the whole
+// branch in changes the parent not at all.
 type pruneGit struct {
-	landed map[string]bool
-	err    error
-	asked  []string
+	landed   map[string]bool
+	squashed map[string]bool
+	err      error
+	asked    []string
+	merged   []string
 }
 
 func (g *pruneGit) Cherry(_ context.Context, upstream, head, _ string) (absent, present []string, err error) {
@@ -27,6 +33,14 @@ func (g *pruneGit) Cherry(_ context.Context, upstream, head, _ string) (absent, 
 		return nil, []string{"synthetic-commit"}, nil
 	}
 	return []string{"synthetic-commit"}, nil, nil
+}
+
+func (g *pruneGit) Absorbed(_ context.Context, base, branch string) (bool, error) {
+	if g.err != nil {
+		return false, g.err
+	}
+	g.merged = append(g.merged, base+"+"+branch)
+	return g.squashed[branch], nil
 }
 
 type pruneAncestry struct{ current string }

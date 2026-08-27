@@ -169,8 +169,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   and cannot see a squash merge, which combines a branch's commits into one so
   the result is equivalent to none of them — on the commonest way a branch
   lands. `git.Client.Absorbed` merges the branch into the base and checks for
-  the base's own tree back, which answers it of the whole branch at once. Both
-  the landed state and a step's collapse consult it; without the second, a
+  the base's own tree back, which answers it of the whole branch at once.
+  `graph`'s landed state, `prune`'s, and a step's collapse all consult it —
+  `prune` did not, so the command whose whole job is forgetting landed branches
+  was blind to the commonest way they land, and `graph` sent people to it
+  saying "already in the trunk · run g2g prune to forget them" about branches
+  it then found nothing to forget. without the second, a
   child's replay range starts below its parent's landed work and each of those
   commits conflicts with the squashed version of itself.
 - `internal/restack` is the only package allowed to rewrite history. The replay

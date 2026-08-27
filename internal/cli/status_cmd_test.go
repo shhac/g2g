@@ -355,6 +355,10 @@ func TestStatusSaysWhenAPullRequestIsMissingTheBranchesWork(t *testing.T) {
 		{name: "one unpushed reads singular", currency: link.Currency{Unpushed: 1}, want: "head" + markNo + " 1 commit not pushed"},
 		{name: "diverged", currency: link.Currency{Diverged: true}, want: "head" + markNo + " PR is on a commit this branch does not have"},
 		{name: "diverged with local work", currency: link.Currency{Diverged: true, Unpushed: 3}, want: "3 commits here are not on it"},
+		// A restacked stack is in this state, and nothing is missing from its
+		// pull requests. It used to report as a divergence, with every commit
+		// the trunk had gained counted as work of the reader's own.
+		{name: "replayed since it was pushed", currency: link.Currency{Rewritten: true}, want: "head" + markNo + " PR is on an older version of this branch"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			plan := link.Plan{

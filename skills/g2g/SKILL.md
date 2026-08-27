@@ -273,6 +273,11 @@ description: |
   not fold two axes into one mark, which is the failure this replaced. A merged
   pull request is `pr✓` and neutral, never grouped with a missing or closed
   one: it succeeded, and only the leftover branch is a problem.
+- Currency is counted by content (`Cherry`, never `Divergence`) and bounded to a
+  branch's own commits — above its parent, not above the trunk. Counting commit
+  ids reported every commit the trunk had gained as unpushed work of the
+  reader's own. A branch replayed since it was pushed is `Currency.Rewritten`:
+  nothing missing, needs pushing, and not a divergence.
 - `status` is the read-only triage entry point. It renders one selected
   path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

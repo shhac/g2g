@@ -458,8 +458,12 @@ func (f *changingGraphite) ReadForest(context.Context) (graphite.Forest, error) 
 	return graphite.Forest{Parents: map[string]string{"main": "", "alpha": "main", "beta": "alpha"}, Roots: []string{"main"}}, nil
 }
 
-// currencyTips answers the two local reads that compare a branch with the
-// commit its pull request is on.
+// currencyTips answers the local reads that compare a branch with the commit
+// its pull request is on.
+//
+// ours and theirs are counts of commits with no equivalent on the other side,
+// by content: what the real Cherry answers, and deliberately not what counting
+// commit ids either way would.
 type currencyTips struct {
 	local  map[string]string
 	known  map[string]bool
@@ -477,8 +481,22 @@ func (t currencyTips) Resolve(_ context.Context, revision string) (string, error
 	return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
 }
 
-func (t currencyTips) Divergence(_ context.Context, _, target string) (int, int, error) {
-	return t.theirs[target], t.ours[target], nil
+// Cherry answers whichever side is being asked about. The branch's own commits
+// are asked for as Cherry(prHead, branch, parent); the pull request's as
+// Cherry(branch, prHead, "") — so the head names which side the answer is for.
+func (t currencyTips) Cherry(_ context.Context, upstream, head, _ string) ([]string, []string, error) {
+	if _, aboutTheBranch := t.local[head]; aboutTheBranch {
+		return synthetic(t.ours[head]), nil, nil
+	}
+	return synthetic(t.theirs[upstream]), nil, nil
+}
+
+func synthetic(commits int) []string {
+	absent := make([]string, commits)
+	for index := range absent {
+		absent[index] = fmt.Sprintf("synthetic-commit-%d", index)
+	}
+	return absent
 }
 
 // "aligned" is a statement about a pull request's base, so it said nothing
@@ -508,6 +526,18 @@ func TestAPlanReportsWhetherEachPullRequestHasTheBranchesWork(t *testing.T) {
 			name: "the pull request is on a commit this repository does not have",
 			tips: currencyTips{local: map[string]string{"synthetic-top": "local"}},
 			want: Currency{Diverged: true},
+		},
+		{
+			// The state a restacked stack is in, and the one that used to
+			// report a divergence with the trunk's commits counted as the
+			// reader's own. Nothing is missing from the pull request; it is
+			// showing the same work as the commits it was pushed with.
+			name: "the branch was replayed since it was pushed",
+			tips: currencyTips{
+				local: map[string]string{"synthetic-top": "local"},
+				known: map[string]bool{"pr-head": true},
+			},
+			want: Currency{Rewritten: true},
 		},
 		{
 			name: "both have commits the other does not",

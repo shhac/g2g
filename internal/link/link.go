@@ -41,7 +41,12 @@ type GitHub interface {
 // about the base and never about the contents.
 type Tips interface {
 	Resolve(ctx context.Context, revision string) (string, error)
-	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
+	// Cherry compares by content. Counting commit ids answered this question
+	// wrongly in the ordinary case: a branch replayed onto a newer base carries
+	// the same work under new ids, so every commit the base had gained was
+	// reported as work of the reader's own — 1532 of them on one real stack,
+	// none of which were theirs.
+	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 }
 
 // Service coordinates a safe link plan.
@@ -57,15 +62,29 @@ type Service struct {
 
 // Currency is how a branch stands against the commit its pull request is on.
 type Currency struct {
-	// Unpushed is how many commits the branch has that its pull request does
-	// not. Diverged means the pull request is on a commit this branch does not
-	// contain at all, so there is no count to give.
+	// Unpushed is how many of this branch's own commits have no equivalent on
+	// its pull request. It counts by content and stops at the branch's parent,
+	// because a stacked branch's work is what sits above the branch below it —
+	// not everything above the trunk, which is what made the count grow by the
+	// size of the trunk every time somebody replayed onto it.
 	Unpushed int
+	// Diverged means the pull request carries work, by content, that this
+	// branch does not: somebody pushed to it, or commits were dropped here.
 	Diverged bool
+	// Rewritten means the pull request has every one of this branch's commits
+	// by content, but not as these commits — it was replayed or amended since
+	// it was last pushed, so the pull request shows an older rendering of the
+	// same work.
+	//
+	// This is the state a restacked stack is in, and it used to report as a
+	// divergence with the trunk's commits counted as the reader's own. Nothing
+	// is missing from it; it needs pushing.
+	Rewritten bool
 }
 
-// Current reports a pull request that already has everything the branch does.
-func (c Currency) Current() bool { return c.Unpushed == 0 && !c.Diverged }
+// Current reports a pull request that already has everything the branch does,
+// as the commits the branch has.
+func (c Currency) Current() bool { return c.Unpushed == 0 && !c.Diverged && !c.Rewritten }
 
 // Plan is the validated, printable bottom-to-top linking action: the shared
 // discovery every command performs, plus link's own policy verdict on it.
@@ -318,18 +337,48 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 			continue
 		}
 		if _, err := s.Tips.Resolve(ctx, pr.HeadOID); err != nil {
+			// On a commit this repository has never seen, so there is nothing
+			// here to compare it with.
 			currency[branch] = Currency{Diverged: true}
 			continue
 		}
-		theirs, ours, err := s.Tips.Divergence(ctx, pr.HeadOID, branch)
+		state, err := s.compare(ctx, plan, branch, pr.HeadOID)
 		if err != nil {
 			return nil, err
 		}
-		if theirs > 0 {
-			currency[branch] = Currency{Unpushed: ours, Diverged: true}
-			continue
-		}
-		currency[branch] = Currency{Unpushed: ours}
+		currency[branch] = state
 	}
 	return currency, nil
+}
+
+// compare asks what each side holds that the other does not, by content.
+//
+// The two calls are not symmetric and cannot be. This branch's side is limited
+// to its own commits, because everything below them belongs to the branch it
+// is stacked on. The pull request's side needs no limit: branch..head already
+// excludes everything the branch can reach, so what is left is the pull
+// request's own commits and never the base's.
+func (s Service) compare(ctx context.Context, plan Plan, branch, head string) (Currency, error) {
+	ours, _, err := s.Tips.Cherry(ctx, head, branch, ownCommitsFrom(plan, branch))
+	if err != nil {
+		return Currency{}, err
+	}
+	theirs, _, err := s.Tips.Cherry(ctx, branch, head, "")
+	if err != nil {
+		return Currency{}, err
+	}
+	return Currency{
+		Unpushed:  len(ours),
+		Diverged:  len(theirs) != 0,
+		Rewritten: len(ours) == 0 && len(theirs) == 0,
+	}, nil
+}
+
+// ownCommitsFrom is where this branch's own work starts: the branch below it in
+// the selection, or the base when nothing is.
+func ownCommitsFrom(plan Plan, branch string) string {
+	if parent, within := plan.ParentOf(branch); within {
+		return parent
+	}
+	return plan.Base
 }

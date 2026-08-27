@@ -131,12 +131,27 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   in whichever colour the worse of them won. `stackNode.marked` renders `State`
   and the worst `Severity` from the marks, so nothing downstream has to
   understand them; do not set `State` beside them. Currency comes from
-  `githubstack.PullRequest.HeadOID` — a field on a query already being made. `push` says the same thing from the
-  other side, out of the `RemoteTips` it already reads for its leases. Both
-  compare with one local read per branch and nothing extra over the network,
-  both are optional capabilities (`link.Service.Tips`, `push.Git`), and in both
-  the zero value must not read as the reassuring answer: an uncompared branch
-  says nothing rather than "up to date".
+  `githubstack.PullRequest.HeadOID` — a field on a query already being made.
+  `push` says the same thing from the other side, out of the `RemoteTips` it
+  already reads for its leases. Both are local-only and add nothing over the
+  network, both are optional capabilities (`link.Service.Tips`, `push.Git`),
+  and in both the zero value must not read as the reassuring answer: an
+  uncompared branch says nothing rather than "up to date".
+- Currency is counted **by content and bounded to a branch's own commits**, so
+  `link.Tips` needs `Cherry` and not `Divergence`. Counting commit ids answered
+  the ordinary case wrongly in both directions: a branch replayed onto a trunk
+  that has moved on carries the same work under new ids, so every commit the
+  trunk had gained was reported as unpushed work of the reader's own — 1532 of
+  them on one real stack, none of which were theirs — and the old ids left on
+  the pull request read as a divergence. The two `Cherry` calls are deliberately
+  asymmetric: this branch's side stops at its parent, because everything below
+  belongs to the branch it is stacked on, and the pull request's side needs no
+  limit because `branch..head` already excludes everything the branch can
+  reach. That state is `Currency.Rewritten` — nothing is missing, it needs
+  pushing — and it is what a restacked stack is in.
+  `internal/link/currency_real_test.go` builds a throwaway repository for this,
+  because a fake answers whatever it is asked and the question is what Git
+  considers equivalent.
 - `status` renders a branch nothing describes instead of refusing it, through
   the typed `stack.Undescribed`. "Nothing is stacked here" is an answer to what
   a read-only triage command was asked; only `status` renders it, and every

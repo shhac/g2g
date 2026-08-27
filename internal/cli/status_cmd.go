@@ -275,5 +275,10 @@ func currencyNote(currency map[string]link.Currency, branch string) (string, sev
 		}
 		return "PR is on a commit this branch does not have", severityBad
 	}
-	return fmt.Sprintf("%s not pushed", count(state.Unpushed, "commit", "commits")), severityWarn
+	if state.Unpushed > 0 {
+		return fmt.Sprintf("%s not pushed", count(state.Unpushed, "commit", "commits")), severityWarn
+	}
+	// Nothing is missing from it. The branch was replayed or amended since it
+	// was pushed, so the pull request renders the same work as older commits.
+	return "PR is on an older version of this branch", severityWarn
 }

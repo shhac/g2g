@@ -1,16 +1,13 @@
 ---
 name: g2g
 description: |
-  Develop, test, or safely use the g2g Go CLI, which records stacked branches
-  itself and projects them onto GitHub. Graphite is an optional source it can
-  read, mirror to, and import from — not a requirement. Use when working on
-  g2g commands, stack structure or linking, restacking, alignment with
-  Graphite, CLI tests, or release readiness. Triggers: "gt2gh", "g2g",
-  "gh stack link", "g2g link", "g2g sync", "g2g push", "g2g submit",
-  "g2g graph", "g2g track", "g2g untrack", "g2g restack", "g2g mirror",
-  "g2g import", "g2g retarget", "g2g-owned graph", "stack without Graphite",
-  "branch graph without Graphite", "restack after squash merge",
-  "source resolution", "source alignment", "retarget pull request base".
+  Develop, test, or safely use the g2g Go CLI, which records stacked
+  branches itself and projects them onto GitHub. Graphite is an optional
+  source it can read, mirror to, and import from, never a requirement. Use
+  when working on g2g's commands (track, link, sync, prune, restack,
+  retarget, submit, push, graph, mirror, import), stack scope and structure,
+  source resolution and alignment, CLI tests, or release readiness.
+  Triggers: gt2gh, stack without Graphite, restack after squash merge.
 ---
 
 # g2g

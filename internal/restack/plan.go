@@ -96,6 +96,30 @@ func (s Service) blockedReason(discovery graph.Discovery) string {
 	return ""
 }
 
+// selectionRoot names the lowest branch the selection actually records an edge
+// for, which is the one an --onto moves.
+//
+// It is a property of the selection, not of the store. Asking the store
+// instead — whether the recorded parent is tracked anywhere — reparented a
+// branch only when its parent happened to be a trunk, because trunks are the
+// one thing with no edge. Selected as a subtree, the root's parent is an
+// ordinary tracked branch, so --onto was read as "keep the recorded parent",
+// the branch sat where it already was, no step was produced and Apply returned
+// having done nothing at all.
+//
+// Branches arrive trunk-first with parents before children, so the first one
+// carrying an edge is the root. Trunks carry none and are skipped, which is
+// why a path selection reparents the branch above the trunk rather than the
+// trunk itself.
+func selectionRoot(discovery graph.Discovery) string {
+	for _, branch := range discovery.Branches {
+		if discovery.Graph.Tracked(branch) {
+			return branch
+		}
+	}
+	return ""
+}
+
 // steps builds the ordered rewrite, parents before children so each child is
 // measured against the base its parent will actually have.
 func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto string) ([]Step, error) {
@@ -108,13 +132,14 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 	// landing records where a collapsed branch ends up, so its children are
 	// measured against that rather than against a tip about to disappear.
 	landing := map[string]string{}
+	root := selectionRoot(discovery)
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
 			continue
 		}
 		parent := edge.Parent
-		if onto != "" && !discovery.Graph.Tracked(parent) {
+		if onto != "" && branch == root {
 			// Only the selection's own root is reparented; everything above it
 			// keeps the structure that is already recorded.
 			parent = onto

@@ -43,6 +43,12 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		return fmt.Errorf("cannot restack: %s", plan.Blocked)
 	}
 	if len(plan.Steps) == 0 {
+		// A rewrite with nothing to replay can still have an edge to record: a
+		// branch already sitting on the --onto target has no commits to move
+		// and a recorded parent that still names where it used to be.
+		if moves := plan.reparenting(); len(moves) != 0 {
+			return s.recordStructure(ctx, plan.Discovery.Branches, moves)
+		}
 		return nil
 	}
 	if plan.Absorb {

@@ -156,10 +156,15 @@ func (p Plan) reparenting() map[string]string {
 		// in the store as a parent, on the ordinary sync path.
 		return moves
 	}
-	for _, step := range p.Steps {
-		if recorded, tracked := p.Graph.Parent(step.Branch); tracked && recorded != p.Onto.Parent {
-			moves[step.Branch] = p.Onto.Parent
-		}
+	// Only the selection's root moves. Every branch above it is being rewritten
+	// because its parent is, not because its parent changed, and recording the
+	// same new parent for all of them flattened the stack into a fan: a
+	// subtree's children came to record the --onto target rather than the
+	// branch they are stacked on, and the fork point refreshed alongside then
+	// widened each one's replay range to swallow its parent's commits.
+	root := selectionRoot(p.Discovery)
+	if recorded, tracked := p.Graph.Parent(root); tracked && recorded != p.Onto.Parent {
+		moves[root] = p.Onto.Parent
 	}
 	return moves
 }

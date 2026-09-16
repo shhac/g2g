@@ -233,6 +233,11 @@ a preview, never a record.
 
 ## Non-goals
 
-Creating or merging branches, and silently sharing the graph between clones or
-machines. If shared structure is wanted later it should be an explicit
-export/import or dedicated ref, never an accidental addition to a normal push.
+Creating branches, merging them locally — nothing here runs `git merge` — and
+silently sharing the graph between clones or machines. `land` merges pull
+requests, which is GitHub's merge rather than this tool's: asked for
+explicitly, previewed as the commands it would run, and refused whole if any
+branch in the stack cannot take it.
+
+If shared structure is wanted later it should be an explicit export/import or a
+dedicated ref, never an accidental addition to a normal push.

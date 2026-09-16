@@ -53,6 +53,7 @@ has not already used it, g2g stays local instead of creating Graphite state.
 | Record and inspect local structure | `track`, `graph`, `untrack` |
 | Keep branch contents consistent with that structure | `restack`, `sync`, `prune` |
 | Publish a linear path to GitHub | `push`, `submit`, `link`, `retarget`, `unlink` |
+| Take a finished stack down onto its trunk | `land` |
 | Work with an existing Graphite structure | `import`, `mirror`, or `--from graphite` |
 
 All mutating commands preview first and require `--apply`. They re-discover and
@@ -443,15 +444,18 @@ Graphite's forest is what enrols you, so even a preview has to stop first.
 ## Staying up to date
 
 ```sh
-# Fetch, fast-forward the base, replay the stack, forget what has landed.
+# Fetch, fast-forward the base, replay the stack.
 g2g sync
 
 g2g sync --apply
-g2g sync --apply --prune=false   # keep landed branches in the graph
 ```
 
 This is `git switch main && git pull && git switch back && restack` in one
 command, and it needs no Graphite.
+
+It does not forget anything. Pruning is `g2g prune`, a separate command,
+because it answers a different question on the same boundary and edits the
+recorded graph rather than moving branches.
 
 The fetch writes only into `refs/g2g/remotes/`, so your own remote-tracking
 refs, `FETCH_HEAD`, and ahead/behind counts are untouched. The base is
@@ -482,6 +486,66 @@ It touches only the pull requests whose base disagrees with the resolved stack,
 leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
+
+## Landing a stack
+
+When a stack is finished, `land` takes it down onto its trunk, bottom branch
+first, without waiting for CI.
+
+```sh
+g2g land                 # the whole descent, as the commands it would run
+g2g land --apply
+g2g land --apply --admin # merge without waiting for restarted checks
+```
+
+Each branch in turn is published, merged, and then forgotten and deleted, and
+the branches above it are replayed onto the advanced trunk before the next one
+goes. Only the branch about to merge is pushed: republishing the whole stack
+after every merge restarts the checks on every branch above it, which is the
+cost this exists to avoid.
+
+The preview is the recipe. Every line is a command you could run yourself, in
+order, so driving it by hand is a first-class option rather than a fallback:
+
+```
+Commands this would run, in order
+   1  gh pr merge 41 --squash  · land synthetic-one
+   2  g2g sync --apply  · advance the trunk and replay what is left onto it
+   3  g2g prune --branch synthetic-one --scope branch --apply
+   4  git push origin --delete synthetic-one
+   5  git branch -D synthetic-one
+   6  gh pr edit 42 --base synthetic-main  · merge into synthetic-main rather than synthetic-one
+   7  gh pr merge 42 --squash --admin  · land synthetic-two
+```
+
+`land` owns no rules of its own. Publishing goes through `push`, which refuses
+a branch the remote has moved on; advancing and replaying go through `sync`,
+which refuses a trunk that has diverged; and "has this landed" is asked of Git
+by content, through the same check `prune` uses, because a squash merge is
+invisible to a pull request's head.
+
+It refuses the whole descent before merging anything. Discovering the fourth
+branch is a draft after the first three have merged is not a refusal, it is a
+half-landed stack.
+
+**On a protected repository you will need `--admin`.** Every branch above the
+first is force-pushed by its own replay, which restarts the required checks
+that were green a moment ago, so GitHub reports it blocked. That is inherent
+rather than incidental, and the preview says so before the first merge instead
+of letting the run discover it at the second branch. `--admin` also bypasses
+approvals, so a pull request nobody has approved is refused under its own name
+rather than folded into the protection refusal.
+
+Each cleanup is on by default and can be turned off on its own:
+`--no-delete-remote`, `--no-delete-local`, `--no-forget`. None of them can stop
+a descent — the work is merged, and a ref that would not delete is untidiness,
+not a failed land. A branch the remote deleted on merge is already in the state
+it was asked for.
+
+`--method squash|merge|rebase` defaults to squash, and is refused up front if
+the repository does not allow it. Squash is the case a stack needs help with:
+the other two leave each parent's commits in its child under the same identity,
+so nothing needs replaying between merges.
 
 ## Machine-readable output
 
@@ -715,6 +779,8 @@ a record of what the stack was.
   makes an interrupted rewrite resumable.
 - `internal/link`: plan/apply orchestration for GitHub native-stack projection.
 - `internal/push`: atomic stack-ref publication planning.
+- `internal/land`: takes a stack down onto its trunk, composing push, sync and
+  prune rather than owning their rules.
 - `internal/subprocess`: boundary for `git`, `gt`, and `gh` invocations.
 - `internal/testutil`: fake executables installed on `PATH` during tests.
 - `design-docs`: concise scope and safety notes.

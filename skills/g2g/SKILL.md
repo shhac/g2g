@@ -5,9 +5,10 @@ description: |
   branches itself and projects them onto GitHub. Graphite is an optional
   source it can read, mirror to, and import from, never a requirement. Use
   when working on g2g's commands (track, link, sync, prune, restack,
-  retarget, submit, push, graph, mirror, import), stack scope and structure,
-  source resolution and alignment, CLI tests, or release readiness.
-  Triggers: gt2gh, stack without Graphite, restack after squash merge.
+  retarget, submit, push, land, graph, mirror, import), stack scope and
+  structure, source resolution and alignment, CLI tests, or release readiness.
+  Triggers: gt2gh, stack without Graphite, restack after squash merge,
+  merge a stack down.
 ---
 
 # g2g
@@ -54,6 +55,21 @@ description: |
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode.
+- `land` takes a finished stack down onto its trunk, bottom branch first, and
+  owns no rules of its own: it publishes through `push`, advances and replays
+  through `sync`, and asks Git by content whether a branch has landed through
+  the same check `prune` uses. Do not give it its own copies of those
+  refusals — a lease built from tips it read itself always matches, so a
+  direct push would overwrite a reviewer's commit and then merge it. It aims
+  every pull request at the trunk rather than at the branch below it, which is
+  where each correctly sits now and which will not exist by the time its turn
+  comes. It waits for GitHub twice, on the push and on the merge, and for
+  neither does it wait on CI; the merge wait is answered by ancestry from the
+  merge commit, never by watching a tip change, because a colleague's push
+  changes that too. It merges nothing until every branch has been found
+  landable. Cleanup never fails a descent. It is not journaled and must not
+  become so: re-entrancy comes from recomputation, and `restack` stays the only
+  resumable operation.
 - How much of the structure a command means is `--scope`, and it means the same
   thing whichever record answered. Read `design-docs/stack-scope.md` before
   changing it. `--from` pins which source answers for one invocation.
@@ -202,12 +218,17 @@ description: |
   retargets a child when its base is deleted on merge, so it reports what a
   merge will do rather than what the stack was.
 - `link` covers both creating and repairing the GitHub relationship; there is
-  no separate reconcile command. `sync` means fetch, advance the base, replay,
-  prune — the meaning `gt sync` has.
+  no separate reconcile command. `sync` means fetch, advance the base, replay.
+  It forgets nothing: `gt sync` prunes as its tail and this does not, because
+  forgetting a landed branch is a different question on the same boundary and
+  belongs to `prune`.
 - A diverged base is reported, never merged or reset. Pruning edits the graph
   and never deletes a branch.
 
-- `retarget` is the only command that changes what a merge will do. It writes
+- `retarget` is the only command a user runs to change what a merge will do,
+  and `land` reaches for the same client method rather than growing its own —
+  a child's base only goes stale during a descent, once the branch below it has
+  merged, and every move it makes appears in the preview. It writes
   through exactly `gh pr edit <number> --base <branch>`, moves only the bases
   that disagree with the resolved stack, and refuses a branch with more than one
   open pull request rather than choosing between them. Do not fold it into

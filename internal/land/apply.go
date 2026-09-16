@@ -1,0 +1,315 @@
+package land
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/stack"
+	syncer "github.com/shhac/g2g/internal/sync"
+)
+
+// Stopped reports a descent that stopped part-way.
+//
+// Landing is a sequence, so "it happened" and "it did not" are not the only
+// two answers, and the branches that did land stay landed. It carries what
+// finished rather than leaving the caller to go and find out, because the
+// caller asks while the command is failing and the budget it would ask under
+// has usually expired with it.
+type Stopped struct {
+	// Landed names the branches whose merge completed, in the order they did.
+	Landed []string
+	// Branch is where it stopped.
+	Branch string
+	Err    error
+}
+
+func (e *Stopped) Error() string {
+	if len(e.Landed) == 0 {
+		return fmt.Sprintf("stopped at %s: %v", e.Branch, e.Err)
+	}
+	return fmt.Sprintf("landed %s, then stopped at %s: %v", strings.Join(e.Landed, ", "), e.Branch, e.Err)
+}
+
+func (e *Stopped) Unwrap() error { return e.Err }
+
+// Apply takes the stack down, one branch at a time, bottom first.
+//
+// It stops at the first step that cannot finish rather than unwinding. A merge
+// cannot be taken back, and the branches below the failure are exactly where
+// they should be.
+func (s Service) Apply(ctx context.Context, plan Plan) error {
+	if plan.Blocked != "" {
+		return fmt.Errorf("cannot land: %s", plan.Blocked)
+	}
+	if err := plan.RequireActionable("g2g land"); err != nil {
+		return err
+	}
+	landed := make([]string, 0, len(plan.Steps))
+	for index, step := range plan.Steps {
+		if err := s.cycle(ctx, plan, step, index); err != nil {
+			return &Stopped{Landed: landed, Branch: step.Branch, Err: err}
+		}
+		if step.Merges() {
+			landed = append(landed, step.Branch)
+		}
+	}
+	return nil
+}
+
+// cycle lands one branch and tidies up after it.
+func (s Service) cycle(ctx context.Context, plan Plan, step Step, index int) error {
+	diagnostic.Event(ctx, "land.cycle",
+		diagnostic.Field{Key: "branch", Value: step.Branch},
+		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
+	)
+	if step.Merges() {
+		if err := s.merge(ctx, plan, step); err != nil {
+			return err
+		}
+	}
+	return s.tidy(ctx, plan, step, index)
+}
+
+// merge publishes the branch, points its pull request at the right base, waits
+// for GitHub to have seen both, and merges.
+func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
+	if step.Push {
+		if err := s.publish(ctx, plan, step); err != nil {
+			return err
+		}
+	}
+	if step.Retargets() {
+		// The base only goes stale during the run: the branch below merged and
+		// GitHub has not yet moved this pull request off it. Merging it there
+		// would put the work into a branch that is about to be deleted, and
+		// report success.
+		diagnostic.Event(ctx, "land.retarget",
+			diagnostic.Field{Key: "number", Value: fmt.Sprint(step.Number)},
+			diagnostic.Field{Key: "from", Value: step.From},
+			diagnostic.Field{Key: "to", Value: step.Base},
+		)
+		if err := s.GitHub.Retarget(ctx, step.Number, step.Base); err != nil {
+			return err
+		}
+	}
+	tip, err := s.Git.Resolve(ctx, step.Branch)
+	if err != nil {
+		return err
+	}
+	if err := s.settlePush(ctx, step, tip); err != nil {
+		return err
+	}
+	// Decided again, immediately before the one act that cannot be undone. The
+	// plan was made before anything moved; this branch has since been rebuilt
+	// and republished, and its pull request has been pointed somewhere else.
+	if err := s.recheck(ctx, plan, step); err != nil {
+		return err
+	}
+	diagnostic.Event(ctx, "land.merge",
+		diagnostic.Field{Key: "branch", Value: step.Branch},
+		diagnostic.Field{Key: "number", Value: fmt.Sprint(step.Number)},
+	)
+	if err := s.GitHub.Merge(ctx, step.Number, plan.Options.Method, step.Admin); err != nil {
+		return err
+	}
+	return s.settleMerge(ctx, plan, step)
+}
+
+// publish pushes exactly this branch, through push's own plan.
+//
+// Through the service rather than straight to git: push refuses a branch the
+// remote has moved on, and a lease built here from tips read here would always
+// match its own reading and overwrite whatever a reviewer had pushed -- and
+// then merge it.
+func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
+	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: stack.ScopeBranch}, plan.Options.Remote)
+	if err != nil {
+		return err
+	}
+	if published.Blocked != "" {
+		return fmt.Errorf("cannot publish %s: %s", step.Branch, published.Blocked)
+	}
+	if published.NothingToPublish() {
+		return nil
+	}
+	return s.Pusher.Execute(ctx, published)
+}
+
+// settlePush waits until GitHub is looking at what was just pushed.
+//
+// Three facts, not one. headRefOid says GitHub has the commit; baseRefName
+// says the merge will go where it is meant to; mergeable says GitHub has
+// finished working out whether it can merge at all, which it reports as
+// UNKNOWN while it thinks. None of them is about CI.
+func (s Service) settlePush(ctx context.Context, step Step, tip string) error {
+	return settle(ctx, s.pause, fmt.Sprintf("GitHub to see %s at %s", step.Branch, shortID(tip)), func(ctx context.Context) (bool, error) {
+		state, err := s.state(ctx, step.Number)
+		if err != nil {
+			return false, err
+		}
+		return state.HeadOID == tip && state.Base == step.Base && state.Mergeable != githubstack.MergeableUnknown, nil
+	})
+}
+
+// settleMerge waits until the merge has reached the base on the remote.
+//
+// By ancestry, never by watching the tip change: a colleague's unrelated push
+// changes it too, and acting on that fetches a base that does not contain this
+// merge and replays the branch above onto it. The merge commit is already in
+// the answer GitHub gives about the merge it just performed.
+func (s Service) settleMerge(ctx context.Context, plan Plan, step Step) error {
+	return settle(ctx, s.pause, fmt.Sprintf("the merge of %s to reach %s", step.Branch, plan.Trunk), func(ctx context.Context) (bool, error) {
+		state, err := s.state(ctx, step.Number)
+		if err != nil {
+			return false, err
+		}
+		if !state.Merged() || state.MergeCommit == "" {
+			return false, nil
+		}
+		if err := s.Git.FetchIsolated(ctx, plan.Options.Remote, []string{plan.Trunk}); err != nil {
+			return false, err
+		}
+		return s.Git.IsAncestor(ctx, state.MergeCommit, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk))
+	})
+}
+
+func (s Service) state(ctx context.Context, number int) (githubstack.MergeState, error) {
+	mergeability, err := s.GitHub.Mergeability(ctx, []int{number})
+	if err != nil {
+		return githubstack.MergeState{}, err
+	}
+	return mergeability.States[number], nil
+}
+
+// recheck decides this branch again against the world as it is now.
+func (s Service) recheck(ctx context.Context, plan Plan, step Step) error {
+	prs, err := s.GitHub.Inspect(ctx, []string{step.Branch})
+	if err != nil {
+		return err
+	}
+	state, err := s.state(ctx, step.Number)
+	if err != nil {
+		return err
+	}
+	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
+		_, note := classify(facts{Step: path, State: state, Current: true, Admin: plan.Options.Admin})
+		if note.Reason != "" {
+			return fmt.Errorf("%s", note.Sentence())
+		}
+	}
+	return nil
+}
+
+// tidy brings the rest of the stack onto the advanced trunk and forgets the
+// branch that has just landed.
+//
+// Nothing here can stop the descent. The work is merged; a branch that could
+// not be deleted is untidy, and reporting it as a failed land would be wrong
+// about the thing that matters and would strand the branches above.
+func (s Service) tidy(ctx context.Context, plan Plan, step Step, index int) error {
+	if err := s.advance(ctx, plan, index); err != nil {
+		return err
+	}
+	if plan.Options.Forget {
+		if err := s.forget(ctx, step.Branch); err != nil {
+			return err
+		}
+	}
+	s.remove(ctx, plan, step)
+	return nil
+}
+
+// advance fast-forwards the base and replays what is left onto it.
+func (s Service) advance(ctx context.Context, plan Plan, index int) error {
+	target := plan.Steps[len(plan.Steps)-1].Branch
+	if index == len(plan.Steps)-1 {
+		target = plan.Steps[index].Branch
+	}
+	synced, err := s.Syncer.Plan(ctx, graph.Selection{Branch: target, Scope: graph.ScopeStack}, plan.Options.Remote, syncer.TakeNothing)
+	if err != nil {
+		return err
+	}
+	if synced.Blocked != "" {
+		return fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked)
+	}
+	if synced.Nothing() {
+		return nil
+	}
+	return s.Syncer.Apply(ctx, synced)
+}
+
+// forget reparents what sat on the landed branch, then drops it from the graph.
+//
+// In that order. Forgetting first strands the children, which is what prune
+// refuses to do; reparenting first leaves the landed branch with none, so the
+// refusal never applies. The children keep their own fork points, which is
+// what keeps their replay ranges to their own commits.
+func (s Service) forget(ctx context.Context, landed string) error {
+	adopted, err := s.Graph.Store.Load(ctx)
+	if err != nil {
+		return err
+	}
+	edge, tracked := adopted.Edges[landed]
+	if !tracked {
+		return nil
+	}
+	updated := adopted
+	for _, child := range adopted.Children(landed) {
+		inherited := updated.Edges[child]
+		inherited.Parent = edge.Parent
+		if updated, _, err = updated.Adopt(child, inherited); err != nil {
+			return err
+		}
+	}
+	if err := s.Graph.Store.Save(ctx, updated); err != nil {
+		return err
+	}
+	pruned, err := s.Pruner.Plan(ctx, graph.Selection{Branch: landed, Scope: graph.ScopeBranch})
+	if err != nil {
+		return err
+	}
+	if pruned.Blocked != "" || pruned.Nothing() {
+		return nil
+	}
+	return s.Pruner.Apply(ctx, pruned)
+}
+
+// remove deletes the branch's refs, here and on the remote.
+//
+// Every failure is swallowed and reported as a diagnostic rather than
+// returned. The pull request is merged: a ref that would not delete is
+// untidiness, and turning it into a failed land would both misreport what
+// happened and stop the branches above from landing at all.
+func (s Service) remove(ctx context.Context, plan Plan, step Step) {
+	if plan.Options.DeleteRemote {
+		if err := s.Git.DeleteRemoteBranch(ctx, plan.Options.Remote, step.Branch); err != nil {
+			diagnostic.Warn(ctx, "land.delete_remote", fmt.Sprintf("could not delete %s on %s: %v", step.Branch, plan.Options.Remote, err))
+		}
+	}
+	if !plan.Options.DeleteLocal {
+		return
+	}
+	// git will not delete the branch that is checked out, and landing a whole
+	// stack from its top ends standing on the last one deleted.
+	if current, err := s.Git.CurrentBranch(ctx); err == nil && current == step.Branch {
+		if err := s.Git.SwitchBranch(ctx, plan.Trunk); err != nil {
+			diagnostic.Warn(ctx, "land.switch", fmt.Sprintf("could not move off %s to %s: %v", step.Branch, plan.Trunk, err))
+			return
+		}
+	}
+	if err := s.Git.DeleteBranch(ctx, step.Branch); err != nil {
+		diagnostic.Warn(ctx, "land.delete_local", fmt.Sprintf("could not delete %s: %v", step.Branch, err))
+	}
+}
+
+func shortID(object string) string {
+	if len(object) <= 7 {
+		return object
+	}
+	return object[:7]
+}

@@ -153,5 +153,5 @@ func (s PathStep) Classify() StepState {
 // Merged reports a superseded step whose latest pull request was merged rather
 // than closed. It is the one distinction callers draw beyond the state itself.
 func (s PathStep) Merged() bool {
-	return s.Resolution.Superseded() && s.Resolution.Latest.State == "MERGED"
+	return s.Resolution.Superseded() && s.Resolution.Latest.State == stateMerged
 }

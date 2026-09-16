@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
-	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // Method is how a pull request is merged.
@@ -284,16 +283,5 @@ func (c Client) Merge(ctx context.Context, number int, method Method, admin bool
 		diagnostic.Field{Key: "admin", Value: strconv.FormatBool(admin)},
 	)
 	_, err := c.run(ctx, args...)
-	return err
-}
-
-// DeleteRemoteBranch removes a branch from the remote after its work has
-// landed. It is deliberately not part of Merge; see that method's note.
-func (c Client) DeleteRemoteBranch(ctx context.Context, branch string) error {
-	if err := subprocess.CheckArgument("gh", "branch", branch); err != nil {
-		return err
-	}
-	diagnostic.Event(ctx, "github.branch_delete", diagnostic.Field{Key: "branch", Value: branch})
-	_, err := c.run(ctx, "api", "--method", "DELETE", "repos/{owner}/{repo}/git/refs/heads/"+branch)
 	return err
 }

@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"slices"
 )
 
 // Moving a branch ref, and bringing the checkout with it.
@@ -139,5 +140,48 @@ func (c Client) SwitchTree(ctx context.Context, from, to string) error {
 		return err
 	}
 	_, err := c.run(ctx, "read-tree", "-m", "-u", from, to)
+	return err
+}
+
+// DeleteBranch removes a local branch.
+//
+// It forces. A branch land deletes has had its work land by content, which for
+// a squash merge means under a commit id the branch never carried, so the safe
+// form refuses exactly the case this exists for. The caller has already
+// established that the work is upstream; this is the act, not the judgement.
+//
+// A branch that is already gone is not a failure. Landing is re-entrant, so a
+// second pass over a branch the first one deleted has reached the state it was
+// asked for.
+func (c Client) DeleteBranch(ctx context.Context, branch string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	// Asked before it is deleted rather than read out of the failure
+	// afterwards: Resolve reports a missing branch as an error, so telling
+	// "already gone" apart from "git would not remove it" by inspecting what
+	// came back means matching on message text.
+	branches, err := c.LocalBranches(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(branches, branch) {
+		return nil
+	}
+	_, err = c.run(ctx, "branch", "-D", branch)
+	return err
+}
+
+// SwitchBranch moves the checkout.
+//
+// Nothing else here needs it: a rewrite moves refs underneath the checkout and
+// reconciles the tree in place, deliberately, rather than switching away and
+// back. Landing is the one thing that removes the branch someone is standing
+// on, and git will not delete the current branch.
+func (c Client) SwitchBranch(ctx context.Context, branch string) error {
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "switch", branch)
 	return err
 }

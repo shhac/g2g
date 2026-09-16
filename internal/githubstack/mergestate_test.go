@@ -194,11 +194,3 @@ func TestMergeStateReadsANullReviewDecisionAsNoReviewRequired(t *testing.T) {
 		t.Errorf("States[41] = %#v, want both empty", got.States[41])
 	}
 }
-
-func TestDeleteRemoteBranchRefusesAnOptionLikeName(t *testing.T) {
-	testutil.WithFakeExecutables(t, map[string]string{"gh": `exit 1`})
-	err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "--all")
-	if err == nil || !strings.Contains(err.Error(), "cannot be passed safely") {
-		t.Fatalf("DeleteRemoteBranch() error = %v", err)
-	}
-}

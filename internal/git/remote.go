@@ -149,3 +149,32 @@ func (c Client) PushAtomic(ctx context.Context, remote string, leases []Lease) e
 	_, err := c.run(ctx, args...)
 	return err
 }
+
+// DeleteRemoteBranch removes a branch from the remote after its work has
+// landed.
+//
+// This is a push, which is why it lives here rather than going through gh: the
+// remote is the one the caller named, and ref writes to it are this package's
+// job. gh pr merge's own --delete-branch is deliberately not used, because it
+// deletes the local branch too and that is a separate decision.
+//
+// A branch the remote no longer has is not a failure. Repositories configured
+// to delete a branch on merge have already done this, which makes the ordinary
+// success case indistinguishable from a no-op, and it should be.
+func (c Client) DeleteRemoteBranch(ctx context.Context, remote, branch string) error {
+	if err := c.Remote(ctx, remote); err != nil {
+		return err
+	}
+	if err := safeRef(branch); err != nil {
+		return err
+	}
+	tips, err := c.RemoteTips(ctx, remote, []string{branch})
+	if err != nil {
+		return err
+	}
+	if _, present := tips[branch]; !present {
+		return nil
+	}
+	_, err = c.run(ctx, "push", remote, "--delete", branch)
+	return err
+}

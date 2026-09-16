@@ -164,7 +164,11 @@ func mergeabilityQuery(numbers []int) string {
 	for index, number := range numbers {
 		fields = append(fields, fmt.Sprintf("pr%d: pullRequest(number: %d) { number headRefName headRefOid baseRefName state isDraft mergeable mergeStateStatus reviewDecision mergeCommit { oid } }", index, number))
 	}
-	return fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(fields, " "))
+	// Named, unlike the head-ref lookup next door. Two queries to the same
+	// endpoint that begin identically cannot be told apart by anything reading
+	// the invocation -- a test route, a shell history, GitHub's own logs -- and
+	// the name costs nothing.
+	return fmt.Sprintf("query Mergeability($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(fields, " "))
 }
 
 type mergeStateNode struct {

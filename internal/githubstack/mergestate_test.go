@@ -50,7 +50,7 @@ if [ "$1 $2" = "api graphql" ]; then printf '` + mergeabilityAnswer + `\n'; fi`,
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"api graphql -F owner={owner} -F name={repo}",
+		"api graphql -F owner={owner} -F name={repo} -f query=query Mergeability(",
 		"squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed",
 		"pr0: pullRequest(number: 41)",
 		"pr1: pullRequest(number: 42)",

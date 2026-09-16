@@ -204,8 +204,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			Admin:   options.Admin,
 		})
 		if note.Reason != "" {
+			// The whole descent is refused, so there is no partial one to
+			// describe. Keeping the steps decided so far would draw a stack
+			// missing its upper branches and offer a recipe covering some of
+			// them, which reads as the plan rather than as a fragment of one.
 			plan.Repair = note
 			plan.Blocked = note.Sentence()
+			plan.Steps = nil
 			return plan, nil
 		}
 		plan.Steps = append(plan.Steps, decided)

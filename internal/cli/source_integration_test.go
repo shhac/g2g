@@ -52,7 +52,12 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 		"gt": {},
 		"gh": {
 			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+			// Ahead of the head-ref lookup: both queries go to the same
+			// endpoint and begin with the same words, so the operation name is
+			// what tells them apart and first match wins.
+			{Prefix: mergeabilityPrefix, Output: ownedMergeability},
 			{Prefix: "api graphql", Output: pullRequests},
+			{Prefix: "pr merge"},
 			{Prefix: "pr create"},
 			{Prefix: "stack link"},
 			{Prefix: "stack unstack"},
@@ -75,6 +80,11 @@ func ownedPullRequestsJSON(membership string) string {
 		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"` + strings.Replace(membership, "POSITION", "1", 1) + `}]},` +
 		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"` + strings.Replace(membership, "POSITION", "2", 1) + `}]}}}}`
 }
+
+// ownedMergeability answers for the same two pull requests, both ready.
+const ownedMergeability = `{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":true,"rebaseMergeAllowed":true,` +
+	`"pr0":{"number":201,"headRefName":"synthetic-lower","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-trunk","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null},` +
+	`"pr1":{"number":202,"headRefName":"synthetic-top","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-lower","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null}}}}`
 
 // The default stack is open but not yet projected onto GitHub, which is what
 // link has work to do about; the linked variant is what unlink needs.
@@ -317,6 +327,7 @@ var stackCommands = []struct {
 	{name: "push", pullRequests: ownedPullRequests},
 	{name: "submit", pullRequests: ownedPullRequests},
 	{name: "retarget", pullRequests: ownedPullRequests},
+	{name: "land", pullRequests: ownedPullRequests},
 	// graph resolves through a source too now, and reads no pull requests at
 	// all: its whole point is answering without a network.
 	{name: "graph", pullRequests: ownedPullRequests},

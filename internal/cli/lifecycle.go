@@ -58,6 +58,13 @@ type applyFlow[P any] struct {
 	// the copy did not include. One hook is cheaper than one copy.
 	interrupted func(context.Context, error) (handled bool, err error)
 
+	// budget chooses the mutation phase's ceiling when the default does not
+	// fit. A command whose mutation is one external call is sized by the
+	// branch count and nothing else; one that waits on a remote between calls
+	// is not, and inflating the branch count to buy the time would be a lie
+	// about the count. Nil takes the ordinary budget.
+	budget func(budgets, context.Context, int) (context.Context, context.CancelFunc)
+
 	// guard refuses the whole command when another operation has left the
 	// repository part-way through a rewrite. Mid-restack a branch may already
 	// have moved while the graph still records where it used to be, so any
@@ -159,7 +166,7 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 		return writeNotApplied(cmd.OutOrStdout(), p, err)
 	}
 
-	mutateCtx, cancelMutation := budgets.mutation(root, f.mutationSize(validated))
+	mutateCtx, cancelMutation := f.mutationBudget(budgets, root, f.mutationSize(validated))
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
 		if f.interrupted != nil {
@@ -230,6 +237,14 @@ func (f applyFlow[P]) blockedReason(plan P) string {
 }
 
 // mutationSize is how many branches the mutation budget scales with.
+// mutationBudget is the command's own ceiling, or the ordinary one.
+func (f applyFlow[P]) mutationBudget(b budgets, ctx context.Context, branches int) (context.Context, context.CancelFunc) {
+	if f.budget != nil {
+		return f.budget(b, ctx, branches)
+	}
+	return b.mutation(ctx, branches)
+}
+
 func (f applyFlow[P]) mutationSize(plan P) int {
 	if f.branches == nil {
 		return 0

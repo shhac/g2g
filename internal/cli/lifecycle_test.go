@@ -188,6 +188,7 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "sync", args: []string{"sync", "--apply"}, mutation: "push"},
 		{name: "submit", args: []string{"submit", "--apply"}, mutation: "push --atomic", spec: true},
 		{name: "prune", args: []string{"prune", "--apply"}, mutation: "update-ref"},
+		{name: "land", args: []string{"land", "--apply"}, mutation: "pr merge"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder, common := lifecycleRepositoryIn(t, stackedPullRequests)

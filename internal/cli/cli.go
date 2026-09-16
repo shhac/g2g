@@ -15,6 +15,7 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/land"
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
@@ -64,6 +65,10 @@ type Options struct {
 	// Retarget reconciles GitHub's pull request bases with the resolved stack.
 	// It is the only command that changes what a merge will do.
 	Retarget retarget.Service
+	// Land merges a stack down onto its trunk. It composes Push, Sync and
+	// Prune rather than owning their rules, so it is registered only when all
+	// three of its own seams are present.
+	Land land.Service
 	// Align keeps the g2g graph and Graphite's in step. It is the only
 	// service that writes Graphite.
 	Align align.Service
@@ -124,21 +129,28 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 			stack.GraphiteCandidates{Graphite: graphiteClient, Configured: graphiteConfigured},
 		},
 	}
+	pushService := push.Service{Git: gitClient, Selector: selector}
+	syncService := syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService}
+	pruneService := prune.Service{Git: gitClient, Graph: graphService}
 	return NewWithOptions(Options{
-		Version:            version,
-		CommandName:        commandName,
-		Stdout:             stdout,
-		Stderr:             stderr,
-		Link:               link.Service{Git: gitClient, Selector: selector, GitHub: githubClient, Tips: gitClient},
-		Push:               push.Service{Git: gitClient, Selector: selector},
-		Submit:             submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Completions:        completions,
-		Graph:              graphService,
-		Restack:            restackService,
-		Sync:               syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService},
-		Prune:              prune.Service{Git: gitClient, Graph: graphService},
-		Align:              align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
-		Retarget:           retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Version:     version,
+		CommandName: commandName,
+		Stdout:      stdout,
+		Stderr:      stderr,
+		Link:        link.Service{Git: gitClient, Selector: selector, GitHub: githubClient, Tips: gitClient},
+		Push:        pushService,
+		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Completions: completions,
+		Graph:       graphService,
+		Restack:     restackService,
+		Sync:        syncService,
+		Prune:       pruneService,
+		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
+		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Land: land.Service{
+			Git: gitClient, Graph: graphService, Selector: selector, GitHub: githubClient,
+			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService,
+		},
 		Unstacker:          githubClient,
 		GraphiteConfigured: graphiteConfigured,
 	})
@@ -223,6 +235,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
+	}
+	if options.Land.Git != nil && options.Land.Selector != nil && options.Land.GitHub != nil && options.Land.Pusher != nil && options.Land.Syncer != nil && options.Land.Pruner != nil {
+		root.AddCommand(newLand(options.Land, completions, guard, presentation))
 	}
 	if options.Align.Store != nil && options.Align.Git != nil && options.Align.Graphite != nil {
 		root.AddCommand(newMirror(options.Align, guard, presentation))

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -36,6 +37,14 @@ type stackView struct {
 	// field, because they are one thing said in two layouts.
 	BlockedHeading string
 	Notes          []stackNote
+	// Sequence is an ordered recipe: the commands a person would run by hand to
+	// reach the same place, numbered because the order is the point.
+	//
+	// It is separate from Action, which is one argv — the single command a plan
+	// amounts to. A command whose work is a sequence has no such command, and
+	// rendering only the first step of one, or joining them into something
+	// unrunnable, are the two ways that goes wrong.
+	Sequence []stackStep
 	// Advice is the laid-out form of Blocked, rendered for a person instead of
 	// it. Both are set together; only the human renderer prefers this one.
 	Advice *advice
@@ -43,6 +52,14 @@ type stackView struct {
 	// the ways out with their commands separate from the prose around them.
 	// Blocked is rendered from it wherever one exists.
 	Repair repair.Note
+}
+
+// stackStep is one line of a Sequence: something runnable, and what running it
+// achieves. It is repair.Step's shape without its meaning — that one is a way
+// out of a refusal, this one is a step of the work itself.
+type stackStep struct {
+	Command string
+	Effect  string
 }
 
 // severity names the meaning of a piece of output. The renderer maps it to a
@@ -257,6 +274,7 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 	if len(view.Action) != 0 {
 		lines = append(lines, "", p.accent(view.commandHeading()), commandLine(commandText(view.Action), p))
 	}
+	lines = append(lines, sequenceLines(view, p)...)
 	if len(view.Notes) != 0 {
 		lines = append(lines, "")
 	}
@@ -371,4 +389,29 @@ func styleBySeverity(p Presentation, level severity, text string) string {
 
 func writeReadyBanner(writer io.Writer, p Presentation) error {
 	return prose(writer, p, p.accent("Ready to apply"))
+}
+
+// sequenceLines lays out a recipe, one numbered command per line with what it
+// achieves beside it.
+//
+// The number is padded to the widest so the commands line up, because a column
+// of commands that starts in two different places reads as two lists.
+func sequenceLines(view stackView, p Presentation) []string {
+	if len(view.Sequence) == 0 {
+		return nil
+	}
+	heading := "Commands this would run, in order"
+	if view.Blocked != "" {
+		heading = "Commands this would run once unblocked"
+	}
+	lines := []string{"", p.accent(heading)}
+	width := len(strconv.Itoa(len(view.Sequence)))
+	for index, step := range view.Sequence {
+		line := fmt.Sprintf("  %*d  %s", width, index+1, runnable(step.Command))
+		if step.Effect != "" {
+			line += "  " + p.subdued("· "+step.Effect)
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

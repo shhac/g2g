@@ -43,6 +43,17 @@ func pullRequestsJSON(top string) string {
 //
 // The common directory is returned alongside because a caller that plants a
 // restack journal needs to know where it goes.
+// mergeabilityPrefix is the invocation land's readiness query makes. Both
+// GraphQL queries go to the same endpoint and the routes match on a prefix, so
+// the operation name is what tells them apart.
+// mergeabilityJSON answers for the two pull requests the shared fixture has,
+// both ready to merge and neither needing a bypass.
+const mergeabilityJSON = `{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":true,"rebaseMergeAllowed":true,` +
+	`"pr0":{"number":101,"headRefName":"synthetic-lower","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-main","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null},` +
+	`"pr1":{"number":102,"headRefName":"synthetic-top","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-lower","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null}}}}`
+
+const mergeabilityPrefix = "api graphql -F owner={owner} -F name={repo} -f query=query Mergeability("
+
 func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Route, string) {
 	t.Helper()
 
@@ -80,7 +91,12 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 
 	routes, _ := graphiteRoutes(t, []testutil.Route{
 		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		// Before the head-ref lookup: first match wins, and both begin with
+		// the same eight words.
+		{Prefix: mergeabilityPrefix, Output: mergeabilityJSON},
 		{Prefix: "api graphql", Output: pullRequestsJSON(topPullRequests)},
+		{Prefix: "pr merge"},
+		{Prefix: "pr edit"},
 		{Prefix: "pr create"},
 		{Prefix: "stack link"},
 	})

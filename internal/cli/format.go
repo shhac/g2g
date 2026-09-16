@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/shhac/g2g/internal/repair"
@@ -48,7 +49,18 @@ type jsonDocument struct {
 	// prose. It is also set where nothing is blocked and there is still
 	// something to do — a branch no source describes is a state, not a refusal.
 	Repair *jsonRepair `json:"repair,omitempty"`
-	Notes  []jsonNote  `json:"notes,omitempty"`
+	// Sequence is the ordered recipe, for a command whose work is a sequence
+	// rather than one call. Adding a field is not a breaking change, so this
+	// does not move schemaVersion.
+	Sequence []jsonStep `json:"sequence,omitempty"`
+	Notes    []jsonNote `json:"notes,omitempty"`
+}
+
+// jsonStep is one step of the work. It reads like jsonWay and means the
+// opposite: a way out is what to do instead, a step is what will be done.
+type jsonStep struct {
+	Command string `json:"command"`
+	Effect  string `json:"effect,omitempty"`
 }
 
 // jsonRepair is repair.Note as the document carries it. The domain type is not
@@ -112,6 +124,9 @@ func (v stackView) document() jsonDocument {
 			Severity:    string(node.Severity),
 		})
 	}
+	for _, step := range v.Sequence {
+		doc.Sequence = append(doc.Sequence, jsonStep{Command: plainCommands(step.Command), Effect: step.Effect})
+	}
 	for _, note := range v.Notes {
 		doc.Notes = append(doc.Notes, jsonNote{Text: plainCommands(note.Text), Severity: string(note.Severity)})
 	}
@@ -161,6 +176,9 @@ func writePorcelain(writer io.Writer, view stackView) error {
 	}
 	if len(doc.Command) != 0 {
 		records = append(records, append([]string{"command"}, doc.Command...))
+	}
+	for index, step := range doc.Sequence {
+		records = append(records, []string{"step", strconv.Itoa(index + 1), step.Command, step.Effect})
 	}
 	for _, note := range doc.Notes {
 		records = append(records, []string{"note", note.Severity, note.Text})

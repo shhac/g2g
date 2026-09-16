@@ -22,6 +22,12 @@ const (
 	// with the selected stack.
 	mutationBase      = 60 * time.Second
 	mutationPerBranch = 30 * time.Second
+	// landingPerBranch is what one branch of a descent can take: a push, two
+	// waits on GitHub, a merge, a replay and the tidying after it. The waits
+	// are the reason it is not mutationPerBranch -- they are bounded by this
+	// and by nothing else, so a ceiling that fitted the calls alone would cut
+	// a merge off mid-flight.
+	landingPerBranch = 180 * time.Second
 
 	completionTimeout = 3 * time.Second
 )
@@ -56,6 +62,12 @@ func (b budgets) limit(fallback time.Duration) time.Duration {
 // mutationTimeout reports an expired mutation budget as its own failure. A
 // generic "context deadline exceeded" gives no indication that an external
 // command may have partly succeeded, which is the fact a caller needs most.
+// landing is the mutation ceiling for a command that waits on a remote between
+// its calls.
+func (b budgets) landing(ctx context.Context, branches int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, b.limit(mutationBase+time.Duration(branches)*landingPerBranch))
+}
+
 func mutationTimeout(err error, recovery string) error {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		return err

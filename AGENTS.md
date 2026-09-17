@@ -86,17 +86,22 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 
 ## g2g-owned graphs
 
-- Read `design-docs/g2g-owned-graphs.md` before touching `internal/graph`, and
+- Read `design-docs/g2g-owned-graphs.md` before touching `internal/graph`,
   `design-docs/restack.md` before anything that rewrites history or reads the
-  remote.
+  remote, and `design-docs/land.md` before anything in `internal/land`.
 - Never move the user's remote-tracking refs. `RemoteTips` reads through
   `ls-remote` and writes nothing; `FetchIsolated` writes only under
   `refs/g2g/remotes/` and needs both `--refmap=` and `--no-write-fetch-head`.
-  A bare `--force-with-lease` takes its baseline from the remote-tracking ref,
-  so refreshing it silently disarms the check; leases are pinned to the tips
-  the plan observed. The
-  forest model, per-branch authority, derived (never stored) graph identity,
-  and the deliberate absence of restack are decisions, not accidents.
+  Its refspecs are forced, and must stay so: those refs are g2g's own record of
+  what the remote holds rather than the user's, they carry no work to lose, and
+  without the plus a branch the remote rewrote cannot be fetched at all — git
+  refuses the non-fast-forward and fails the whole command, so the second sync
+  after any force push could not fetch. Restacking a stack and republishing it
+  is the ordinary way to get there. A bare `--force-with-lease` takes its
+  baseline from the remote-tracking ref, so refreshing it silently disarms the
+  check; leases are pinned to the tips the plan observed. The forest model,
+  per-branch authority, derived (never stored) graph identity, and the
+  deliberate absence of restack are decisions, not accidents.
 - `graph --from` reads another record and draws it in g2g's own format, which
   is how a divergence between the two becomes visible on a real repository
   rather than only in `internal/stack/parity_test.go`'s fixtures. It offers
@@ -244,6 +249,17 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   reach, is an enum so the vocabulary can grow, and has no `mine` value. It is
   the one path where `sync` discards work that exists nowhere else, so the
   preview names every commit it would lose rather than counting them.
+- `land` owns no rules of its own and must not grow any: it publishes through
+  `push`, advances and replays through `sync`, and asks Git by content whether
+  a branch has landed through the check `prune` uses. Every rule an early draft
+  reached past cost a property the bypassed service already had. It aims every
+  pull request at the trunk rather than at the branch below, because by the time
+  a branch's turn comes the branch below has merged and gone. It tells its own
+  replay from a reviewer's commit by remembering what the remote held when the
+  descent was planned — the one question `push` cannot answer from tips alone,
+  since both leave the remote holding work the branch does not have. It is not
+  journaled: re-entrancy comes from recomputation, a merged branch being
+  detected by content and skipped.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own
@@ -279,6 +295,14 @@ answer is not the wanted one.
 `internal/cli/journey_test.go` drives a person through a stack while the remote
 moves under them, against a real bare remote and a real second clone standing in
 for a colleague. Everything is real except GitHub, which has no local stand-in.
+
+`internal/cli/land_journey_test.go` does the same for a descent, and its `gh`
+goes further: it performs the squash merge itself, in the real remote. It has
+to. A `gh` that exits zero without merging leaves the trunk unchanged, so the
+wait after a merge never settles, the replay above has nothing to replay onto,
+and the test passes having proved nothing but argv construction. Keep that
+property in anything added there — a route that only answers is a route that
+proves the fake works.
 
 This exists because a PATH fake answers whatever it is asked, and the failures
 that keep recurring are about what Git actually does: a ref moves and the

@@ -55,8 +55,8 @@ description: |
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode.
-- `land` takes a finished stack down onto its trunk, bottom branch first, and
-  owns no rules of its own: it publishes through `push`, advances and replays
+- `land` takes a finished stack down onto its trunk, bottom branch first. Read
+  `design-docs/land.md` before changing it. It owns no rules of its own: it publishes through `push`, advances and replays
   through `sync`, and asks Git by content whether a branch has landed through
   the same check `prune` uses. Do not give it its own copies of those
   refusals — a lease built from tips it read itself always matches, so a

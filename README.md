@@ -547,6 +547,9 @@ the repository does not allow it. Squash is the case a stack needs help with:
 the other two leave each parent's commits in its child under the same identity,
 so nothing needs replaying between merges.
 
+See [design-docs/land.md](design-docs/land.md) for why each of those is the way
+it is, including the three publishing decisions that were wrong first.
+
 ## Machine-readable output
 
 Every command renders one semantic view, and `--json` and `--porcelain` are

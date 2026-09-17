@@ -5,9 +5,16 @@ and a design discussion can all say the same word and mean the same thing.
 
 Each one is a journey rather than a command: it starts from what somebody did
 and ends where they are either finished or told what to do next. They live as
-tests in `internal/cli/journey_test.go`, against a real bare remote and a real
+tests in `internal/cli/journey_test.go`, and the landing ones in
+`internal/cli/land_journey_test.go`, against a real bare remote and a real
 second clone standing in for a colleague. Everything there is real except
 GitHub, which has no local stand-in.
+
+The landing fake goes one step further and performs the squash merge itself, in
+the real remote. It has to: a `gh` that exits zero without merging leaves the
+trunk unchanged, so the wait after a merge never settles and the replay above it
+has nothing to replay onto — and the test passes having proved nothing but argv
+construction.
 
 Where the recorded answer is not the answer we want, the entry says so.
 
@@ -142,6 +149,43 @@ refuses.
 **a branch open in a second worktree.** A rewrite moves a ref without checking
 anything out, so it would strand that worktree. It is refused, naming the branch
 and the worktree.
+
+## Taking a stack down
+
+**merge-down.** The stack is finished and every pull request is green. `land`
+takes it down bottom first: publish, merge, replay what is left onto the
+advanced trunk, forget and delete, next. Only the branch about to merge is
+published, so the checks on the branches above are restarted once each, when
+their own turn comes, rather than after every merge.
+
+**the base goes stale mid-descent.** B's pull request correctly sits on A. A
+merges and is deleted, and until GitHub retargets B — asynchronously, and not
+at all if the branch was kept — merging B puts its work into a branch that no
+longer exists, and reports success. `land` checks the base immediately before
+every merge and moves it, naming every move in the preview.
+
+**your own replay looks like somebody else's commit.** After a branch is
+replayed, the remote holds commits it no longer has. From the tips alone that
+is `friendly-fixer` exactly, and `push` refuses both. `land` separates them by
+remembering what the remote held when the descent was planned: it moved these
+refs itself and knows what it left there.
+
+**the checks restart under you.** Every branch above the first is force-pushed
+by its own replay, so on a protected repository it reads blocked by the time
+its turn comes. This is every run, not an edge case, and `--admin` is the
+answer — said in the preview before the first merge rather than discovered
+after one has landed.
+
+**a descent stops part-way.** The branches below where it stopped are merged
+and staying merged. It says which, and rerunning continues from there: a merged
+branch is detected by content and skipped. Nothing is journaled, and `restack`
+stays the only resumable operation.
+
+**a branch landed while you were not looking.** Its work is already in the
+trunk by content, so `land` skips the merge and does the cleanup only. The
+question is asked of Git, never of the pull request: a squash merge lands the
+work under a head the branch never had, so merged, closed and missing can all
+describe a branch that is plainly finished.
 
 ## Timing
 

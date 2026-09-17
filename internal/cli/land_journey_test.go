@@ -137,6 +137,15 @@ func TestJourneyLandTakesAStackDownOntoASquashedTrunk(t *testing.T) {
 	w.git(w.Local, "switch", "-q", "synthetic-b")
 	state := landingGitHub(t, w.Remote)
 
+	// Every commit the stack carries, before any of it lands.
+	carried := map[string][]string{}
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		carried[branch] = strings.Fields(w.git(w.Local, "rev-list", "main.."+branch))
+		if len(carried[branch]) == 0 {
+			t.Fatalf("%s has no commits of its own to land", branch)
+		}
+	}
+
 	mustRun(t, "land", "--apply")
 
 	// Both merges really happened, in the remote, as squashes.
@@ -161,6 +170,24 @@ func TestJourneyLandTakesAStackDownOntoASquashedTrunk(t *testing.T) {
 	subjects := w.git(w.Local, "log", "--format=%s", "origin/main")
 	if strings.Count(subjects, "squash synthetic-a") != 1 {
 		t.Errorf("synthetic-a's work landed more than once:\n%s", subjects)
+	}
+
+	// A squash lands the work under a commit the branch never had, and none of
+	// the branch's own commits reaches the trunk. That is not incidental: it is
+	// the entire reason Cherry cannot see a squash merge and Absorbed has to
+	// exist, so a fake whose squash preserved the original commits would be
+	// exercising a world where the hard case does not arise.
+	history := w.git(w.Local, "rev-list", "origin/main")
+	for branch, commits := range carried {
+		for _, commit := range commits {
+			if strings.Contains(history, commit) {
+				t.Errorf("%s reached the trunk carrying its original commit %s · the squash did not produce a new one", branch, commit[:8])
+			}
+		}
+	}
+	// And the trunk did gain something: one new commit per branch landed.
+	if got := len(strings.Fields(history)); got != 3 {
+		t.Errorf("origin/main has %d commits, want the base plus one squash per branch", got)
 	}
 
 	w.assertClean(w.Local)

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/shhac/g2g/internal/parallel"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -182,6 +183,32 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 		}
 		candidatesFor[branch] = candidates
 		return candidates, nil
+	}
+
+	// Warmed before the growth loop rather than lazily inside it. The loop
+	// consults every local branch on its first pass anyway, so this is the
+	// same work; asking for it together is what stops a repository's worth of
+	// independent process spawns happening one at a time. Each answer is
+	// written to its own element and folded into the cache afterwards, so
+	// nothing here needs a lock.
+	warmed := make([][]Candidate, len(local))
+	if err := parallel.Each(ctx, local, func(ctx context.Context, index int, branch string) error {
+		if chosen[branch] {
+			return nil
+		}
+		candidates, err := relatedWithin(ctx, s.Git, branch, roots, local)
+		if err != nil {
+			return err
+		}
+		warmed[index] = candidates
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	for index, candidates := range warmed {
+		if candidates != nil {
+			candidatesFor[local[index]] = candidates
+		}
 	}
 
 	edges := make([]Adoption, 0)

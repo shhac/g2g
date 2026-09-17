@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"errors"
+	"github.com/shhac/g2g/internal/parallel"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -34,8 +35,8 @@ func TestReadsAreBounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eachBranch() error = %v", err)
 	}
-	if peak.Load() > int64(readers()) {
-		t.Errorf("%d reads ran at once, want at most %d", peak.Load(), readers())
+	if peak.Load() > int64(parallel.Readers()) {
+		t.Errorf("%d reads ran at once, want at most %d", peak.Load(), parallel.Readers())
 	}
 }
 

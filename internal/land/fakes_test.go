@@ -128,6 +128,9 @@ type fakeGitHub struct {
 	settleAfter int
 	asked       int
 	mergeErr    error
+	// settleOn runs after the first question, standing in for GitHub catching
+	// up with a push it had not yet observed.
+	settleOn func()
 }
 
 func (f *fakeGitHub) Inspect(_ context.Context, _ []string) ([]githubstack.PullRequest, error) {
@@ -136,6 +139,10 @@ func (f *fakeGitHub) Inspect(_ context.Context, _ []string) ([]githubstack.PullR
 
 func (f *fakeGitHub) Mergeability(_ context.Context, numbers []int) (githubstack.Mergeability, error) {
 	f.asked++
+	if f.asked > 1 && f.settleOn != nil {
+		f.settleOn()
+		f.settleOn = nil
+	}
 	states := map[int]githubstack.MergeState{}
 	for _, number := range numbers {
 		states[number] = f.states[number]
@@ -175,8 +182,13 @@ func (f *fakeGitHub) Retarget(_ context.Context, number int, base string) error 
 
 type fakePusher struct {
 	events  *events
+	git     *fakeGit
 	blocked string
 	planErr error
+	// silent is a push that reports success and moves nothing — a lease
+	// refused, a hook that dropped it. It is a real outcome, and the wait
+	// afterwards has to survive it rather than blame GitHub for it.
+	silent bool
 }
 
 func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string) (push.Plan, error) {
@@ -190,10 +202,13 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 }
 
 func (f *fakePusher) Execute(_ context.Context, plan push.Plan) error {
-	// Deliberately does not move the fake remote's tips. A push that reports
-	// success and changes nothing is a real outcome — a lease refused, a hook
-	// that dropped it — and it is the one the wait afterwards has to survive.
 	f.events.record("push:" + strings.Join(plan.Branches, ","))
+	if f.silent || f.git == nil {
+		return nil
+	}
+	for _, branch := range plan.Branches {
+		f.git.tips[branch] = f.git.objects[branch]
+	}
 	return nil
 }
 

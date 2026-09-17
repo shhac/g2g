@@ -196,11 +196,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			return Plan{}, err
 		}
 		state := stateFor(mergeability, step)
+		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
 			Step:    step,
 			State:   state,
 			Landed:  landed,
-			Current: s.current(ctx, step.Branch, tips),
+			Current: tip != "" && tips[step.Branch] == tip,
+			Tip:     tip,
 			Admin:   options.Admin,
 		})
 		if note.Reason != "" {
@@ -333,16 +335,6 @@ func (s Service) landed(ctx context.Context, branch, base string) (bool, error) 
 		return false, nil
 	}
 	return absorbed, nil
-}
-
-// current reports a remote that already has this branch exactly as it is here.
-func (s Service) current(ctx context.Context, branch string, tips map[string]string) bool {
-	tip, published := tips[branch]
-	if !published {
-		return false
-	}
-	local, err := s.Git.Resolve(ctx, branch)
-	return err == nil && local == tip
 }
 
 func openNumbers(discovery stack.Discovery) []int {

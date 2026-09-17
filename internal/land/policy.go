@@ -65,7 +65,11 @@ type facts struct {
 	// Current is whether the remote already has this branch exactly as it is
 	// here. False means a push comes first.
 	Current bool
-	Admin   bool
+	// Tip is the commit this branch is on here. GitHub answers about the head
+	// it currently knows, which for a while after a push is the one before it,
+	// so a verdict is only about this branch when the two agree.
+	Tip   string
+	Admin bool
 }
 
 // classify decides what land does about one branch, or why it will not.
@@ -142,7 +146,14 @@ func classify(in facts) (Step, repair.Note) {
 			},
 		}
 	}
-	if in.State.Mergeable == githubstack.MergeableConflicting {
+	// Only when GitHub is looking at the commit this branch is actually on.
+	// A verdict about the previous head is a verdict about work that is being
+	// replaced, and CONFLICTING is the dangerous one to believe: it is
+	// plausible, it is actionable, and the action it invites -- go and rebase
+	// -- is wrong. UNKNOWN at least admits to not knowing. The head is the
+	// reliable signal and mergeability is derived from it, so the head is what
+	// decides whether to read it at all.
+	if in.State.Mergeable == githubstack.MergeableConflicting && in.State.HeadOID == in.Tip {
 		return Step{}, repair.Note{
 			Reason: fmt.Sprintf("%s conflicts with its base", pullRequest(branch, open.Number)),
 			Ways: []repair.Step{

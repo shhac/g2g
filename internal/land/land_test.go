@@ -56,7 +56,7 @@ func newWorld(t *testing.T) *world {
 		},
 		Trunks: []string{"synthetic-main"},
 	}}
-	pusher := &fakePusher{events: seen}
+	pusher := &fakePusher{events: seen, git: git}
 	sync := &fakeSyncer{events: seen}
 
 	return &world{
@@ -407,6 +407,7 @@ func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
 		Number: 41, HeadOID: "one-stale", Base: "synthetic-main",
 		State: "OPEN", Mergeable: "MERGEABLE", StateStatus: "CLEAN",
 	}
+	w.pusher.silent = true
 	plan := w.plan(t, Defaults())
 
 	err := w.service.Apply(context.Background(), plan)
@@ -451,6 +452,49 @@ func TestLandRefusesAStackG2GHasNotAdopted(t *testing.T) {
 			}
 			if merges := w.events.only("merge:"); len(merges) != 0 {
 				t.Errorf("merged %v from a structure it cannot replay", merges)
+			}
+		})
+	}
+}
+
+// GitHub answers about the head it currently knows, which for a moment after a
+// push is the one before it. The second trial saw both wrong answers: a stale
+// UNKNOWN, and — worse — a stale CONFLICTING, which is plausible, actionable
+// and would send someone to rebase a branch that was fine.
+//
+// The head is the reliable signal and mergeability is derived from it, so
+// nothing may be read from a report about a commit this did not push.
+func TestLandIgnoresMergeabilityReportedAgainstAnUnpushedHead(t *testing.T) {
+	for _, stale := range []string{githubstack.MergeableConflicting, githubstack.MergeableUnknown} {
+		t.Run(stale, func(t *testing.T) {
+			w := newWorld(t)
+			// The branch has moved on since it was last published, so this
+			// cycle pushes it — and GitHub, for a moment afterwards, answers
+			// about the head it had before, with a verdict about that one.
+			w.git.tips["synthetic-one"] = "one-old"
+			w.github.states[41] = githubstack.MergeState{
+				Number: 41, HeadOID: "one-old", Base: "synthetic-main",
+				State: "OPEN", Mergeable: stale, StateStatus: "CLEAN",
+			}
+			plan := w.plan(t, Defaults())
+			w.github.settleOn = func() {
+				w.github.states[41] = githubstack.MergeState{
+					Number: 41, HeadOID: "one-tip", Base: "synthetic-main",
+					State: "OPEN", Mergeable: "MERGEABLE", StateStatus: "CLEAN",
+				}
+			}
+
+			if err := w.service.Apply(context.Background(), plan); err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+
+			// It waited rather than acting, and merged only once the head it
+			// pushed was the head GitHub reported.
+			if merges := w.events.only("merge:41"); len(merges) != 1 {
+				t.Errorf("merges of 41 = %v, want exactly one, after the head settled", merges)
+			}
+			if w.github.asked < 2 {
+				t.Errorf("asked GitHub %d times, want it to have waited for the head to catch up", w.github.asked)
 			}
 		})
 	}

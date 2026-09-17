@@ -253,7 +253,11 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step) error {
 		return err
 	}
 	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
-		_, note := classify(facts{Step: path, State: state, Current: true, Admin: plan.Options.Admin})
+		tip, err := s.Git.Resolve(ctx, step.Branch)
+		if err != nil {
+			return err
+		}
+		_, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin})
 		if note.Reason != "" {
 			return fmt.Errorf("%s", note.Sentence())
 		}

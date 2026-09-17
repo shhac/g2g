@@ -260,6 +260,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   since both leave the remote holding work the branch does not have. It is not
   journaled: re-entrancy comes from recomputation, a merged branch being
   detected by content and skipped.
+- A command that did part of what it was asked and stopped exits `3`, not `0`
+  and not the failure status. What it achieved is not coming back — merged
+  stays merged, replayed stays replayed — so it is not a failure to retry, and
+  it plainly is not success. `stoppedPartWay` marks it and the top-level
+  printer then says nothing further, because the report is already on stdout
+  with the detail in it.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

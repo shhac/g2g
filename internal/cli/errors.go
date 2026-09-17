@@ -15,6 +15,39 @@ import (
 // extra API call on a separate `gh auth status` probe.
 const ghAuthExitCode = 4
 
+// stoppedExitCode reports a command that did part of what it was asked and
+// stopped somewhere a person has to act.
+//
+// Distinct from the failure code, because the two want opposite responses. A
+// failure achieved nothing and can be retried; this achieved some of it, and
+// what it achieved is not coming back — a merged pull request stays merged, a
+// replayed branch stays replayed. Git says the same thing the same way: rebase
+// and merge both exit non-zero when they stop needing you.
+//
+// It was zero, which is the one answer that is wrong for both readers: a script
+// could not tell a finished descent from one that stopped after two merges, and
+// the only signal that anything was unfinished was prose on stdout.
+const stoppedExitCode = 3
+
+// stoppedError marks a command that stopped part-way having already said so.
+//
+// The report is on stdout with the detail in it, so the top-level printer says
+// nothing further: "error:" in front of a summary of what is already displayed
+// reads as a second, different problem.
+type stoppedError struct{ err error }
+
+func (e stoppedError) Error() string { return e.err.Error() }
+func (e stoppedError) Unwrap() error { return e.err }
+
+// stoppedPartWay marks a report that has been written, so the exit status can
+// carry what the prose already said.
+func stoppedPartWay(err error) error { return stoppedError{err} }
+
+func wasStopped(err error) bool {
+	var stopped stoppedError
+	return errors.As(err, &stopped)
+}
+
 // presentedError marks an error whose bounded diagnostic a command already
 // rendered. The top-level printer then reports the failure without repeating
 // that block, keeping one diagnostic per invocation.

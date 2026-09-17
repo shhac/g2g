@@ -136,5 +136,11 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	if err := prose(writer, p, "\n"+p.problem("Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error())); err != nil {
 		return err
 	}
-	return prose(writer, p, p.subdued(landed+" Rerun "+runnable("g2g land")+" to see what is left."))
+	if err := prose(writer, p, p.subdued(landed+" Rerun "+runnable("g2g land")+" to see what is left.")); err != nil {
+		return err
+	}
+	// The merges that happened are permanent, so this is not a failure to
+	// retry — but it is not what was asked for either, and a script reading
+	// only the status had no way to tell the two apart.
+	return stoppedPartWay(stopped)
 }

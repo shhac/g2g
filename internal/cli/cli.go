@@ -301,6 +301,12 @@ func newCompletion(root *cobra.Command) *cobra.Command {
 func Execute(version, commandName string) {
 	root := NewNamed(version, commandName, os.Stdout, os.Stderr)
 	if err := root.Execute(); err != nil {
+		// A command that stopped part-way has already reported it, in more
+		// detail than a one-line error could, so all that is left is the
+		// status.
+		if wasStopped(err) {
+			os.Exit(stoppedExitCode)
+		}
 		writeError(os.Stderr, err)
 		os.Exit(2)
 	}

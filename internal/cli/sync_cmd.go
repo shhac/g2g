@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -92,7 +93,13 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 // stoppedMidSync reports a sequence that got part-way. It deliberately does
 // not unwind: the fetch and the fast-forward are wanted regardless, and the
 // replay is resumable through the command that owns it.
+// It reports and then marks the run as stopped, so the exit status says what
+// the prose says. A replay that stopped on a conflict has left the stack
+// part-way through and needs the person back.
 func stoppedMidSync(cmd *cobra.Command, p Presentation) error {
 	_ = prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+"."))
+	if err := prose(cmd.OutOrStdout(), p, p.subdued("The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+".")); err != nil {
+		return err
+	}
+	return stoppedPartWay(errors.New("the replay stopped part-way"))
 }

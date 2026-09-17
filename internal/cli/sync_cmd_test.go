@@ -223,8 +223,13 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 
 	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
 
-	if err != nil {
-		t.Errorf("a stopped replay returned an error: %v", err)
+	// It reports the stop rather than failing at the user, and the status says
+	// so too: zero would have told a script the sync had finished.
+	if !wasStopped(err) {
+		t.Errorf("a stopped replay did not mark itself stopped: %v", err)
+	}
+	if alreadyPresented(err) || err == nil {
+		t.Errorf("a stopped replay should carry a status without a second report: %v", err)
 	}
 	if !strings.Contains(out, "stopped part-way") {
 		t.Errorf("output does not report the stop:\n%s", out)

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -171,5 +172,38 @@ func TestLandDefaultsToEveryCleanupAndToSquash(t *testing.T) {
 	}
 	if defaults.Method != githubstack.MethodSquash {
 		t.Errorf("Method = %q, want squash", defaults.Method)
+	}
+}
+
+// A descent that stopped part-way is not a failure to retry — the merges that
+// happened are permanent — but it is not what was asked for either, and zero
+// told a script the whole stack had landed.
+func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
+	var out bytes.Buffer
+	cmd := newLand(land.Service{}, testCompletions(), nil, Presentation{})
+	cmd.SetOut(&out)
+
+	err := stoppedMidLand(cmd, &land.Stopped{
+		Landed: []string{"synthetic-one"},
+		Branch: "synthetic-two",
+		Err:    errors.New("synthetic refusal"),
+	}, Presentation{})
+
+	if !wasStopped(err) {
+		t.Fatalf("stoppedMidLand() error = %v, want it marked as stopped", err)
+	}
+	if wasStopped(errors.New("synthetic other")) {
+		t.Error("an ordinary failure was read as a stop")
+	}
+	// The report carries the detail, so the status is all that is left to say.
+	rendered := out.String()
+	for _, want := range []string{"Stopped part-way at synthetic-two", "synthetic-one", "stay merged"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("report missing %q:\n%s", want, rendered)
+		}
+	}
+	// Distinct from the failure status, because the two want opposite responses.
+	if stoppedExitCode == 2 || stoppedExitCode == 0 {
+		t.Errorf("stoppedExitCode = %d, want its own", stoppedExitCode)
 	}
 }

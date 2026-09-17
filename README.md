@@ -550,6 +550,23 @@ so nothing needs replaying between merges.
 See [design-docs/land.md](design-docs/land.md) for why each of those is the way
 it is, including the three publishing decisions that were wrong first.
 
+## Exit status
+
+| Status | Meaning |
+|---|---|
+| `0` | it did what was asked, or there was nothing to do |
+| `2` | it failed, and achieved nothing |
+| `3` | it did part of what was asked and stopped somewhere you have to act |
+
+`3` is `sync` stopping on a conflict mid-replay, and `land` stopping part-way
+down a stack. Those are not failures to retry — the branches that replayed
+stayed replayed and the pull requests that merged stayed merged — and they are
+not successes either. Both print what happened and what to do next; the status
+is there so something reading only the status can tell the difference.
+
+Git answers the same way: `rebase` and `merge` both exit non-zero when they stop
+needing you.
+
 ## Machine-readable output
 
 Every command renders one semantic view, and `--json` and `--porcelain` are

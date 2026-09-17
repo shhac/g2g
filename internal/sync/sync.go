@@ -229,7 +229,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Blocked = plan.Restack.Blocked
+	// Its structure comes with it. A refusal that arrives from the step this
+	// delegates to is no less actionable for having been delegated, and
+	// carrying only the sentence handed every machine reader a null where the
+	// ways out were.
+	plan.Blocked, plan.Repair = plan.Restack.Blocked, plan.Restack.Repair
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
 		diagnostic.Field{Key: "advance", Value: fmt.Sprintf("%t", plan.Advance)},

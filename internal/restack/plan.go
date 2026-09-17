@@ -31,8 +31,9 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if err != nil {
 		return Plan{}, err
 	}
-	if held != "" {
-		plan.Blocked = held
+	if held.Reason != "" {
+		plan.Repair = held
+		plan.Blocked = held.Sentence()
 		return plan, nil
 	}
 	steps, err := s.steps(ctx, discovery, onto.Object)
@@ -290,14 +291,19 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 //
 // A Git too old to list worktrees, or a failure to ask, is not a reason to
 // refuse a rewrite that was fine before this check existed.
-func (s Service) heldElsewhere(ctx context.Context, branches []string) (string, error) {
+// It answers with structure rather than a sentence. A refusal here reaches a
+// caller through sync and land as well as restack, and a machine reading the
+// documented contract -- read repair, do not parse the prose -- was handed a
+// null where the only two ways out were, on the one refusal a large checkout
+// meets first.
+func (s Service) heldElsewhere(ctx context.Context, branches []string) (repair.Note, error) {
 	holder, ok := s.Git.(WorktreeReader)
 	if !ok {
-		return "", nil
+		return repair.Note{}, nil
 	}
 	elsewhere, err := holder.CheckedOutElsewhere(ctx)
 	if err != nil || len(elsewhere) == 0 {
-		return "", nil
+		return repair.Note{}, nil
 	}
 	held := make([]string, 0, len(branches))
 	for _, branch := range branches {
@@ -306,7 +312,13 @@ func (s Service) heldElsewhere(ctx context.Context, branches []string) (string, 
 		}
 	}
 	if len(held) == 0 {
-		return "", nil
+		return repair.Note{}, nil
 	}
-	return fmt.Sprintf("checked out in another worktree: %s · rewriting it there would leave that worktree describing a commit it no longer has · close it or narrow the selection", strings.Join(held, ", ")), nil
+	return repair.Note{
+		Reason: fmt.Sprintf("checked out in another worktree: %s · rewriting it there would leave that worktree describing a commit it no longer has", strings.Join(held, ", ")),
+		Ways: []repair.Step{
+			{Effect: "switch that worktree to another branch, or close it"},
+			{Command: "g2g restack --scope path", Effect: "narrow the selection so it does not reach that branch"},
+		},
+	}, nil
 }

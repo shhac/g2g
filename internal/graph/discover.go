@@ -37,24 +37,35 @@ type Candidate struct {
 	Trunk    bool
 }
 
-// Candidates returns the possible parents of target, nearest first.
+// Related returns the possible parents drawn from the target's own ancestry and
+// the roots the graph already records.
 //
-// Two sets are tried in turn. The preferred set is the target's ancestors plus
-// the roots the graph already records, which is the answer in any repository
-// that has adopted anything at all. When that comes back empty — the first
-// branch into an empty graph, whose trunk has almost always moved on since the
-// branch left it — every local branch is measured instead. That fallback costs
-// one Git call per branch and runs once per repository, not once per command.
-func Candidates(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
+// This is the answer in any repository that has adopted anything at all, and it
+// is everything a caller that acts on ancestry can use: the set it measures
+// already contains every ancestor of the target, so no branch outside it can
+// come back marked as one.
+func Related(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
+	if git == nil {
+		return nil, fmt.Errorf("graph discovery is not configured")
+	}
+	local, err := git.LocalBranches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return relatedWithin(ctx, git, target, roots, local)
+}
+
+// relatedWithin is Related for a caller that already knows the local branches.
+//
+// They cannot change while one command runs, and a whole-stack adoption asks
+// about every branch in the repository, so re-reading them per branch was one
+// process spawn per branch for an answer already in hand.
+func relatedWithin(ctx context.Context, git Ancestry, target string, roots, local []string) ([]Candidate, error) {
 	if git == nil {
 		return nil, fmt.Errorf("graph discovery is not configured")
 	}
 	if target == "" {
 		return nil, fmt.Errorf("a target branch is required")
-	}
-	local, err := git.LocalBranches(ctx)
-	if err != nil {
-		return nil, err
 	}
 	ancestors, err := git.AncestorBranches(ctx, target)
 	if err != nil {
@@ -68,9 +79,26 @@ func Candidates(ctx context.Context, git Ancestry, target string, roots []string
 			preferred = append(preferred, root)
 		}
 	}
-	candidates, err := measure(ctx, git, target, preferred, roots)
+	return measure(ctx, git, target, preferred, roots)
+}
+
+// Candidates returns the possible parents of target, nearest first.
+//
+// Related first. When that comes back empty — the first branch into an empty
+// graph, whose trunk has almost always moved on since the branch left it —
+// every local branch is measured instead, so that there is something to offer
+// rather than nothing. Those are branches the target cannot reach, so none of
+// them is an ancestor and a caller acting on ancestry should ask Related and
+// skip this entirely: for one that filters on Ancestor the fallback is a Git
+// call per branch whose whole result is then discarded.
+func Candidates(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
+	candidates, err := Related(ctx, git, target, roots)
 	if err != nil || len(candidates) != 0 {
 		return candidates, err
+	}
+	local, err := git.LocalBranches(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return measure(ctx, git, target, local, roots)
 }

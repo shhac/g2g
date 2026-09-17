@@ -81,7 +81,13 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	if err != nil {
 		return StackPlan{}, err
 	}
-	candidates, err := Candidates(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
+	// Related for the same reason the fan-out below uses it: everything that
+	// reads these candidates -- TrunkFor, Chain, originOf -- filters on
+	// Ancestor, so the fallback's whole result would be discarded. Where it
+	// would have fired, this plan is about to refuse anyway for want of a
+	// trunk that is an ancestor, and it now does so without measuring every
+	// branch in the repository first.
+	candidates, err := Related(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
 	if err != nil {
 		return StackPlan{}, err
 	}
@@ -163,7 +169,14 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 		if cached, found := candidatesFor[branch]; found {
 			return cached, nil
 		}
-		candidates, err := Candidates(ctx, s.Git, branch, roots)
+		// Related, not Candidates: Attach acts only on candidates that are
+		// genuinely ancestors, and Candidates' fallback can only produce
+		// branches that are not -- the set Related measures already contains
+		// every ancestor there is. Asking for the fallback measured every
+		// local branch against every other one and discarded all of it, which
+		// on a thirty-branch repository was the overwhelming majority of the
+		// Git calls a whole-stack adoption made.
+		candidates, err := relatedWithin(ctx, s.Git, branch, roots, local)
 		if err != nil {
 			return nil, err
 		}

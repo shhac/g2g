@@ -95,7 +95,15 @@ func (c Client) FetchIsolated(ctx context.Context, remote string, branches []str
 		if err := safeRef(branch); err != nil {
 			return err
 		}
-		args = append(args, "refs/heads/"+branch+":"+IsolatedRef(remote, branch))
+		// Forced. These refs are g2g's own record of what the remote holds,
+		// not the user's remote-tracking refs, and there is no work in them to
+		// lose -- so they have to follow the remote wherever it goes. Without
+		// the plus, a branch the remote rewrote cannot be fetched at all: git
+		// refuses the non-fast-forward and fails the whole command, so the
+		// second sync after any force push reported that it could not fetch.
+		// Restacking and republishing a stack is the ordinary way to get
+		// there.
+		args = append(args, "+refs/heads/"+branch+":"+IsolatedRef(remote, branch))
 	}
 	_, err := c.run(ctx, args...)
 	return err

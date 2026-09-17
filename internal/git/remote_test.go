@@ -216,9 +216,40 @@ func TestFetchIsolatedSuppressesRefmapAndFetchHead(t *testing.T) {
 	}
 
 	call := recorder.Find("git fetch")
-	for _, want := range []string{"--refmap=", "--no-write-fetch-head", "refs/heads/synthetic-trunk:refs/g2g/remotes/origin/synthetic-trunk"} {
+	for _, want := range []string{"--refmap=", "--no-write-fetch-head", "+refs/heads/synthetic-trunk:refs/g2g/remotes/origin/synthetic-trunk"} {
 		if !strings.Contains(call, want) {
 			t.Errorf("fetch invocation %q is missing %q", call, want)
 		}
+	}
+}
+
+// A branch the remote rewrote has to be fetchable. These refs are g2g's own
+// record of what the remote holds and carry no work of their own, so they
+// follow it wherever it goes — and without that, the second sync after any
+// force push could not fetch at all: git refuses the non-fast-forward and
+// fails the whole command. Restacking a stack and republishing it is the
+// ordinary way to get there.
+func TestFetchIsolatedFollowsABranchTheRemoteRewrote(t *testing.T) {
+	upstream, client := syntheticRemote(t)
+	ctx := context.Background()
+
+	if err := client.FetchIsolated(ctx, "origin", []string{"synthetic-trunk"}); err != nil {
+		t.Fatalf("first FetchIsolated() error = %v", err)
+	}
+	before := revision(t, IsolatedRef("origin", "synthetic-trunk"))
+
+	// The remote's branch is rewritten to an unrelated history, so its new tip
+	// is not a descendant of what was fetched -- which is what a force push
+	// after a restack produces.
+	gitExec(t, "switch", "-q", "--orphan", "synthetic-rewritten")
+	gitExec(t, "commit", "-q", "--allow-empty", "-m", "synthetic rewrite")
+	gitExec(t, "push", "-q", "-f", "origin", "synthetic-rewritten:synthetic-trunk")
+	_ = upstream
+
+	if err := client.FetchIsolated(ctx, "origin", []string{"synthetic-trunk"}); err != nil {
+		t.Fatalf("second FetchIsolated() error = %v", err)
+	}
+	if after := revision(t, IsolatedRef("origin", "synthetic-trunk")); after == before {
+		t.Errorf("the isolated ref did not follow the rewrite: still %s", before)
 	}
 }

@@ -185,6 +185,9 @@ type fakePusher struct {
 	git     *fakeGit
 	blocked string
 	planErr error
+	// extra names a branch the path selection picks up beside the one asked
+	// for, which is what an untidy earlier cycle leaves behind.
+	extra string
 	// silent is a push that reports success and moves nothing — a lease
 	// refused, a hook that dropped it. It is a real outcome, and the wait
 	// afterwards has to survive it rather than blame GitHub for it.
@@ -195,8 +198,12 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	if f.planErr != nil {
 		return push.Plan{}, f.planErr
 	}
+	branches := []string{selection.Branch}
+	if f.extra != "" {
+		branches = append([]string{f.extra}, branches...)
+	}
 	plan := push.Plan{Blocked: f.blocked}
-	plan.Snapshot = stack.Snapshot{Branches: []string{selection.Branch}, Base: selection.Trunk}
+	plan.Snapshot = stack.Snapshot{Branches: branches, Base: selection.Trunk}
 	plan.Publishing = map[string]push.Publication{selection.Branch: {Ours: 1}}
 	return plan, nil
 }

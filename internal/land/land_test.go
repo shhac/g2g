@@ -499,3 +499,99 @@ func TestLandIgnoresMergeabilityReportedAgainstAnUnpushedHead(t *testing.T) {
 		})
 	}
 }
+
+// A reviewer pushing a fix onto a branch mid-descent is the one thing push
+// cannot tell from land's own replay: both leave the remote holding commits the
+// branch does not have, and push refuses both. What separates them is whether
+// the remote still holds what the plan saw, and land is the only thing that
+// knows, because it moved these refs itself.
+//
+// Untested until now, and it is the only protection there is: push's own
+// refusal is deliberately not consulted inside the cycle, and its lease is
+// pinned to the tips push itself reads — so without this the force-push would
+// succeed over the reviewer's commit and land would then merge it.
+func TestLandRefusesABranchTheRemoteMovedOnMidDescent(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+
+	// Between planning and the cycle, somebody else pushes to the branch.
+	w.git.tips["synthetic-one"] = "one-from-a-reviewer"
+
+	err := w.service.Apply(context.Background(), plan)
+
+	if err == nil {
+		t.Fatal("Apply() error = nil, want a refusal")
+	}
+	for _, want := range []string{"has moved on synthetic-one", "work this descent has not seen"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	if pushes := w.events.only("push:"); len(pushes) != 0 {
+		t.Errorf("pushed %v over a remote that had moved", pushes)
+	}
+	if merges := w.events.only("merge:"); len(merges) != 0 {
+		t.Errorf("merged %v after the remote moved", merges)
+	}
+}
+
+// Landing forgets each branch as it lands, so the path from the trunk holds
+// exactly the branch being published. More than one means an earlier cycle did
+// not tidy up — and the extra branch has already merged, so pushing it would
+// put it back on the remote.
+func TestLandRefusesToRepublishABranchThatAlreadyLanded(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.pusher.extra = "synthetic-already-landed"
+
+	err := w.service.Apply(context.Background(), plan)
+
+	if err == nil {
+		t.Fatal("Apply() error = nil, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "already landed") {
+		t.Errorf("error %q does not name the branch that should not be pushed", err)
+	}
+	if merges := w.events.only("merge:"); len(merges) != 0 {
+		t.Errorf("merged %v despite an untidy path", merges)
+	}
+}
+
+// The warning that says --admin will be needed before the first merge rather
+// than after it. Its whole reason for existing is that discovering this at the
+// second branch is discovering it once something has already landed — and it
+// had never returned a non-empty list in any test, so the status check, the
+// --admin short-circuit and the skip-the-bottom-branch filter were all
+// unverified.
+func TestProtectedNamesTheBranchesTheirReplayWillBlock(t *testing.T) {
+	steps := []Step{{Branch: "synthetic-one"}, {Branch: "synthetic-two"}, {Branch: "synthetic-three", Landed: true}}
+	blocked := githubstack.Mergeability{States: map[int]githubstack.MergeState{
+		41: {StateStatus: githubstack.StatusBlocked},
+	}}
+	behind := githubstack.Mergeability{States: map[int]githubstack.MergeState{
+		41: {StateStatus: githubstack.StatusBehind},
+	}}
+	clean := githubstack.Mergeability{States: map[int]githubstack.MergeState{
+		41: {StateStatus: "CLEAN"},
+	}}
+
+	for name, testCase := range map[string]struct {
+		mergeability githubstack.Mergeability
+		options      Options
+		want         string
+	}{
+		// The bottom branch is not named: it merges before anything is
+		// replayed, so its checks are the ones that were already green.
+		"blocked":           {blocked, Defaults(), "synthetic-two"},
+		"behind":            {behind, Defaults(), "synthetic-two"},
+		"unprotected":       {clean, Defaults(), ""},
+		"already bypassing": {blocked, Options{Admin: true}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := protectedAfterRestack(steps, testCase.mergeability, testCase.options)
+			if strings.Join(got, ",") != testCase.want {
+				t.Errorf("protectedAfterRestack() = %v, want %q", got, testCase.want)
+			}
+		})
+	}
+}

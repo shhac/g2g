@@ -133,13 +133,6 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 // match its own reading and overwrite whatever a reviewer had pushed -- and
 // then merge it.
 func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
-	// The path, not the branch alone: push needs a base to compare against and
-	// a single-branch selection has no ancestry to take one from. Landing
-	// forgets each branch as it lands, so by the time this runs the path from
-	// the trunk holds exactly the branch being published -- and asserting that
-	// is worth more than the scope would have been, because more than one
-	// branch here means an earlier cycle did not tidy up and the extra one has
-	// already merged.
 	// Whether this branch's published version is its own or somebody else's is
 	// the one question push cannot answer here. After a replay the remote
 	// holds commits the branch no longer has, which is exactly the shape of a
@@ -153,10 +146,16 @@ func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
 	if tips[step.Branch] != step.RemoteTip {
 		return fmt.Errorf("%s has moved on %s since this was planned, so it carries work this descent has not seen · fetch and reconcile it, then rerun", plan.Options.Remote, step.Branch)
 	}
+	// The path, not the branch alone: push needs a base to compare against and
+	// a single-branch selection has no ancestry to take one from. Landing
+	// forgets each branch as it lands, so by the time this runs the path from
+	// the trunk holds exactly the branch being published.
 	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: stack.ScopePath}, plan.Options.Remote)
 	if err != nil {
 		return err
 	}
+	// More than one branch here means an earlier cycle did not tidy up, and the
+	// extra one has already merged -- pushing it would put it back.
 	if len(published.Branches) != 1 || published.Branches[0] != step.Branch {
 		return fmt.Errorf("publishing %s would also push %s, which has already landed", step.Branch, strings.Join(published.Branches, ", "))
 	}

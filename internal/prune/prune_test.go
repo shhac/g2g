@@ -240,3 +240,26 @@ func (a pruneAncestry) Cherry(_ context.Context, _, head, _ string) (absent, pre
 // Absorbed answers of a whole branch what Cherry answers per commit, which is
 // what a squash merge needs. Nothing here is absorbed unless a case says so.
 func (a pruneAncestry) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// prune was the one mutating service with no revalidation refusal test, and it
+// is what bounds Apply: Apply re-loads the graph and untracks whatever
+// plan.Landed names against whatever is there now, then unpins fork points.
+func TestRevalidateRefusesWhenWhatHasLandedChangedUnderneath(t *testing.T) {
+	service, _, _, git := syntheticService(t, "synthetic-c", "synthetic-a")
+	selection := graph.Selection{Branch: "synthetic-c", Scope: graph.ScopeStack}
+
+	preview, err := service.Plan(context.Background(), selection)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Another branch lands underneath, so the plan is no longer the one
+	// previewed and what an apply would forget has changed.
+	git.landed["synthetic-b"] = true
+
+	if _, err := service.Revalidate(context.Background(), selection, preview); err == nil {
+		t.Fatal("Revalidate() error = nil, want a refusal")
+	} else if !strings.Contains(err.Error(), "changed during revalidation") {
+		t.Errorf("Revalidate() error = %v, want it to name the change", err)
+	}
+}

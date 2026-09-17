@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/shhac/g2g/internal/githubstack"
@@ -189,6 +190,9 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 }
 
 func (f *fakePusher) Execute(_ context.Context, plan push.Plan) error {
+	// Deliberately does not move the fake remote's tips. A push that reports
+	// success and changes nothing is a real outcome — a lease refused, a hook
+	// that dropped it — and it is the one the wait afterwards has to survive.
 	f.events.record("push:" + strings.Join(plan.Branches, ","))
 	return nil
 }
@@ -247,4 +251,18 @@ func (f fakeSelector) Select(context.Context, stack.Selection, string) (stack.Sn
 	return f.snapshot, f.err
 }
 
-func instant(context.Context, time.Duration) error { return nil }
+// instant is the clock these tests run on: no wall time, but bounded.
+//
+// A pauser that only ever returns nil makes settle spin forever on a condition
+// that never becomes true — which is not what the real one does, because it
+// stops when the context does. A test for a wait that never settles hung
+// instead of failing, so the fake gives up the way the budget would.
+func instant(context.Context, time.Duration) error {
+	attempts.Add(1)
+	if attempts.Load() > 200 {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
+var attempts atomic.Int64

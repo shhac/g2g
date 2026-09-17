@@ -389,3 +389,38 @@ func TestCommandsFollowTheCleanupFlags(t *testing.T) {
 		t.Errorf("recipe does not carry the chosen method:\n%s", recipe)
 	}
 }
+
+// "Waiting for GitHub" reads as propagation lag, and the answer to that is to
+// wait longer — so a push that never reached the remote at all sends somebody
+// to raise a timeout that was never the problem. This is what the first real
+// trial hit: the branch above the merge was replayed, no push was attempted,
+// and the run reported sixty-six failed attempts to observe a commit that had
+// never left the machine.
+func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
+	w := newWorld(t)
+	// The remote is behind the local branch, so a push is planned — and the
+	// fake push, like a lease that was refused, moves nothing. The remote
+	// therefore still holds what the plan saw, so the moved-remote guard is
+	// satisfied and the wait is genuinely reached.
+	w.git.tips = map[string]string{"synthetic-one": "one-stale", "synthetic-two": "two-tip"}
+	w.github.states[41] = githubstack.MergeState{
+		Number: 41, HeadOID: "one-stale", Base: "synthetic-main",
+		State: "OPEN", Mergeable: "MERGEABLE", StateStatus: "CLEAN",
+	}
+	plan := w.plan(t, Defaults())
+
+	err := w.service.Apply(context.Background(), plan)
+
+	if err == nil {
+		t.Fatal("Apply() error = nil, want a refusal")
+	}
+	for _, want := range []string{"not on origin", "the push did not take effect", shortID("one-stale")} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	// And it must not read as a GitHub problem, which is the misdirection.
+	if strings.Contains(err.Error(), "gave up waiting") {
+		t.Errorf("error still reports a wait rather than the push: %v", err)
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -24,10 +25,13 @@ type Git interface {
 	// nothing more over the network.
 	Resolve(context.Context, string) (string, error)
 	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
-	// Cherry says whether a branch has work the base does not, by content. A
-	// branch whose work is entirely in the base has nothing to publish, however
-	// absent it is from the remote.
+	// Cherry and Absorbed say whether a branch has work the base does not, by
+	// content. A branch whose work is entirely in the base has nothing to
+	// publish, however absent it is from the remote -- and it takes both to
+	// know: Cherry cannot see a squash merge, which is the commonest way the
+	// branch that is missing from the remote got that way.
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 }
 
 type Service struct {
@@ -181,12 +185,15 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 		if !published || tip == "" {
 			// Absent from the remote has two meanings, and they want opposite
 			// answers: work nobody has seen, or work that merged and took the
-			// branch with it.
-			own, _, err := s.Git.Cherry(ctx, base, branch, "")
+			// branch with it. Asking per commit alone got the second one
+			// wrong on the commonest way a branch lands -- a squash leaves no
+			// commit with an equivalent, so a branch that merged and was
+			// deleted read as new and was offered for republication.
+			upstream, err := landed.Into(ctx, s.Git, base, branch, "")
 			if err != nil {
 				return nil, err
 			}
-			publishing[branch] = Publication{New: len(own) != 0, Landed: len(own) == 0}
+			publishing[branch] = Publication{New: !upstream, Landed: upstream}
 			continue
 		}
 		local, err := s.Git.Resolve(ctx, branch)

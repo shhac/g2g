@@ -162,6 +162,9 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 }
 
 type fakeGit struct {
+	// absorbed names the branches whose work is already in the base as a whole
+	// even though no individual commit has an equivalent — a squash merge.
+	absorbed             map[string]bool
 	tips                 map[string]string
 	leases               []localgit.Lease
 	current, remote      string
@@ -442,4 +445,49 @@ func TestAnUncomparedPlanDoesNotClaimTheRemoteIsCurrent(t *testing.T) {
 // remote reads as new rather than as one that merged and was deleted.
 func (f *fakeGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
 	return testutil.OwnCommits(head), nil, nil
+}
+
+// Absorbed is the other half of the same question, and answers no here for the
+// same reason: these branches have work of their own. absorbed names the ones
+// that do not, which is a branch whose squash merge left no commit with an
+// equivalent.
+func (f *fakeGit) Absorbed(_ context.Context, _, branch string) (bool, error) {
+	return f.absorbed[branch], nil
+}
+
+// A branch that squash-merged and was deleted on the remote is absent from it
+// and has no commit with an equivalent in the base — a squash is equivalent to
+// none of a branch's commits, so Cherry alone reports every one as new.
+//
+// Asking that question by itself answered scenarios.md's "your branch was
+// deleted after it merged" backwards: the branch read as work nobody had seen
+// and was offered for republication, which is the same blindness AGENTS.md
+// records prune having had.
+func TestABranchThatSquashMergedIsNotOfferedForRepublication(t *testing.T) {
+	git := &fakeGit{
+		current:  "top",
+		branches: []string{"main", "lower", "middle", "top"},
+		// The remote has none of them: top merged and took its branch with it.
+		tips:     map[string]string{},
+		absorbed: map[string]bool{"top": true},
+	}
+	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths()})}
+
+	plan, err := service.Plan(context.Background(), link.Selection{Branch: "top"}, "origin")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+
+	got := plan.Publishing["top"]
+	if got.New {
+		t.Errorf("Publishing[top] = %+v, want it read as landed rather than new", got)
+	}
+	if !got.Landed {
+		t.Errorf("Publishing[top] = %+v, want Landed", got)
+	}
+	// The branches below it still have work, so this is not a whole-plan no-op
+	// — the point is that the landed one is not among what would be published.
+	if !plan.Publishing["lower"].New {
+		t.Errorf("Publishing[lower] = %+v, want the unlanded branches unaffected", plan.Publishing["lower"])
+	}
 }

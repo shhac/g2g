@@ -74,7 +74,14 @@ func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Ro
 			// push asks whether a branch has work its base does not, which is
 			// how a branch that merged and was deleted is told from a new one.
 			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
+			// Absorbed's version gate and its tree comparison. push asks the
+			// whole-branch question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			// Absorbed's other half: the base's own tree, which differs from
+			// what merge-tree answers, so these branches stay unlanded.
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},

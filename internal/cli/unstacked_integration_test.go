@@ -19,7 +19,12 @@ func unstackedRepository(t *testing.T, defaultHead string) *testutil.Recorder {
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "main"},
 			{Prefix: "branch --format", Lines: []string{"main"}},
+			// Absorbed's version gate and tree comparison: push asks the
+			// whole-branch landed question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "merge-base --is-ancestor"},
 			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},
 			{Prefix: "status --porcelain"},

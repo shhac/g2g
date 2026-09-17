@@ -38,7 +38,15 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-other", "synthetic-side", "synthetic-top", "synthetic-trunk"}},
+			// Absorbed's version gate and its tree comparison. push asks the
+			// whole-branch question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
+			// Absorbed's other half: the base's own tree, which differs from
+			// what merge-tree answers, so these branches stay unlanded.
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "merge-base --is-ancestor"},
 			// push asks whether a branch has work the base does not, which is
 			// how a branch that merged and was deleted is told from a new one.
@@ -226,7 +234,12 @@ func dualSourceRepository(t *testing.T) *testutil.Recorder {
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-other", "synthetic-side", "synthetic-top", "synthetic-trunk"}},
+			// Absorbed's version gate and tree comparison: push asks the
+			// whole-branch landed question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "merge-base --is-ancestor"},
 			// push asks whether a branch has work the base does not, which is
 			// how a branch that merged and was deleted is told from a new one.

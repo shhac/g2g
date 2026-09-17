@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -340,20 +341,13 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 // it is the more expensive read.
 func (s Service) landed(ctx context.Context, plan Plan, branch string) (bool, error) {
 	below := ownCommitsFrom(plan, branch)
-	absent, _, err := s.Tips.Cherry(ctx, below, branch, below)
-	if err != nil {
-		// A branch sharing no history with the one below it cannot be
-		// compared, which is an answer rather than a failure.
-		return false, nil
-	}
-	if len(absent) == 0 {
-		return true, nil
-	}
-	absorbed, err := s.Tips.Absorbed(ctx, below, branch)
+	// A branch sharing no history with the one below it cannot be compared,
+	// which is an answer rather than a failure.
+	upstream, err := landed.Into(ctx, s.Tips, below, branch, below)
 	if err != nil {
 		return false, nil
 	}
-	return absorbed, nil
+	return upstream, nil
 }
 
 func issueSummary(issues []Issue) string {

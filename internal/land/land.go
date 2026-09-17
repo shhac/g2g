@@ -10,6 +10,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
@@ -326,15 +327,13 @@ func protectedAfterRestack(steps []Step, mergeability githubstack.Mergeability, 
 // way a branch in a stack lands. An error from either is read as "no": an
 // unrelated history is an answer, not a failure.
 func (s Service) landed(ctx context.Context, branch, base string) (bool, error) {
-	absent, _, err := s.Git.Cherry(ctx, base, branch, "")
-	if err == nil && len(absent) == 0 {
-		return true, nil
-	}
-	absorbed, err := s.Git.Absorbed(ctx, base, branch)
+	// An unrelated history cannot be compared, which is an answer rather than
+	// a failure: a branch nothing can say has landed has not.
+	upstream, err := landed.Into(ctx, s.Git, base, branch, "")
 	if err != nil {
 		return false, nil
 	}
-	return absorbed, nil
+	return upstream, nil
 }
 
 func openNumbers(discovery stack.Discovery) []int {

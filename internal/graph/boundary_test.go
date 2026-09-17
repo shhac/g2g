@@ -27,6 +27,7 @@ func TestGraphDependsOnGitAlone(t *testing.T) {
 		"github.com/shhac/g2g/internal/graph":      true,
 		"github.com/shhac/g2g/internal/shape":      true,
 		"github.com/shhac/g2g/internal/parallel":   true,
+		"github.com/shhac/g2g/internal/landed":     true,
 		"github.com/shhac/g2g/internal/repair":     true,
 		"github.com/shhac/g2g/internal/diagnostic": true,
 		"github.com/shhac/g2g/internal/subprocess": true,

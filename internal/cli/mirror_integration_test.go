@@ -32,7 +32,12 @@ func mirrorRepository(t *testing.T, graphJSON string, graphiteLog []string) *tes
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-stale", "synthetic-top", "synthetic-trunk"}},
 			// import resolves a fork point per adopted edge and asks Git whether
 			// it confirms each declared relationship.
+			// Absorbed's version gate and tree comparison: push asks the
+			// whole-branch landed question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "merge-base --is-ancestor"},
 			{Prefix: "update-ref"},
 		},

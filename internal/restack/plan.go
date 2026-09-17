@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -163,26 +164,14 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 		if err := s.classifyOrphans(ctx, &step); err != nil {
 			return nil, err
 		}
-		own, _, err := s.Git.Cherry(ctx, step.Base, branch, step.ForkPoint)
+		// Nothing of this branch's own is left to replay, so its ref simply
+		// moves. Collapsing here is what keeps a child's replay range from
+		// starting below its parent's landed work -- offered individually, a
+		// squashed parent's commits conflict with the squashed version of
+		// themselves.
+		step.Collapses, err = landed.Into(ctx, s.Git, step.Base, branch, step.ForkPoint)
 		if err != nil {
 			return nil, err
-		}
-		// Nothing of this branch's own is missing from its new base, so it has
-		// nothing left to replay and its ref simply moves there.
-		step.Collapses = len(own) == 0
-		if !step.Collapses {
-			// Per-commit is not enough on the commonest way a branch lands. A
-			// squash combines its commits into one, so that commit is
-			// equivalent to none of them and each is offered to the engine
-			// individually — where they conflict with the squashed version of
-			// themselves. Asking of the whole branch at once is what sees it,
-			// and collapsing here is what keeps a child's replay range from
-			// starting below its parent's landed work.
-			absorbed, err := s.Git.Absorbed(ctx, step.Base, branch)
-			if err != nil {
-				return nil, err
-			}
-			step.Collapses = absorbed
 		}
 		if step.Collapses {
 			landing[branch] = step.Base

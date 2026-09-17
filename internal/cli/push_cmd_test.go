@@ -185,6 +185,7 @@ func TestPushDebugIsStderrOnly(t *testing.T) {
 }
 
 type cliPushGit struct {
+	absorbed           map[string]bool
 	current            string
 	branches, pushed   []string
 	remoteErr, pushErr error
@@ -255,4 +256,12 @@ func (f *cliPushGit) Divergence(context.Context, string, string) (int, int, erro
 // remote reads as new rather than as one that merged and was deleted.
 func (f *cliPushGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
 	return testutil.OwnCommits(head), nil, nil
+}
+
+// Absorbed is the other half of the same question, and answers no here for the
+// same reason: these branches have work of their own. absorbed names the ones
+// that do not, which is a branch whose squash merge left no commit with an
+// equivalent.
+func (f *cliPushGit) Absorbed(_ context.Context, _, branch string) (bool, error) {
+	return f.absorbed[branch], nil
 }

@@ -33,7 +33,12 @@ func TestProductionAdaptersUseOneAtomicLeasePush(t *testing.T) {
 		"gt": `if [ "$1" = "--version" ]; then printf '1.8.6\n'; exit 0; fi
 if [ "$*" = "log short --all --reverse --no-interactive" ]; then cat "$GT_FIXTURE"; exit 0; fi
 exit 9`,
-		"git": `if [ "$1 $2" = "remote get-url" ]; then printf 'https://example.test/synthetic.git\n'; exit 0; fi
+		// Absorbed asks the version first, so the fake has to answer before it
+		// reads $2 — under set -u a one-argument call is an unbound variable,
+		// not a fall-through.
+		"git": `if [ "$1" = "--version" ]; then printf 'git version 2.44.0\n'; exit 0; fi
+if [ "$1" = "merge-tree" ]; then printf 'tttttttttttttttttttttttttttttttttttttttt\n'; exit 0; fi
+if [ "$1 $2" = "remote get-url" ]; then printf 'https://example.test/synthetic.git\n'; exit 0; fi
 if [ "$1" = "ls-remote" ]; then printf '1111111111111111111111111111111111111111\trefs/heads/alpha\n2222222222222222222222222222222222222222\trefs/heads/beta\n'; exit 0; fi
 if [ "$1 $2" = "branch --show-current" ]; then printf 'beta\n'; exit 0; fi
 if [ "$1" = "branch" ]; then printf 'main\nalpha\nbeta\nbeta-top\nbeta-side\ngamma\ngamma-deep\n'; exit 0; fi
@@ -46,6 +51,7 @@ if [ "$1 $2" = "rev-parse --verify" ]; then
   esac
   exit 0
 fi
+if [ "$1" = "rev-parse" ]; then printf 'dddddddddddddddddddddddddddddddddddddddd\n'; exit 0; fi
 if [ "$1" = "rev-list" ]; then printf '0\t1\n'; exit 0; fi
 if [ "$1" = "cherry" ]; then printf '+ 1111111111111111111111111111111111111111\n'; exit 0; fi
 exit 9`,

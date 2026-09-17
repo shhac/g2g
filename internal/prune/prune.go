@@ -19,6 +19,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -125,14 +126,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 // parent not at all. A Git too old to be asked says no, which costs the
 // squash-merge case and nothing else.
 func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bool, error) {
-	absent, _, err := s.Git.Cherry(ctx, edge.Parent, branch, edge.ForkPoint)
-	if err != nil {
-		return false, err
-	}
-	if len(absent) == 0 {
-		return true, nil
-	}
-	return s.Git.Absorbed(ctx, edge.Parent, branch)
+	return landed.Into(ctx, s.Git, edge.Parent, branch, edge.ForkPoint)
 }
 
 // stranded names the branches that would be forgotten while something recorded

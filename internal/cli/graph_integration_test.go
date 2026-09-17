@@ -40,7 +40,12 @@ func graphRepository(t *testing.T, adopted string) (*testutil.Recorder, string) 
 			// too: Lines spills to a file and can carry one.
 			{Prefix: "rev-list --left-right --count", Lines: []string{"1\t1"}},
 			{Prefix: "merge-base --is-ancestor"},
+			// Absorbed's version gate and tree comparison: push asks the
+			// whole-branch landed question now, not just the per-commit one.
+			{Prefix: "--version", Output: "git version 2.44.0"},
+			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
 			{Prefix: "update-ref"},
 		},
 	})

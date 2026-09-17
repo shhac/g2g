@@ -213,6 +213,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			plan.Steps = nil
 			return plan, nil
 		}
+		decided.RemoteTip = tips[step.Branch]
+		if len(plan.Steps) != 0 {
+			// Everything above the bottom branch is replayed onto the advanced
+			// trunk before its turn, which rewrites it, so it will need
+			// publishing however current it looks now.
+			decided.Push = true
+		}
 		plan.Steps = append(plan.Steps, decided)
 	}
 	plan.Protected = protectedAfterRestack(plan.Steps, mergeability, options)

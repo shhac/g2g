@@ -78,10 +78,15 @@ func (s Service) cycle(ctx context.Context, plan Plan, step Step, index int) err
 // merge publishes the branch, points its pull request at the right base, waits
 // for GitHub to have seen both, and merges.
 func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
-	if step.Push {
-		if err := s.publish(ctx, plan, step); err != nil {
-			return err
-		}
+	// Unconditionally, whatever the plan said. Step.Push was decided before
+	// anything moved, and by the time a branch above the first comes round its
+	// replay has rewritten it -- so a plan that said "already published" is
+	// describing a commit that no longer exists. push answers the question
+	// again from the tips it reads itself and does nothing when there is
+	// nothing to do, which makes asking it every time free and trusting the
+	// preview wrong.
+	if err := s.publish(ctx, plan, step); err != nil {
+		return err
 	}
 	if step.Retargets() {
 		// The base only goes stale during the run: the branch below merged and
@@ -127,16 +132,40 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 // match its own reading and overwrite whatever a reviewer had pushed -- and
 // then merge it.
 func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
-	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: stack.ScopeBranch}, plan.Options.Remote)
+	// The path, not the branch alone: push needs a base to compare against and
+	// a single-branch selection has no ancestry to take one from. Landing
+	// forgets each branch as it lands, so by the time this runs the path from
+	// the trunk holds exactly the branch being published -- and asserting that
+	// is worth more than the scope would have been, because more than one
+	// branch here means an earlier cycle did not tidy up and the extra one has
+	// already merged.
+	// Whether this branch's published version is its own or somebody else's is
+	// the one question push cannot answer here. After a replay the remote
+	// holds commits the branch no longer has, which is exactly the shape of a
+	// reviewer's fix, and push refuses both. What tells them apart is whether
+	// the remote still holds what the plan saw: land moves these refs itself
+	// and knows what it left there.
+	tips, err := s.Git.RemoteTips(ctx, plan.Options.Remote, []string{step.Branch})
 	if err != nil {
 		return err
 	}
-	if published.Blocked != "" {
-		return fmt.Errorf("cannot publish %s: %s", step.Branch, published.Blocked)
+	if tips[step.Branch] != step.RemoteTip {
+		return fmt.Errorf("%s has moved on %s since this was planned, so it carries work this descent has not seen · fetch and reconcile it, then rerun", plan.Options.Remote, step.Branch)
+	}
+	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: stack.ScopePath}, plan.Options.Remote)
+	if err != nil {
+		return err
+	}
+	if len(published.Branches) != 1 || published.Branches[0] != step.Branch {
+		return fmt.Errorf("publishing %s would also push %s, which has already landed", step.Branch, strings.Join(published.Branches, ", "))
 	}
 	if published.NothingToPublish() {
 		return nil
 	}
+	// push's own refusal is deliberately not consulted: it is the "the remote
+	// has moved" check, which the comparison above has just answered more
+	// precisely. Its lease still guards the push itself, pinned to the tips it
+	// read, so a ref that moves between here and the push is still rejected.
 	return s.Pusher.Execute(ctx, published)
 }
 

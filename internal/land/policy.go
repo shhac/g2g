@@ -32,6 +32,15 @@ type Step struct {
 	// nothing to merge and only the cleanup is left. It is answered by Git,
 	// never by the pull request's own state.
 	Landed bool
+	// RemoteTip is what the remote held for this branch when the descent was
+	// planned, and is empty when it held nothing.
+	//
+	// It is what tells this branch's own previous version from somebody else's
+	// commit. Once a replay has rewritten a branch the remote legitimately
+	// holds work the branch no longer has, which is indistinguishable from a
+	// reviewer having pushed a fix -- push refuses both, correctly, and land
+	// has to know which one it is looking at.
+	RemoteTip string
 }
 
 // Retargets reports a pull request that has to be pointed somewhere else first.

@@ -31,7 +31,7 @@ func (p Plan) Commands() []Command {
 		if step.Merges() {
 			if step.Push {
 				commands = append(commands, Command{
-					Command: fmt.Sprintf("g2g push --branch %s --scope branch --apply", step.Branch),
+					Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", step.Branch),
 					Effect:  "publish it as it is here",
 				})
 			}

@@ -68,6 +68,21 @@ func (b budgets) landing(ctx context.Context, branches int) (context.Context, co
 	return context.WithTimeout(ctx, b.limit(mutationBase+time.Duration(branches)*landingPerBranch))
 }
 
+// discoveryTimedOut names the phase and the way out.
+//
+// What comes back from a discovery that runs out of time is whichever Git call
+// happened to be in flight, which on a large checkout is a pair of branches the
+// command was never asked about. That is true and useless: it reads as a fault
+// in two branches rather than as a ceiling, and nothing in it suggests raising
+// one. Nobody should have to know that a rev-list between two strangers means
+// "this repository is bigger than the default allows".
+func discoveryTimedOut(err error) error {
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return fmt.Errorf("timed out working out what to do, before anything was changed · a large repository can need longer than the %s default (raise it with --timeout)", discoveryTimeout)
+}
+
 func mutationTimeout(err error, recovery string) error {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		return err

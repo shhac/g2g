@@ -171,7 +171,8 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   touches must be safe for it: `diagnostic.Writer.Event` assembles its line and
   writes once for exactly this reason, and a fake handed to `link.Tips` must not
   accumulate state without synchronising. Run `go test -race` on
-  `internal/link` and `internal/cli` after touching any of it.
+  `internal/link` and `internal/cli` after touching any of it; CI runs the
+  scoped race suite on every push, so the rule has a check behind it.
 - Currency is counted **by content and bounded to a branch's own commits**, so
   `link.Tips` needs `Cherry` and not `Divergence`. Counting commit ids answered
   the ordinary case wrongly in both directions: a branch replayed onto a trunk

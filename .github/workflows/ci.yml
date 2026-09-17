@@ -44,3 +44,11 @@ jobs:
       # credentials and makes no network requests.
       - name: go test
         run: go test ./...
+
+      # AGENTS.md requires the race detector after anything concurrent, and the
+      # lock-free design in internal/link and the candidate warm in internal/graph
+      # are the class of invariant only it enforces.
+      # Scoped rather than module-wide so the four-minute internal/cli suite is
+      # paid once, and a rule with no check behind it stops being one.
+      - name: go test -race
+        run: go test -race ./internal/link ./internal/graph ./internal/parallel ./internal/land

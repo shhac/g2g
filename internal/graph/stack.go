@@ -166,31 +166,18 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	// branches.
 	roots := s.knownRoots(adopted)
 	candidatesFor := make(map[string][]Candidate, len(local))
-	lookup := func(branch string) ([]Candidate, error) {
-		if cached, found := candidatesFor[branch]; found {
-			return cached, nil
-		}
-		// Related, not Candidates: Attach acts only on candidates that are
-		// genuinely ancestors, and Candidates' fallback can only produce
-		// branches that are not -- the set Related measures already contains
-		// every ancestor there is. Asking for the fallback measured every
-		// local branch against every other one and discarded all of it, which
-		// on a thirty-branch repository was the overwhelming majority of the
-		// Git calls a whole-stack adoption made.
-		candidates, err := relatedWithin(ctx, s.Git, branch, roots, local)
-		if err != nil {
-			return nil, err
-		}
-		candidatesFor[branch] = candidates
-		return candidates, nil
-	}
 
-	// Warmed before the growth loop rather than lazily inside it. The loop
-	// consults every local branch on its first pass anyway, so this is the
-	// same work; asking for it together is what stops a repository's worth of
-	// independent process spawns happening one at a time. Each answer is
-	// written to its own element and folded into the cache afterwards, so
-	// nothing here needs a lock.
+	// Every branch the loop will consult, asked together. It consults all of
+	// them on its first pass anyway, so this is the same work; asking for it
+	// at once is what stops a repository's worth of independent process spawns
+	// happening one at a time. Each answer is written to its own element and
+	// folded into the map afterwards, so nothing here needs a lock.
+	//
+	// Related, not Candidates: Attach acts only on candidates that are
+	// genuinely ancestors, and Candidates' fallback can only produce branches
+	// that are not -- the set Related measures already contains every ancestor
+	// there is. Asking for the fallback measured every local branch against
+	// every other one and discarded all of it.
 	warmed := make([][]Candidate, len(local))
 	if err := parallel.Each(ctx, local, func(ctx context.Context, index int, branch string) error {
 		if chosen[branch] {
@@ -218,11 +205,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 			if chosen[branch] {
 				continue
 			}
-			candidates, err := lookup(branch)
-			if err != nil {
-				return nil, err
-			}
-			parent, attached, err := Attach(candidates, selected)
+			parent, attached, err := Attach(candidatesFor[branch], selected)
 			if err != nil {
 				return nil, err
 			}

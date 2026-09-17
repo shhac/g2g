@@ -162,7 +162,7 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   request head, falling back to asking individually only when the batch cannot
   say which revision it could not resolve. What is genuinely per-pair —
   `git cherry`, `git merge-tree` — is what concurrency is for.
-- The per-branch reads run concurrently, bounded by `link.eachBranch`. They are
+- The per-branch reads run concurrently, bounded by `parallel.Each`. They are
   independent process spawns and were two thirds of a status on a fourteen-
   branch stack; asking eight at once took it from 4.2s to 2.6s, and what is
   left is four external CLI calls that cannot overlap each other. Results land

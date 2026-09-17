@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/parallel"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -323,7 +324,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	}
 	// Distinct elements of a slice that already exists, so the writes need no
 	// lock: each read owns the one issue it was given.
-	return eachBranch(ctx, asking, func(ctx context.Context, index int, branch string) error {
+	return parallel.Each(ctx, asking, func(ctx context.Context, index int, branch string) error {
 		if branch == "" {
 			return nil
 		}
@@ -442,7 +443,7 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 	// at a time — so the branches are asked at once instead. The results land
 	// in a slice sized first, which is what makes that safe without a lock.
 	states := make([]*Currency, len(plan.Branches))
-	err = eachBranch(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
+	err = parallel.Each(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
 		pr, published := open[branch]
 		if !published || pr.HeadOID == "" {
 			return nil

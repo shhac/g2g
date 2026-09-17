@@ -51,8 +51,8 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		return err
 	}
 	landed := make([]string, 0, len(plan.Steps))
-	for index, step := range plan.Steps {
-		if err := s.cycle(ctx, plan, step, index); err != nil {
+	for _, step := range plan.Steps {
+		if err := s.cycle(ctx, plan, step); err != nil {
 			return &Stopped{Landed: landed, Branch: step.Branch, Err: err}
 		}
 		if step.Merges() {
@@ -63,7 +63,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 }
 
 // cycle lands one branch and tidies up after it.
-func (s Service) cycle(ctx context.Context, plan Plan, step Step, index int) error {
+func (s Service) cycle(ctx context.Context, plan Plan, step Step) error {
 	diagnostic.Event(ctx, "land.cycle",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
 		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
@@ -73,7 +73,7 @@ func (s Service) cycle(ctx context.Context, plan Plan, step Step, index int) err
 			return err
 		}
 	}
-	return s.tidy(ctx, plan, step, index)
+	return s.tidy(ctx, plan, step)
 }
 
 // merge publishes the branch, points its pull request at the right base, waits
@@ -271,8 +271,8 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step) error {
 // Nothing here can stop the descent. The work is merged; a branch that could
 // not be deleted is untidy, and reporting it as a failed land would be wrong
 // about the thing that matters and would strand the branches above.
-func (s Service) tidy(ctx context.Context, plan Plan, step Step, index int) error {
-	if err := s.advance(ctx, plan, index); err != nil {
+func (s Service) tidy(ctx context.Context, plan Plan, step Step) error {
+	if err := s.advance(ctx, plan); err != nil {
 		return err
 	}
 	if plan.Options.Forget {
@@ -285,11 +285,11 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, index int) erro
 }
 
 // advance fast-forwards the base and replays what is left onto it.
-func (s Service) advance(ctx context.Context, plan Plan, index int) error {
+func (s Service) advance(ctx context.Context, plan Plan) error {
+	// The top of what remains, always. A guard here read as a special case for
+	// the last step and was not one: where it held, index was already the last
+	// index, so both branches named the same branch.
 	target := plan.Steps[len(plan.Steps)-1].Branch
-	if index == len(plan.Steps)-1 {
-		target = plan.Steps[index].Branch
-	}
 	synced, err := s.Syncer.Plan(ctx, graph.Selection{Branch: target, Scope: graph.ScopeStack}, plan.Options.Remote, syncer.TakeNothing)
 	if err != nil {
 		return err

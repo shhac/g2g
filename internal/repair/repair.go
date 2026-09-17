@@ -63,14 +63,6 @@ func (n Note) SentenceWith(decorate func(string) string) string {
 	return n.Reason + " · " + ways
 }
 
-// Sentence renders the steps as one line, for a reader who gets one line: a
-// machine field, or stderr, where there is no column to lay them out in.
-//
-// It exists so the sentence and the laid-out form cannot name different
-// commands. Where a package needs different wording it composes its own — what
-// must not happen is the two being typed out separately and drifting.
-func Sentence(steps []Step) string { return sentence(steps, nil) }
-
 func sentence(steps []Step, decorate func(string) string) string {
 	if decorate == nil {
 		decorate = func(command string) string { return command }

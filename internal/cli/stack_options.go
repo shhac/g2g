@@ -87,16 +87,3 @@ func (o stackOptions) validateSource() error {
 	return fmt.Errorf("this command cannot read structure from %q · it takes %s, because reading a pull request base means invoking gh and this command never does",
 		o.from, strings.Join(names, " or "))
 }
-
-// sourceCompletions offers the sources a build can read from. It is a fixed
-// list rather than one derived from the resolver: completion must not depend on
-// repository state to name a flag's own vocabulary.
-func sourceCompletions(_ context.Context, prefix string) ([]string, error) {
-	var matches []string
-	for _, source := range []stack.Source{stack.SourceG2G, stack.SourceGraphite, stack.SourcePullRequest} {
-		if strings.HasPrefix(string(source), prefix) {
-			matches = append(matches, string(source))
-		}
-	}
-	return matches, nil
-}

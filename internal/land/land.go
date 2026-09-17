@@ -252,6 +252,20 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 	if len(discovery.Branches) == 0 {
 		return "nothing is stacked here to land", repair.Note{}
 	}
+	// Landing reads pull requests from whichever source describes the stack and
+	// then replays, reparents and forgets in g2g's own graph. Those are not the
+	// same record. Told to act on a structure g2g has not adopted, it would
+	// merge every pull request and then find nothing to replay and nothing to
+	// forget -- a stack taken apart on GitHub and left untouched here.
+	if discovery.Source != stack.SourceG2G {
+		note := repair.Note{
+			Reason: fmt.Sprintf("this stack is described by %s, and landing rewrites the branches above each merge in g2g's own graph", discovery.Source),
+			Ways: []repair.Step{
+				{Command: "g2g track --stack", Effect: "adopt it, so there is a structure to replay against"},
+			},
+		}
+		return note.Sentence(), note
+	}
 	if discovery.Target == discovery.Base {
 		note := repair.Note{
 			Reason: fmt.Sprintf("%s is a trunk, and landing it would merge every branch above it", discovery.Target),

@@ -424,3 +424,34 @@ func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
 		t.Errorf("error still reports a wait rather than the push: %v", err)
 	}
 }
+
+// Landing reads pull requests from whichever source describes the stack, and
+// then replays and forgets in g2g's own graph. Told to act on a structure g2g
+// has not adopted, it would merge every pull request and then find nothing to
+// replay and nothing to forget — a stack taken apart on GitHub and left whole
+// here.
+func TestLandRefusesAStackG2GHasNotAdopted(t *testing.T) {
+	for _, source := range []stack.Source{stack.SourceGraphite, stack.SourcePullRequest} {
+		t.Run(string(source), func(t *testing.T) {
+			w := newWorld(t)
+			snapshot := w.service.Selector.(fakeSelector).snapshot
+			snapshot.Source = source
+			w.service.Selector = fakeSelector{snapshot: snapshot}
+
+			plan := w.plan(t, Defaults())
+
+			if !strings.Contains(plan.Blocked, string(source)) {
+				t.Errorf("Blocked = %q, want it to name the source that described the stack", plan.Blocked)
+			}
+			if !strings.Contains(plan.Repair.Sentence(), "g2g track --stack") {
+				t.Errorf("Repair = %q, want it to name the way in", plan.Repair.Sentence())
+			}
+			if err := w.service.Apply(context.Background(), plan); err == nil {
+				t.Error("Apply() ran a blocked plan")
+			}
+			if merges := w.events.only("merge:"); len(merges) != 0 {
+				t.Errorf("merged %v from a structure it cannot replay", merges)
+			}
+		})
+	}
+}

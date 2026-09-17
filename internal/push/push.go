@@ -286,7 +286,6 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	return s.Git.PushAtomic(ctx, plan.Remote, plan.Leases())
 }
 
-// Equal compares every fact that can change which refs are pushed where.
 // Equal compares every fact that changes what the push does, including the
 // remote tips the leases assert: a branch that moved on the remote between
 // preview and apply must stop the push, not be overwritten by it.

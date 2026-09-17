@@ -152,9 +152,18 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Steps, other.Steps)
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli, which spelled the same six-way conjunction out by hand.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Selector != nil && s.GitHub != nil &&
+		s.Pusher != nil && s.Syncer != nil && s.Pruner != nil
+}
+
 // Plan decides the whole descent without changing anything.
 func (s Service) Plan(ctx context.Context, selection stack.Selection, options Options) (Plan, error) {
-	if s.Git == nil || s.Selector == nil || s.GitHub == nil || s.Pusher == nil || s.Syncer == nil || s.Pruner == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("land service is not fully configured")
 	}
 	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "g2g land")
@@ -192,10 +201,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		// will not exist by then. Along answers the stacked question, which is
 		// the right one for status and the wrong one for this.
 		step.ExpectedBase = plan.Trunk
-		landed, err := s.landed(ctx, step.Branch, plan.Trunk)
-		if err != nil {
-			return Plan{}, err
-		}
+		landed := s.landed(ctx, step.Branch, plan.Trunk)
 		state := stateFor(mergeability, step)
 		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
@@ -326,14 +332,11 @@ func protectedAfterRestack(steps []Step, mergeability githubstack.Mergeability, 
 // because it is the only one that sees a squash merge, which is the commonest
 // way a branch in a stack lands. An error from either is read as "no": an
 // unrelated history is an answer, not a failure.
-func (s Service) landed(ctx context.Context, branch, base string) (bool, error) {
-	// An unrelated history cannot be compared, which is an answer rather than
-	// a failure: a branch nothing can say has landed has not.
+// It cannot fail. An unrelated history cannot be compared, which is an answer
+// rather than a failure: a branch nothing can say has landed has not.
+func (s Service) landed(ctx context.Context, branch, base string) bool {
 	upstream, err := landed.Into(ctx, s.Git, base, branch, "")
-	if err != nil {
-		return false, nil
-	}
-	return upstream, nil
+	return err == nil && upstream
 }
 
 func openNumbers(discovery stack.Discovery) []int {

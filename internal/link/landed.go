@@ -39,11 +39,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 		if branch == "" {
 			return nil
 		}
-		landed, err := s.landed(ctx, plan, branch)
-		if err != nil {
-			return err
-		}
-		if !landed {
+		if !s.landed(ctx, plan, branch) {
 			return nil
 		}
 		below := ownCommitsFrom(plan, branch)
@@ -61,13 +57,11 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 // it. The cheap per-commit question comes first; the whole-branch merge is
 // asked only of what it says no to, because that is the squash-merge case and
 // it is the more expensive read.
-func (s Service) landed(ctx context.Context, plan Plan, branch string) (bool, error) {
+// It cannot fail. A branch sharing no history with the one below it cannot be
+// compared, which is an answer rather than a failure, so the only fallible call
+// in here is answered rather than returned.
+func (s Service) landed(ctx context.Context, plan Plan, branch string) bool {
 	below := ownCommitsFrom(plan, branch)
-	// A branch sharing no history with the one below it cannot be compared,
-	// which is an answer rather than a failure.
 	upstream, err := landed.Into(ctx, s.Tips, below, branch, below)
-	if err != nil {
-		return false, nil
-	}
-	return upstream, nil
+	return err == nil && upstream
 }

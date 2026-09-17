@@ -121,13 +121,10 @@ type fakeGitHub struct {
 	prs    []githubstack.PullRequest
 	// states is what Mergeability answers, and merging mutates it, so a settle
 	// that asks after a merge sees what GitHub would say.
-	states  map[int]githubstack.MergeState
-	allowed githubstack.Allowed
-	// settleAfter delays the merge settling by this many asks, standing in for
-	// GitHub recording a merge before the ref carrying it arrives.
-	settleAfter int
-	asked       int
-	mergeErr    error
+	states   map[int]githubstack.MergeState
+	allowed  githubstack.Allowed
+	asked    int
+	mergeErr error
 	// settleOn runs after the first question, standing in for GitHub catching
 	// up with a push it had not yet observed.
 	settleOn func()

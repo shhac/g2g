@@ -240,7 +240,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	if options.Retarget.Ready() {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
 	}
-	if options.Land.Git != nil && options.Land.Selector != nil && options.Land.GitHub != nil && options.Land.Pusher != nil && options.Land.Syncer != nil && options.Land.Pruner != nil {
+	if options.Land.Ready() {
 		root.AddCommand(newLand(options.Land, completions, guard, presentation))
 	}
 	if options.Align.Ready() {

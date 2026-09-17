@@ -169,14 +169,6 @@ type divergence struct {
 	Ours, Theirs int
 }
 
-// divergenceReason says which branches both sides moved, and what each side
-// holds that the other does not.
-//
-// Naming only one side was the problem: "you have work the published version
-// does not" is true of every ordinary commit, so a reader who had just made one
-// could not tell whether that was what the message meant. Both counts make it
-// unambiguous, and the counts are by content, so a commit the other side
-// already has under a different id is not counted against you.
 // divergenceWays is the choice a divergence leaves, and there is exactly one
 // place it can be made: --take is the only path where sync discards work that
 // exists nowhere else, and it has no "mine" value.
@@ -187,6 +179,14 @@ func divergenceWays() []repair.Step {
 	}
 }
 
+// divergenceReason says which branches both sides moved, and what each side
+// holds that the other does not.
+//
+// Naming only one side was the problem: "you have work the published version
+// does not" is true of every ordinary commit, so a reader who had just made one
+// could not tell whether that was what the message meant. Both counts make it
+// unambiguous, and the counts are by content, so a commit the other side
+// already has under a different id is not counted against you.
 func divergenceReason(stuck []divergence) string {
 	parts := make([]string, 0, len(stuck))
 	for _, moved := range stuck {

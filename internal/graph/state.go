@@ -165,11 +165,7 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 // sitting exactly where it was recorded cannot have landed without also having
 // no work of its own.
 func drifted(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string, otherwise NodeState) (NodeState, error) {
-	landed, err := landedInATrunk(ctx, git, g, present, branch)
-	if err != nil {
-		return "", err
-	}
-	if landed {
+	if landedInATrunk(ctx, git, g, present, branch) {
 		return StateLanded, nil
 	}
 	return otherwise, nil
@@ -181,8 +177,9 @@ func drifted(ctx context.Context, git Ancestry, g Graph, present map[string]bool
 //
 // Every trunk the graph knows is asked, because the branch's own trunk may be
 // exactly the one that has gone. A trunk that is not a local branch is skipped
-// rather than failing the read.
-func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string) (bool, error) {
+// rather than failing the read, and nothing in here can fail: the one fallible
+// call is answered rather than returned.
+func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string) bool {
 	for _, trunk := range g.Trunks {
 		if !present[trunk] || trunk == branch {
 			continue
@@ -196,13 +193,13 @@ func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[stri
 		// structural one.
 		upstream, err := landed.Into(ctx, git, trunk, branch, "")
 		if err != nil {
-			return false, nil
+			return false
 		}
 		if upstream {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 // emptyOrAligned separates a branch sitting where it belongs from one sitting

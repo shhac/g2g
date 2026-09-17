@@ -167,9 +167,9 @@ func (s Service) Ready() bool {
 	return s.Git != nil && s.Selector != nil && s.GitHub != nil
 }
 
-// DiscoverWithOptions resolves an optional pivot and optional full linear
+// discover resolves an optional pivot and optional full linear
 // stack without checking out any branch.
-func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (Plan, error) {
+func (s Service) discover(ctx context.Context, selection Selection) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
@@ -184,7 +184,7 @@ func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (
 // have the expected base relationship. sync deliberately has a separate,
 // explicit reconciliation policy for detected divergence.
 func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
-	plan, err := s.DiscoverWithOptions(ctx, selection)
+	plan, err := s.discover(ctx, selection)
 	if err != nil {
 		return Plan{}, err
 	}

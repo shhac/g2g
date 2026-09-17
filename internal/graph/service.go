@@ -118,10 +118,20 @@ func (d Discovery) branchesInState(want NodeState) []string {
 	return matching
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Store != nil
+}
+
 // Discover loads the adopted graph and assesses the selected branches against
 // Git. It never writes and never checks a branch out.
 func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, error) {
-	if s.Git == nil || s.Store == nil {
+	if !s.Ready() {
 		return Discovery{}, fmt.Errorf("graph service is not fully configured")
 	}
 	target, source, err := s.target(ctx, selection.Branch)

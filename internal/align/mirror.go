@@ -189,6 +189,17 @@ func (s Service) RevalidateMirror(ctx context.Context, prune bool, preview Mirro
 	return current, nil
 }
 
+// Ready reports a service with everything it needs.
+//
+// Unlike its siblings this is the registration rule alone, not also the guard
+// below. One service backs two commands with different needs: import reads
+// ancestry through the Git client and mirror does not, so the rule for "may
+// these commands exist" is the union and the rule for "may this call proceed"
+// stays per-path.
+func (s Service) Ready() bool {
+	return s.Store != nil && s.Graphite != nil && s.Git != nil
+}
+
 // Equal compares everything that changes what the write does.
 func (p MirrorPlan) Equal(other MirrorPlan) bool {
 	if p.Blocked != other.Blocked || len(p.Writes) != len(other.Writes) {

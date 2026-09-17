@@ -156,11 +156,26 @@ func (p Plan) onto() string {
 	return localgit.IsolatedRef(p.Remote, p.Base)
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+//
+// sync fetches, advances a base and replays, and the replay writes the
+// recorded graph, so it needs all three. The registration gate asked for the
+// store and the guard asked for the restacker, so a build with one and not the
+// other either registered a command that fails on use or hid one that works.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Restack != nil && s.Graph.Store != nil
+}
+
 // Plan works out the whole sequence without performing any of it. The fetch is
 // the one step that reaches the network, and it writes only into g2g's own
 // ref namespace, so previewing costs the repository nothing.
 func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string, take Take) (Plan, error) {
-	if s.Git == nil || s.Restack == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
 	if err := s.Git.Remote(ctx, remote); err != nil {
@@ -314,7 +329,7 @@ func (s Service) Revalidate(ctx context.Context, selection graph.Selection, remo
 	if err != nil {
 		return Plan{}, err
 	}
-	if err := diagnostic.Revalidated(ctx, "sync.revalidation", "plan", current.Equal(preview)); err != nil {
+	if err := diagnostic.Revalidated(ctx, "sync", "plan", current.Equal(preview)); err != nil {
 		return Plan{}, err
 	}
 	return current, nil

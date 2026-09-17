@@ -51,6 +51,16 @@ type Plan struct {
 	RemoteTips map[string]string
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Selector != nil && s.GitHub != nil
+}
+
 // Leases pairs each selected branch with the tip the plan observed for it.
 func (p Plan) Leases() []localgit.Lease {
 	leases := make([]localgit.Lease, 0, len(p.Snapshot.Branches))
@@ -61,7 +71,7 @@ func (p Plan) Leases() []localgit.Lease {
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
-	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("submit service is not fully configured")
 	}
 	if err := s.Git.Remote(ctx, remote); err != nil {

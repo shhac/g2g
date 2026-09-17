@@ -69,9 +69,22 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Landed, other.Landed)
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+//
+// Apply loads and saves the graph, so the store is as required as the Git
+// client the guard used to ask for alone.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Graph.Store != nil
+}
+
 // Plan works out what has landed without changing anything.
 func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, error) {
-	if s.Git == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("prune service is not fully configured")
 	}
 	discovery, err := s.Graph.Discover(ctx, selection)
@@ -155,7 +168,7 @@ func (s Service) Revalidate(ctx context.Context, selection graph.Selection, prev
 	if err != nil {
 		return Plan{}, err
 	}
-	if err := diagnostic.Revalidated(ctx, "prune.revalidation", "plan", current.Equal(preview)); err != nil {
+	if err := diagnostic.Revalidated(ctx, "prune", "plan", current.Equal(preview)); err != nil {
 		return Plan{}, err
 	}
 	return current, nil

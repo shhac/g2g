@@ -78,9 +78,19 @@ func (p Plan) Equal(other Plan) bool {
 	return true
 }
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Selector != nil && s.GitHub != nil
+}
+
 // Plan works out which pull requests point at the wrong branch.
 func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, error) {
-	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("retarget service is not fully configured")
 	}
 	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "gh pr edit")

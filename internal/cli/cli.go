@@ -206,40 +206,44 @@ func NewWithOptions(options Options) *cobra.Command {
 		&cobra.Group{ID: groupMaintain, Title: "Keeping it true:"},
 	)
 	completions := options.Completions
-	root.AddCommand(newLink(options.Link, completions, guard, presentation))
-	root.AddCommand(newStatus(options.Link, completions, presentation))
-	root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
-	if options.Push.Git != nil && options.Push.Selector != nil {
+	// Options' own doc comment says a zero service means its command is not
+	// registered, and these three were the exception to it.
+	if options.Link.Ready() {
+		root.AddCommand(newLink(options.Link, completions, guard, presentation))
+		root.AddCommand(newStatus(options.Link, completions, presentation))
+		root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
+	}
+	if options.Push.Ready() {
 		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}
-	if options.Submit.Git != nil && options.Submit.Selector != nil && options.Submit.GitHub != nil {
+	if options.Submit.Ready() {
 		root.AddCommand(newSubmit(options.Submit, completions, guard, presentation))
 	}
-	if options.Graph.Git != nil && options.Graph.Store != nil {
+	if options.Graph.Ready() {
 		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
 	}
-	if options.Restack.Git != nil && options.Restack.Journal != nil {
+	if options.Restack.Ready() {
 		root.AddCommand(newRestack(options.Restack, presentation))
 	}
-	if options.Sync.Git != nil && options.Sync.Graph.Store != nil {
+	if options.Sync.Ready() {
 		root.AddCommand(newSync(options.Sync, guard, presentation))
 	}
 	// prune reads Git and the graph store and nothing else, so it is available
 	// wherever those are. It was registered under sync's condition when it was
 	// still part of sync, which meant a build configured for one and not the
 	// other silently lost the command.
-	if options.Prune.Git != nil && options.Prune.Graph.Store != nil {
+	if options.Prune.Ready() {
 		root.AddCommand(newPrune(options.Prune, guard, presentation))
 	}
-	if options.Retarget.Git != nil && options.Retarget.Selector != nil && options.Retarget.GitHub != nil {
+	if options.Retarget.Ready() {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
 	}
 	if options.Land.Git != nil && options.Land.Selector != nil && options.Land.GitHub != nil && options.Land.Pusher != nil && options.Land.Syncer != nil && options.Land.Pruner != nil {
 		root.AddCommand(newLand(options.Land, completions, guard, presentation))
 	}
-	if options.Align.Store != nil && options.Align.Git != nil && options.Align.Graphite != nil {
+	if options.Align.Ready() {
 		root.AddCommand(newMirror(options.Align, guard, presentation))
 		root.AddCommand(newImport(options.Align, guard, presentation))
 	}

@@ -16,7 +16,12 @@ func pushView(plan push.Plan) stackView {
 		Action:       append([]string{"git", "push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...),
 	}
 	for _, branch := range plan.Branches {
-		state, level := publicationState(plan.Publishing[branch], plan.Publishing != nil)
+		// Whether this branch was compared, not whether the map exists. The
+		// domain package asks it this way for a reason — push.NothingToPublish
+		// does the same — and the weaker proxy was the one path where a branch
+		// missing from a populated map rendered as the reassuring answer.
+		publication, compared := plan.Publishing[branch]
+		state, level := publicationState(publication, compared)
 		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target, State: state, Severity: level})
 	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)

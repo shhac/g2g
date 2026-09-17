@@ -146,3 +146,23 @@ func TestCommandsSayWhetherTheyPreviewOrRead(t *testing.T) {
 		}
 	}
 }
+
+// A command must not be registered by a rule different from the one its
+// service enforces. The two were hand-written conjunctions in separate files
+// and three had already drifted: sync's gate asked for the graph store while
+// its guard asked for the restacker, so a build with one and not the other
+// either advertised a command that refuses on use or hid one that works.
+func TestRegistrationAgreesWithWhatEachServiceRequires(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// Every service left zero: nothing but the always-available commands.
+	bare := NewWithOptions(Options{
+		Version: "v0.0.0-test", CommandName: "g2g", Stdout: &stdout, Stderr: &stderr,
+	})
+	for _, command := range bare.Commands() {
+		switch command.Name() {
+		case "help", "completion":
+			continue
+		}
+		t.Errorf("%s was registered on a build with no services configured", command.Name())
+	}
+}

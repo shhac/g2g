@@ -209,10 +209,20 @@ func (p Plan) NothingToLink() bool {
 // and the Git-only push escape hatch.
 type Selection = stack.Selection
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Selector != nil && s.GitHub != nil
+}
+
 // DiscoverWithOptions resolves an optional pivot and optional full linear
 // stack without checking out any branch.
 func (s Service) DiscoverWithOptions(ctx context.Context, selection Selection) (Plan, error) {
-	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
 	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "gh stack link")

@@ -14,9 +14,19 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 )
 
+// Ready reports a service with everything it needs.
+//
+// One rule, called by both the guard below and the command registration in
+// internal/cli. They were two hand-written conjunctions before, and three of
+// them had already drifted -- a command could be registered and then refuse on
+// use, or be hidden from a build that could have run it.
+func (s Service) Ready() bool {
+	return s.Git != nil && s.Journal != nil
+}
+
 // Plan works out what has to be replayed, without changing anything.
 func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool) (Plan, error) {
-	if s.Git == nil || s.Journal == nil {
+	if !s.Ready() {
 		return Plan{}, fmt.Errorf("restack service is not fully configured")
 	}
 	discovery, err := s.Graph.Discover(ctx, selection)

@@ -55,8 +55,17 @@ description: |
   `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
   remote default explicit (`origin`), validate it, and never fall back to a
   weaker push mode.
+- A command that did part of what it was asked and stopped exits `3` — not `0`,
+  which told a script the work had finished, and not the failure status, because
+  what it achieved is not coming back. `sync` stopping mid-replay and `land`
+  stopping mid-descent are both this. `stoppedPartWay` marks it and nothing
+  further is printed, because the report is already on stdout.
 - `land` takes a finished stack down onto its trunk, bottom branch first. Read
-  `design-docs/land.md` before changing it. It owns no rules of its own: it publishes through `push`, advances and replays
+  `design-docs/land.md` before changing it. It refuses a stack g2g has not
+  adopted: it resolves through whichever source describes the branch but
+  replays and forgets in g2g's own graph, so on a Graphite-described stack it
+  would merge every pull request and then restack and forget nothing. It owns
+  no rules of its own: it publishes through `push`, advances and replays
   through `sync`, and asks Git by content whether a branch has landed through
   the same check `prune` uses. Do not give it its own copies of those
   refusals — a lease built from tips it read itself always matches, so a

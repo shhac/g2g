@@ -518,6 +518,12 @@ Commands this would run, in order
    7  gh pr merge 42 --squash --admin  · land synthetic-two
 ```
 
+**It needs the stack in g2g's own graph.** Landing reads pull requests from
+whichever source describes the stack, and then replays, reparents and forgets in
+g2g's graph — and those are not the same record. Pointed at a Graphite-described
+stack, it would merge every pull request and then find nothing to replay and
+nothing to forget, so it refuses and names `g2g track --stack`.
+
 `land` owns no rules of its own. Publishing goes through `push`, which refuses
 a branch the remote has moved on; advancing and replaying go through `sync`,
 which refuses a trunk that has diverged; and "has this landed" is asked of Git

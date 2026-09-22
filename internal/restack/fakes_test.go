@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
@@ -33,6 +34,9 @@ type fakeGit struct {
 	previewUpdates        []localgit.RefUpdate
 	rebaseErr             error
 	inProgress            bool
+	// replayFails names a branch whose replay fails, as a conflict the preview
+	// did not predict would. Git moves no ref for that invocation.
+	replayFails string
 
 	replays  [][]localgit.Range
 	rebases  []localgit.Range
@@ -97,6 +101,11 @@ func (f *fakeGit) Replay(_ context.Context, onto string, ranges []localgit.Range
 	// is what the fork points recorded afterwards are checked against.
 	if f.replayLeavesRefsAlone {
 		return nil
+	}
+	for _, replayed := range ranges {
+		if replayed.To == f.replayFails {
+			return errors.New("synthetic replay failure")
+		}
 	}
 	for _, replayed := range ranges {
 		f.ancestors[replayed.To] = append(f.ancestors[replayed.To], onto)
@@ -194,6 +203,7 @@ func (f *fakeGit) UpdateBranch(_ context.Context, branch, object string) error {
 	f.objects[branch] = resolved
 	f.ancestors[branch] = append(f.ancestors[branch], resolved)
 	delete(f.collapses, branch)
+	delete(f.tips, branch)
 	return nil
 }
 
@@ -314,6 +324,28 @@ func chainGitMidResume() *fakeGit {
 		replaySupported: true,
 		previewClean:    true,
 	}
+}
+
+// forest is two stacks on one trunk that forked from it at different points,
+// with the trunk moved on past both: the shape --scope trunk selects.
+func forest() graph.Graph {
+	return graph.Graph{
+		Edges: map[string]graph.Edge{
+			"synthetic-a": {Parent: "synthetic-trunk", ForkPoint: "trunk-old"},
+			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "a-old"},
+			"synthetic-x": {Parent: "synthetic-trunk", ForkPoint: "trunk-mid"},
+		},
+		Trunks: []string{"synthetic-trunk"},
+	}
+}
+
+func forestGit() *fakeGit {
+	git := stackGit()
+	git.local = append(git.local, "synthetic-x")
+	git.objects["synthetic-x"] = "x-old"
+	git.objects["trunk-mid"] = "trunk-mid"
+	git.ancestors["synthetic-x"] = []string{"trunk-mid", "trunk-old"}
+	return git
 }
 
 func rangeTargets(ranges []localgit.Range) []string {

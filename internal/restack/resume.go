@@ -107,21 +107,18 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err != nil {
 		return finishComplete, err
 	}
-	needed, err := s.settleCollapses(ctx, plan)
-	if err != nil {
-		return finishComplete, err
-	}
-	if !needed {
-		if err := s.resettle(ctx, standing); err != nil {
+	if plan.inPlace() {
+		if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
 			return finishComplete, err
 		}
-		return finishAgain, nil
-	}
-	if plan.Clean {
-		if err := s.replay(ctx, plan, standing); err != nil {
-			return finishComplete, err
+		if len(plan.rewriting()) == 0 {
+			// Only collapses: what they moved may leave more to do above them.
+			return finishAgain, nil
 		}
 		return finishComplete, nil
+	}
+	if err := s.collapse(ctx, plan); err != nil {
+		return finishComplete, err
 	}
 	// A rebase may stop again; leaving the journal lets --continue recompute.
 	if err := s.rebaseEach(ctx, plan); err != nil {

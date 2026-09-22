@@ -160,11 +160,27 @@ which is why an interrupted rewrite reports what it actually found rather than
 assuming.
 
 **The engines are driven differently because they model the work
-differently.** Replay takes the whole set at once and needs one shared origin.
-Rebase moves a single line of descent, so each branch is rebased on its own,
-bottom-up, onto the parent it now has. Handing rebase the whole chain and
-asking `--update-refs` to carry the intermediate branches works on some
-versions and not others, and buys nothing sequencing does not.
+differently.** Replay takes a root and everything above it at once and needs one
+shared origin: the root's fork point. Rebase moves a single line of descent, so
+each branch is rebased on its own, bottom-up, onto the parent it now has.
+Handing rebase the whole chain and asking `--update-refs` to carry the
+intermediate branches works on some versions and not others, and buys nothing
+sequencing does not.
+
+**A selection can have several roots**, and each is its own replay. The stacks
+of a `--scope trunk` fork from the trunk at different points, and a subtree
+whose root collapsed leaves each child as a root of its own. Given the first
+root's origin and base, a second root's range widened to take in the trunk's
+own commits and its child landed on the first root carrying a stale copy of its
+parent. `--onto` over several roots is refused, one command per root offered in
+its place; a caller's location moves every root.
+
+Several replays are several invocations, and the engine's atomicity covers one.
+An in-place rewrite therefore notes every tip it may move first and, on any
+failure before the checkout is touched, puts them all back and says so; it is
+journaled while it runs, so a process that dies part-way, or a restore that
+fails, still leaves something `--abort` can undo. "Not applied" is never said
+over refs that moved.
 
 Two rebase flags exist only to stop behaviour depending on which Git is
 installed. `--no-reapply-cherry-picks` drops a commit whose content is already

@@ -40,6 +40,13 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Blocked = blocked
 		return plan, nil
 	}
+	if roots := selectionRoots(discovery); onto.Reparents() && len(roots) > 1 {
+		// --onto moves one branch and what is stacked on it. Moving only the
+		// first of several roots is what it used to do, silently.
+		plan.Repair = ontoOneRoot(roots, onto.Parent)
+		plan.Blocked = plan.Repair.Sentence()
+		return plan, nil
+	}
 	steps, err := s.steps(ctx, discovery, onto.Object, pending)
 	if err != nil {
 		return Plan{}, err
@@ -113,8 +120,9 @@ func (s Service) blockedReason(discovery graph.Discovery) string {
 	return ""
 }
 
-// selectionRoot names the lowest branch the selection actually records an edge
-// for, which is the one an --onto moves.
+// selectionRoots names the branches the selection records an edge for whose
+// parent it does not, which are the ones an --onto or a caller's location
+// moves.
 //
 // It is a property of the selection, not of the store. Asking the store
 // instead — whether the recorded parent is tracked anywhere — reparented a
@@ -124,17 +132,39 @@ func (s Service) blockedReason(discovery graph.Discovery) string {
 // the branch sat where it already was, no step was produced and Apply returned
 // having done nothing at all.
 //
-// Branches arrive trunk-first with parents before children, so the first one
-// carrying an edge is the root. Trunks carry none and are skipped, which is
-// why a path selection reparents the branch above the trunk rather than the
-// trunk itself.
-func selectionRoot(discovery graph.Discovery) string {
+// Trunks carry no edge and are never roots, which is why a path selection
+// reparents the branch above the trunk rather than the trunk itself. A trunk
+// selection has one root per stack on it, and taking only the first of them
+// left every other stack measured against a trunk that was about to move.
+func selectionRoots(discovery graph.Discovery) []string {
+	roots := make([]string, 0, 1)
 	for _, branch := range discovery.Branches {
-		if discovery.Graph.Tracked(branch) {
-			return branch
+		edge, tracked := discovery.Graph.Edges[branch]
+		if !tracked {
+			continue
 		}
+		if discovery.Graph.Tracked(edge.Parent) && slices.Contains(discovery.Branches, edge.Parent) {
+			continue
+		}
+		roots = append(roots, branch)
 	}
-	return ""
+	return roots
+}
+
+// ontoOneRoot is the way out of an --onto that names several roots: one
+// command per root, each moving that root and what is stacked on it.
+func ontoOneRoot(roots []string, parent string) repair.Note {
+	ways := make([]repair.Step, 0, len(roots))
+	for _, root := range roots {
+		ways = append(ways, repair.Step{
+			Command: fmt.Sprintf("g2g restack --branch %s --onto %s", root, parent),
+			Effect:  "move " + root + " and what is stacked on it",
+		})
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("--onto moves one branch and what is stacked on it, and this selection has %d roots: %s", len(roots), strings.Join(roots, ", ")),
+		Ways:   ways,
+	}
 }
 
 // steps builds the ordered rewrite, parents before children so each child is
@@ -149,16 +179,16 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 	// landing records where a collapsed branch ends up, so its children are
 	// measured against that rather than against a tip about to disappear.
 	landing := map[string]string{}
-	root := selectionRoot(discovery)
+	roots := selectionRoots(discovery)
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
 			continue
 		}
 		parent := edge.Parent
-		if onto != "" && branch == root {
-			// Only the selection's own root is reparented; everything above it
-			// keeps the structure that is already recorded.
+		if onto != "" && slices.Contains(roots, branch) {
+			// Only the selection's roots move; everything above them keeps the
+			// structure that is already recorded.
 			parent = onto
 		}
 		base, resolvedFork, tip, err := s.resolveStep(ctx, branch, parent, edge.ForkPoint, pending)
@@ -268,19 +298,20 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 	if !supported {
 		return nil, false, false, nil
 	}
-	ranges := plan.ranges()
-	if len(ranges) == 0 {
-		// Every step collapses: each branch's work is already in its new base
-		// by content, so their refs move and nothing is replayed at all. There
-		// is no range to predict and nothing that could conflict, and asking
-		// the engine anyway failed the whole command with "no commit ranges
-		// selected for replay" — on precisely the case where a stack has
-		// finished landing.
-		return nil, true, true, nil
-	}
-	updates, clean, err = s.Git.PreviewReplay(ctx, plan.Steps[0].Base, ranges)
-	if err != nil {
-		return nil, false, false, err
+	// Every step collapsing leaves no group at all: each branch's work is
+	// already in its new base by content, so their refs move and nothing is
+	// replayed. There is nothing to predict and nothing that could conflict,
+	// and asking the engine anyway failed the whole command with "no commit
+	// ranges selected for replay" — on precisely the case where a stack has
+	// finished landing.
+	clean = true
+	for _, group := range plan.groups() {
+		grouped, groupClean, err := s.Git.PreviewReplay(ctx, group.onto(), group.ranges())
+		if err != nil {
+			return nil, false, false, err
+		}
+		updates = append(updates, grouped...)
+		clean = clean && groupClean
 	}
 	// Predicted means the preview actually ran, which the two returns above
 	// already answer for the cases where it did not. Deriving it from the error

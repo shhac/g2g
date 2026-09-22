@@ -83,35 +83,53 @@ type Step struct {
 	Collapses bool
 }
 
-// ranges are what the rewrite engines are given.
+// replayGroup is one independent replay: a root whose parent is not itself
+// being replayed, and every branch replayed above it. Its steps arrive parents
+// before children, so the first is the root.
+type replayGroup []Step
+
+// ranges are what the replay engine is given for one group.
 //
-// Every range starts at the topmost step's fork point rather than at each
-// branch's own. The engines replay the union of the ranges onto one base and
-// update each named ref, so a chain has to be expressed as overlapping ranges
-// from a single origin; per-branch origins ask them to place each branch
+// Every range starts at the group root's fork point rather than at each
+// branch's own. The engine replays the union of the ranges onto one base and
+// updates each named ref, so a chain has to be expressed as overlapping ranges
+// from a single origin; per-branch origins ask it to place each branch
 // directly on the base independently, which conflicts as soon as a branch
 // depends on the one below it.
-func (p Plan) ranges() []localgit.Range {
-	rewriting := p.rewriting()
-	if len(rewriting) == 0 {
-		return nil
-	}
-	origin := rewriting[0].ForkPoint
-	ranges := make([]localgit.Range, 0, len(rewriting))
-	for _, step := range rewriting {
+func (g replayGroup) ranges() []localgit.Range {
+	origin := g[0].ForkPoint
+	ranges := make([]localgit.Range, 0, len(g))
+	for _, step := range g {
 		ranges = append(ranges, localgit.Range{From: origin, To: step.Branch})
 	}
 	return ranges
 }
 
-// onto is the object the rewrite lands on: the base of the first step that
-// still has commits, once any collapse below it has been accounted for.
-func (p Plan) onto() string {
-	rewriting := p.rewriting()
-	if len(rewriting) == 0 {
-		return ""
+// onto is the object the group lands on: its root's base, once any collapse
+// below it has been accounted for.
+func (g replayGroup) onto() string { return g[0].Base }
+
+// groups splits the replay into one invocation per independent root.
+//
+// One origin and one base are only right for a single line of descent and
+// what forks from it. Two roots -- the stacks of a --scope trunk, or a subtree
+// whose root collapsed and left two children -- fork at different points and
+// can land on different bases, and giving them the first root's origin
+// widened the second's range to take in the trunk's own commits, replaying
+// onto the first root's base a stale copy of work the second had rewritten.
+func (p Plan) groups() []replayGroup {
+	groups := make([]replayGroup, 0, 1)
+	member := map[string]int{}
+	for _, step := range p.rewriting() {
+		if at, above := member[step.Parent]; above {
+			groups[at] = append(groups[at], step)
+			member[step.Branch] = at
+			continue
+		}
+		member[step.Branch] = len(groups)
+		groups = append(groups, replayGroup{step})
 	}
-	return rewriting[0].Base
+	return groups
 }
 
 // Replaying lists the branches whose commits are actually replayed, which is
@@ -162,9 +180,13 @@ func (p Plan) reparenting() map[string]string {
 	// subtree's children came to record the --onto target rather than the
 	// branch they are stacked on, and the fork point refreshed alongside then
 	// widened each one's replay range to swallow its parent's commits.
-	root := selectionRoot(p.Discovery)
-	if recorded, tracked := p.Graph.Parent(root); tracked && recorded != p.Onto.Parent {
-		moves[root] = p.Onto.Parent
+	// Plan refuses an --onto over more than one root, so there is only one.
+	roots := selectionRoots(p.Discovery)
+	if len(roots) != 1 {
+		return moves
+	}
+	if recorded, tracked := p.Graph.Parent(roots[0]); tracked && recorded != p.Onto.Parent {
+		moves[roots[0]] = p.Onto.Parent
 	}
 	return moves
 }

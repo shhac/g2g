@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // graphNodes projects a discovery onto the shared view.
@@ -15,7 +16,7 @@ import (
 // the flat list every other command shows than as a staircase that pushes each
 // branch further right for no information.
 func graphNodes(discovery graph.Discovery) []stackNode {
-	depths := treeDepths(discovery.Branches, discovery.Graph.Parent)
+	depths := shape.Depths(discovery.Branches, discovery.Graph.Parent)
 	nodes := make([]stackNode, 0, len(discovery.Branches))
 	for index, branch := range discovery.Branches {
 		parent, _ := discovery.Graph.Parent(branch)

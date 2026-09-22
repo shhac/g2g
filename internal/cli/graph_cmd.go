@@ -152,7 +152,7 @@ func writeSourceGraph(ctx context.Context, cmd *cobra.Command, selector stack.Pa
 // second rather than inventing an answer.
 func sourceGraphView(snapshot stack.Snapshot) stackView {
 	ordered := append([]string{snapshot.Base}, snapshot.Branches...)
-	depths := treeDepths(ordered, snapshot.ParentOf)
+	depths := shape.Depths(ordered, snapshot.ParentOf)
 	nodes := []stackNode{{Branch: snapshot.Base, Trunk: true}}
 	for _, branch := range snapshot.Branches {
 		nodes = append(nodes, stackNode{

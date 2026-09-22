@@ -6,6 +6,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -29,7 +30,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 
 	// The base is a node too, and it is the parent of every top-level branch, so
 	// it has to be in the ordered selection for depth to come out right.
-	depths := treeDepths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
+	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
 	view := stackView{
 		Operation:    operation,
 		Target:       plan.Target,

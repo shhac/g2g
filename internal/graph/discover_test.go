@@ -228,9 +228,9 @@ func TestAssessClassifiesEveryBranchState(t *testing.T) {
 		},
 	}
 
-	states, err := Assess(context.Background(), git, tracked, []string{"synthetic-login", "synthetic-session", "synthetic-absent"})
+	states, err := assess(context.Background(), git, tracked, []string{"synthetic-login", "synthetic-session", "synthetic-absent"})
 	if err != nil {
-		t.Fatalf("Assess() error = %v", err)
+		t.Fatalf("assess() error = %v", err)
 	}
 
 	for branch, want := range map[string]NodeState{
@@ -250,9 +250,9 @@ func TestAssessClassifiesEveryBranchState(t *testing.T) {
 func TestAssessReportsAMergedAndDeletedParentAsMissing(t *testing.T) {
 	git := fakeAncestry{local: []string{"synthetic-main", "synthetic-login"}}
 
-	states, err := Assess(context.Background(), git, forest(), []string{"synthetic-login"})
+	states, err := assess(context.Background(), git, forest(), []string{"synthetic-login"})
 	if err != nil {
-		t.Fatalf("Assess() error = %v", err)
+		t.Fatalf("assess() error = %v", err)
 	}
 	if states["synthetic-login"] != StateParentMissing {
 		t.Errorf("state = %q, want %q", states["synthetic-login"], StateParentMissing)
@@ -260,8 +260,8 @@ func TestAssessReportsAMergedAndDeletedParentAsMissing(t *testing.T) {
 }
 
 func TestAssessRequiresAGit(t *testing.T) {
-	if _, err := Assess(context.Background(), nil, forest(), nil); err == nil {
-		t.Fatal("Assess() error = nil without a Git boundary")
+	if _, err := assess(context.Background(), nil, forest(), nil); err == nil {
+		t.Fatal("assess() error = nil without a Git boundary")
 	}
 }
 
@@ -348,9 +348,9 @@ func TestAssessDistinguishesAMovedParentFromAMovedBranch(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			states, err := Assess(context.Background(), test.git, tracked, []string{"synthetic-child"})
+			states, err := assess(context.Background(), test.git, tracked, []string{"synthetic-child"})
 			if err != nil {
-				t.Fatalf("Assess() error = %v", err)
+				t.Fatalf("assess() error = %v", err)
 			}
 			if states["synthetic-child"] != test.want {
 				t.Errorf("state = %q, want %q", states["synthetic-child"], test.want)
@@ -381,9 +381,9 @@ func TestAssessToleratesAnEdgeWithNoForkPoint(t *testing.T) {
 		ancestors: map[string][]string{"synthetic-child": {"synthetic-parent"}},
 	}
 
-	states, err := Assess(context.Background(), git, legacy, []string{"synthetic-child"})
+	states, err := assess(context.Background(), git, legacy, []string{"synthetic-child"})
 	if err != nil {
-		t.Fatalf("Assess() error = %v", err)
+		t.Fatalf("assess() error = %v", err)
 	}
 	if states["synthetic-child"] != StateAligned {
 		t.Errorf("state = %q, want %q", states["synthetic-child"], StateAligned)

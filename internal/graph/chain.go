@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Chain orders the branches lying between a trunk and the target, trunk first.
+// chain orders the branches lying between a trunk and the target, trunk first.
 //
 // It is the one thing a whole-stack adoption needs that a single `track` does
 // not, and it is pure: given the measured candidates it returns an order or an
@@ -17,7 +17,7 @@ import (
 // has named the trunk, and everything between it and the target follows from
 // ancestry — one assertion, then arithmetic. Where the arithmetic is ambiguous
 // this refuses rather than picking, for exactly the reason `track` does.
-func Chain(candidates []Candidate, target, trunk string) ([]string, error) {
+func chain(candidates []Candidate, target, trunk string) ([]string, error) {
 	reachable := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		// A branch the target cannot reach is not on the way to anywhere.
@@ -39,9 +39,9 @@ func Chain(candidates []Candidate, target, trunk string) ([]string, error) {
 
 	// candidates arrive nearest first, so the chain up to the trunk is the
 	// prefix, reversed.
-	chain := make([]string, 0, end+1)
+	order := make([]string, 0, end+1)
 	for index := end; index >= 0; index-- {
-		chain = append(chain, reachable[index].Branch)
+		order = append(order, reachable[index].Branch)
 	}
 	// The trunk is the one branch whose place the user asserted, so a target
 	// created from it and not yet committed to sits on it. Any other branch at
@@ -55,7 +55,7 @@ func Chain(candidates []Candidate, target, trunk string) ([]string, error) {
 	if ambiguous := tied(reachable[:end+1]); ambiguous != "" {
 		return nil, fmt.Errorf("%s are the same distance from the selected branch, so their order cannot be derived · record them with g2g track --parent instead", ambiguous)
 	}
-	return chain, nil
+	return order, nil
 }
 
 // sameCommit refuses two branches ancestry cannot order because they are one
@@ -75,13 +75,13 @@ func tied(candidates []Candidate) string {
 	return ""
 }
 
-// TrunkFor picks the trunk a whole-stack adoption should stop at when the user
+// trunkFor picks the trunk a whole-stack adoption should stop at when the user
 // has not named one.
 //
 // Only a branch the graph already treats as a root qualifies. Anything else
 // would be this tool deciding where someone's stack begins, which is the
 // decision it exists to not make.
-func TrunkFor(candidates []Candidate, known []string) (string, error) {
+func trunkFor(candidates []Candidate, known []string) (string, error) {
 	roots := make([]string, 0)
 	for _, candidate := range candidates {
 		if candidate.Ancestor && slices.Contains(known, candidate.Branch) {
@@ -98,7 +98,7 @@ func TrunkFor(candidates []Candidate, known []string) (string, error) {
 	}
 }
 
-// Attach picks the parent for a branch that hangs off an already-selected one.
+// attach picks the parent for a branch that hangs off an already-selected one.
 //
 // This is what makes a whole-stack adoption forest-shaped rather than linear.
 // The chain gives the spine; every branch whose nearest ancestor is on that
@@ -107,7 +107,7 @@ func TrunkFor(candidates []Candidate, known []string) (string, error) {
 // selected excludes the trunk deliberately. A branch that sits directly on the
 // trunk is somebody else's stack that happens to share a base, and sweeping it
 // in because it is technically a descendant would adopt half the repository.
-func Attach(branch string, candidates []Candidate, selected []string) (string, bool, error) {
+func attach(branch string, candidates []Candidate, selected []string) (string, bool, error) {
 	for _, candidate := range candidates {
 		if !candidate.Ancestor || !slices.Contains(selected, candidate.Branch) {
 			continue

@@ -179,7 +179,7 @@ func (g Graph) Adopt(branch string, edge Edge) (Graph, string, error) {
 	if g.Tracked(edge.Parent) || updated.IsTrunk(edge.Parent) {
 		return updated, "", nil
 	}
-	return updated.WithTrunks(append(slices.Clone(updated.Trunks), edge.Parent)...), edge.Parent, nil
+	return updated.withTrunks(append(slices.Clone(updated.Trunks), edge.Parent)...), edge.Parent, nil
 }
 
 // withoutTrunk drops branch from the trunk set, leaving the rest as they were.
@@ -193,7 +193,7 @@ func (g Graph) withoutTrunk(branch string) Graph {
 			remaining = append(remaining, trunk)
 		}
 	}
-	return g.WithTrunks(remaining...)
+	return g.withTrunks(remaining...)
 }
 
 // Untrack removes the edges for the given branches, returning a new graph.
@@ -221,9 +221,9 @@ func (g Graph) Orphans() []string {
 	return orphans
 }
 
-// WithTrunks returns a copy whose trunk set is exactly trunks, deduplicated
+// withTrunks returns a copy whose trunk set is exactly trunks, deduplicated
 // and sorted.
-func (g Graph) WithTrunks(trunks ...string) Graph {
+func (g Graph) withTrunks(trunks ...string) Graph {
 	updated := g.Clone()
 	unique := map[string]bool{}
 	updated.Trunks = make([]string, 0, len(trunks))

@@ -154,7 +154,7 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 	if err != nil {
 		return Discovery{}, err
 	}
-	states, err := Assess(ctx, s.Git, adopted, branches)
+	states, err := assess(ctx, s.Git, adopted, branches)
 	if err != nil {
 		return Discovery{}, err
 	}

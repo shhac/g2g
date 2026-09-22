@@ -43,7 +43,7 @@ func adoptionService(t *testing.T, adopted Graph) (Service, *memoryStore) {
 
 // The point of the whole feature: one command records the tree, not one edge.
 func TestPlanStackRecordsTheWholeTree(t *testing.T) {
-	service, store := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	service, store := adoptionService(t, New().withTrunks("synthetic-trunk"))
 
 	plan, err := service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")
 	if err != nil {
@@ -77,7 +77,7 @@ func TestPlanStackRecordsTheWholeTree(t *testing.T) {
 // The trunk is the one thing the user asserts, and it is inferred when only one
 // recorded root is an ancestor.
 func TestPlanStackInfersTheOnlyRecordedTrunk(t *testing.T) {
-	service, _ := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	service, _ := adoptionService(t, New().withTrunks("synthetic-trunk"))
 
 	plan, err := service.PlanStack(context.Background(), Selection{}, "")
 	if err != nil {
@@ -110,7 +110,7 @@ func TestPlanStackBlocksWhenNoTrunkCanBeInferred(t *testing.T) {
 
 // Bulk adoption of all things must not quietly overwrite a deliberate choice.
 func TestPlanStackBlocksOnAnEdgeRecordedDifferently(t *testing.T) {
-	existing := New().WithTrunks("synthetic-trunk")
+	existing := New().withTrunks("synthetic-trunk")
 	existing, err := existing.Track("synthetic-b", Edge{Parent: "synthetic-trunk"})
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestPlanStackBlocksOnAnEdgeRecordedDifferently(t *testing.T) {
 
 // Re-running records nothing, which is what makes it safe to reach for.
 func TestPlanStackIsRepeatable(t *testing.T) {
-	service, _ := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	service, _ := adoptionService(t, New().withTrunks("synthetic-trunk"))
 
 	first, err := service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")
 	if err != nil {
@@ -157,7 +157,7 @@ func TestPlanStackIsRepeatable(t *testing.T) {
 }
 
 func TestApplyStackRestoresGraphAndPinsWhenPinningFails(t *testing.T) {
-	service, store := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	service, store := adoptionService(t, New().withTrunks("synthetic-trunk"))
 	pinner := &memoryPinner{failPin: "synthetic-b"}
 	service.Refs = pinner
 	plan, err := service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")
@@ -177,7 +177,7 @@ func TestApplyStackRestoresGraphAndPinsWhenPinningFails(t *testing.T) {
 
 // A plan that moved between preview and apply is caught rather than acted on.
 func TestRevalidateStackRefusesAChangedGraph(t *testing.T) {
-	service, store := adoptionService(t, New().WithTrunks("synthetic-trunk"))
+	service, store := adoptionService(t, New().withTrunks("synthetic-trunk"))
 
 	preview, err := service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")
 	if err != nil {

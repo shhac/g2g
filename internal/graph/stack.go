@@ -82,31 +82,31 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	if err != nil {
 		return StackPlan{}, err
 	}
-	// Related for the same reason the fan-out below uses it: everything that
-	// reads these candidates -- TrunkFor, Chain, originOf -- filters on
+	// related for the same reason the fan-out below uses it: everything that
+	// reads these candidates -- trunkFor, chain, originOf -- filters on
 	// Ancestor, so the fallback's whole result would be discarded. Where it
 	// would have fired, this plan is about to refuse anyway for want of a
 	// trunk that is an ancestor, and it now does so without measuring every
 	// branch in the repository first.
-	candidates, err := Related(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
+	candidates, err := related(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
 	if err != nil {
 		return StackPlan{}, err
 	}
 
 	plan := StackPlan{Discovery: discovery, Trunk: trunk, Updated: discovery.Graph}
 	if plan.Trunk == "" {
-		if plan.Trunk, err = TrunkFor(candidates, s.knownRoots(discovery.Graph)); err != nil {
+		if plan.Trunk, err = trunkFor(candidates, s.knownRoots(discovery.Graph)); err != nil {
 			plan.Blocked = err.Error()
 			return plan, nil
 		}
 	}
-	chain, err := Chain(candidates, discovery.Target, plan.Trunk)
+	below, err := chain(candidates, discovery.Target, plan.Trunk)
 	if err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
 	}
 
-	spine := append(chain, discovery.Target)
+	spine := append(below, discovery.Target)
 	edges, err := s.branches(ctx, spine, plan.Trunk, discovery.Graph)
 	if err != nil {
 		plan.Blocked = err.Error()
@@ -154,7 +154,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 
 	// Membership, ordering and the per-branch candidate list are three separate
 	// jobs, and the loop previously did all three the same way: by rescanning.
-	// selected stays the ordered slice Attach reads; chosen answers "already
+	// selected stays the ordered slice attach reads; chosen answers "already
 	// taken" without walking it.
 	chosen := map[string]bool{trunk: true}
 	for _, branch := range selected {
@@ -173,9 +173,9 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	// happening one at a time. Each answer is written to its own element and
 	// folded into the map afterwards, so nothing here needs a lock.
 	//
-	// Related, not Candidates: Attach acts only on candidates that are
+	// related, not Candidates: attach acts only on candidates that are
 	// genuinely ancestors, and Candidates' fallback can only produce branches
-	// that are not -- the set Related measures already contains every ancestor
+	// that are not -- the set related measures already contains every ancestor
 	// there is. Asking for the fallback measured every local branch against
 	// every other one and discarded all of it.
 	warmed := make([][]Candidate, len(local))
@@ -205,7 +205,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 			if chosen[branch] {
 				continue
 			}
-			parent, attached, err := Attach(branch, candidatesFor[branch], selected)
+			parent, attached, err := attach(branch, candidatesFor[branch], selected)
 			if err != nil {
 				return nil, err
 			}

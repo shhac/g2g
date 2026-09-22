@@ -121,7 +121,7 @@ func decode(contents []byte, path string) (Graph, error) {
 			Parent: stored.Parent,
 			Origin: Origin(stored.Origin),
 			// An edge written before fork points were recorded loads with an
-			// empty one. Assess then falls back to the parent's current tip,
+			// empty one. assess then falls back to the parent's current tip,
 			// which is correct until the edge has drifted and fails closed
 			// afterwards, so no migration pass is needed.
 			ForkPoint: stored.ForkPoint,

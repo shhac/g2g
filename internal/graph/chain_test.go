@@ -18,24 +18,24 @@ func linear() []Candidate {
 // The chain runs trunk first, so a parent is always recorded before the
 // branches that name it.
 func TestChainOrdersFromTheTrunkDown(t *testing.T) {
-	chain, err := Chain(linear(), "synthetic-target", "synthetic-trunk")
+	order, err := chain(linear(), "synthetic-target", "synthetic-trunk")
 	if err != nil {
-		t.Fatalf("Chain() error = %v", err)
+		t.Fatalf("chain() error = %v", err)
 	}
-	if got, want := strings.Join(chain, ","), "synthetic-trunk,synthetic-a,synthetic-b"; got != want {
-		t.Errorf("Chain() = %s, want %s", got, want)
+	if got, want := strings.Join(order, ","), "synthetic-trunk,synthetic-a,synthetic-b"; got != want {
+		t.Errorf("chain() = %s, want %s", got, want)
 	}
 }
 
 // Stopping at a nearer trunk records less, not more: everything below it is
 // somebody else's business.
 func TestChainStopsAtTheTrunkItWasGiven(t *testing.T) {
-	chain, err := Chain(linear(), "synthetic-target", "synthetic-a")
+	order, err := chain(linear(), "synthetic-target", "synthetic-a")
 	if err != nil {
-		t.Fatalf("Chain() error = %v", err)
+		t.Fatalf("chain() error = %v", err)
 	}
-	if got, want := strings.Join(chain, ","), "synthetic-a,synthetic-b"; got != want {
-		t.Errorf("Chain() = %s, want %s", got, want)
+	if got, want := strings.Join(order, ","), "synthetic-a,synthetic-b"; got != want {
+		t.Errorf("chain() = %s, want %s", got, want)
 	}
 }
 
@@ -43,15 +43,15 @@ func TestChainStopsAtTheTrunkItWasGiven(t *testing.T) {
 // part of the chain and cannot be the trunk either.
 func TestChainIgnoresBranchesTheTargetCannotReach(t *testing.T) {
 	candidates := append(linear(), Candidate{Branch: "synthetic-elsewhere", Distance: 1})
-	chain, err := Chain(candidates, "synthetic-target", "synthetic-trunk")
+	order, err := chain(candidates, "synthetic-target", "synthetic-trunk")
 	if err != nil {
-		t.Fatalf("Chain() error = %v", err)
+		t.Fatalf("chain() error = %v", err)
 	}
-	if strings.Contains(strings.Join(chain, ","), "elsewhere") {
-		t.Errorf("Chain() = %v, want the unreachable branch left out", chain)
+	if strings.Contains(strings.Join(order, ","), "elsewhere") {
+		t.Errorf("chain() = %v, want the unreachable branch left out", order)
 	}
-	if _, err := Chain(candidates, "synthetic-target", "synthetic-elsewhere"); err == nil {
-		t.Error("Chain() error = nil for a trunk the target cannot reach")
+	if _, err := chain(candidates, "synthetic-target", "synthetic-elsewhere"); err == nil {
+		t.Error("chain() error = nil for a trunk the target cannot reach")
 	}
 }
 
@@ -64,9 +64,9 @@ func TestChainRefusesAnAmbiguousOrder(t *testing.T) {
 		{Branch: "synthetic-trunk", Distance: 3, Ancestor: true, Trunk: true},
 	}
 
-	_, err := Chain(tiedCandidates, "synthetic-target", "synthetic-trunk")
+	_, err := chain(tiedCandidates, "synthetic-target", "synthetic-trunk")
 	if err == nil {
-		t.Fatal("Chain() error = nil for two branches at the same distance")
+		t.Fatal("chain() error = nil for two branches at the same distance")
 	}
 	for _, want := range []string{"synthetic-b", "synthetic-c", "g2g track --parent"} {
 		if !strings.Contains(err.Error(), want) {
@@ -76,30 +76,30 @@ func TestChainRefusesAnAmbiguousOrder(t *testing.T) {
 }
 
 func TestChainRefusesATrunkThatIsNotAnAncestor(t *testing.T) {
-	if _, err := Chain(linear(), "synthetic-target", "synthetic-absent"); err == nil {
-		t.Error("Chain() error = nil for a trunk that is not on the ancestry")
+	if _, err := chain(linear(), "synthetic-target", "synthetic-absent"); err == nil {
+		t.Error("chain() error = nil for a trunk that is not on the ancestry")
 	}
 }
 
 // Only a branch the graph already treats as a root may end an adoption. Picking
 // any other would be deciding where someone's stack begins.
 func TestTrunkForTakesTheOnlyRecordedRootOnTheAncestry(t *testing.T) {
-	trunk, err := TrunkFor(linear(), []string{"synthetic-trunk", "synthetic-unrelated"})
+	trunk, err := trunkFor(linear(), []string{"synthetic-trunk", "synthetic-unrelated"})
 	if err != nil {
-		t.Fatalf("TrunkFor() error = %v", err)
+		t.Fatalf("trunkFor() error = %v", err)
 	}
 	if trunk != "synthetic-trunk" {
-		t.Errorf("TrunkFor() = %q", trunk)
+		t.Errorf("trunkFor() = %q", trunk)
 	}
 }
 
 func TestTrunkForRefusesWhenItCannotBeSureAlone(t *testing.T) {
-	if _, err := TrunkFor(linear(), nil); err == nil {
-		t.Error("TrunkFor() error = nil with no recorded root on the ancestry")
+	if _, err := trunkFor(linear(), nil); err == nil {
+		t.Error("trunkFor() error = nil with no recorded root on the ancestry")
 	}
-	_, err := TrunkFor(linear(), []string{"synthetic-trunk", "synthetic-a"})
+	_, err := trunkFor(linear(), []string{"synthetic-trunk", "synthetic-a"})
 	if err == nil {
-		t.Fatal("TrunkFor() error = nil with two recorded roots on the ancestry")
+		t.Fatal("trunkFor() error = nil with two recorded roots on the ancestry")
 	}
 	if !strings.Contains(err.Error(), "--trunk") {
 		t.Errorf("error = %v, want it to name the flag that resolves it", err)
@@ -137,12 +137,12 @@ func TestAttachJoinsABranchToTheSelectedSpine(t *testing.T) {
 		{Branch: "synthetic-trunk", Distance: 4, Ancestor: true, Trunk: true},
 	}
 
-	parent, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
+	parent, attached, err := attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err != nil {
-		t.Fatalf("Attach() error = %v", err)
+		t.Fatalf("attach() error = %v", err)
 	}
 	if !attached || parent != "synthetic-a" {
-		t.Errorf("Attach() = %q, %t; want synthetic-a", parent, attached)
+		t.Errorf("attach() = %q, %t; want synthetic-a", parent, attached)
 	}
 }
 
@@ -152,12 +152,12 @@ func TestAttachJoinsABranchToTheSelectedSpine(t *testing.T) {
 func TestAttachLeavesBranchesThatOnlyShareTheTrunk(t *testing.T) {
 	candidates := []Candidate{{Branch: "synthetic-trunk", Distance: 1, Ancestor: true, Trunk: true}}
 
-	_, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
+	_, attached, err := attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err != nil {
-		t.Fatalf("Attach() error = %v", err)
+		t.Fatalf("attach() error = %v", err)
 	}
 	if attached {
-		t.Error("Attach() joined a branch whose only selected ancestor is the trunk")
+		t.Error("attach() joined a branch whose only selected ancestor is the trunk")
 	}
 }
 
@@ -170,12 +170,12 @@ func TestAttachLeavesABranchAsNearTheTrunkAsTheSelection(t *testing.T) {
 		{Branch: "synthetic-trunk", Distance: 1, Ancestor: true, Trunk: true},
 	}
 
-	_, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-fresh"})
+	_, attached, err := attach("synthetic-target", candidates, []string{"synthetic-fresh"})
 	if err != nil {
-		t.Fatalf("Attach() error = %v", err)
+		t.Fatalf("attach() error = %v", err)
 	}
 	if attached {
-		t.Error("Attach() swept a stack on the trunk under a branch with nothing of its own")
+		t.Error("attach() swept a stack on the trunk under a branch with nothing of its own")
 	}
 }
 
@@ -184,9 +184,9 @@ func TestAttachLeavesABranchAsNearTheTrunkAsTheSelection(t *testing.T) {
 func TestAttachRefusesASelectedBranchAtTheSameCommit(t *testing.T) {
 	candidates := []Candidate{{Branch: "synthetic-a", Distance: 0, Ancestor: true}}
 
-	_, _, err := Attach("synthetic-target", candidates, []string{"synthetic-a"})
+	_, _, err := attach("synthetic-target", candidates, []string{"synthetic-a"})
 	if err == nil || !strings.Contains(err.Error(), "same commit") {
-		t.Fatalf("Attach() error = %v, want a refusal naming the shared commit", err)
+		t.Fatalf("attach() error = %v, want a refusal naming the shared commit", err)
 	}
 }
 
@@ -198,9 +198,9 @@ func TestAttachRefusesTwoEquallyNearParents(t *testing.T) {
 		{Branch: "synthetic-b", Distance: 1, Ancestor: true},
 	}
 
-	_, _, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
+	_, _, err := attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err == nil {
-		t.Fatal("Attach() error = nil for two equally near parents")
+		t.Fatal("attach() error = nil for two equally near parents")
 	}
 	if !strings.Contains(err.Error(), "g2g track --parent") {
 		t.Errorf("error = %v, want it to name the way out", err)

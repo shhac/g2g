@@ -42,14 +42,14 @@ type Candidate struct {
 // question to put to the user, never one to answer for them.
 func (c Candidate) SameTip() bool { return c.Ancestor && c.Distance == 0 }
 
-// Related returns the possible parents drawn from the target's own ancestry and
+// related returns the possible parents drawn from the target's own ancestry and
 // the roots the graph already records.
 //
 // This is the answer in any repository that has adopted anything at all, and it
 // is everything a caller that acts on ancestry can use: the set it measures
 // already contains every ancestor of the target, so no branch outside it can
 // come back marked as one.
-func Related(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
+func related(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
 	if git == nil {
 		return nil, fmt.Errorf("graph discovery is not configured")
 	}
@@ -60,7 +60,7 @@ func Related(ctx context.Context, git Ancestry, target string, roots []string) (
 	return relatedWithin(ctx, git, target, roots, local)
 }
 
-// relatedWithin is Related for a caller that already knows the local branches.
+// relatedWithin is related for a caller that already knows the local branches.
 //
 // They cannot change while one command runs, and a whole-stack adoption asks
 // about every branch in the repository, so re-reading them per branch was one
@@ -89,15 +89,15 @@ func relatedWithin(ctx context.Context, git Ancestry, target string, roots, loca
 
 // Candidates returns the possible parents of target, nearest first.
 //
-// Related first. When that comes back empty — the first branch into an empty
+// related first. When that comes back empty — the first branch into an empty
 // graph, whose trunk has almost always moved on since the branch left it —
 // every local branch is measured instead, so that there is something to offer
 // rather than nothing. Those are branches the target cannot reach, so none of
-// them is an ancestor and a caller acting on ancestry should ask Related and
+// them is an ancestor and a caller acting on ancestry should ask related and
 // skip this entirely: for one that filters on Ancestor the fallback is a Git
 // call per branch whose whole result is then discarded.
 func Candidates(ctx context.Context, git Ancestry, target string, roots []string) ([]Candidate, error) {
-	candidates, err := Related(ctx, git, target, roots)
+	candidates, err := related(ctx, git, target, roots)
 	if err != nil || len(candidates) != 0 {
 		return candidates, err
 	}

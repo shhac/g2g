@@ -167,7 +167,7 @@ func TestOrphansIgnoresBranchesRootedOnATrunk(t *testing.T) {
 }
 
 func TestWithTrunksSortsAndDeduplicates(t *testing.T) {
-	got := New().WithTrunks("synthetic-release", "synthetic-main", "synthetic-main", "")
+	got := New().withTrunks("synthetic-release", "synthetic-main", "synthetic-main", "")
 
 	if want := "synthetic-main,synthetic-release"; strings.Join(got.Trunks, ",") != want {
 		t.Errorf("Trunks = %v, want %s", got.Trunks, want)
@@ -187,7 +187,7 @@ func TestEqualComparesStructureAndTrunks(t *testing.T) {
 	if base.Equal(moved) {
 		t.Error("Equal() = true after a reparent")
 	}
-	if base.Equal(base.WithTrunks("synthetic-other")) {
+	if base.Equal(base.withTrunks("synthetic-other")) {
 		t.Error("Equal() = true after the trunk set changed")
 	}
 }
@@ -203,7 +203,7 @@ func TestEqualTreatsNilAndEmptyEdgesAsTheSame(t *testing.T) {
 // standing on the tip branch leads you to do — otherwise promotes every branch
 // to a trunk on the way past and never takes it back.
 func TestTrackingATrunkStopsItBeingOne(t *testing.T) {
-	adopting := New().WithTrunks("synthetic-b")
+	adopting := New().withTrunks("synthetic-b")
 	adopting, err := adopting.Track("synthetic-c", Edge{Parent: "synthetic-b"})
 	if err != nil {
 		t.Fatalf("Track() error = %v", err)
@@ -236,7 +236,7 @@ func TestAdoptingAChainFromTheTipLeavesOneTrunk(t *testing.T) {
 	} {
 		var err error
 		if !adopting.Tracked(step.parent) && !adopting.IsTrunk(step.parent) {
-			adopting = adopting.WithTrunks(append(slices.Clone(adopting.Trunks), step.parent)...)
+			adopting = adopting.withTrunks(append(slices.Clone(adopting.Trunks), step.parent)...)
 		}
 		if adopting, err = adopting.Track(step.branch, Edge{Parent: step.parent}); err != nil {
 			t.Fatalf("Track(%s) error = %v", step.branch, err)

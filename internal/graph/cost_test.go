@@ -92,7 +92,7 @@ func trackedTrunk() Graph {
 
 // The cost has to grow with the number of branches, not with its square.
 //
-// Attach acts only on candidates that are genuinely ancestors, and the
+// attach acts only on candidates that are genuinely ancestors, and the
 // fallback Candidates keeps for the single-branch case can only produce
 // branches that are not one. Asking for it measured the whole repository
 // against itself and discarded the answer.
@@ -151,14 +151,14 @@ func TestAdoptingAStackReadsTheLocalBranchesOnce(t *testing.T) {
 	}
 }
 
-// Related is what a caller acting on ancestry wants, and it is the whole of the
+// related is what a caller acting on ancestry wants, and it is the whole of the
 // answer: the set it measures already contains every ancestor there is, so the
 // fallback cannot add one.
 func TestRelatedFindsEveryAncestorCandidatesWould(t *testing.T) {
 	git := wideRepository(6)
 	roots := []string{"synthetic-trunk"}
 
-	related, err := Related(context.Background(), git, "synthetic-d", roots)
+	found, err := related(context.Background(), git, "synthetic-d", roots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +167,8 @@ func TestRelatedFindsEveryAncestorCandidatesWould(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ancestorNames(related) != ancestorNames(candidates) {
-		t.Errorf("Related found %q, Candidates found %q", ancestorNames(related), ancestorNames(candidates))
+	if ancestorNames(found) != ancestorNames(candidates) {
+		t.Errorf("related found %q, Candidates found %q", ancestorNames(found), ancestorNames(candidates))
 	}
 }
 

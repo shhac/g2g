@@ -8,7 +8,7 @@ import (
 
 // What the recorded edge says about a branch as it is now.
 //
-// Assess is the entry point; classify is the per-branch decision.
+// assess is the entry point; classify is the per-branch decision.
 //
 // The other half of discovery answers a different question — which branches
 // could be a parent — and neither half calls the other. They shared a file
@@ -75,13 +75,13 @@ func (s NodeState) Restackable() bool {
 	return s == StateAligned || s == StateNeedsRestack || s == StateLanded || s == StateEmpty
 }
 
-// Assess reports each branch's state against Git.
+// assess reports each branch's state against Git.
 //
 // A parent that is no longer an ancestor is reported as needing a restack, not
 // silently reparented. The distinction matters: a vanished ancestor means "the
 // parent moved", not "there is no parent", and treating them alike would
 // quietly reparent a stale child onto the trunk.
-func Assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[string]NodeState, error) {
+func assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[string]NodeState, error) {
 	if git == nil {
 		return nil, fmt.Errorf("graph discovery is not configured")
 	}

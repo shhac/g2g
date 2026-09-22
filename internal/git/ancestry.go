@@ -7,12 +7,12 @@ package git
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 func (c Client) CurrentBranch(ctx context.Context) (string, error) {
@@ -117,8 +117,7 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 	if err == nil {
 		return true, nil
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+	if code, exited := subprocess.ExitCode(err); exited && code == 1 {
 		return false, nil
 	}
 	return false, err

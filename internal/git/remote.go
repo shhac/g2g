@@ -8,10 +8,10 @@ package git
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
+
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // PinForkPoint records a ref for a fork point so the object survives gc.
@@ -34,8 +34,7 @@ func (c Client) UnpinForkPoint(ctx context.Context, branch string) error {
 	// -d on a ref that is already gone is an error, and an untrack of a branch
 	// that never had a pin is ordinary, so a missing ref is not a failure.
 	if _, err := c.run(ctx, "update-ref", "-d", forkPointPrefix+branch); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if _, exited := subprocess.ExitCode(err); exited {
 			return nil
 		}
 		return err

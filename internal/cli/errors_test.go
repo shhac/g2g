@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // exitError builds a real *exec.ExitError with the requested status so the
@@ -104,5 +105,17 @@ func TestWriteErrorLeavesPlainErrorsAlone(t *testing.T) {
 
 	if got, want := out.String(), "error: selected branch \"synthetic-a\" is not a local branch\n"; got != want {
 		t.Fatalf("writeError output = %q, want %q", got, want)
+	}
+}
+
+// An injected runner has no real process to exit, and must still be able to
+// report the status gh uses for an authentication failure.
+func TestWriteErrorRecognisesAFakeRunnersAuthStatus(t *testing.T) {
+	err := &githubstack.CommandError{Command: "gh api graphql", Cause: &subprocess.ExitError{Code: ghAuthExitCode}}
+
+	var out strings.Builder
+	writeError(&out, err)
+	if !strings.Contains(out.String(), "GitHub CLI authentication is required") {
+		t.Errorf("writeError() = %q, want the authentication remediation", out.String())
 	}
 }

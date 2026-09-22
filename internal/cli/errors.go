@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // ghAuthExitCode is the exit status the GitHub CLI uses for an authentication
@@ -100,8 +100,7 @@ func remediationHint(err error) string {
 	if !errors.As(err, &commandErr) || !strings.HasPrefix(commandErr.Command, "gh ") {
 		return ""
 	}
-	var exitErr *exec.ExitError
-	if errors.As(commandErr.Cause, &exitErr) && exitErr.ExitCode() == ghAuthExitCode {
+	if code, exited := subprocess.ExitCode(commandErr.Cause); exited && code == ghAuthExitCode {
 		return "GitHub CLI authentication is required. Run: gh auth login"
 	}
 	if strings.Contains(commandErr.Output, "unknown command \"stack\"") {

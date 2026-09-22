@@ -82,9 +82,8 @@ func exitStatus(ctx context.Context, err error) string {
 	if err == nil {
 		return "0"
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return strconv.Itoa(exitErr.ExitCode())
+	if code, exited := ExitCode(err); exited {
+		return strconv.Itoa(code)
 	}
 	return "error"
 }

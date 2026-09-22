@@ -2,12 +2,12 @@ package git
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // Range is the commits to replay: everything reachable from To but not From.
@@ -85,8 +85,7 @@ func parseGitVersion(output []byte) (major, minor int, err error) {
 func (c Client) PreviewReplay(ctx context.Context, onto string, ranges []Range) (updates []RefUpdate, clean bool, err error) {
 	output, err := c.replay(ctx, onto, ranges, "--ref-action=print")
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if _, exited := subprocess.ExitCode(err); exited {
 			return nil, false, nil
 		}
 		return nil, false, err

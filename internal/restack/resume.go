@@ -143,11 +143,23 @@ func (s Service) Abort(ctx context.Context) error {
 			return err
 		}
 	}
+	// Where the checkout stands once git has put back what it knows about.
+	// Restoring a tip is a bare ref move, and a rebase the user finished by
+	// hand has left them on a rewritten branch, so the working tree has to be
+	// brought back with it or git reports the whole rewrite as changes nobody
+	// made -- under a message saying every branch is back where it started.
+	standing, err := s.standingOn(ctx)
+	if err != nil {
+		return err
+	}
 	diagnostic.Event(ctx, "restack.abort", diagnostic.Field{Key: "branches", Value: strings.Join(slices.Sorted(maps.Keys(record.Original)), ",")})
 	for _, branch := range slices.Sorted(maps.Keys(record.Original)) {
 		if err := s.Git.UpdateBranch(ctx, branch, record.Original[branch]); err != nil {
 			return err
 		}
+	}
+	if err := s.resettle(ctx, standing); err != nil {
+		return err
 	}
 	return s.Journal.Clear(ctx)
 }

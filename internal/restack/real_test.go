@@ -28,6 +28,10 @@ type realStack struct {
 func newRealStack(t *testing.T) realStack {
 	t.Helper()
 	repo := testutil.NewGitRepo(t, "synthetic-main")
+	// The code under test spawns its own git, which reads the developer's
+	// global configuration, and a rebase records signing in its own state --
+	// so a rebase it started could not be finished by a helper that reads none.
+	repo.Run("config", "commit.gpgsign", "false")
 	repo.Commit("synthetic root", "root.txt", "root")
 	t.Chdir(repo.Dir)
 	client := localgit.Client{Runner: subprocess.ExecRunner{}}
@@ -189,5 +193,60 @@ func TestACollapseOfTheCheckedOutBranchLetsTheRebaseStart(t *testing.T) {
 		t.Errorf("synthetic-a = %s, want it collapsed onto the trunk", got)
 	}
 	r.builtOn("synthetic-main", "synthetic-b")
+	r.assertClean()
+}
+
+// conflictingStack is a two-branch stack whose rebase stops on its bottom
+// branch, because the trunk changed the same lines both branches did.
+func conflictingStack(t *testing.T) realStack {
+	t.Helper()
+	r := newRealStack(t)
+	r.Commit("synthetic shared", "a.txt", "base")
+	r.Commit("synthetic shared too", "b.txt", "base")
+	r.branch("synthetic-a", "synthetic-main", "a.txt", "from a")
+	r.branch("synthetic-b", "synthetic-a", "b.txt", "from b")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Write("a.txt", "from the trunk")
+	r.Write("b.txt", "from the trunk")
+	r.Run("commit", "-qam", "synthetic trunk change")
+	return r
+}
+
+// stopOnConflict applies a plan the preview says will conflict, and checks
+// that it stopped rather than finishing or failing outright.
+func (r realStack) stopOnConflict(selection graph.Selection) {
+	r.t.Helper()
+	plan := r.plan(selection)
+	if err := r.service.Apply(context.Background(), plan); err == nil {
+		r.t.Fatal("Apply() error = nil; the rebase was meant to stop on the conflict")
+	}
+	if inProgress, _ := r.service.InProgress(context.Background()); !inProgress {
+		r.t.Fatal("the stopped rebase left no journal")
+	}
+}
+
+// A user who finishes git's own rebase by hand is left standing on the
+// rewritten branch with no rebase in progress. Abort then moved the refs back
+// and nothing else, so the working tree still held the rewrite and git status
+// reported it as staged changes — under "Every branch is back where it
+// started".
+func TestAbortAfterAHandFinishedRebaseBringsTheCheckoutBack(t *testing.T) {
+	r := conflictingStack(t)
+	r.Run("switch", "-q", "synthetic-b")
+	before := map[string]string{"synthetic-a": r.Revision("synthetic-a"), "synthetic-b": r.Revision("synthetic-b")}
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+
+	r.Write("a.txt", "resolved")
+	r.Run("add", "a.txt")
+	r.Run("-c", "core.editor=true", "rebase", "--continue")
+
+	if err := r.service.Abort(context.Background()); err != nil {
+		t.Fatalf("Abort() error = %v", err)
+	}
+	for branch, tip := range before {
+		if got := r.Revision(branch); got != tip {
+			t.Errorf("%s = %s after abort, want %s", branch, got, tip)
+		}
+	}
 	r.assertClean()
 }

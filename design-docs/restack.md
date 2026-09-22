@@ -265,6 +265,11 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
   a branch a fresh plan can no longer tell where it was headed: it reports the
   branch as moved off its parent, which is true and useless
 
+Restoring a tip is a bare ref move, so `--abort` brings the checkout along with
+the branch it is standing on. A user who finished git's own rebase by hand is
+left on a rewritten branch with no rebase in progress, and moving that branch's
+ref back without its working tree reported the whole rewrite as staged changes.
+
 The remaining queue is deliberately absent. It is re-derived from the refs on
 every invocation, which is what makes a user's own `git rebase --continue` or
 `--abort` change what work remains rather than something to detect.

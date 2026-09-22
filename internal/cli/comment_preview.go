@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/comment"
@@ -17,55 +18,14 @@ import (
 func commentView(plan comment.Plan) stackView {
 	view := stackView{Operation: "comment", Target: plan.Requested, TargetSource: plan.RequestedSource}
 	if plan.Blocked != "" {
-		view = view.blockedBy(plan.Blocked)
+		view = view.refusing(plan.Blocked, plan.Repair)
 	}
-	writes := map[string]comment.Write{}
-	for _, write := range plan.Writes {
-		if !write.Historic {
-			writes[write.Branch] = write
-		}
-	}
-	numbers := map[string]int{}
-	for _, pr := range plan.PullRequests {
-		if pr.Number > numbers[pr.Head] {
-			numbers[pr.Head] = pr.Number
-		}
-	}
-
-	forest := plan.Forest()
-	ordered := append([]string{plan.Base}, plan.Branches...)
-	depths := shape.Depths(ordered, forest.Parent)
-	view.Nodes = []stackNode{{Branch: plan.Base, Trunk: true}}
-	for _, branch := range plan.Branches {
-		parent, _ := forest.Parent(branch)
-		node := stackNode{Branch: branch, Target: branch == plan.Requested, Parent: parent, Depth: depths[branch]}
-		write, written := writes[branch]
-		switch {
-		case written:
-			node.PRNumber = write.Number
-			node = node.marked(commentMark(write))
-		case numbers[branch] != 0:
-			node.PRNumber = numbers[branch]
-			node = node.marked(stackMark{Detail: "no comment kept", Severity: severityNeutral})
-		default:
-			node = node.marked(stackMark{Detail: "no pull request", Severity: severityNeutral})
-		}
-		view.Nodes = append(view.Nodes, node)
-	}
-
+	view.Nodes = commentNodes(plan)
 	if len(plan.Merged) != 0 {
-		merged := make([]string, 0, len(plan.Merged))
-		for _, number := range plan.Merged {
-			merged = append(merged, fmt.Sprintf("#%d", number))
-		}
-		view = view.note("Merged out of the stack and still listed: "+strings.Join(merged, ", "), severityNeutral)
+		view = view.note("Merged out of the stack and still listed: "+pullRequestList(plan.Merged), severityNeutral)
 	}
 	if len(plan.Unread) != 0 {
-		unread := make([]string, 0, len(plan.Unread))
-		for _, number := range plan.Unread {
-			unread = append(unread, fmt.Sprintf("#%d", number))
-		}
-		view = view.note("Named by a comment and not read, so not listed: "+strings.Join(unread, ", "), severityWarn)
+		view = view.note("Named by a comment and not read yet, so not listed this time: "+pullRequestList(plan.Unread), severityWarn)
 	}
 	for _, write := range plan.Writes {
 		view.Comments = append(view.Comments, stackComment{PullRequest: write.Number, Branch: write.Branch, Action: string(write.Action), Reason: write.Reason, Body: write.Body})
@@ -78,6 +38,48 @@ func commentView(plan comment.Plan) stackView {
 	}
 	view.Excerpt = commentExcerpt(plan)
 	return view
+}
+
+// commentNodes is the stack, each branch with its pull request and what
+// happens to that pull request's comment. The number is the one the plan
+// decided the branch means; a merged pull request's write is looked up by its
+// number rather than its branch, because its branch may be gone or reused.
+func commentNodes(plan comment.Plan) []stackNode {
+	writes := map[int]comment.Write{}
+	for _, write := range plan.Writes {
+		if !write.Historic {
+			writes[write.Number] = write
+		}
+	}
+	forest := plan.Forest()
+	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), forest.Parent)
+	nodes := []stackNode{{Branch: plan.Base, Trunk: true}}
+	for _, branch := range plan.Branches {
+		parent, _ := forest.Parent(branch)
+		node := stackNode{Branch: branch, Target: branch == plan.Requested, Parent: parent, Depth: depths[branch], PRNumber: plan.Members[branch].Number}
+		write, written := writes[node.PRNumber]
+		switch {
+		case written && node.PRNumber != 0:
+			node = node.marked(commentMark(write))
+		case node.PRNumber != 0:
+			node = node.marked(stackMark{Detail: "no comment kept", Severity: severityNeutral})
+		case plan.Members[branch].State == comment.StateAmbiguous:
+			node = node.marked(stackMark{Detail: "more than one open pull request", Severity: severityBad})
+		default:
+			node = node.marked(stackMark{Detail: "no pull request", Severity: severityNeutral})
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+// pullRequestList names pull requests the way every other list here is read.
+func pullRequestList(numbers []int) string {
+	named := make([]string, 0, len(numbers))
+	for _, number := range numbers {
+		named = append(named, fmt.Sprintf("#%d", number))
+	}
+	return branchList(named)
 }
 
 // commentMark is what happens to one comment, said as the one axis it is.
@@ -97,22 +99,18 @@ func commentMark(write comment.Write) stackMark {
 // commentExcerpt is the body the requested branch's pull request would carry,
 // or the first one that would change when that branch has none.
 func commentExcerpt(plan comment.Plan) *stackExcerpt {
-	var chosen *comment.Write
-	for index := range plan.Writes {
-		write := &plan.Writes[index]
-		if write.Branch == plan.Requested && !write.Historic {
-			chosen = write
-			break
-		}
-		if chosen == nil && write.Changes() {
-			chosen = write
-		}
+	chosen := slices.IndexFunc(plan.Writes, func(write comment.Write) bool {
+		return write.Branch == plan.Requested && !write.Historic
+	})
+	if chosen < 0 {
+		chosen = slices.IndexFunc(plan.Writes, comment.Write.Changes)
 	}
-	if chosen == nil {
+	if chosen < 0 {
 		return nil
 	}
+	write := plan.Writes[chosen]
 	return &stackExcerpt{
-		Heading: fmt.Sprintf("The comment on #%d", chosen.Number),
-		Lines:   strings.Split(strings.TrimRight(chosen.Body, "\n"), "\n"),
+		Heading: fmt.Sprintf("The comment on #%d", write.Number),
+		Lines:   strings.Split(strings.TrimRight(write.Body, "\n"), "\n"),
 	}
 }

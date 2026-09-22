@@ -11,3 +11,7 @@ func WriteErrorForTest(writer io.Writer, err error) { writeError(writer, err) }
 // test, so a bump is asserted against the constant rather than against a
 // literal that has to be found and changed alongside it.
 const SchemaVersion = schemaVersion
+
+// StoppedPartWayForTest reports an error Execute would exit 3 on, so the
+// external tests can assert the status a script reads rather than the prose.
+func StoppedPartWayForTest(err error) bool { return wasStopped(err) }

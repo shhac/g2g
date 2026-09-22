@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -48,6 +50,15 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 			branches: comment.Plan.Changing,
 			noOp:     comment.Plan.NothingToDo,
 			blocked:  func(plan comment.Plan) string { return plan.Blocked },
+			// Comments already written stay written, so a run that fails on
+			// the third is not "not applied".
+			interrupted: func(_ context.Context, err error) (bool, error) {
+				var stopped *comment.Stopped
+				if !errors.As(err, &stopped) {
+					return false, nil
+				}
+				return true, stoppedMidComment(cmd, stopped, presentation)
+			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to write these comments.",
 				noOp:     "Every stack comment already says what the stack is. Nothing to do.",
@@ -61,4 +72,17 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 	selection.register(cmd, completions, stack.ReadableSources, "a branch of the stack to comment on (defaults to current branch)", "trunk to use as the base")
 	cmd.Flags().BoolVar(&apply, "apply", false, "write the comments instead of previewing them")
 	return cmd
+}
+
+// stoppedMidComment says which comments were written before the run failed.
+func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, p Presentation) error {
+	writer := cmd.OutOrStdout()
+	if err := prose(writer, p, "\n"+p.problem(fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err))); err != nil {
+		return err
+	}
+	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
+	if err := prose(writer, p, p.subdued(written+" Rerun "+runnable("g2g comment --apply")+" to finish; it edits rather than adds.")); err != nil {
+		return err
+	}
+	return stoppedPartWay(stopped)
 }

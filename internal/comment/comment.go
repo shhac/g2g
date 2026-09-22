@@ -13,11 +13,14 @@ package comment
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -100,23 +103,20 @@ type Plan struct {
 	Unread []int
 	// Writes are ordered as the stack reads, then the merged pull requests.
 	Writes []Write
+	// Members is each branch's pull request, as the open-is-identity rule
+	// decided it. A renderer reads the number from here rather than working
+	// it out again, which is how a preview came to name a pull request the
+	// comment was not written for.
+	Members map[string]Member
 	// Ambiguous names branches with more than one open pull request.
 	Ambiguous []string
-	Blocked   string
+	// Blocked is why an apply would refuse, and Repair the same in parts.
+	Blocked string
+	Repair  repair.Note
 }
 
 // NothingToDo reports a plan with no write to send.
-func (p Plan) NothingToDo() bool {
-	if p.Blocked != "" {
-		return false
-	}
-	for _, write := range p.Writes {
-		if write.Changes() {
-			return false
-		}
-	}
-	return true
-}
+func (p Plan) NothingToDo() bool { return p.Blocked == "" && p.Changing() == 0 }
 
 // Changing counts the writes that would reach GitHub, which is what sizes the
 // time a run is given.
@@ -142,7 +142,8 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Merged, other.Merged) &&
 		slices.Equal(p.Unread, other.Unread) &&
 		slices.Equal(p.Ambiguous, other.Ambiguous) &&
-		slices.Equal(p.Writes, other.Writes)
+		slices.Equal(p.Writes, other.Writes) &&
+		maps.Equal(p.Members, other.Members)
 }
 
 // Plan works out what every comment on the stack should say, and which of them
@@ -159,20 +160,20 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Discovery: discovery, Requested: requested.Target, RequestedSource: requested.TargetSource, Merged: []int{}, Unread: []int{}, Writes: []Write{}, Ambiguous: []string{}}
+	members := classify(discovery)
+	plan := Plan{Discovery: discovery, Requested: requested.Target, RequestedSource: requested.TargetSource, Merged: []int{}, Unread: []int{}, Writes: []Write{}, Members: members, Ambiguous: ambiguous(discovery.Branches, members)}
 	if err := discovery.Snapshot.RequireActionable(command); err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
 	}
-
-	members := classify(discovery)
-	for _, branch := range discovery.Branches {
-		if members[branch].ambiguous {
-			plan.Ambiguous = append(plan.Ambiguous, branch)
-		}
-	}
 	if len(plan.Ambiguous) != 0 {
-		plan.Blocked = "more than one open pull request for a branch, so which one the stack means cannot be derived"
+		// No command, deliberately: which pull request a branch means is a
+		// person's choice, and the way out says so rather than naming one.
+		plan.Repair = repair.Note{
+			Reason: "more than one open pull request for " + strings.Join(plan.Ambiguous, ", ") + ", so which one the stack means cannot be derived",
+			Ways:   []repair.Step{{Effect: "close all but one open pull request for each, then rerun"}},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 
@@ -185,11 +186,22 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
+	written := map[int]bool{}
 	for _, kept := range stacks {
 		plan.Merged = append(plan.Merged, kept.merged()...)
-		plan.Unread = append(plan.Unread, kept.unread...)
-		plan.Writes = append(plan.Writes, kept.writes(forest, discovery.Base, members, read)...)
+		plan.Unread = append(plan.Unread, kept.unread()...)
+		for _, write := range kept.writes(forest, discovery.Base, members, read) {
+			if write.Historic && written[write.Number] {
+				continue
+			}
+			written[write.Number] = true
+			plan.Writes = append(plan.Writes, write)
+		}
 	}
+	// From a trunk, two stacks can both record a pull request whose fork point
+	// merged; it is one pull request, listed once.
+	slices.Sort(plan.Merged)
+	plan.Merged = slices.Compact(plan.Merged)
 	diagnostic.Event(ctx, "comment.plan",
 		diagnostic.Field{Key: "stacks", Value: strconv.Itoa(len(stacks))},
 		diagnostic.Field{Key: "writes", Value: strconv.Itoa(plan.Changing())},
@@ -229,198 +241,52 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, prev
 	return plan, diagnostic.Revalidated(ctx, "comment", "comment plan", plan.Equal(preview))
 }
 
+// Stopped is a run that wrote some comments and then failed on one.
+//
+// Those comments are written and correct, so reporting the run as not applied
+// would be wrong about the part that worked; rerunning edits the rest rather
+// than adding to them.
+type Stopped struct {
+	// Written are the pull requests whose comment was sent, in order.
+	Written []int
+	// Failed is the pull request the run stopped on.
+	Failed int
+	Err    error
+}
+
+func (s *Stopped) Error() string {
+	return fmt.Sprintf("stopped at #%d after writing %d: %v", s.Failed, len(s.Written), s.Err)
+}
+
+func (s *Stopped) Unwrap() error { return s.Err }
+
 // Execute sends each write in order and stops at the first that fails.
 //
-// Nothing is unwound. A comment already written is correct, and rerunning
-// edits the rest rather than adding to them.
+// Nothing is unwound. A failure before anything was sent is an ordinary error;
+// one after is a Stopped, because some of the run happened.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot keep the stack comments: %s", plan.Blocked)
 	}
+	written := make([]int, 0, plan.Changing())
 	for _, write := range plan.Writes {
-		var err error
-		switch write.Action {
-		case ActionCreate:
-			err = s.GitHub.AddComment(ctx, write.Subject, write.Body)
-		case ActionUpdate:
-			err = s.GitHub.UpdateComment(ctx, write.Comment, write.Body)
-		default:
+		if !write.Changes() {
 			continue
 		}
-		if err != nil {
-			return fmt.Errorf("#%d: %w", write.Number, err)
+		if err := s.send(ctx, write); err != nil {
+			if len(written) == 0 {
+				return fmt.Errorf("#%d: %w", write.Number, err)
+			}
+			return &Stopped{Written: written, Failed: write.Number, Err: err}
 		}
+		written = append(written, write.Number)
 	}
 	return nil
 }
 
-// Member states, as a comment names them.
-const (
-	stateOpen    = "open"
-	stateMerged  = "merged"
-	stateClosed  = "closed"
-	stateMissing = "missing"
-)
-
-// member is one branch's pull request, once the open-is-identity rule has said
-// which one that is.
-type member struct {
-	number    int
-	state     string
-	ambiguous bool
-}
-
-// listed reports a member the stack's comments name by number. A closed pull
-// request is not: nothing will merge it, and its branch is waiting for one.
-func (m member) listed() bool {
-	return m.number != 0 && (m.state == stateOpen || m.state == stateMerged)
-}
-
-func classify(discovery stack.Discovery) map[string]member {
-	members := make(map[string]member, len(discovery.Branches))
-	for step := range githubstack.Across(discovery.Parents, discovery.Branches, discovery.PullRequests) {
-		switch step.Classify() {
-		case githubstack.StepAmbiguous:
-			members[step.Branch] = member{ambiguous: true}
-		case githubstack.StepAligned, githubstack.StepBaseMismatch:
-			members[step.Branch] = member{number: step.Resolution.Open.Number, state: stateOpen}
-		case githubstack.StepSuperseded:
-			state := stateClosed
-			if step.Merged() {
-				state = stateMerged
-			}
-			members[step.Branch] = member{number: step.Resolution.Latest.Number, state: state}
-		default:
-			members[step.Branch] = member{state: stateMissing}
-		}
+func (s Service) send(ctx context.Context, write Write) error {
+	if write.Action == ActionCreate {
+		return s.GitHub.AddComment(ctx, write.Subject, write.Body)
 	}
-	return members
-}
-
-// forestOf is the selection's shape with its base as the root. Every selector
-// fills Parents, and a branch with no selected parent hangs from the base.
-func forestOf(snapshot stack.Snapshot) shape.Forest {
-	parents := make(map[string]string, len(snapshot.Branches)+1)
-	parents[snapshot.Base] = ""
-	for _, branch := range snapshot.Branches {
-		parent, ok := snapshot.ParentOf(branch)
-		if !ok {
-			parent = snapshot.Base
-		}
-		parents[branch] = parent
-	}
-	return shape.Forest{Parents: parents}
-}
-
-// writes decides each comment on this stack: its own pull requests in the
-// order the stack reads, then those that merged out of it.
-func (k *kept) writes(forest shape.Forest, base string, members map[string]member, read map[int]githubstack.Conversation) []Write {
-	recorded := k.recorded()
-	writes := make([]Write, 0, len(k.own)+len(k.history))
-	for _, branch := range k.branches {
-		m := members[branch]
-		if !m.listed() {
-			continue
-		}
-		v := view{Trunk: base, Merged: k.merged(), Lines: k.linesFrom(forest, branch, members), Here: m.number, Recorded: recorded}
-		if write, ok := decide(read[m.number], branch, v.body(), m.state == stateOpen && len(recorded) > 1); ok {
-			writes = append(writes, write)
-		}
-	}
-	for _, number := range k.merged() {
-		v := view{Trunk: base, Merged: k.merged(), Lines: k.whole(forest, base, members), Here: number, Recorded: recorded}
-		// A merged pull request is never given a comment it did not have.
-		// Nobody is reviewing it, and a new comment notifies everyone who did.
-		if write, ok := decide(read[number], read[number].Head, v.body(), false); ok {
-			write.Historic = true
-			writes = append(writes, write)
-		}
-	}
-	return writes
-}
-
-// decide is what happens to one pull request's comment.
-func decide(conversation githubstack.Conversation, branch, body string, create bool) (Write, bool) {
-	number := conversation.Number
-	write := Write{Number: number, Branch: branch, Subject: conversation.ID, Body: body}
-	switch comments := conversation.Comments; {
-	case len(comments) == 0:
-		if !create || conversation.ID == "" {
-			return Write{}, false
-		}
-		if !conversation.Commentable {
-			write.Action = ActionSkip
-			write.Reason = fmt.Sprintf("#%d does not take new comments from you · its conversation may be locked", number)
-			return write, true
-		}
-		write.Action = ActionCreate
-	case len(comments) > 1:
-		write.Action = ActionSkip
-		write.Reason = fmt.Sprintf("%d stack comments on #%d · delete all but one, then rerun", len(comments), number)
-	case !comments[0].Editable:
-		write.Action = ActionSkip
-		write.Reason = fmt.Sprintf("the stack comment on #%d was written by %s and you cannot edit it", number, author(comments[0]))
-	case same(comments[0].Body, body):
-		write.Action = ActionCurrent
-		write.Comment = comments[0].ID
-	default:
-		write.Action = ActionUpdate
-		write.Comment = comments[0].ID
-	}
-	return write, true
-}
-
-func author(found githubstack.Comment) string {
-	if found.Author == "" {
-		return "someone else"
-	}
-	return "@" + found.Author
-}
-
-// linesFrom is the stack as one branch sees it: the line down to the trunk and
-// everything built on top of it. A cousin that merely shares an ancestor is
-// another branch's business, and listing it would draw a fork the reader of
-// this pull request is not part of.
-//
-// The line down is a chain, so it stays flat; only what forks above the branch
-// is nested, which is the one place a reader needs the shape.
-func (k *kept) linesFrom(forest shape.Forest, branch string, members map[string]member) []line {
-	path, err := forest.Path(branch)
-	if err != nil {
-		path = []string{branch}
-	}
-	lines := make([]line, 0, len(path))
-	for index, onPath := range path {
-		lines = append(lines, k.line(onPath, index == 0, 0, members))
-	}
-	above := forest.Subtree(branch)
-	depths := shape.Depths(above, forest.Parent)
-	for _, descendant := range above[1:] {
-		lines = append(lines, k.line(descendant, false, depths[descendant], members))
-	}
-	return lines
-}
-
-// whole is the stack as a merged pull request sees it: everything still in it,
-// because everything still in it was built on what merged.
-func (k *kept) whole(forest shape.Forest, base string, members map[string]member) []line {
-	ordered := append([]string{base}, k.branches...)
-	depths := shape.Depths(ordered, forest.Parent)
-	lines := make([]line, 0, len(ordered))
-	for index, branch := range ordered {
-		lines = append(lines, k.line(branch, index == 0, depths[branch], members))
-	}
-	return lines
-}
-
-func (k *kept) line(branch string, trunk bool, depth int, members map[string]member) line {
-	if trunk {
-		return line{Branch: branch, Trunk: true, Depth: depth}
-	}
-	m := members[branch]
-	entry := line{Branch: branch, State: m.state, Depth: depth}
-	if m.listed() {
-		entry.Number = m.number
-	}
-	return entry
+	return s.GitHub.UpdateComment(ctx, write.Comment, write.Body)
 }

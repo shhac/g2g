@@ -546,3 +546,154 @@ func TestPlanDropsARecordedNumberNothingAnswersTo(t *testing.T) {
 		t.Error("Plan() accepted a stack whose pull request GitHub did not answer for")
 	}
 }
+
+// The branch a fork grew from merged, so two stacks now sit on the trunk and
+// both record it. Drawn from either one alone, its comment would say the other
+// does not exist, and runs from each would keep undoing one another; it is
+// left as it is, and listed once.
+func TestPlanLeavesAMergedForkPointAloneAndListsItOnce(t *testing.T) {
+	forest := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-a":     "synthetic-trunk",
+		"synthetic-b":     "synthetic-trunk",
+	}}
+	recorded := Marker + "\n" + dataOpen + "30,31>30,41>30" + dataClose
+	fresh := func() *fakeGitHub {
+		return &fakeGitHub{
+			prs: []githubstack.PullRequest{pr(31, "synthetic-a", "synthetic-trunk", "OPEN"), pr(41, "synthetic-b", "synthetic-trunk", "OPEN")},
+			conversations: map[int]githubstack.Conversation{
+				30: conversation(30, "synthetic-fork-point", "MERGED", recorded),
+				31: conversation(31, "synthetic-a", "OPEN", recorded),
+				41: conversation(41, "synthetic-b", "OPEN", recorded),
+			},
+		}
+	}
+	for _, from := range []string{"synthetic-trunk", "synthetic-a", "synthetic-b"} {
+		got := plan(t, forest, from, fresh())
+		if !slices.Equal(got.Merged, []int{30}) {
+			t.Errorf("from %s: Merged = %v, want #30 once", from, got.Merged)
+		}
+		thirty := 0
+		for _, write := range got.Writes {
+			if write.Number != 30 {
+				continue
+			}
+			thirty++
+			if write.Changes() {
+				t.Errorf("from %s: #30 would be %s, want it left alone", from, write.Action)
+			}
+		}
+		if thirty != 1 {
+			t.Errorf("from %s: %d writes for #30, want one", from, thirty)
+		}
+	}
+}
+
+// The refusal names the branch to fix, and says there is no command for it.
+func TestPlanNamesTheAmbiguousBranchInItsRefusal(t *testing.T) {
+	github := chainGitHub()
+	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
+	got := plan(t, chain(), "synthetic-one", github)
+	if !strings.Contains(got.Blocked, "synthetic-two") || len(got.Repair.Ways) != 1 || got.Repair.Ways[0].Command != "" {
+		t.Errorf("Blocked = %q, Repair = %+v", got.Blocked, got.Repair)
+	}
+	if got.Members["synthetic-two"].State != StateAmbiguous || got.Members["synthetic-two"].Number != 0 {
+		t.Errorf("member = %+v, want ambiguous with no number", got.Members["synthetic-two"])
+	}
+}
+
+// A run that fails after writing some comments reports which, because those
+// stay written; one that fails on the first is an ordinary failure.
+func TestExecuteReportsWhatItWroteBeforeStopping(t *testing.T) {
+	github := chainGitHub()
+	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
+	planned, err := service.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	github.failOn = 3
+	err = service.Execute(context.Background(), planned)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !slices.Equal(stopped.Written, []int{11, 12}) || stopped.Failed != 13 {
+		t.Fatalf("Execute() = %v, want stopped at #13 after #11 and #12", err)
+	}
+
+	github.sent, github.failOn = nil, 1
+	if err := service.Execute(context.Background(), planned); err == nil || errors.As(err, &stopped) {
+		t.Errorf("a failure on the first write = %v, want an ordinary error", err)
+	}
+}
+
+// Only a create or an update reaches GitHub: a comment someone else owns, or a
+// pull request carrying two, is never sent.
+func TestExecuteSendsOnlyCreatesAndUpdates(t *testing.T) {
+	github := &fakeGitHub{}
+	service := Service{Selector: fakeSelector{}, GitHub: github}
+	planned := Plan{Writes: []Write{
+		{Number: 1, Action: ActionCurrent, Comment: "IC_current"},
+		{Number: 2, Action: ActionSkip, Comment: "IC_theirs"},
+		{Number: 3, Action: ActionUpdate, Comment: "IC_merged", Historic: true, Body: "synthetic"},
+	}}
+	if err := service.Execute(context.Background(), planned); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(github.sent, ",") != "update IC_merged" {
+		t.Errorf("sent = %v", github.sent)
+	}
+}
+
+// A branch no local checkout has is structure and not somewhere to act.
+func TestPlanRefusesABranchThisCheckoutDoesNotHave(t *testing.T) {
+	github := chainGitHub()
+	selector := absentSelector{fakeSelector{forest: chain(), current: "synthetic-one"}}
+	got, err := Service{Selector: selector, GitHub: github}.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Blocked == "" || len(got.Writes) != 0 || len(github.asked) != 0 {
+		t.Errorf("plan = %+v, asked = %v; want refused before any conversation is read", got, github.asked)
+	}
+}
+
+type absentSelector struct{ fakeSelector }
+
+func (a absentSelector) Select(ctx context.Context, selection stack.Selection, command string) (stack.Snapshot, error) {
+	snapshot, err := a.fakeSelector.Select(ctx, selection, command)
+	snapshot.Absent = []string{"synthetic-three"}
+	return snapshot, err
+}
+
+// The gate is on adding: a stack down to one pull request keeps the comment it
+// has, and one open pull request with merged history is a stack of two.
+func TestPlanAddsOnlyWhereThereIsAStackAndKeepsWhatIsThere(t *testing.T) {
+	alone := shape.Forest{Parents: map[string]string{"synthetic-trunk": "", "synthetic-one": "synthetic-trunk"}}
+	github := &fakeGitHub{
+		prs:           []githubstack.PullRequest{pr(11, "synthetic-one", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{11: conversation(11, "synthetic-one", "OPEN", Marker+" stale")},
+	}
+	if got := plan(t, alone, "synthetic-one", github); actions(got) != "#11:update" {
+		t.Errorf("writes = %s, want the existing comment kept up to date", actions(got))
+	}
+
+	github.conversations[11] = conversation(11, "synthetic-one", "OPEN")
+	github.conversations[10] = conversation(10, "synthetic-landed", "MERGED")
+	if got := plan(t, alone, "synthetic-one", github); actions(got) != "" {
+		t.Errorf("writes = %s, want nothing added to a stack of one with nothing recorded", actions(got))
+	}
+}
+
+// A branch whose only pull request was closed is drawn, and neither written to
+// nor recorded: nothing will merge it.
+func TestPlanDrawsAClosedPullRequestsBranchAndRecordsNothingForIt(t *testing.T) {
+	github := chainGitHub()
+	github.prs[1].State = "CLOSED"
+	github.conversations[12] = conversation(12, "synthetic-two", "CLOSED", Marker+" old")
+	got := plan(t, chain(), "synthetic-one", github)
+	if actions(got) != "#11:create #13:create" {
+		t.Fatalf("writes = %s", actions(got))
+	}
+	body := bodyFor(t, got, 13)
+	if !strings.Contains(body, "- `synthetic-two` · no open pull request\n") || !strings.Contains(body, dataOpen+"11,13"+dataClose) {
+		t.Errorf("body:\n%s", body)
+	}
+}

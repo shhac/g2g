@@ -28,7 +28,10 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 // g2gOwnedRepositoryWithConversations also says what the pull requests'
 // conversations hold, which is the one thing the stack comment reads that no
 // other command does.
-func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conversations string) (*testutil.Recorder, string) {
+//
+// first are routes tried before the shared ones, for a test that needs one call
+// among many to answer differently.
+func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conversations string, first ...testutil.Route) (*testutil.Recorder, string) {
 	t.Helper()
 
 	common := t.TempDir()
@@ -66,7 +69,7 @@ func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conv
 		},
 		// Deliberately unroutable: reaching Graphite at all is the failure.
 		"gt": {},
-		"gh": {
+		"gh": append(first, []testutil.Route{
 			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
 			// Ahead of the head-ref lookup: both queries go to the same
 			// endpoint and begin with the same words, so the operation name is
@@ -80,7 +83,7 @@ func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conv
 			{Prefix: "stack link"},
 			{Prefix: "stack unstack"},
 			{Prefix: "pr edit"},
-		},
+		}...),
 	})
 	return recorder, common
 }

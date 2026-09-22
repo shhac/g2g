@@ -40,7 +40,7 @@ type entry struct {
 type line struct {
 	Branch string
 	Number int
-	State  string
+	State  State
 	Depth  int
 	Trunk  bool
 }
@@ -87,19 +87,17 @@ func (v view) reference(number int) string {
 }
 
 func (v view) item(entry line) string {
-	if entry.Trunk || entry.Number == 0 {
-		said := code(entry.Branch)
-		switch {
-		case entry.Trunk:
-		case entry.State == stateMissing:
-			said += " · no pull request yet"
-		default:
-			said += " · no open pull request"
-		}
-		return said
+	if entry.Trunk {
+		return code(entry.Branch)
+	}
+	if entry.Number == 0 && entry.State == StateMissing {
+		return code(entry.Branch) + " · no pull request yet"
+	}
+	if entry.Number == 0 {
+		return code(entry.Branch) + " · no open pull request"
 	}
 	said := "#" + strconv.Itoa(entry.Number) + " " + code(entry.Branch)
-	if entry.State == stateMerged {
+	if entry.State == StateMerged {
 		said += " · merged"
 	}
 	if entry.Number == v.Here {

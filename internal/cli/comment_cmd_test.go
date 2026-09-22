@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/cli"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // The preview reads GitHub and writes nothing; it shows what each pull request
@@ -104,4 +107,44 @@ func TestCommentJSONCarriesEveryBody(t *testing.T) {
 			t.Errorf("comment = %+v", written)
 		}
 	}
+}
+
+// A write that fails after another succeeded is reported as what it is: the
+// first comment is written and stays, the run stopped, and rerunning finishes.
+func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
+	second := testutil.Route{
+		Prefix: commentMutationPrefix + "$subject: ID!, $body: String!) { addComment(input: {subjectId: $subject, body: $body}) { clientMutationId } } -f subject=PR_synthetic_202",
+		Stderr: "synthetic refusal", Exit: 1,
+	}
+	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, second)
+
+	stdout, _, err := run(t, "comment", "--apply")
+	if err == nil {
+		t.Fatalf("comment --apply succeeded with a failing write:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Not applied") {
+		t.Errorf("a run that wrote a comment says nothing was applied:\n%s", stdout)
+	}
+	for _, want := range []string{"Stopped part-way at #202", "Wrote the comment on #201"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("report missing %q:\n%s", want, stdout)
+		}
+	}
+	if !cli.StoppedPartWayForTest(err) {
+		t.Errorf("error = %v, want the part-way status", err)
+	}
+	if got := recorder.Count("gh " + commentMutationPrefix + "$subject"); got != 2 {
+		t.Errorf("addComment calls = %d, want the first sent and the second attempted", got)
+	}
+}
+
+// Apply re-reads before it writes: the conversations are read twice, and every
+// write comes after the second read.
+func TestCommentApplyRevalidatesBeforeWriting(t *testing.T) {
+	recorder, _ := g2gOwnedRepository(t, ownedGraph)
+
+	if _, _, err := run(t, "comment", "--apply"); err != nil {
+		t.Fatalf("comment --apply: %v", err)
+	}
+	recorder.AssertOrder("gh "+stackCommentsPrefix, "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)
 }

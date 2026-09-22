@@ -54,7 +54,7 @@ func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {
 	hostile := "synthetic--><script>"
 	body := view{
 		Trunk: "synthetic-trunk",
-		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Branch: hostile, Number: 5, State: stateOpen}},
+		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Branch: hostile, Number: 5, State: StateOpen}},
 		Here:  5, Recorded: []entry{{Number: 5}},
 	}.body()
 	for _, comment := range []string{Marker, dataOpen + "5" + dataClose} {

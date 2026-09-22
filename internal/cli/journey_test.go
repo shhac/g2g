@@ -602,6 +602,72 @@ func TestJourneyAChildOfASupersededBranchIsReplayedOntoIt(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// Taking the published version of the bottom of a stack and keeping your own
+// work above it. The case: the lower branches were rebased somewhere else and
+// pushed, and the upper ones carry work only this machine has.
+//
+// What is kept above the boundary is not left alone — it is replayed onto the
+// taken branch below, which is what sync does anyway. And what has diverged
+// above the boundary is still refused, because a boundary says where you have
+// decided, not that you have decided everywhere.
+func TestJourneyTakingThePublishedVersionThroughABranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// Somebody rebases synthetic-a and publishes it, so the published version
+	// shares no commit ids with yours and carries work of its own.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+	theirs := w.tip(w.Other, "synthetic-a")
+
+	// You have your own divergent version of synthetic-a, and new work on
+	// synthetic-b that exists nowhere else.
+	w.commit(w.Local, "synthetic-a", "mine.txt", "mine")
+	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic mine, revised")
+	w.commit(w.Local, "synthetic-b", "b-new.txt", "b-new")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+
+	preview := mustRun(t, "sync", "--take", "published", "--through", "synthetic-a")
+	if !strings.Contains(preview, "discards") {
+		t.Errorf("the preview does not say what it would lose:\n%s", preview)
+	}
+
+	mustRun(t, "sync", "--take", "published", "--through", "synthetic-a", "--apply")
+
+	// Below the boundary: theirs won.
+	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
+		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
+	}
+	w.assertHas(w.Local, "synthetic-a", "theirs.txt")
+
+	// Above it: yours survived, replayed onto what was taken.
+	w.assertHas(w.Local, "synthetic-b", "b-new.txt")
+	w.assertHas(w.Local, "synthetic-b", "theirs.txt")
+	if !w.contains(w.Local, "synthetic-a", "synthetic-b") {
+		t.Error("synthetic-b was not replayed onto the taken synthetic-a")
+	}
+	w.assertClean(w.Local)
+}
+
+// A boundary naming something this sync does not select resolves nothing, and
+// would be indistinguishable from an ordinary refusal.
+func TestJourneyABoundaryOutsideTheStackIsRefused(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	out, _, _ := run(t, "sync", "--take", "published", "--through", "synthetic-elsewhere")
+	if !strings.Contains(out, "not in the stack being synced") {
+		t.Errorf("a boundary outside the selection was not refused:\n%s", out)
+	}
+}
+
 // An unknown value is refused before anything runs, and the refusal lists what
 // the flag does take.
 func TestJourneyAnUnknownTakeIsRefused(t *testing.T) {

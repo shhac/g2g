@@ -54,7 +54,7 @@ func (s Service) compare(ctx context.Context, base, remote string, take Take) (a
 	if len(ours) == 0 {
 		return false, true, false, nil, nil
 	}
-	if take == TakePublished {
+	if take.Published() {
 		return false, true, false, ours, nil
 	}
 	return false, false, true, nil, nil
@@ -114,7 +114,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue
 		}
-		if take == TakePublished {
+		if take.AppliesTo(branch, branches) {
 			// Asked for explicitly, and the commits it costs are carried so the
 			// preview can name every one before anything happens.
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true, Discards: ours})

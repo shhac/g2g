@@ -15,7 +15,7 @@ import (
 func newSync(service syncer.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var remote string
-	var take string
+	var take, through string
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "sync",
@@ -28,7 +28,7 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 		if err := selection.validateScope(); err != nil {
 			return err
 		}
-		chosen, err := syncer.ParseTake(take)
+		chosen, err := syncer.ParseTake(take, through)
 		if err != nil {
 			return err
 		}
@@ -76,12 +76,18 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	// remote, so that choice is already made by which command you run.
 	cmd.Flags().StringVar(&take, "take", "", "resolve a divergence by taking one side: published (discards local commits the remote does not have)")
 	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(syncer.Takes))
-		for _, value := range syncer.Takes {
+		values := make([]string, 0, len(syncer.Sides))
+		for _, value := range syncer.Sides {
 			values = append(values, string(value))
 		}
 		return values, nil
 	}))
+	// A boundary on that choice, so it can be made for the part of the stack
+	// you rebased elsewhere without being made for the part you did not.
+	// Everything above it keeps the default, which is to refuse rather than
+	// pick a side silently.
+	cmd.Flags().StringVar(&through, "through", "", "with --take, the last branch the chosen side applies to · above it a divergence is still refused")
+	_ = cmd.RegisterFlagCompletionFunc("through", completionCallback(localBranchCompletions(service.Graph)))
 	selection.registerBranch(cmd, service.Graph)
 	// sync was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean

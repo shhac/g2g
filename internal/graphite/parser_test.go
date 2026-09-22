@@ -63,6 +63,15 @@ func TestParseLogAcceptsKnownBranchLabelSuffixes(t *testing.T) {
 		"synthetic-branch (needs restack)":                      "synthetic-branch",
 		"synthetic-branch (synthetic worktree)":                 "synthetic-branch",
 		"synthetic-branch (needs restack) (synthetic worktree)": "synthetic-branch",
+		// Parentheses are legal in a branch name and a name cannot hold a
+		// space, so they belong to the name and never open an annotation.
+		"synthetic-fix(parser)":                                      "synthetic-fix(parser)",
+		"synthetic-fix(parser) (current)":                            "synthetic-fix(parser)",
+		"synthetic-fix(parser) (needs restack) (synthetic worktree)": "synthetic-fix(parser)",
+		"synthetic-(wip)":                                            "synthetic-(wip)",
+		"(synthetic)":                                                "(synthetic)",
+		"synthetic-a(b)c(d)":                                         "synthetic-a(b)c(d)",
+		"synthetic-fix(parser)(current)":                             "synthetic-fix(parser)(current)",
 	} {
 		t.Run(label, func(t *testing.T) {
 			parsed, err := parseLog("◯  trunk\n◯  " + label + "\n")
@@ -96,6 +105,14 @@ func TestParseLogRejectsMalformedBranchLabelSuffixes(t *testing.T) {
 		"synthetic-feature (needs restack) (nested (annotation))",
 		"synthetic-feature ()",
 		"synthetic-feature (needs restack) (needs restack)",
+		// A space cannot be part of a name, so whatever follows it must be
+		// well-formed annotations and nothing else.
+		"synthetic-feature (current",
+		"synthetic-feature  (current)",
+		"synthetic-feature (current) ",
+		"synthetic-feature extra",
+		"synthetic-feature extra (current)",
+		"synthetic-fix(parser) (nested (annotation))",
 	} {
 		t.Run(label, func(t *testing.T) {
 			_, err := parseLog("◯  trunk\n◯  " + label + "\n")

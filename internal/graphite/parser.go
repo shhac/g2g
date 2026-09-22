@@ -179,12 +179,20 @@ func cutNodeGlyph(line string) (string, bool) {
 	return line, false
 }
 
+// parseBranchLabel separates the branch name from the annotations after it.
+//
+// Git refuses a space in a ref name, so the name is everything before the
+// first space and every annotation follows it. Finding the name by peeling
+// annotations off the end instead read a name's own closing parenthesis as the
+// start of one, and synthetic-fix(parser) — a legal name — failed discovery
+// for the whole repository as display drift.
 func parseBranchLabel(label string) (string, bool) {
-	base, markers, ok := splitLabelMarkers(label)
-	if !ok {
+	base, _, _ := strings.Cut(label, " ")
+	if base == "" || strings.ContainsAny(base, "\t\r\n") {
 		return "", false
 	}
-	if base == "" || strings.TrimSpace(base) != base || strings.ContainsAny(base, "\t\r\n") {
+	rest, markers, ok := splitLabelMarkers(label[len(base):])
+	if !ok || rest != "" {
 		return "", false
 	}
 	switch len(markers) {

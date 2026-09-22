@@ -73,7 +73,10 @@ at least two spaces, and a nonempty branch name. Its accepted terminal label
 forms are exactly: bare; ` (current)`; ` (needs restack)`; one nonempty, flat
 opaque worktree annotation; or ` (needs restack)` followed by one opaque
 worktree annotation. Worktree annotation text is display metadata, not part of
-the branch name. Extra, reordered, duplicate, empty, or nested parenthetical
+the branch name. Git forbids a space in a ref name, so the name runs to the
+first space and everything after it must be those annotations: a parenthesis
+inside a name, as in `synthetic-fix(parser)`, is part of the name and never
+opens an annotation. Extra, reordered, duplicate, empty, or nested parenthetical
 suffixes fail closed. The spaces are visual label padding.
 A row may put a connector between the node glyph and its name padding: `─┐`
 opens one child lane, and `─┬─…┬─┐` opens exactly its number of visual child

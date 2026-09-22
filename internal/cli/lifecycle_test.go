@@ -201,6 +201,9 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "land", args: []string{"land", "--apply"}, mutation: "gh pr merge"},
 		{name: "comment", args: []string{"comment", "--apply"}, mutation: "gh " + commentMutationPrefix},
 		{name: "create", args: []string{"create", "synthetic-new", "--apply"}, mutation: "git switch"},
+		{name: "delete", args: []string{"delete", "--branch", "synthetic-top", "--apply"}, mutation: "git branch -D"},
+		{name: "fold", args: []string{"fold", "--branch", "synthetic-top", "--apply"}, mutation: "git update-ref"},
+		{name: "rename", args: []string{"rename", "--branch", "synthetic-top", "synthetic-renamed", "--apply"}, mutation: "git branch -m"},
 		// The navigation commands have no --apply, and still must not move the
 		// checkout out from under a rebase that is part-way through.
 		{name: "up", args: []string{"up"}, mutation: "git switch"},

@@ -71,6 +71,11 @@ type applyFlow[P any] struct {
 	// mutation would act on a structure that is currently untrue.
 	guard func(context.Context) error
 
+	// suggest names the next step from the plan that was applied, for a
+	// command whose continuation depends on what it did. It replaces
+	// notices.suggestedNext, and an empty answer suggests nothing.
+	suggest func(P) string
+
 	notices flowNotices
 }
 
@@ -189,7 +194,11 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	if err := prose(cmd.OutOrStdout(), p, p.subdued(f.notices.changed)); err != nil {
 		return err
 	}
-	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.notices.suggestedNext)
+	next := f.notices.suggestedNext
+	if f.suggest != nil {
+		next = f.suggest(validated)
+	}
+	return writeSuggestedNextStep(cmd.OutOrStdout(), p, next)
 }
 
 // writeSuggestedNextStep offers one likely continuation after a completed,

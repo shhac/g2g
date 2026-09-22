@@ -734,7 +734,7 @@ func TestJourneyYouDropACommitYouAlreadyPublished(t *testing.T) {
 
 	stdout := mustRun(t, "push")
 
-	if !strings.Contains(stdout, "remote is 1 commit ahead") {
+	if !strings.Contains(stdout, "remote has 1 commit this does not · publishing would drop it") {
 		t.Errorf("preview does not say the remote is ahead:\n%s", stdout)
 	}
 	// Loud enough to act on: the command that does what you meant has to be in

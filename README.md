@@ -797,7 +797,11 @@ unpacks a binary called `gt2gh`.
 GitHub, submits, or restacks. The path may come from the local forest or
 Graphite. `--remote` defaults to `origin` and must name a configured remote.
 Every selected non-trunk branch is pushed bottom-to-top; atomic push means they
-all advance together or none do. Unsupported atomic pushes and rejected leases
+all advance together or none do. A branch replayed since it was published — the
+ordinary state after a restack — is shown as rewritten and pushed: the remote's
+version is compared by content, so a commit that is here under a new id is not
+mistaken for somebody else's. One the remote has that this checkout does not,
+by content, is refused rather than dropped. Unsupported atomic pushes and rejected leases
 fail without a non-atomic or unsafe-force fallback.
 
 ## Scope: how much of the stack

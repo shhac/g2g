@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/shhac/g2g/internal/landed"
+
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/parallel"
 )
@@ -159,31 +161,9 @@ func (s Service) compare(ctx context.Context, plan Plan, branch, head string) (C
 	return Currency{Unpushed: len(ours), Diverged: diverged, Rewritten: len(ours) == 0 && !diverged}, nil
 }
 
-// diverged reports a pull request carrying content this branch does not.
-//
-// The whole-branch merge is asked first because the per-commit comparison
-// cannot be bounded on this side: it has to compute a patch id for every commit
-// the branch holds that the pull request does not, which on a stack sitting on
-// a busy trunk is the whole trunk. Measured on a synthetic 1500-commit trunk it
-// was 0.20s a branch against 0.03s, and it was most of what a status spent.
-//
-// A branch that absorbs into the pull request's commit without changing it has
-// nothing to be diverged about, and that is the common answer. Only where it
-// says otherwise is the expensive question asked — which is also what keeps a
-// Git too old for merge-tree correct rather than merely fast, since such a Git
-// answers "not absorbed" to everything and would otherwise report every
-// replayed branch as diverged.
+// diverged reports a pull request carrying content this branch does not. It
+// is the question push asks of a remote tip, and asks it the same way.
 func (s Service) diverged(ctx context.Context, branch, head string) (bool, error) {
-	absorbed, err := s.Tips.Absorbed(ctx, branch, head)
-	if err != nil {
-		return false, err
-	}
-	if absorbed {
-		return false, nil
-	}
-	theirs, _, err := s.Tips.Cherry(ctx, branch, head, "")
-	if err != nil {
-		return false, err
-	}
-	return len(theirs) != 0, nil
+	missing, err := landed.Missing(ctx, s.Tips, branch, head)
+	return missing != 0, err
 }

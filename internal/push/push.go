@@ -64,8 +64,11 @@ type Plan struct {
 
 // Publication is what pushing one branch would do.
 type Publication struct {
-	// Ours is how many commits the local branch has that the remote does not.
-	// Theirs is how many the remote has that this repository does not.
+	// Ours is how many commits the local branch has that the remote's tip does
+	// not, which is what the push sends. Theirs is how many of the remote's
+	// commits have no equivalent in the branch, by content: the work a push
+	// would drop. Counting those by commit id called every replayed commit
+	// somebody else's, so a restacked stack could never be published.
 	Ours, Theirs int
 	// New means the remote has no such branch yet, so there is nothing to
 	// compare and nothing to overwrite.
@@ -79,6 +82,11 @@ type Publication struct {
 	// so the two cannot be compared without fetching. It is treated exactly
 	// like being behind, because that is what it most likely is.
 	Unknown bool
+	// Rewritten means the published version is not an ancestor of the branch
+	// and yet holds nothing the branch lacks, by content: the branch was
+	// replayed since it was pushed. Publishing replaces the old version and
+	// loses nothing, which is the ordinary state after a restack.
+	Rewritten bool
 }
 
 // NothingToPublish reports a plan where the remote already holds every selected
@@ -218,11 +226,22 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 			publishing[branch] = Publication{Unknown: true}
 			continue
 		}
-		theirs, ours, err := s.Git.Divergence(ctx, tip, branch)
+		behind, ours, err := s.Git.Divergence(ctx, tip, branch)
 		if err != nil {
 			return nil, err
 		}
-		publishing[branch] = Publication{Ours: ours, Theirs: theirs}
+		if behind == 0 {
+			publishing[branch] = Publication{Ours: ours}
+			continue
+		}
+		// The remote tip is not an ancestor. Whether that loses anything is a
+		// question of content, and it is the same one status asks of a pull
+		// request's head, asked the same way.
+		theirs, err := landed.Missing(ctx, s.Git, branch, tip)
+		if err != nil {
+			return nil, err
+		}
+		publishing[branch] = Publication{Ours: ours, Theirs: theirs, Rewritten: theirs == 0}
 	}
 	return publishing, nil
 }

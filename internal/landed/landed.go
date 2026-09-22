@@ -53,3 +53,33 @@ func Into(ctx context.Context, probe Probe, base, branch, limit string) (bool, e
 	}
 	return probe.Absorbed(ctx, base, branch)
 }
+
+// Missing counts the commits of from that have no equivalent in into, by
+// content: zero when into already holds everything from carries.
+//
+// It is Into asked from the other side, with the whole-branch question first.
+// The per-commit form cannot be bounded here, because from is somebody else's
+// version of into — a pull request's head, the tip a remote holds — and git
+// cherry computes a patch id for every commit into holds that from does not,
+// which on a stack sitting on a busy trunk is the whole trunk. The merge
+// answers the common case at once, and only where it says otherwise is the
+// count taken. A Git too old for merge-tree answers "not absorbed" to
+// everything, which costs time here and never correctness.
+//
+// status and push both ask this — whether the published version holds work
+// this checkout does not — and they are meant to say the same thing from
+// opposite sides, which they did not while each asked it its own way.
+func Missing(ctx context.Context, probe Probe, into, from string) (int, error) {
+	absorbed, err := probe.Absorbed(ctx, into, from)
+	if err != nil {
+		return 0, err
+	}
+	if absorbed {
+		return 0, nil
+	}
+	absent, _, err := probe.Cherry(ctx, into, from, "")
+	if err != nil {
+		return 0, err
+	}
+	return len(absent), nil
+}

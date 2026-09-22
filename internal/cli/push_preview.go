@@ -42,12 +42,14 @@ func publicationState(publication push.Publication, compared bool) (string, seve
 		// skipped the comparison must not make.
 		return "", severityNeutral
 	case publication.Unknown:
-		return "remote is on a commit you do not have · the lease will reject this", severityBad
+		return "remote is on a commit you do not have · fetch before publishing", severityBad
 	case publication.Theirs > 0 && publication.Ours > 0:
-		return fmt.Sprintf("diverged · %s here, %s on the remote · the lease will reject this",
-			count(publication.Ours, "commit", "commits"), count(publication.Theirs, "commit", "commits")), severityBad
+		return fmt.Sprintf("diverged · %s here, %s only on the remote · publishing would drop %s",
+			count(publication.Ours, "commit", "commits"), count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
 	case publication.Theirs > 0:
-		return fmt.Sprintf("remote is %s ahead · the lease will reject this", count(publication.Theirs, "commit", "commits")), severityBad
+		return fmt.Sprintf("remote has %s this does not · publishing would drop %s", count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
+	case publication.Rewritten:
+		return "rewritten since it was published · replaces it, and the remote holds nothing it lacks", severityOK
 	case publication.Landed:
 		return "already in the trunk · nothing to publish", severityNeutral
 	case publication.New:

@@ -57,11 +57,11 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 				return true, stoppedMidSync(cmd, presentation)
 			},
 			notices: flowNotices{
-				preview:       "Rerun with --apply to bring the stack up to date.",
-				noOp:          "The stack is already up to date.",
-				applied:       "Synced.",
-				changed:       "The stack sits on the current base.",
-				recovery:      "The base may already have been advanced; rerunning is safe.",
+				preview:  "Rerun with --apply to bring the stack up to date.",
+				noOp:     "The stack is already up to date.",
+				applied:  "Synced.",
+				changed:  "The stack sits on the current base.",
+				recovery: "The base may already have been advanced; rerunning is safe.",
 				// A replay leaves the published branches behind their local
 				// ones; push previews what publishing them would do.
 				suggestedNext: "g2g push",

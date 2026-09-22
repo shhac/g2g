@@ -190,11 +190,11 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			return true, stopped(cmd, ctx, service, cause, p)
 		},
 		notices: flowNotices{
-			preview:       "Rerun with --apply to replay these commits.",
-			noOp:          "Nothing to replay.",
-			applied:       "Replayed.",
-			changed:       "Branch contents now match the recorded structure.",
-			recovery:      "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
+			preview:  "Rerun with --apply to replay these commits.",
+			noOp:     "Nothing to replay.",
+			applied:  "Replayed.",
+			changed:  "Branch contents now match the recorded structure.",
+			recovery: "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
 			// Replayed branches are not what their pull requests hold until
 			// they are published, and push previews before it does anything.
 			suggestedNext: "g2g push",

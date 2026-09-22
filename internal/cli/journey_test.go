@@ -1127,6 +1127,52 @@ func TestJourneyYourParentWasSquashMergedWithSeveralCommits(t *testing.T) {
 	}
 }
 
+// After the squashed parent is synced, prune offers to forget it and refuses to
+// strand the child -- and the way out has to be one that works.
+//
+// It offered widening the selection, which brings the child in to be asked
+// about and finds it has work of its own, so it refuses again: a circle, on
+// the commonest way a branch lands. Recording the child on the trunk is what
+// leaves nothing to strand.
+func TestJourneyPruningASquashedParentNamesAWayOutThatWorks(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "first.txt")
+	w.commit(w.Local, "synthetic-a", "second.txt", "second")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "merge", "-q", "--squash", "origin/synthetic-a")
+	w.git(w.Other, "commit", "-qm", "synthetic squash of a")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	mustRun(t, "sync", "--apply")
+
+	refused := mustRun(t, "prune", "--scope", "trunk")
+	way := "g2g track --branch synthetic-b --parent main"
+	if !strings.Contains(refused, way) {
+		t.Fatalf("prune does not name a way out that reparents the child:\n%s", refused)
+	}
+	if strings.Contains(refused, "widen the selection") {
+		t.Errorf("prune offers widening a selection that already holds the child:\n%s", refused)
+	}
+
+	mustRun(t, append(strings.Fields(way)[1:], "--apply")...)
+	mustRun(t, "prune", "--scope", "trunk", "--apply")
+
+	if structure := w.readStructure(); structure["synthetic-a"] != "" || structure["synthetic-b"] != "main" {
+		t.Errorf("recorded structure = %v, want synthetic-a forgotten and synthetic-b on main", structure)
+	}
+	if own := w.git(w.Local, "rev-list", "--count", "main..synthetic-b"); own != "1" {
+		t.Errorf("synthetic-b has %s commits above the trunk, want its own one", own)
+	}
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	w.assertClean(w.Local)
+}
+
 // The same squash, restacked directly rather than through sync.
 //
 // sync replays onto a fetched ref and takes a different path, so it passes

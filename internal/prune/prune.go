@@ -109,13 +109,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	// Forgetting a parent while keeping its child would strand the child, and
 	// this command reports rather than reparents — the same rule untrack
 	// follows, for the same reason.
-	if stranded := s.stranded(discovery, plan.Landed); len(stranded) != 0 {
+	if stranded, children := s.stranded(discovery, plan.Landed); len(stranded) != 0 {
 		plan.Repair = repair.Note{
 			Reason: "forgetting " + strings.Join(stranded, ", ") + " would strand branches recorded under them",
-			Ways: []repair.Step{
-				{Effect: "widen the selection with --scope so the children come too"},
-				{Command: "g2g untrack", Effect: "forget them deliberately"},
-			},
+			Ways:   strandedWays(discovery, plan.Landed, children),
 		}
 		plan.Blocked = plan.Repair.Sentence()
 	}
@@ -143,22 +140,77 @@ func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bo
 }
 
 // stranded names the branches that would be forgotten while something recorded
-// under them survives.
-func (s Service) stranded(discovery graph.Discovery, landed []string) []string {
+// under them survives, and those survivors.
+func (s Service) stranded(discovery graph.Discovery, landed []string) (stranded, children []string) {
 	forgetting := make(map[string]bool, len(landed))
 	for _, branch := range landed {
 		forgetting[branch] = true
 	}
-	stranded := make([]string, 0)
+	stranded, children = make([]string, 0), make([]string, 0)
 	for _, branch := range landed {
+		surviving := false
 		for _, child := range discovery.Graph.Children(branch) {
 			if !forgetting[child] {
-				stranded = append(stranded, branch)
-				break
+				surviving = true
+				children = append(children, child)
 			}
 		}
+		if surviving {
+			stranded = append(stranded, branch)
+		}
 	}
-	return stranded
+	return stranded, children
+}
+
+// strandedWays is how to get past a refusal to strand, one way per child.
+//
+// It used to offer widening the selection, which only helps when the child has
+// landed too -- and the ordinary way to get here is a parent squash-merged and
+// synced, whose child has work of its own and is exactly why it survives. That
+// sent people round in a circle. Recording each child on what the landed
+// branch sat on is what leaves nothing to strand. After a sync the child
+// already sits there, so track records it without moving anything; before one
+// it does not, track refuses a parent that is not an ancestor, and sync is
+// what puts it there. Widening is still offered where a child lies outside
+// the selection, because that child has not been asked about.
+func strandedWays(discovery graph.Discovery, landed, children []string) []repair.Step {
+	forgetting := make(map[string]bool, len(landed))
+	for _, branch := range landed {
+		forgetting[branch] = true
+	}
+	ways := make([]repair.Step, 0, len(children)+2)
+	outside := false
+	for _, child := range children {
+		onto := survivor(discovery.Graph, discovery.Graph.Edges[child].Parent, forgetting)
+		ways = append(ways, repair.Step{
+			Command: fmt.Sprintf("g2g track --branch %s --parent %s", child, onto),
+			Effect:  fmt.Sprintf("record %s on %s, where g2g sync leaves it, then prune again", child, onto),
+		})
+		outside = outside || !slices.Contains(discovery.Branches, child)
+	}
+	if outside {
+		ways = append(ways, repair.Step{Effect: "widen the selection with --scope, if those branches have landed too"})
+	}
+	return append(ways, repair.Step{Command: "g2g untrack", Effect: "forget them deliberately"})
+}
+
+// survivor is the nearest branch at or below this one that is not being
+// forgotten, which is where a child of a landed branch belongs.
+//
+// Bounded by the recorded edges, because a record naming a cycle must end the
+// walk rather than the command.
+func survivor(recorded graph.Graph, branch string, forgetting map[string]bool) string {
+	for range len(recorded.Edges) + 1 {
+		if !forgetting[branch] {
+			return branch
+		}
+		edge, tracked := recorded.Edges[branch]
+		if !tracked {
+			return branch
+		}
+		branch = edge.Parent
+	}
+	return branch
 }
 
 // Revalidate repeats discovery immediately before the write and refuses if the

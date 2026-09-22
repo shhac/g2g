@@ -181,6 +181,47 @@ func TestPlanRefusesToStrandABranchRecordedUnderALandedOne(t *testing.T) {
 	}
 }
 
+// The way out of that refusal names each child and the branch it belongs on,
+// which is the nearest one below it that is not being forgotten. Widening the
+// selection is offered only for a child the selection did not ask about: one
+// it did ask about survives because it has work of its own, and widening
+// brings it straight back to the same refusal.
+func TestTheWayOutOfAStrandNamesWhereEachChildBelongs(t *testing.T) {
+	for name, test := range map[string]struct {
+		selection graph.Selection
+		landed    []string
+		want      []string
+		widen     bool
+	}{
+		"child selected":     {graph.Selection{Branch: "synthetic-c", Scope: graph.ScopeStack}, []string{"synthetic-a"}, []string{"g2g track --branch synthetic-b --parent synthetic-trunk"}, false},
+		"landed chain":       {graph.Selection{Branch: "synthetic-c", Scope: graph.ScopeStack}, []string{"synthetic-a", "synthetic-b"}, []string{"g2g track --branch synthetic-c --parent synthetic-trunk"}, false},
+		"child not selected": {graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch}, []string{"synthetic-a"}, []string{"g2g track --branch synthetic-b --parent synthetic-trunk"}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, _, _, _ := syntheticService(t, "synthetic-c", test.landed...)
+
+			plan, err := service.Plan(context.Background(), test.selection)
+			if err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+			commands := make([]string, 0)
+			widen := false
+			for _, way := range plan.Repair.Ways {
+				if strings.HasPrefix(way.Command, "g2g track") {
+					commands = append(commands, way.Command)
+				}
+				widen = widen || strings.Contains(way.Effect, "widen")
+			}
+			if strings.Join(commands, "\n") != strings.Join(test.want, "\n") {
+				t.Errorf("ways = %v, want %v", commands, test.want)
+			}
+			if widen != test.widen {
+				t.Errorf("widening offered = %t, want %t: %+v", widen, test.widen, plan.Repair.Ways)
+			}
+		})
+	}
+}
+
 // A blocked plan must not write, even if a caller asks it to.
 func TestApplyRefusesABlockedPlan(t *testing.T) {
 	service, store, refs, _ := syntheticService(t, "synthetic-c", "synthetic-a")

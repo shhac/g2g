@@ -79,6 +79,12 @@ Found by landing this repository's own stack. Its two-commit branch conflicted;
 its one-commit branch did not, because a squash of one commit *is* equivalent to
 that commit.
 
+Afterwards the parent has nothing of its own and `prune` offers to forget it,
+but refuses to strand the child still recorded under it. The way out it names
+is `g2g track --branch <child> --parent <trunk>`, which records the child where
+the sync left it. It used to offer widening the selection, which brings the
+child in, finds its own work, and refuses again.
+
 **borrower.** Someone cherry-picked your commits into their branch and it landed
 first. Your commits are in the trunk under different object ids. Replaying drops
 them by content rather than applying them twice.

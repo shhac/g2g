@@ -106,6 +106,11 @@ the published tip an ancestor of yours, which `sync` ignores: publishing is
 branch is not something to do behind your back. The refusal names the way
 through rather than being a dead end.
 
+`sync --take published` is that way through, and `--through <branch>` bounds
+it: it only ever changes the outcome for a genuinely diverged branch, so
+unbounded it takes every one of them, including branches you were not thinking
+about. Above the boundary a divergence is still refused.
+
 `sync --take published` is that way through. It is the one path where `sync`
 loses work that exists nowhere else, so the preview lists every commit it would
 discard by name — a count would not be enough to decide on.

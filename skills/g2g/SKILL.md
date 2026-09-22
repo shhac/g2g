@@ -42,6 +42,12 @@ description: |
 - `link` previews by default. Its optional `--branch` target must work without
   checkout; `--apply` is the only path that may invoke `gh stack link`. Bare
   invocation prints help.
+- `--take` only ever changes the outcome for a branch that has genuinely
+  diverged from its own published version; every other classification `collect`
+  makes is take-independent. `--through <branch>` bounds it to a prefix of the
+  stack and refuses the divergence above, which is a narrowing rather than an
+  enabler: unbounded, `--take published` reaches every diverged branch in the
+  selection, including ones the user was not thinking about.
 - `sync` has nothing to do with pull requests. It brings a stack up to date with
   its remote: fetch into g2g's own ref namespace, fast-forward the base or
   refuse if it has diverged, and replay. It never calls `gh`.

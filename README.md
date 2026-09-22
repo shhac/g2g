@@ -466,6 +466,41 @@ different responses and only you can give the second.
 Pruning forgets a landed branch in the recorded graph. It never deletes a
 branch — that is a separate, deliberate act, not the tail of another command.
 
+## Resolving a divergence
+
+When a branch and its published version have each moved, `sync` refuses rather
+than choosing. `--take published` is the way through, and it is the one path
+where `sync` loses work that exists nowhere else — so the preview names every
+commit it would discard.
+
+```sh
+g2g sync --take published                          # the whole stack
+g2g sync --take published --through paul/some-fix  # and no further
+```
+
+It only ever changes the outcome for a branch that has *genuinely diverged*.
+A branch that is merely ahead of its published version is push's business and
+is left alone; one that is behind, or whose published version supersedes it,
+is brought down either way.
+
+That makes `--take published` all or nothing, and `--through` narrows it. With
+two diverged branches the unbounded form takes both — discarding local work on
+the upper one alongside the lower one you meant. `--through` stops at the
+branch you name and **refuses the rest**, because a boundary says where you
+have decided, not that you have decided everywhere.
+
+Above the boundary your commits are kept, and replayed onto what was taken
+below — which is what `sync` does anyway.
+
+The set is a prefix rather than an arbitrary selection, because that is the
+shape the question has: a branch's published version is built on its parent's
+published version, so taking one and not the other describes a stack that never
+existed. The trunk sits below everything, so it is inside any boundary; naming
+the trunk takes it and nothing else.
+
+`published` means the version on the remote you named with `--remote`, not
+`origin` in particular.
+
 ## Retargeting pull request bases
 
 After a restack the local stack is correct and GitHub may still record where

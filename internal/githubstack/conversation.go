@@ -7,9 +7,7 @@
 package githubstack
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -24,7 +22,6 @@ type Conversation struct {
 	// ID is the pull request's node id, which is what a comment is added to.
 	ID     string
 	Number int
-	URL    string
 	Head   string
 	// Base is where the pull request merges, or merged. For a merged one it
 	// is the branch that took the work, which is how a stack tells its own
@@ -97,7 +94,7 @@ func (c Client) Conversations(ctx context.Context, numbers []int, marker string)
 		output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+conversationQuery(pending))
 		// gh exits non-zero when any alias failed, and a number nothing answers
 		// to is one; the response it printed still answers the rest.
-		if err != nil && !onlyUnresolved(output, len(pending)) {
+		if err != nil && !unresolvedOnly(output, len(pending)) {
 			return nil, repositoryError(err, output)
 		}
 		next, err := parseConversations(output, pending, marker, read)
@@ -121,42 +118,33 @@ type conversationPage struct {
 	After  string
 }
 
-// conversationErrors are the GraphQL errors this read can live with: one per
-// alias that named no issue or pull request.
-type conversationErrors struct {
-	Errors []struct {
-		Type string        `json:"type"`
-		Path []interface{} `json:"path"`
-	} `json:"errors"`
+// onlyUnresolved reports errors that are every one an alias naming no issue or
+// pull request. That is the only failure this read can live with: the numbers
+// come from comments a person can edit.
+func onlyUnresolved(aliases int) func([]graphqlError) bool {
+	return func(failures []graphqlError) bool {
+		for _, failure := range failures {
+			if failure.Type != "NOT_FOUND" || len(failure.Path) != 2 || failure.Path[0] != "repository" {
+				return false
+			}
+			alias, _ := failure.Path[1].(string)
+			index, err := strconv.Atoi(strings.TrimPrefix(alias, "c"))
+			if !strings.HasPrefix(alias, "c") || err != nil || index < 0 || index >= aliases {
+				return false
+			}
+		}
+		return true
+	}
 }
 
-// onlyUnresolved reports a failed response whose every error is an alias that
-// resolved to nothing. The output is combined, so the response is read as the
-// first JSON value in it and whatever gh wrote after it is ignored.
-func onlyUnresolved(output []byte, aliases int) bool {
-	var response conversationErrors
+// unresolvedOnly reports a failed run whose response carried nothing worse
+// than aliases that resolved to nothing.
+func unresolvedOnly(output []byte, aliases int) bool {
+	var response graphqlResponse
 	if err := decodeFirstJSON(output, &response); err != nil || len(response.Errors) == 0 {
 		return false
 	}
-	for _, failure := range response.Errors {
-		if failure.Type != "NOT_FOUND" || len(failure.Path) != 2 || failure.Path[0] != "repository" {
-			return false
-		}
-		alias, _ := failure.Path[1].(string)
-		index, err := strconv.Atoi(strings.TrimPrefix(alias, "c"))
-		if !strings.HasPrefix(alias, "c") || err != nil || index < 0 || index >= aliases {
-			return false
-		}
-	}
-	return true
-}
-
-func decodeFirstJSON(output []byte, into interface{}) error {
-	start := bytes.IndexByte(output, '{')
-	if start < 0 {
-		return fmt.Errorf("no JSON in gh api graphql output")
-	}
-	return json.NewDecoder(bytes.NewReader(output[start:])).Decode(into)
+	return onlyUnresolved(aliases)(response.Errors)
 }
 
 func conversationQuery(pending []conversationPage) string {
@@ -166,7 +154,7 @@ func conversationQuery(pending []conversationPage) string {
 		if page.After != "" {
 			after = ", after: " + graphqlString(page.After)
 		}
-		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number url headRefName baseRefName state viewerCanComment comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
+		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number headRefName baseRefName state viewerCanComment comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
 	}
 	// Named, as the mergeability query is, because both go to the same
 	// endpoint as the head-ref lookup and a reader of a recorded call — or a
@@ -178,7 +166,6 @@ type conversationNode struct {
 	TypeName    string `json:"__typename"`
 	ID          string `json:"id"`
 	Number      int    `json:"number"`
-	URL         string `json:"url"`
 	Head        string `json:"headRefName"`
 	Base        string `json:"baseRefName"`
 	State       string `json:"state"`
@@ -202,26 +189,16 @@ type conversationNode struct {
 // parseConversations folds one round into what has been read, and returns the
 // pull requests that have another page.
 func parseConversations(output []byte, pending []conversationPage, marker string, read map[int]*Conversation) ([]conversationPage, error) {
-	var response graphqlResponse
-	if err := decodeFirstJSON(output, &response); err != nil {
-		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
-	}
-	if len(response.Errors) != 0 && !onlyUnresolved(output, len(pending)) {
-		return nil, fmt.Errorf("gh api graphql returned errors: %s", diagnostic.BoundedOutput([]byte(response.Errors[0].Message)))
-	}
-	if response.Data.Repository == nil {
-		return nil, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
+	repository, err := repositoryFields(output, onlyUnresolved(len(pending)))
+	if err != nil {
+		return nil, err
 	}
 	next := make([]conversationPage, 0)
 	for index, page := range pending {
 		alias := fmt.Sprintf("c%d", index)
-		raw, exists := response.Data.Repository[alias]
-		if !exists {
-			return nil, fmt.Errorf("gh api graphql response is missing %s", alias)
-		}
 		var node *conversationNode
-		if err := json.Unmarshal(raw, &node); err != nil {
-			return nil, fmt.Errorf("gh api graphql response has an invalid %s", alias)
+		if err := aliasField(repository, alias, "", &node); err != nil {
+			return nil, err
 		}
 		if node == nil || node.TypeName != "PullRequest" {
 			continue
@@ -231,7 +208,7 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		}
 		conversation := read[page.Number]
 		if conversation == nil {
-			conversation = &Conversation{ID: node.ID, Number: node.Number, URL: node.URL, Head: node.Head, Base: node.Base, State: node.State, Commentable: node.Commentable}
+			conversation = &Conversation{ID: node.ID, Number: node.Number, Head: node.Head, Base: node.Base, State: node.State, Commentable: node.Commentable}
 			read[page.Number] = conversation
 		}
 		for _, comment := range node.Comments.Nodes {

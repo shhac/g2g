@@ -2,7 +2,6 @@ package githubstack
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -212,15 +211,9 @@ func (n mergeStateNode) mergeState(alias string) (MergeState, error) {
 }
 
 func parseMergeability(output []byte, numbers []int) (Mergeability, error) {
-	var response graphqlResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return Mergeability{}, fmt.Errorf("parse gh api graphql JSON: %w", err)
-	}
-	if len(response.Errors) != 0 {
-		return Mergeability{}, fmt.Errorf("gh api graphql returned errors: %s", diagnostic.BoundedOutput([]byte(response.Errors[0].Message)))
-	}
-	if response.Data.Repository == nil {
-		return Mergeability{}, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
+	repository, err := repositoryFields(output, nil)
+	if err != nil {
+		return Mergeability{}, err
 	}
 
 	result := Mergeability{States: make(map[int]MergeState, len(numbers))}
@@ -230,24 +223,16 @@ func parseMergeability(output []byte, numbers []int) (Mergeability, error) {
 		"rebaseMergeAllowed": &result.Allowed.Rebase,
 	}
 	for field, into := range allowed {
-		raw, exists := response.Data.Repository[field]
-		if !exists {
-			return Mergeability{}, fmt.Errorf("gh api graphql response is missing %s", field)
-		}
-		if err := json.Unmarshal(raw, into); err != nil {
-			return Mergeability{}, fmt.Errorf("gh api graphql response has invalid %s", field)
+		if err := aliasField(repository, field, "", into); err != nil {
+			return Mergeability{}, err
 		}
 	}
 
 	for index, number := range numbers {
 		alias := fmt.Sprintf("pr%d", index)
-		raw, exists := response.Data.Repository[alias]
-		if !exists {
-			return Mergeability{}, fmt.Errorf("gh api graphql response is missing %s", alias)
-		}
 		var node mergeStateNode
-		if err := json.Unmarshal(raw, &node); err != nil {
-			return Mergeability{}, fmt.Errorf("gh api graphql response has invalid %s merge state", alias)
+		if err := aliasField(repository, alias, "merge state", &node); err != nil {
+			return Mergeability{}, err
 		}
 		state, err := node.mergeState(alias)
 		if err != nil {

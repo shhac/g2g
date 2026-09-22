@@ -2,6 +2,7 @@ package githubstack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -181,5 +182,42 @@ func TestCommentMutationFailureDoesNotEchoTheBody(t *testing.T) {
 	}
 	if called, readErr := os.ReadFile(arguments); readErr != nil || !strings.Contains(string(called), "api graphql") {
 		t.Errorf("gh was not invoked as expected: %q, %v", called, readErr)
+	}
+}
+
+// A conversation that never stops paging is stopped rather than read forever.
+func TestConversationsStopsAConversationThatNeverEnds(t *testing.T) {
+	responses := make([]string, 0, commentPages+1)
+	for page := 0; page <= commentPages; page++ {
+		responses = append(responses, repositoryJSON(conversationJSON("c0", 51, "OPEN", true, fmt.Sprintf("synthetic-cursor-%d", page))))
+	}
+	runner := &scriptedRunner{responses: responses}
+	if _, err := (Client{Runner: runner}).Conversations(context.Background(), []int{51}, syntheticMarker); err == nil || !strings.Contains(err.Error(), "#51") {
+		t.Fatalf("Conversations() = %v, want it to stop and name the pull request", err)
+	}
+	if len(runner.queries) != commentPages {
+		t.Errorf("read %d pages, want %d", len(runner.queries), commentPages)
+	}
+}
+
+// The commonest real failure is gh refusing before any response exists.
+func TestConversationsReportsAFailureThatIsNotAResponse(t *testing.T) {
+	testutil.WithFakeExecutables(t, map[string]string{"gh": `echo 'synthetic: not logged in' >&2; exit 1`})
+	_, err := Client{Runner: subprocess.ExecRunner{}}.Conversations(context.Background(), []int{61}, syntheticMarker)
+	var command *CommandError
+	if !errors.As(err, &command) {
+		t.Fatalf("error = %v, want the failed command reported", err)
+	}
+}
+
+// A comment whose author deleted their account has no author, and is read.
+func TestConversationsReadsACommentWithNoAuthor(t *testing.T) {
+	response := repositoryJSON(strings.Replace(conversationJSON("c0", 71, "OPEN", false, "", syntheticMarker), `"author":{"login":"synthetic-author"}`, `"author":null`, 1))
+	conversations, err := Client{Runner: &scriptedRunner{responses: []string{response}}}.Conversations(context.Background(), []int{71}, syntheticMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversations) != 1 || len(conversations[0].Comments) != 1 || conversations[0].Comments[0].Author != "" {
+		t.Errorf("conversations = %#v", conversations)
 	}
 }

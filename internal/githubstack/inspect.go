@@ -7,7 +7,6 @@ package githubstack
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -75,31 +74,15 @@ func repositoryError(err error, output []byte) error {
 // is absent from a response that failed, and saying nothing is better there
 // than reporting a repository nobody read from.
 func repositoryName(output []byte) string {
-	var response graphqlResponse
-	if err := json.Unmarshal(output, &response); err != nil {
+	repository, err := repositoryFields(output, nil)
+	if err != nil {
 		return ""
 	}
 	var name string
-	if err := json.Unmarshal(response.Data.Repository["nameWithOwner"], &name); err != nil {
+	if err := aliasField(repository, "nameWithOwner", "", &name); err != nil {
 		return ""
 	}
 	return name
-}
-
-// graphqlResponse is the shape of one batched head-ref lookup. Naming it keeps
-// parsePullRequests readable and lets node validation be tested directly,
-// rather than only through a whole GraphQL envelope.
-type graphqlResponse struct {
-	Data struct {
-		// Repository is keyed by field alias, and the fields are not all the
-		// same shape: one names the repository and the rest are pull request
-		// connections. Decoding each where it is read keeps one query able to
-		// answer both.
-		Repository map[string]json.RawMessage `json:"repository"`
-	} `json:"data"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
 }
 
 type pullRequestNode struct {
@@ -144,29 +127,19 @@ func (n pullRequestNode) pullRequest(alias string) (PullRequest, error) {
 }
 
 func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) {
-	var response graphqlResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
-	}
-	if len(response.Errors) != 0 {
-		return nil, fmt.Errorf("gh api graphql returned errors: %s", diagnostic.BoundedOutput([]byte(response.Errors[0].Message)))
-	}
-	if response.Data.Repository == nil {
-		return nil, fmt.Errorf("gh api graphql returned no repository; check that the GitHub CLI can read this repository")
+	repository, err := repositoryFields(output, nil)
+	if err != nil {
+		return nil, err
 	}
 
 	matching := make([]PullRequest, 0)
 	for index, branch := range branches {
 		alias := fmt.Sprintf("pr%d", index)
-		raw, exists := response.Data.Repository[alias]
-		if !exists {
-			return nil, fmt.Errorf("gh api graphql response is missing %s", alias)
-		}
 		var result struct {
 			Nodes []pullRequestNode `json:"nodes"`
 		}
-		if err := json.Unmarshal(raw, &result); err != nil {
-			return nil, fmt.Errorf("gh api graphql response has invalid %s pull requests", alias)
+		if err := aliasField(repository, alias, "pull requests", &result); err != nil {
+			return nil, err
 		}
 		for _, node := range result.Nodes {
 			// headRefName filters server-side, so a mismatch is a stray node

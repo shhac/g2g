@@ -228,20 +228,12 @@ func (p ImportPlan) Equal(other ImportPlan) bool {
 // parent — but which one is authoritative is a real choice, and this is reading
 // Graphite's own claim rather than re-deriving it.
 func declaredOrder(forest graphite.Forest) []string {
-	shape := forest.Shape()
-	ordered := make([]string, 0, len(forest.Parents))
-	queue := append([]string(nil), forest.Roots...)
-	sort.Strings(queue)
-	seen := map[string]bool{}
-	for len(queue) != 0 {
-		branch := queue[0]
-		queue = queue[1:]
-		if seen[branch] {
-			continue
-		}
+	roots := append([]string(nil), forest.Roots...)
+	sort.Strings(roots)
+	ordered := forest.Shape().BreadthFirst(roots)
+	seen := make(map[string]bool, len(ordered))
+	for _, branch := range ordered {
 		seen[branch] = true
-		ordered = append(ordered, branch)
-		queue = append(queue, shape.Children(branch)...)
 	}
 	// A forest whose display named no root still has branches worth reporting.
 	for _, branch := range forest.Branches() {

@@ -268,10 +268,7 @@ func unknownRoots(adopted graph.Graph, forest graphite.Forest) []string {
 // before the children that name it.
 func writes(adopted graph.Graph, forest graphite.Forest) []Change {
 	changes := make([]Change, 0)
-	queue := adopted.Roots()
-	for len(queue) != 0 {
-		branch := queue[0]
-		queue = append(queue[1:], adopted.Children(branch)...)
+	for _, branch := range adopted.Shape().BreadthFirst(adopted.Roots()) {
 		edge, tracked := adopted.Edges[branch]
 		if !tracked {
 			continue

@@ -512,6 +512,30 @@ func TestJourneySyncingAgainBeforePublishingTheReplay(t *testing.T) {
 	}
 }
 
+// You committed on the trunk and have not pushed it. That is the trunk being
+// ahead, not diverged, and the stack still syncs.
+//
+// It was refused as both sides having moved, with --take published offered as
+// the way through -- which would have discarded the commit it was ahead by.
+func TestJourneyATrunkAheadOfItsRemoteIsNotDiverged(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.commit(w.Local, "main", "local-trunk.txt", "local")
+	ahead := w.tip(w.Local, "main")
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+
+	mustRun(t, "sync", "--apply")
+
+	if now := w.tip(w.Local, "main"); now != ahead {
+		t.Errorf("sync moved the trunk from %s to %s", ahead, now)
+	}
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Error("synthetic-a was not replayed onto the trunk it is recorded on")
+	}
+	w.assertClean(w.Local)
+}
+
 // A branch the remote deleted is not published, whatever g2g fetched of it
 // before.
 //

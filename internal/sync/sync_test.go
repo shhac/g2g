@@ -244,6 +244,28 @@ func TestPlanRefusesADivergedBase(t *testing.T) {
 	}
 }
 
+// A trunk that is only ahead of its published version has nothing to advance
+// to, and is not diverged: calling it that offered --take published, which
+// would have discarded the commits it is ahead by.
+func TestPlanLeavesATrunkThatIsOnlyAheadAlone(t *testing.T) {
+	git := behindGit()
+	isolated := localgit.IsolatedRef("origin", "synthetic-trunk")
+	git.objects[isolated] = "trunk-published"
+	git.ancestors[isolated] = nil
+	git.ancestors["synthetic-trunk"] = []string{isolated}
+	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
+	service, _ := newService(git, nil)
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Advance || plan.Supersede || plan.Diverged || plan.Blocked != "" {
+		t.Errorf("Advance = %t, Supersede = %t, Diverged = %t, Blocked = %q; want a trunk that is only ahead left alone",
+			plan.Advance, plan.Supersede, plan.Diverged, plan.Blocked)
+	}
+}
+
 func TestApplyRefusesABlockedPlan(t *testing.T) {
 	git := behindGit()
 	git.ancestors[localgit.IsolatedRef("origin", "synthetic-trunk")] = nil

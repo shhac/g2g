@@ -46,6 +46,16 @@ func (s Service) compare(ctx context.Context, base, remote string, published map
 	if behind {
 		return true, false, false, nil, nil
 	}
+	// A trunk with commits of its own and nothing new upstream has nothing to
+	// advance to. Publishing it is not sync's business, and offering --take
+	// published here offered to discard those commits for no reason at all.
+	ahead, err := s.Git.IsAncestor(ctx, fetched, base)
+	if err != nil {
+		return false, false, false, nil, err
+	}
+	if ahead {
+		return false, false, false, nil, nil
+	}
 	// Neither side is an ancestor of the other, which is what somebody
 	// force-pushing the trunk looks like — usually after rebasing or squashing
 	// it. If everything the local trunk has is in the published one by content,

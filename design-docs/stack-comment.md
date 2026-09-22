@@ -36,6 +36,17 @@ comments. That is also why the command has no `--scope`.
 From a trunk it keeps every stack on it, each separately: one stack's merged
 pull requests do not appear in another's map.
 
+A stack is a tree above the trunk, so when the branch a fork grew from merges,
+one stack becomes two: each fork is now its own child of the trunk. From then on
+each tree's comments list only itself. That is correct — they no longer share an
+unmerged ancestor — and it can be surprising the first time.
+
+A structure read from pull request bases can place a branch this checkout does
+not have. Writing a comment touches no local ref, so nothing would stop it; it
+refuses anyway, as every command that writes does, because a run that acted on
+branches it cannot see is one whose preview a person could not check against
+their own checkout.
+
 ## Why the history lives in the comment
 
 A pull request that merged out of a stack is still listed. Nothing local can

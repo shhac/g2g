@@ -1370,3 +1370,26 @@ func TestJourneyAnExplicitOntoStillRecordsTheNewParent(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// The same request when the branch already sits on its new parent, which is
+// where a landed parent leaves its child. Nothing needs replaying, and the
+// command used to treat "no steps" as "nothing to do": it said so and left the
+// branch recorded under the parent it had just been moved off.
+func TestJourneyAnOntoWithNothingToReplayStillRecordsTheNewParent(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	// synthetic-a lands by fast-forward, so synthetic-b already sits on main.
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "merge", "-q", "--ff-only", "synthetic-a")
+
+	mustRun(t, "restack", "--branch", "synthetic-b", "--onto", "main", "--apply")
+
+	if !strings.Contains(w.readStore(), `"synthetic-b": {
+      "parent": "main"`) {
+		t.Errorf("--onto did not record the new parent when there was nothing to replay:\n%s", w.readStore())
+	}
+	w.assertClean(w.Local)
+}

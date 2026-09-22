@@ -9,8 +9,11 @@ func restackView(plan restack.Plan) stackView {
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}
-	if len(plan.Steps) == 0 {
+	if plan.Nothing() {
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)
+	}
+	if len(plan.Steps) == 0 {
+		return view.note("Already sits on "+plan.Onto.Parent+" · nothing to replay, only the new parent to record.", severityOK)
 	}
 	// A branch that collapses is not replayed, only moved, and saying it was
 	// replayed would misdescribe what happened to its commits.

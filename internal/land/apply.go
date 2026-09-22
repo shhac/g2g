@@ -113,14 +113,24 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 	// Decided again, immediately before the one act that cannot be undone. The
 	// plan was made before anything moved; this branch has since been rebuilt
 	// and republished, and its pull request has been pointed somewhere else.
-	if err := s.recheck(ctx, plan, step); err != nil {
+	//
+	// And the merge is made on what was decided now. Whether it needs --admin
+	// is the part most likely to have changed: the replay's force-push is what
+	// restarts the required checks, so a branch that was clean when planned is
+	// blocked by the time its turn comes -- and merging it on the plan's answer
+	// asked GitHub for a merge it refuses, having been given --admin to pass.
+	// The plan's forecast still counts, so the merge is never less than the
+	// recipe said it would be.
+	now, err := s.recheck(ctx, plan, step)
+	if err != nil {
 		return err
 	}
 	diagnostic.Event(ctx, "land.merge",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
 		diagnostic.Field{Key: "number", Value: fmt.Sprint(step.Number)},
+		diagnostic.Field{Key: "admin", Value: fmt.Sprintf("%t", now.Admin || step.Admin)},
 	)
-	if err := s.GitHub.Merge(ctx, step.Number, plan.Options.Method, step.Admin); err != nil {
+	if err := s.GitHub.Merge(ctx, step.Number, plan.Options.Method, now.Admin || step.Admin); err != nil {
 		return err
 	}
 	return s.settleMerge(ctx, plan, step)
@@ -241,27 +251,30 @@ func (s Service) state(ctx context.Context, number int) (githubstack.MergeState,
 	return mergeability.States[number], nil
 }
 
-// recheck decides this branch again against the world as it is now.
-func (s Service) recheck(ctx context.Context, plan Plan, step Step) error {
+// recheck decides this branch again against the world as it is now, and
+// answers with that decision.
+func (s Service) recheck(ctx context.Context, plan Plan, step Step) (Step, error) {
 	prs, err := s.GitHub.Inspect(ctx, []string{step.Branch})
 	if err != nil {
-		return err
+		return Step{}, err
 	}
 	state, err := s.state(ctx, step.Number)
 	if err != nil {
-		return err
+		return Step{}, err
 	}
+	tip, err := s.Git.Resolve(ctx, step.Branch)
+	if err != nil {
+		return Step{}, err
+	}
+	decided := step
 	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
-		tip, err := s.Git.Resolve(ctx, step.Branch)
-		if err != nil {
-			return err
-		}
-		_, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin})
+		now, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin})
 		if note.Reason != "" {
-			return fmt.Errorf("%s", note.Sentence())
+			return Step{}, fmt.Errorf("%s", note.Sentence())
 		}
+		decided = now
 	}
-	return nil
+	return decided, nil
 }
 
 // tidy brings the rest of the stack onto the advanced trunk and forgets the

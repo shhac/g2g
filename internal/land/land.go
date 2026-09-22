@@ -231,7 +231,20 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		}
 		plan.Steps = append(plan.Steps, decided)
 	}
-	plan.Protected = protectedAfterRestack(plan.Steps, mergeability, options)
+	blocking := protectedAfterRestack(plan.Steps, mergeability)
+	if !options.Admin {
+		plan.Protected = blocking
+	}
+	if options.Admin {
+		// Said where it will be needed, so the preview and the recipe show the
+		// merge that will actually be asked for. Whether it is needed is decided
+		// again when the branch's turn comes; this is the forecast.
+		for index := range plan.Steps {
+			if slices.Contains(blocking, plan.Steps[index].Branch) {
+				plan.Steps[index].Admin = true
+			}
+		}
+	}
 	diagnostic.Event(ctx, "land.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(discovery.Branches, ",")},
 		diagnostic.Field{Key: "landing", Value: fmt.Sprint(plan.Landing())},
@@ -304,10 +317,7 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 // protected repository that is not an edge case, it is every run, and saying it
 // at the start is the difference between choosing --admin and discovering it
 // once something has already merged.
-func protectedAfterRestack(steps []Step, mergeability githubstack.Mergeability, options Options) []string {
-	if options.Admin {
-		return nil
-	}
+func protectedAfterRestack(steps []Step, mergeability githubstack.Mergeability) []string {
 	protects := false
 	for _, state := range mergeability.States {
 		if state.StateStatus == githubstack.StatusBlocked || state.StateStatus == githubstack.StatusBehind {

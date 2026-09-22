@@ -557,6 +557,61 @@ func TestLandRefusesToRepublishABranchThatAlreadyLanded(t *testing.T) {
 	}
 }
 
+// --admin is decided for each branch when its turn comes, not when the descent
+// is planned. Every branch above the first is force-pushed by its own replay,
+// which restarts the required checks, so a branch that was clean at plan time
+// is blocked at merge time -- the case --admin exists for. The recheck saw that
+// and passed it, and the merge then went out without the flag.
+func TestAdminIsPassedForABranchThatBecameBlockedAfterItsReplay(t *testing.T) {
+	w := newWorld(t)
+	options := Defaults()
+	options.Admin = true
+	plan := w.plan(t, options)
+	if plan.Steps[1].Admin {
+		t.Fatal("synthetic-two needs --admin at plan time already, so this does not test the change")
+	}
+	restarted := w.github.states[42]
+	restarted.StateStatus = githubstack.StatusBlocked
+	w.github.states[42] = restarted
+
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if w.events.index("merge:42:squash:admin=true") < 0 {
+		t.Errorf("#42 was blocked when its turn came and was merged without --admin: %v", w.events.only("merge:"))
+	}
+	if w.events.index("merge:41:squash:admin=false") < 0 {
+		t.Errorf("#41 was clean and should not have bypassed anything: %v", w.events.only("merge:"))
+	}
+}
+
+// With --admin on a protected repository the recipe says --admin where the
+// merge will need it, rather than a merge GitHub would refuse if run by hand.
+func TestTheRecipeForecastsAdminOnTheBranchesAReplayWillBlock(t *testing.T) {
+	w := newWorld(t)
+	blocked := w.github.states[41]
+	blocked.StateStatus = githubstack.StatusBlocked
+	w.github.states[41] = blocked
+	options := Defaults()
+	options.Admin = true
+
+	plan := w.plan(t, options)
+
+	if len(plan.Protected) != 0 {
+		t.Errorf("Protected = %v, want no warning once --admin was given", plan.Protected)
+	}
+	var merges []string
+	for _, command := range plan.Commands() {
+		if strings.HasPrefix(command.Command, "gh pr merge") {
+			merges = append(merges, command.Command)
+		}
+	}
+	if want := "gh pr merge 42 --squash --admin"; len(merges) != 2 || merges[1] != want {
+		t.Errorf("merges in the recipe = %v, want the second to be %q", merges, want)
+	}
+}
+
 // The warning that says --admin will be needed before the first merge rather
 // than after it. Its whole reason for existing is that discovering this at the
 // second branch is discovering it once something has already landed — and it
@@ -577,18 +632,16 @@ func TestProtectedNamesTheBranchesTheirReplayWillBlock(t *testing.T) {
 
 	for name, testCase := range map[string]struct {
 		mergeability githubstack.Mergeability
-		options      Options
 		want         string
 	}{
 		// The bottom branch is not named: it merges before anything is
 		// replayed, so its checks are the ones that were already green.
-		"blocked":           {blocked, Defaults(), "synthetic-two"},
-		"behind":            {behind, Defaults(), "synthetic-two"},
-		"unprotected":       {clean, Defaults(), ""},
-		"already bypassing": {blocked, Options{Admin: true}, ""},
+		"blocked":     {blocked, "synthetic-two"},
+		"behind":      {behind, "synthetic-two"},
+		"unprotected": {clean, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := protectedAfterRestack(steps, testCase.mergeability, testCase.options)
+			got := protectedAfterRestack(steps, testCase.mergeability)
 			if strings.Join(got, ",") != testCase.want {
 				t.Errorf("protectedAfterRestack() = %v, want %q", got, testCase.want)
 			}

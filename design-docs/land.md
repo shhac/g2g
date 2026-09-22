@@ -128,6 +128,13 @@ the descent was planned, so GitHub reports it blocked.
 That is inherent, not incidental. The preview says so before the first merge
 rather than letting the run discover it after something has already landed.
 
+For the same reason, whether a merge is sent with `--admin` is decided again when
+the branch's turn comes, not taken from the plan. The first version took it from
+the plan, where every branch above the first was still clean, and so merged the
+blocked ones without the flag it had been given for exactly them. The plan's
+forecast still marks those steps, so the recipe says `--admin` where it will be
+needed.
+
 `--admin` also bypasses approvals, so an unapproved pull request is refused
 under its own name rather than folded into the protection refusal. Someone
 reaching for the flag to get past restarted checks should not silently also get

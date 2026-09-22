@@ -21,7 +21,7 @@ func retargetView(plan retarget.Plan) stackView {
 			branchList(plan.Ambiguous), pick(len(plan.Ambiguous), "has", "have"), pick(len(plan.Ambiguous), "it", "them")), severityBad)
 	}
 	if plan.Blocked != "" {
-		return view.blockedBy(plan.Blocked)
+		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	for _, change := range plan.Changes {
 		view = view.note(fmt.Sprintf("PR #%d (%s) · base %s → %s", change.Number, change.Branch, change.From, change.To), severityWarn)

@@ -180,6 +180,11 @@ func TestMirrorBlocksOnARootGraphiteDoesNotKnow(t *testing.T) {
 	if got := strings.Join(plan.UnknownRoots, ","); got != "synthetic-trunk" {
 		t.Errorf("UnknownRoots = %s, want the root Graphite lacks", got)
 	}
+	// A refusal carries its ways out as structure, and the sentence a machine
+	// reads is rendered from them, so the two cannot name different commands.
+	if len(plan.Repair.Ways) != 2 || plan.Repair.Ways[1].Command != "gt init" || plan.Blocked != plan.Repair.Sentence() {
+		t.Errorf("Repair = %+v, Blocked = %q", plan.Repair, plan.Blocked)
+	}
 	if err := svc.ApplyMirror(context.Background(), plan); err == nil {
 		t.Error("ApplyMirror() error = nil for a blocked plan")
 	}

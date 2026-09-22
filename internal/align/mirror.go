@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Graphite is the whole Graphite surface alignment needs. It is an interface
@@ -81,8 +82,11 @@ type MirrorPlan struct {
 	// UnknownRoots are the roots of the g2g forest Graphite has never heard
 	// of. They are what Blocked is about when it is set.
 	UnknownRoots []string
-	// Blocked is why an apply would refuse, empty when it would proceed.
+	// Blocked is why an apply would refuse, empty when it would proceed. It
+	// is Repair's sentence.
 	Blocked string
+	// Repair is the refusal in parts: why, and the ways out.
+	Repair repair.Note
 }
 
 // Shielded returns the strangers a prune leaves alone because untracking them
@@ -137,7 +141,14 @@ func (s Service) PlanMirror(ctx context.Context, prune bool) (MirrorPlan, error)
 	// reads is composed in the presentation layer, and composing this one here
 	// meant one preview printed two different phrasings of the same idea.
 	if plan.UnknownRoots = unknownRoots(adopted, forest); len(plan.UnknownRoots) != 0 {
-		plan.Blocked = "Graphite does not track every root of the g2g graph, and cannot be told to without being given a parent"
+		plan.Repair = repair.Note{
+			Reason: "Graphite does not track " + strings.Join(plan.UnknownRoots, ", ") + ", a root of the g2g graph, and cannot be told to without being given a parent",
+			Ways: []repair.Step{
+				{Effect: "track it in Graphite first"},
+				{Command: "gt init", Effect: "give Graphite a trunk, if it has none"},
+			},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	plan.Writes = writes(adopted, forest)

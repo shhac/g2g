@@ -10,9 +10,11 @@ package retarget
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -48,7 +50,9 @@ type Plan struct {
 	// Ambiguous names branches with more than one open pull request. Nothing
 	// here picks between them, so their base is left alone and the plan says so.
 	Ambiguous []string
-	Blocked   string
+	// Blocked is why an apply would refuse, and Repair the same in parts.
+	Blocked string
+	Repair  repair.Note
 }
 
 // NothingToRetarget reports a plan with no work.
@@ -119,7 +123,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 		}
 	}
 	if len(plan.Ambiguous) != 0 {
-		plan.Blocked = "more than one open pull request for a branch, so which one to retarget cannot be derived"
+		// No command here, deliberately: which pull request a branch means is a
+		// person's choice, and the way out says so rather than naming one.
+		plan.Repair = repair.Note{
+			Reason: "more than one open pull request for " + strings.Join(plan.Ambiguous, ", ") + ", so which one to retarget cannot be derived",
+			Ways:   []repair.Step{{Effect: "close all but one open pull request for each, then rerun"}},
+		}
+		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "retarget.plan",
 		diagnostic.Field{Key: "changes", Value: fmt.Sprintf("%d", len(plan.Changes))},

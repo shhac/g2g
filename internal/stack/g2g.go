@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
@@ -60,6 +61,9 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 	if err != nil {
 		return Snapshot{}, err
 	}
+	if err := s.requireLocal(ctx, discovery.Graph, append(slices.Clone(discovery.Branches), hangsFrom)); err != nil {
+		return Snapshot{}, err
+	}
 	// The whole line of descent, not just the selection: revalidation compares
 	// it so that structure moving above the base is noticed even when the
 	// acted-on branches are unchanged. Leaving it empty here would have made a
@@ -88,6 +92,33 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 		Scope:        scope,
 		Parents:      selectionParents(forest, discovery.Branches, base),
 	}, nil
+}
+
+// requireLocal refuses a selection naming a branch this checkout no longer has.
+//
+// The store outlives a branch deleted or renamed with plain Git, and every
+// command that selects through here goes on to ask Git about what it selected.
+// Graphite's selector has always refused a branch that is not local; this one
+// passed the name on, so a status either failed on Git's own error or advised a
+// pull request for a branch that does not exist. The two cases are repaired
+// differently, which is why they are told apart: a stale edge is forgotten, and
+// a stack left standing on a vanished parent is given a new one.
+func (s G2GSelector) requireLocal(ctx context.Context, adopted graph.Graph, branches []string) error {
+	local, err := s.Service.Git.LocalBranches(ctx)
+	if err != nil {
+		return err
+	}
+	present := branchSet(local)
+	for _, branch := range branches {
+		if present[branch] {
+			continue
+		}
+		if adopted.Tracked(branch) {
+			return fmt.Errorf("selected branch %q is recorded in the g2g graph but is no longer a local branch · run g2g untrack --branch %s to forget it", branch, branch)
+		}
+		return fmt.Errorf("the g2g graph records a stack on %q, which is no longer a local branch · record a new parent for what sits on it with g2g track --parent", branch)
+	}
+	return nil
 }
 
 // selectBase applies --trunk to a recorded path. A path has exactly one root,

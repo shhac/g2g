@@ -127,3 +127,19 @@ func retainedPath(t *testing.T, message string) string {
 	}
 	return rest
 }
+
+// A flag that would be ignored is refused before anything is read, so a preview
+// never names a template the spec does not use.
+func TestSubmitRefusesFlagsItWouldIgnore(t *testing.T) {
+	for _, args := range [][]string{
+		{"submit", "--spec", "synthetic-spec.json", "--template", "synthetic"},
+		{"submit", "--spec", "synthetic-spec.json", "--no-template"},
+		{"submit", "--keep-spec"},
+	} {
+		recorder := fakeRepository(t, openTopPullRequest)
+		if _, _, err := run(t, args...); err == nil {
+			t.Errorf("%v was accepted", args)
+		}
+		recorder.AssertNone("gh ", "git push")
+	}
+}

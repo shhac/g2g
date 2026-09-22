@@ -21,6 +21,9 @@ func newSubmit(service submit.Service, completions stack.Completions, guard func
 		if err := options.selection.validate(); err != nil {
 			return err
 		}
+		if err := options.validate(); err != nil {
+			return err
+		}
 		return options.run(cmd, service, presentation.resolve(cmd))
 	}
 	options.selection.register(cmd, completions, stack.ReadableSources, "local branch to submit (defaults to current branch)", "trunk to use as the submit base")
@@ -64,6 +67,21 @@ type submitOptions struct {
 	noTemplate bool
 	edit       bool
 	keepSpec   bool
+}
+
+// validate refuses flags that would be silently ignored. A template prefills
+// the bodies of a spec being created; a spec given with --spec already has its
+// bodies, and a preview naming the template it would not use is a preview of
+// something else. --keep-spec keeps the document --edit creates, and there is
+// no such document without it.
+func (o submitOptions) validate() error {
+	if o.specPath != "" && (o.template != "" || o.noTemplate) {
+		return fmt.Errorf("--template and --no-template choose how a new spec is prefilled, and --spec %s already carries its bodies · drop the template flag, or use --write-spec or --edit", o.specPath)
+	}
+	if o.keepSpec && !o.edit {
+		return fmt.Errorf("--keep-spec keeps the document --edit creates · add --edit, or drop --keep-spec")
+	}
+	return nil
 }
 
 func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {

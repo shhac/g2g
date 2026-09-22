@@ -164,7 +164,7 @@ func conversationQuery(pending []conversationPage) string {
 	for index, page := range pending {
 		after := ""
 		if page.After != "" {
-			after = ", after: " + strconv.Quote(page.After)
+			after = ", after: " + graphqlString(page.After)
 		}
 		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number url headRefName baseRefName state viewerCanComment comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
 	}

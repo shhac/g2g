@@ -11,6 +11,7 @@ import (
 
 	"github.com/shhac/g2g/internal/align"
 	"github.com/shhac/g2g/internal/comment"
+	"github.com/shhac/g2g/internal/create"
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
@@ -76,6 +77,9 @@ type Options struct {
 	// Align keeps the g2g graph and Graphite's in step. It is the only
 	// service that writes Graphite.
 	Align align.Service
+	// Create starts a branch and records it in one step. It records through
+	// Graph's own track plan rather than owning a second way to write an edge.
+	Create create.Service
 
 	// Completions supplies branch and trunk candidates for shell completion.
 	Completions stack.Completions
@@ -156,6 +160,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 			Git: gitClient, Graph: graphService, Selector: selector, GitHub: githubClient,
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService,
 		},
+		Create:             create.Service{Git: gitClient, Graph: graphService},
 		Unstacker:          githubClient,
 		GraphiteConfigured: graphiteConfigured,
 	})
@@ -228,6 +233,9 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
+	}
+	if options.Create.Ready() {
+		root.AddCommand(newCreate(options.Create, options.Graph, guard, presentation))
 	}
 	if options.Restack.Ready() {
 		root.AddCommand(newRestack(options.Restack, presentation))

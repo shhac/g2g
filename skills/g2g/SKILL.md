@@ -206,9 +206,9 @@ description: |
   rebased by hand fails that, and replaying anyway pulls the base's own commits
   into the range. Refuse and tell the user to retrack.
 - A branch whose parent is being rewritten must be rewritten too, even when it
-  still sits exactly where its fork point says. Every range passed to an engine
-  starts at the topmost step's fork point, because the engines replay the union
-  onto one base.
+  still sits exactly where its fork point says. Each independent root is its
+  own replay, and every range passed to an engine starts at that root's fork
+  point, because an engine replays the union onto one base.
 - restack is the only resumable operation. Every other mutating command must
   refuse while its journal exists, `--continue` recomputes from the refs rather
   than resuming a stored queue, and `--abort` restores tips the journal

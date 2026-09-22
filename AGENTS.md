@@ -228,8 +228,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 - `internal/restack` is the only package allowed to rewrite history. The replay
   range is `forkPoint..branch`; the fork point must be an ancestor of the
   branch before any rewrite, or the range silently widens to include the base's
-  own commits. Every range handed to an engine starts at the topmost step's
-  fork point, and a branch whose parent is being rewritten is rewritten too.
+  own commits. Each independent root of a selection is its own replay, and
+  every range handed to an engine starts at that root's fork point; a branch
+  whose parent is being rewritten is rewritten too. A replay that fails before
+  the checkout is touched puts back every tip it moved, and the journal records
+  the structure as well as the tips, so `--abort` restores both and returns to
+  the branch the user was standing on.
 - A rewrite that moves the branch you are standing on must reconcile the
   checkout: the replay engine and a collapse both move refs without one, so the
   index and working tree are left describing the old commit, which git reports

@@ -37,6 +37,11 @@ type Candidate struct {
 	Trunk    bool
 }
 
+// SameTip reports a candidate at the target's own commit. Each is then an
+// ancestor of the other, so ancestry cannot say which sits on which: it is a
+// question to put to the user, never one to answer for them.
+func (c Candidate) SameTip() bool { return c.Ancestor && c.Distance == 0 }
+
 // Related returns the possible parents drawn from the target's own ancestry and
 // the roots the graph already records.
 //
@@ -107,8 +112,14 @@ func Candidates(ctx context.Context, git Ancestry, target string, roots []string
 // that could be its parent, nearest first.
 //
 // One invocation per branch answers both questions at once. A branch with
-// nothing behind already contains the target, so it is a descendant and never
-// a parent; a branch with nothing ahead is a true ancestor.
+// nothing ahead is a true ancestor. A branch with nothing behind and something
+// ahead contains the target and more, so it is a descendant and never a parent.
+//
+// A branch with nothing either way is at the target's own commit, and is kept.
+// It is both an ancestor and a descendant, which ancestry cannot order — and
+// it is exactly the branch a new one was just created from. Dropping it as a
+// descendant hid that branch from track and let a whole-stack adoption record
+// the stack as though it were not there.
 func measure(ctx context.Context, git Ancestry, target string, branches, roots []string) ([]Candidate, error) {
 	candidates := make([]Candidate, 0, len(branches))
 	for _, branch := range branches {
@@ -119,7 +130,7 @@ func measure(ctx context.Context, git Ancestry, target string, branches, roots [
 		if err != nil {
 			return nil, err
 		}
-		if behind == 0 {
+		if behind == 0 && ahead != 0 {
 			continue
 		}
 		candidates = append(candidates, Candidate{

@@ -135,6 +135,12 @@ func trackStackView(plan graph.StackPlan) stackView {
 }
 func describeCandidate(candidate graph.Candidate) string {
 	described := count(candidate.Distance, "commit", "commits") + " behind"
+	// Two branches at one commit are each other's ancestor, so "0 commits
+	// behind" would read as the nearest parent when it is a question only the
+	// user can answer.
+	if candidate.SameTip() {
+		described = "same commit"
+	}
 	if candidate.Trunk {
 		described = "root, " + described
 	}

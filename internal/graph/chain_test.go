@@ -18,7 +18,7 @@ func linear() []Candidate {
 // The chain runs trunk first, so a parent is always recorded before the
 // branches that name it.
 func TestChainOrdersFromTheTrunkDown(t *testing.T) {
-	chain, err := Chain(linear(), "synthetic-trunk")
+	chain, err := Chain(linear(), "synthetic-target", "synthetic-trunk")
 	if err != nil {
 		t.Fatalf("Chain() error = %v", err)
 	}
@@ -30,7 +30,7 @@ func TestChainOrdersFromTheTrunkDown(t *testing.T) {
 // Stopping at a nearer trunk records less, not more: everything below it is
 // somebody else's business.
 func TestChainStopsAtTheTrunkItWasGiven(t *testing.T) {
-	chain, err := Chain(linear(), "synthetic-a")
+	chain, err := Chain(linear(), "synthetic-target", "synthetic-a")
 	if err != nil {
 		t.Fatalf("Chain() error = %v", err)
 	}
@@ -43,14 +43,14 @@ func TestChainStopsAtTheTrunkItWasGiven(t *testing.T) {
 // part of the chain and cannot be the trunk either.
 func TestChainIgnoresBranchesTheTargetCannotReach(t *testing.T) {
 	candidates := append(linear(), Candidate{Branch: "synthetic-elsewhere", Distance: 1})
-	chain, err := Chain(candidates, "synthetic-trunk")
+	chain, err := Chain(candidates, "synthetic-target", "synthetic-trunk")
 	if err != nil {
 		t.Fatalf("Chain() error = %v", err)
 	}
 	if strings.Contains(strings.Join(chain, ","), "elsewhere") {
 		t.Errorf("Chain() = %v, want the unreachable branch left out", chain)
 	}
-	if _, err := Chain(candidates, "synthetic-elsewhere"); err == nil {
+	if _, err := Chain(candidates, "synthetic-target", "synthetic-elsewhere"); err == nil {
 		t.Error("Chain() error = nil for a trunk the target cannot reach")
 	}
 }
@@ -64,7 +64,7 @@ func TestChainRefusesAnAmbiguousOrder(t *testing.T) {
 		{Branch: "synthetic-trunk", Distance: 3, Ancestor: true, Trunk: true},
 	}
 
-	_, err := Chain(tiedCandidates, "synthetic-trunk")
+	_, err := Chain(tiedCandidates, "synthetic-target", "synthetic-trunk")
 	if err == nil {
 		t.Fatal("Chain() error = nil for two branches at the same distance")
 	}
@@ -76,7 +76,7 @@ func TestChainRefusesAnAmbiguousOrder(t *testing.T) {
 }
 
 func TestChainRefusesATrunkThatIsNotAnAncestor(t *testing.T) {
-	if _, err := Chain(linear(), "synthetic-absent"); err == nil {
+	if _, err := Chain(linear(), "synthetic-target", "synthetic-absent"); err == nil {
 		t.Error("Chain() error = nil for a trunk that is not on the ancestry")
 	}
 }
@@ -137,7 +137,7 @@ func TestAttachJoinsABranchToTheSelectedSpine(t *testing.T) {
 		{Branch: "synthetic-trunk", Distance: 4, Ancestor: true, Trunk: true},
 	}
 
-	parent, attached, err := Attach(candidates, []string{"synthetic-a", "synthetic-b"})
+	parent, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err != nil {
 		t.Fatalf("Attach() error = %v", err)
 	}
@@ -152,12 +152,41 @@ func TestAttachJoinsABranchToTheSelectedSpine(t *testing.T) {
 func TestAttachLeavesBranchesThatOnlyShareTheTrunk(t *testing.T) {
 	candidates := []Candidate{{Branch: "synthetic-trunk", Distance: 1, Ancestor: true, Trunk: true}}
 
-	_, attached, err := Attach(candidates, []string{"synthetic-a", "synthetic-b"})
+	_, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err != nil {
 		t.Fatalf("Attach() error = %v", err)
 	}
 	if attached {
 		t.Error("Attach() joined a branch whose only selected ancestor is the trunk")
+	}
+}
+
+// A branch created from the trunk a moment ago is at the trunk's commit, so
+// every stack on the trunk is as near to it as to the trunk. Those stacks sit
+// directly on the trunk and stay out, exactly as they would without it.
+func TestAttachLeavesABranchAsNearTheTrunkAsTheSelection(t *testing.T) {
+	candidates := []Candidate{
+		{Branch: "synthetic-fresh", Distance: 1, Ancestor: true},
+		{Branch: "synthetic-trunk", Distance: 1, Ancestor: true, Trunk: true},
+	}
+
+	_, attached, err := Attach("synthetic-target", candidates, []string{"synthetic-fresh"})
+	if err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if attached {
+		t.Error("Attach() swept a stack on the trunk under a branch with nothing of its own")
+	}
+}
+
+// A selected branch at this one's own commit is above it or below it, and
+// ancestry cannot say which.
+func TestAttachRefusesASelectedBranchAtTheSameCommit(t *testing.T) {
+	candidates := []Candidate{{Branch: "synthetic-a", Distance: 0, Ancestor: true}}
+
+	_, _, err := Attach("synthetic-target", candidates, []string{"synthetic-a"})
+	if err == nil || !strings.Contains(err.Error(), "same commit") {
+		t.Fatalf("Attach() error = %v, want a refusal naming the shared commit", err)
 	}
 }
 
@@ -169,7 +198,7 @@ func TestAttachRefusesTwoEquallyNearParents(t *testing.T) {
 		{Branch: "synthetic-b", Distance: 1, Ancestor: true},
 	}
 
-	_, _, err := Attach(candidates, []string{"synthetic-a", "synthetic-b"})
+	_, _, err := Attach("synthetic-target", candidates, []string{"synthetic-a", "synthetic-b"})
 	if err == nil {
 		t.Fatal("Attach() error = nil for two equally near parents")
 	}

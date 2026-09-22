@@ -100,7 +100,7 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 			return plan, nil
 		}
 	}
-	chain, err := Chain(candidates, plan.Trunk)
+	chain, err := Chain(candidates, discovery.Target, plan.Trunk)
 	if err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
@@ -205,7 +205,7 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 			if chosen[branch] {
 				continue
 			}
-			parent, attached, err := Attach(candidatesFor[branch], selected)
+			parent, attached, err := Attach(branch, candidatesFor[branch], selected)
 			if err != nil {
 				return nil, err
 			}

@@ -17,7 +17,7 @@ import (
 // has named the trunk, and everything between it and the target follows from
 // ancestry — one assertion, then arithmetic. Where the arithmetic is ambiguous
 // this refuses rather than picking, for exactly the reason `track` does.
-func Chain(candidates []Candidate, trunk string) ([]string, error) {
+func Chain(candidates []Candidate, target, trunk string) ([]string, error) {
 	reachable := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		// A branch the target cannot reach is not on the way to anywhere.
@@ -43,10 +43,25 @@ func Chain(candidates []Candidate, trunk string) ([]string, error) {
 	for index := end; index >= 0; index-- {
 		chain = append(chain, reachable[index].Branch)
 	}
+	// The trunk is the one branch whose place the user asserted, so a target
+	// created from it and not yet committed to sits on it. Any other branch at
+	// the target's commit could be above it or below it, and nothing here can
+	// say which.
+	for _, candidate := range reachable[:end] {
+		if candidate.SameTip() {
+			return nil, sameCommit(candidate.Branch, target)
+		}
+	}
 	if ambiguous := tied(reachable[:end+1]); ambiguous != "" {
 		return nil, fmt.Errorf("%s are the same distance from the selected branch, so their order cannot be derived · record them with g2g track --parent instead", ambiguous)
 	}
 	return chain, nil
+}
+
+// sameCommit refuses two branches ancestry cannot order because they are one
+// commit. It names both, because the remedy is to say which sits on which.
+func sameCommit(one, other string) error {
+	return fmt.Errorf("%q and %q point at the same commit, so which sits on which cannot be derived · record it with g2g track --parent instead", one, other)
 }
 
 // tied names two branches an ancestry ordering cannot separate. Equal distance
@@ -92,18 +107,43 @@ func TrunkFor(candidates []Candidate, known []string) (string, error) {
 // selected excludes the trunk deliberately. A branch that sits directly on the
 // trunk is somebody else's stack that happens to share a base, and sweeping it
 // in because it is technically a descendant would adopt half the repository.
-func Attach(candidates []Candidate, selected []string) (string, bool, error) {
-	for index, candidate := range candidates {
+func Attach(branch string, candidates []Candidate, selected []string) (string, bool, error) {
+	for _, candidate := range candidates {
 		if !candidate.Ancestor || !slices.Contains(selected, candidate.Branch) {
 			continue
 		}
-		// A tie at the nearest position means two possible parents and no way
-		// to choose, which is the guess this refuses to make.
-		if index+1 < len(candidates) && candidates[index+1].Ancestor &&
-			candidates[index+1].Distance == candidate.Distance && slices.Contains(selected, candidates[index+1].Branch) {
-			return "", false, fmt.Errorf("%q and %q are the same distance below this branch, so its parent cannot be derived · record it with g2g track --parent", candidate.Branch, candidates[index+1].Branch)
+		// A selected branch at this one's commit could equally sit on it or
+		// under it. Attaching either way records a structure ancestry did not
+		// give, and the next branch at that commit would read as its sibling.
+		if candidate.SameTip() {
+			return "", false, sameCommit(candidate.Branch, branch)
 		}
-		return candidate.Branch, true, nil
+		tie, found := equallyNear(candidates, candidate)
+		if !found {
+			return candidate.Branch, true, nil
+		}
+		// Two selected branches equally near are two possible parents and no
+		// way to choose, which is the guess this refuses to make.
+		if slices.Contains(selected, tie.Branch) {
+			return "", false, fmt.Errorf("%q and %q are the same distance below this branch, so its parent cannot be derived · record it with g2g track --parent", candidate.Branch, tie.Branch)
+		}
+		// Equally near something outside the selection — the trunk, under a
+		// branch with nothing of its own yet — this branch sits as directly on
+		// that as on the stack, which is the separate stack the trunk rule
+		// leaves alone. Attaching it swept every stack on the trunk under a
+		// branch created from it a moment ago.
+		return "", false, nil
 	}
 	return "", false, nil
+}
+
+// equallyNear finds another ancestor at the same distance as the one chosen,
+// wherever it sorts: names order a tie, so the partner may come first.
+func equallyNear(candidates []Candidate, chosen Candidate) (Candidate, bool) {
+	for _, other := range candidates {
+		if other.Branch != chosen.Branch && other.Ancestor && other.Distance == chosen.Distance {
+			return other, true
+		}
+	}
+	return Candidate{}, false
 }

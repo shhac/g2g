@@ -80,9 +80,18 @@ that could never be validated.
 Each candidate is then measured with one
 `git rev-list --left-right --count <candidate>...C`. That single invocation
 answers both directions: nothing ahead means the candidate is a true ancestor,
-nothing behind means it already contains `C` and is therefore a descendant and
-never a parent. The commits behind are the ordering, and the nearest is the
-parent.
+nothing behind and something ahead means it already contains `C` and more, and
+is therefore a descendant and never a parent. The commits behind are the
+ordering, and the nearest is the parent.
+
+Nothing either way means the candidate is at `C`'s own commit. Each is then an
+ancestor of the other and ancestry cannot say which sits on which — and it is
+the state of every branch the moment it is created, so it is the ordinary case.
+Such a candidate is offered, marked as the same commit, for the user to answer.
+`track --stack` refuses it by name rather than ordering it, with one exception:
+the trunk, whose place the user asserted, so a branch just created from it
+sits on it. A branch as near the trunk as it is to the selection sits directly
+on the trunk and stays out, like any other stack there.
 
 Measuring from the merge base rather than requiring ancestry is what makes the
 first adoption possible. An empty graph records no roots, and the trunk a

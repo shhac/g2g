@@ -1,6 +1,14 @@
 package cli
 
-import "io"
+import (
+	"io"
+	"time"
+)
+
+// The completion ceiling is a keystroke's patience, and the suite spawns fake
+// executables that a loaded machine can make slower than that. The ceiling's
+// value is asserted on its own; everything else runs without it.
+func init() { completionTimeout = time.Minute }
 
 // WriteErrorForTest exposes the top-level error printer to the external
 // integration test, which drives the root command rather than Execute and so

@@ -142,3 +142,11 @@ func TestDiscoveryTimeoutNamesTheCeilingInForce(t *testing.T) {
 		t.Error("a failure that is not a timeout was rewritten")
 	}
 }
+
+// Completion answers on a keystroke, so its ceiling stays short in the build a
+// person runs. The test build lifts it; this is what pins the real value.
+func TestCompletionGivesUpWithinAKeystrokesPatience(t *testing.T) {
+	if defaultCompletionTimeout > 3*time.Second {
+		t.Errorf("defaultCompletionTimeout = %s, want at most 3s", defaultCompletionTimeout)
+	}
+}

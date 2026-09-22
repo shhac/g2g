@@ -28,9 +28,16 @@ const (
 	// and by nothing else, so a ceiling that fitted the calls alone would cut
 	// a merge off mid-flight.
 	landingPerBranch = 180 * time.Second
-
-	completionTimeout = 3 * time.Second
 )
+
+// completionTimeout bounds a completion, which runs on a keystroke and must
+// answer or give up quickly. It is a variable only so the test build can lift
+// it: a suite that spawns fake executables on a loaded machine can take longer
+// than a keystroke's patience without anything being wrong, and a ceiling that
+// fails tests by machine speed tests the machine.
+var completionTimeout = defaultCompletionTimeout
+
+const defaultCompletionTimeout = 3 * time.Second
 
 // budgets derives per-phase deadlines from the root --timeout flag. Phases are
 // bounded separately and both descend from the command context rather than

@@ -1,4 +1,5 @@
-// Package link plans and applies a Graphite-authoritative GitHub stack link.
+// Package link plans and applies a GitHub stack link for a selected path, from
+// whichever source describes it.
 package link
 
 import (
@@ -10,7 +11,6 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -18,13 +18,6 @@ import (
 type Git interface {
 	stack.Git
 	Clean(context.Context) error
-}
-
-// Graphite discovers Graphite's declared ancestry without a checkout.
-type Graphite interface {
-	stack.Graphite
-	Discover(context.Context, string) (graphite.Stack, error)
-	TrackedBranches(context.Context) ([]string, error)
 }
 
 // GitHub inspects existing PRs and performs the sole mutation.

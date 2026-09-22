@@ -675,17 +675,35 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		elsewhere map[string]string
+		pending   Pending
 		err       error
 		blocked   bool
+		held      string
 	}{
 		{
 			name:      "a selected branch is held",
 			elsewhere: map[string]string{"synthetic-b": "/synthetic/other"},
 			blocked:   true,
+			held:      "synthetic-b",
 		},
 		{
 			name:      "a branch outside the selection is not a conflict",
 			elsewhere: map[string]string{"synthetic-elsewhere": "/synthetic/other"},
+		},
+		{
+			// The trunk is selected and never moves. Refusing it stopped a path
+			// restack for a worktree it could not have disturbed.
+			name:      "a selected branch that will not move is not a conflict",
+			elsewhere: map[string]string{"synthetic-trunk": "/synthetic/other"},
+		},
+		{
+			// A caller that moves a ref before the rewrite strands a worktree
+			// on it just as surely as the rewrite would.
+			name:      "a branch the caller will move is held",
+			elsewhere: map[string]string{"synthetic-trunk": "/synthetic/other"},
+			pending:   Pending{"synthetic-trunk": "trunk-newer"},
+			blocked:   true,
+			held:      "synthetic-trunk",
 		},
 		{name: "no other worktree"},
 		{
@@ -700,7 +718,7 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 			service, _, _ := newService(git.fakeGit, stack())
 			service.Git = git
 
-			plan, err := service.Plan(context.Background(), selection(), Onto{}, false, nil)
+			plan, err := service.Plan(context.Background(), selection(), Onto{}, false, test.pending)
 			if err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}
@@ -711,9 +729,17 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 			if !test.blocked {
 				return
 			}
-			for _, want := range []string{"synthetic-b", "/synthetic/other", "another worktree"} {
+			for _, want := range []string{test.held, "/synthetic/other", "another worktree"} {
 				if !strings.Contains(plan.Blocked, want) {
 					t.Errorf("refusal %q does not name %q", plan.Blocked, want)
+				}
+			}
+			// The same refusal reaches sync, which has no --scope path, so a
+			// way out that reruns a command with a scope it may not take is
+			// not one.
+			for _, way := range plan.Repair.Ways {
+				if way.Command != "" {
+					t.Errorf("way out %+v names a command; the refusal reaches commands with different scopes", way)
 				}
 			}
 			if len(plan.Steps) != 0 {

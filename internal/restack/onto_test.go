@@ -157,6 +157,12 @@ func TestOntoRecordsTheEdgeWhenThereIsNothingToReplay(t *testing.T) {
 	if len(plan.Steps) != 0 {
 		t.Fatalf("Steps = %v, want nothing to replay for this case", plan.Steps)
 	}
+	// A caller deciding whether to apply at all has to be told there is
+	// something to do. Asking whether there are steps said no, so the command
+	// reported "Nothing to replay" and never reached the Apply below.
+	if plan.Nothing() {
+		t.Error("Nothing() = true for a plan with an edge to record")
+	}
 
 	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)

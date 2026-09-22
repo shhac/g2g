@@ -318,6 +318,17 @@ type Plan struct {
 	Repair repair.Note
 }
 
+// Nothing reports a plan with nothing to do: no branch to rewrite and no edge
+// to record.
+//
+// An empty step list is not that question. A branch already sitting on the
+// --onto target has no commits to move and a recorded parent still naming
+// where it used to be, and a caller that skipped Apply for want of steps left
+// it recorded there while saying there was nothing to replay.
+func (p Plan) Nothing() bool {
+	return len(p.Steps) == 0 && len(p.reparenting()) == 0
+}
+
 // Branches lists the branches this plan rewrites.
 func (p Plan) Branches() []string {
 	branches := make([]string, 0, len(p.Steps))

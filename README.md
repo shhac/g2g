@@ -53,6 +53,7 @@ has not already used it, g2g stays local instead of creating Graphite state.
 | Record and inspect local structure | `track`, `graph`, `untrack` |
 | Keep branch contents consistent with that structure | `restack`, `sync`, `prune` |
 | Publish a linear path to GitHub | `push`, `submit`, `link`, `retarget`, `unlink` |
+| Give reviewers a map of the stack on every pull request | `comment` |
 | Take a finished stack down onto its trunk | `land` |
 | Work with an existing Graphite structure | `import`, `mirror`, or `--from graphite` |
 
@@ -521,6 +522,37 @@ It touches only the pull requests whose base disagrees with the resolved stack,
 leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
+
+## A map of the stack on every pull request
+
+GitHub shows a pull request in isolation. `comment` keeps one comment on each
+pull request in the stack that lists the rest of it, with that pull request in
+bold, so a reviewer can move through the stack without reading bases.
+
+```sh
+g2g comment            # what each comment would say, and which would change
+g2g comment --apply
+```
+
+```
+- `synthetic-main`
+- #11 `synthetic-one`
+- **#12 `synthetic-two`** 👈 this pull request
+- #13 `synthetic-three`
+```
+
+Rerunning edits the comment it finds rather than adding another, found by an
+HTML marker in its first line. Pull requests that have merged out of the stack
+stay listed: each comment records every pull request the stack has listed, so
+the history survives the branch being pruned and deleted. A merged pull request
+is never given a new comment, a comment you cannot edit is left alone, and a
+branch with two open pull requests refuses the run.
+
+It keeps the whole stack the branch belongs to, whichever branch you run it
+from, because each comment lists its own pull request's ancestors and
+descendants — a fork appears in some comments and not others, and keeping only
+part of a stack would leave the rest describing a different one. See
+[design-docs/stack-comment.md](design-docs/stack-comment.md).
 
 ## Landing a stack
 

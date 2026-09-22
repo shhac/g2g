@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/align"
+	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
@@ -69,6 +70,9 @@ type Options struct {
 	// Prune rather than owning their rules, so it is registered only when all
 	// three of its own seams are present.
 	Land land.Service
+	// Comment keeps a comment on each pull request listing its stack. It
+	// writes conversation, never structure or code.
+	Comment comment.Service
 	// Align keeps the g2g graph and Graphite's in step. It is the only
 	// service that writes Graphite.
 	Align align.Service
@@ -147,6 +151,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Prune:       pruneService,
 		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
 		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Comment:     comment.Service{Selector: selector, GitHub: githubClient},
 		Land: land.Service{
 			Git: gitClient, Graph: graphService, Selector: selector, GitHub: githubClient,
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService,
@@ -239,6 +244,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Retarget.Ready() {
 		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
+	}
+	if options.Comment.Ready() {
+		root.AddCommand(newComment(options.Comment, completions, guard, presentation))
 	}
 	if options.Land.Ready() {
 		root.AddCommand(newLand(options.Land, completions, guard, presentation))

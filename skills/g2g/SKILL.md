@@ -5,7 +5,7 @@ description: |
   branches itself and projects them onto GitHub. Graphite is an optional
   source it can read, mirror to, and import from, never a requirement. Use
   when working on g2g's commands (track, link, sync, prune, restack,
-  retarget, submit, push, land, graph, mirror, import), stack scope and
+  retarget, submit, push, land, comment, graph, mirror, import), stack scope and
   structure, source resolution and alignment, CLI tests, or release readiness.
   Triggers: gt2gh, stack without Graphite, restack after squash merge,
   merge a stack down.
@@ -240,6 +240,16 @@ description: |
 - A diverged base is reported, never merged or reset. Pruning edits the graph
   and never deletes a branch.
 
+- `comment` keeps one marked comment per pull request listing its stack. Read
+  `design-docs/stack-comment.md` before changing it. It always keeps the whole
+  stack the branch belongs to — each comment lists its own ancestors and
+  descendants, so a partial run would leave comments disagreeing — and has no
+  `--scope`. Merged history lives in the comments' own data line because
+  nothing local remembers a pruned branch; keep only what GitHub says merged,
+  never create a comment on a merged pull request, never edit a comment without
+  the marker, and leave alone one the viewer cannot edit or a pull request
+  carrying two. Writes are `addComment`/`updateIssueComment` by node id with the
+  body as a raw `-f` field; errors must not echo the body.
 - `retarget` is the only command a user runs to change what a merge will do,
   and `land` reaches for the same client method rather than growing its own —
   a child's base only goes stale during a descent, once the branch below it has

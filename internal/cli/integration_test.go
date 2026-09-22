@@ -54,6 +54,12 @@ const mergeabilityJSON = `{"data":{"repository":{"squashMergeAllowed":true,"merg
 
 const mergeabilityPrefix = "api graphql -F owner={owner} -F name={repo} -f query=query Mergeability("
 
+// The stack comment's read and its two writes share the endpoint too.
+const (
+	stackCommentsPrefix   = "api graphql -F owner={owner} -F name={repo} -f query=query StackComments("
+	commentMutationPrefix = "api graphql -f query=mutation("
+)
+
 func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Route, string) {
 	t.Helper()
 

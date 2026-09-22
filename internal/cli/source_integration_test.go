@@ -22,6 +22,14 @@ func g2gOwnedRepository(t *testing.T, graph string) (*testutil.Recorder, string)
 
 func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string) (*testutil.Recorder, string) {
 	t.Helper()
+	return g2gOwnedRepositoryWithConversations(t, graph, pullRequests, ownedConversations)
+}
+
+// g2gOwnedRepositoryWithConversations also says what the pull requests'
+// conversations hold, which is the one thing the stack comment reads that no
+// other command does.
+func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conversations string) (*testutil.Recorder, string) {
+	t.Helper()
 
 	common := t.TempDir()
 	if graph != "" {
@@ -64,6 +72,8 @@ func g2gOwnedRepositoryWithPullRequests(t *testing.T, graph, pullRequests string
 			// endpoint and begin with the same words, so the operation name is
 			// what tells them apart and first match wins.
 			{Prefix: mergeabilityPrefix, Output: ownedMergeability},
+			{Prefix: stackCommentsPrefix, Output: conversations},
+			{Prefix: commentMutationPrefix, Output: `{"data":{}}`},
 			{Prefix: "api graphql", Output: pullRequests},
 			{Prefix: "pr merge"},
 			{Prefix: "pr create"},
@@ -93,6 +103,11 @@ func ownedPullRequestsJSON(membership string) string {
 const ownedMergeability = `{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":true,"rebaseMergeAllowed":true,` +
 	`"pr0":{"number":201,"headRefName":"synthetic-lower","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-trunk","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null},` +
 	`"pr1":{"number":202,"headRefName":"synthetic-top","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"synthetic-lower","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"APPROVED","mergeCommit":null}}}}`
+
+// ownedConversations is the same two pull requests with nothing said yet.
+const ownedConversations = `{"data":{"repository":{` +
+	`"c0":{"__typename":"PullRequest","id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}},` +
+	`"c1":{"__typename":"PullRequest","id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`
 
 // The default stack is open but not yet projected onto GitHub, which is what
 // link has work to do about; the linked variant is what unlink needs.
@@ -341,6 +356,7 @@ var stackCommands = []struct {
 	{name: "submit", pullRequests: ownedPullRequests},
 	{name: "retarget", pullRequests: ownedPullRequests},
 	{name: "land", pullRequests: ownedPullRequests},
+	{name: "comment", pullRequests: ownedPullRequests},
 	// graph resolves through a source too now, and reads no pull requests at
 	// all: its whole point is answering without a network.
 	{name: "graph", pullRequests: ownedPullRequests},

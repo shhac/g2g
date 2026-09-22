@@ -52,6 +52,26 @@ type stackView struct {
 	// the ways out with their commands separate from the prose around them.
 	// Blocked is rendered from it wherever one exists.
 	Repair repair.Note
+	// Comments are what a run writes to pull requests, body included. A
+	// machine reads every one; a person is shown Excerpt instead, because
+	// eight copies of nearly the same text is not a preview anyone reads.
+	Comments []stackComment
+	Excerpt  *stackExcerpt
+}
+
+// stackComment is one pull request's comment and what a run does with it.
+type stackComment struct {
+	PullRequest int
+	Branch      string
+	Action      string
+	Reason      string
+	Body        string
+}
+
+// stackExcerpt is text a person reads verbatim under a heading of its own.
+type stackExcerpt struct {
+	Heading string
+	Lines   []string
 }
 
 // stackStep is one line of a Sequence: something runnable, and what running it
@@ -280,6 +300,12 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 	}
 	for _, note := range view.Notes {
 		lines = append(lines, styleBySeverity(p, note.Severity, note.Text))
+	}
+	if view.Excerpt != nil {
+		lines = append(lines, "", p.accent(view.Excerpt.Heading))
+		for _, text := range view.Excerpt.Lines {
+			lines = append(lines, strings.TrimRight(indent+text, " "))
+		}
 	}
 
 	_, err := io.WriteString(writer, p.drawCommands(strings.Join(lines, "\n"), "")+"\n")

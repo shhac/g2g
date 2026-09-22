@@ -54,6 +54,17 @@ type jsonDocument struct {
 	// does not move schemaVersion.
 	Sequence []jsonStep `json:"sequence,omitempty"`
 	Notes    []jsonNote `json:"notes,omitempty"`
+	// Comments are the pull request comments a run writes, each with the body
+	// it would carry. Additive, so it leaves schemaVersion alone.
+	Comments []jsonComment `json:"comments,omitempty"`
+}
+
+type jsonComment struct {
+	PullRequest int    `json:"pullRequest"`
+	Branch      string `json:"branch,omitempty"`
+	Action      string `json:"action"`
+	Reason      string `json:"reason,omitempty"`
+	Body        string `json:"body,omitempty"`
 }
 
 // jsonStep is one step of the work. It reads like jsonWay and means the
@@ -130,6 +141,9 @@ func (v stackView) document() jsonDocument {
 	for _, note := range v.Notes {
 		doc.Notes = append(doc.Notes, jsonNote{Text: plainCommands(note.Text), Severity: string(note.Severity)})
 	}
+	for _, written := range v.Comments {
+		doc.Comments = append(doc.Comments, jsonComment{PullRequest: written.PullRequest, Branch: written.Branch, Action: written.Action, Reason: plainCommands(written.Reason), Body: written.Body})
+	}
 	return doc
 }
 
@@ -182,6 +196,11 @@ func writePorcelain(writer io.Writer, view stackView) error {
 	}
 	for _, note := range doc.Notes {
 		records = append(records, []string{"note", note.Severity, note.Text})
+	}
+	// A body is many lines and cannot be one record, so porcelain says what
+	// happens to each comment and --json is where its text is.
+	for _, written := range doc.Comments {
+		records = append(records, []string{"comment", porcelainNumber(written.PullRequest), written.Branch, written.Action, written.Reason})
 	}
 
 	var out strings.Builder

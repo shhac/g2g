@@ -43,12 +43,12 @@ type Take struct {
 	// Through is the last branch the side applies to, and empty means the whole
 	// selection.
 	//
-	// A prefix rather than an arbitrary set, because that is the shape the
-	// question actually has: a branch's published version is built on its
-	// parent's published version, so taking one and not the other describes a
-	// stack that never existed. Divergence in a stack comes from the bottom of
-	// it being rebased somewhere else, and the set that follows from that is
-	// always a prefix.
+	// A path from the trunk rather than an arbitrary set, because that is the
+	// shape the question actually has: a branch's published version is built
+	// on its parent's published version, so taking one and not the other
+	// describes a stack that never existed. Divergence in a stack comes from
+	// the bottom of it being rebased somewhere else, and the set that follows
+	// from that is always the branch and what it is stacked on.
 	Through string
 }
 
@@ -63,21 +63,43 @@ func (t Take) Bounded() bool { return t.Through != "" }
 
 // AppliesTo reports whether the chosen side applies to this branch.
 //
-// branches is the selection in order, trunk first, so "through" is a position:
-// everything at or below it takes the named side, and everything above it keeps
-// the default, which is to refuse rather than to pick silently. That refusal is
-// the point — a boundary says where you have decided, not that you have decided
-// everywhere.
-func (t Take) AppliesTo(branch string, branches []string) bool {
+// "Through" is ancestry, not position: the named branch and everything it is
+// stacked on take the named side, and everything else keeps the default, which
+// is to refuse rather than to pick silently. That refusal is the point — a
+// boundary says where you have decided, not that you have decided everywhere.
+//
+// It was a position in the selection, which is a flattened tree. Where the
+// stack forks, a sibling drawn before the boundary sat "below" it and was
+// taken too, discarding work on a branch nobody had named.
+//
+// parents maps each branch to the one it is recorded on.
+func (t Take) AppliesTo(branch string, parents map[string]string) bool {
 	if !t.Published() {
 		return false
 	}
 	if !t.Bounded() {
 		return true
 	}
-	at := slices.Index(branches, branch)
-	through := slices.Index(branches, t.Through)
-	return at >= 0 && through >= 0 && at <= through
+	return stackedOn(t.Through, branch, parents)
+}
+
+// stackedOn reports whether ancestor is branch itself or somewhere below it.
+//
+// Bounded by the number of recorded edges, because a record naming a cycle
+// must end the walk rather than the command.
+func stackedOn(branch, ancestor string, parents map[string]string) bool {
+	at := branch
+	for range len(parents) + 1 {
+		if at == ancestor {
+			return true
+		}
+		parent, recorded := parents[at]
+		if !recorded {
+			return false
+		}
+		at = parent
+	}
+	return false
 }
 
 // ParseTake validates the pair.

@@ -102,6 +102,30 @@ cannot otherwise tell whether that is what it means. An ordinary commit leaves
 the published tip an ancestor of yours, which `sync` ignores: publishing is
 `push`'s business.
 
+`sync` refuses by default: choosing between two versions of your own
+branch is not something to do behind your back. The refusal names the way
+through rather than being a dead end, and names it for the same selection —
+`--branch`, `--scope` and a widened `--through` carried over — because the bare
+command selects something else.
+
+`sync --take published` is that way through. It is the one path where `sync`
+loses work that exists nowhere else, so the preview lists every commit it would
+discard by name — a count would not be enough to decide on.
+
+`--through <branch>` bounds it: `--take` only ever changes the outcome for a
+genuinely diverged branch, so unbounded it takes every one of them, including
+branches you were not thinking about. The boundary is the named branch and what
+it is stacked on — ancestry, not position — so where the stack forks, a sibling
+of the boundary is not below it and a divergence there is still refused, as is
+one above it.
+
+There is deliberately no `--take mine`. `sync` only ever moves toward this
+checkout and `push` only ever moves toward the remote, so which side wins is
+normally answered by which command you run; `push` already prints the
+`git push --force-with-lease` line for the other direction. `--take` is an enum
+rather than a boolean because the question has more answers than the one
+implemented.
+
 **replayed, not yet published.** A sync replayed your stack onto a trunk that
 moved, and you have not pushed. Every branch is now ahead of its published
 version by content and beside it by commit id, and counted by id that reads as
@@ -112,26 +136,6 @@ then as a whole branch, which is what sees through a squash — and when it is,
 this is unpublished work like any other and it leaves it to `push`. The second
 sync of the day, and every `land` of three branches over a bottom branch with
 more than one commit, refused until it did.
-
-`sync` refuses by default: choosing between two versions of your own
-branch is not something to do behind your back. The refusal names the way
-through rather than being a dead end.
-
-`sync --take published` is that way through, and `--through <branch>` bounds
-it: it only ever changes the outcome for a genuinely diverged branch, so
-unbounded it takes every one of them, including branches you were not thinking
-about. Above the boundary a divergence is still refused.
-
-`sync --take published` is that way through. It is the one path where `sync`
-loses work that exists nowhere else, so the preview lists every commit it would
-discard by name — a count would not be enough to decide on.
-
-There is deliberately no `--take mine`. `sync` only ever moves toward this
-checkout and `push` only ever moves toward the remote, so which side wins is
-normally answered by which command you run; `push` already prints the
-`git push --force-with-lease` line for the other direction. `--take` is an enum
-rather than a boolean because the question has more answers than the one
-implemented.
 
 ## Merges that land out of order
 

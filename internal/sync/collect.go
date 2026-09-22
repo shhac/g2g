@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 )
@@ -93,7 +94,10 @@ func (s Service) compare(ctx context.Context, base, remote string, published map
 // since deleted still resolves there to whatever it last held -- and reading
 // that as the published version fast-forwarded a branch onto commits its
 // owner had dropped, or refused it as diverged from a version nobody has.
-func (s Service) collect(ctx context.Context, remote, base string, branches []string, onRemote map[string]string, take Take) ([]Collection, repair.Note, error) {
+//
+// The branches both sides moved come back rather than a refusal, because the
+// way out names the selection it came from and only the caller has that.
+func (s Service) collect(ctx context.Context, remote, base string, branches []string, onRemote map[string]string, take Take, parents map[string]string) ([]Collection, []divergence, error) {
 	collect := make([]Collection, 0, len(branches))
 	stuck := make([]divergence, 0)
 	for _, branch := range branches {
@@ -107,14 +111,14 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		local, err := s.Git.Resolve(ctx, branch)
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		if local == published {
 			continue
 		}
 		behind, err := s.Git.IsAncestor(ctx, branch, published)
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		if behind {
 			collect = append(collect, Collection{Branch: branch, To: published})
@@ -122,7 +126,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		ahead, err := s.Git.IsAncestor(ctx, published, branch)
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		if ahead {
 			// You have unpublished work. That is push's business, not sync's.
@@ -130,7 +134,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		ours, _, err := s.Git.Cherry(ctx, published, branch, "")
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		if len(ours) == 0 {
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
@@ -138,7 +142,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		replayed, err := landed.Into(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), "")
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		if replayed {
 			// The published version is this branch before it was replayed here:
@@ -154,7 +158,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// nobody else had touched. Absorbed is what sees through the squash.
 			continue
 		}
-		if take.AppliesTo(branch, branches) {
+		if take.AppliesTo(branch, parents) {
 			// Asked for explicitly, and the commits it costs are carried so the
 			// preview can name every one before anything happens.
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true, Discards: ours})
@@ -165,15 +169,15 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		// no way to tell that from this.
 		theirs, _, err := s.Git.Cherry(ctx, branch, localgit.IsolatedRef(remote, branch), "")
 		if err != nil {
-			return nil, repair.Note{}, err
+			return nil, nil, err
 		}
 		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: len(theirs)})
 	}
 	if len(stuck) != 0 {
-		return nil, repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays()}, nil
+		return nil, stuck, nil
 	}
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
-	return collect, repair.Note{}, nil
+	return collect, nil, nil
 }
 
 // fetchList is the base and the selection, each named once. The base is
@@ -212,11 +216,51 @@ type divergence struct {
 // divergenceWays is the choice a divergence leaves, and there is exactly one
 // place it can be made: --take is the only path where sync discards work that
 // exists nowhere else, and it has no "mine" value.
-func divergenceWays() []repair.Step {
+//
+// The command keeps the selection the refusal came from. A bare
+// "g2g sync --take published" told a sync of the whole trunk to run a sync of
+// one stack, and told a bounded one to drop its boundary and take everything.
+func divergenceWays(selection graph.Selection, take Take, parents map[string]string, stuck []divergence) []repair.Step {
+	command := "g2g sync"
+	if selection.Branch != "" {
+		command += " --branch " + selection.Branch
+	}
+	if selection.Scope == graph.ScopeTrunk {
+		command += " --scope " + string(graph.ScopeTrunk)
+	}
+	command += " --take " + string(SidePublished)
+	if through := widened(take, parents, stuck); through != "" {
+		command += " --through " + through
+	}
 	return []repair.Step{
-		{Command: "g2g sync --take published", Effect: "take the published version and discard yours"},
+		{Command: command, Effect: "take the published version and discard yours"},
 		{Effect: "reconcile it yourself"},
 	}
+}
+
+// widened is the boundary that covers what was refused as well as what was
+// already decided, when one branch is stacked on all of it.
+//
+// Where none is -- the refusals are on different forks -- no boundary covers
+// them, and the way through is to drop it: an unbounded take reaches exactly
+// the diverged branches, which is these and the ones already decided.
+func widened(take Take, parents map[string]string, stuck []divergence) string {
+	if !take.Bounded() {
+		return ""
+	}
+	for _, candidate := range stuck {
+		if !stackedOn(candidate.Branch, take.Through, parents) {
+			continue
+		}
+		covers := true
+		for _, other := range stuck {
+			covers = covers && stackedOn(candidate.Branch, other.Branch, parents)
+		}
+		if covers {
+			return candidate.Branch
+		}
+	}
+	return ""
 }
 
 // divergenceReason says which branches both sides moved, and what each side

@@ -191,6 +191,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
+	parents := make(map[string]string, len(discovery.Graph.Edges))
+	for branch, edge := range discovery.Graph.Edges {
+		parents[branch] = edge.Parent
+	}
 	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, published, take)
 	if err != nil {
 		return Plan{}, err
@@ -200,7 +204,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		// have something the remote does not, which is true of any commit.
 		plan.Repair = repair.Note{
 			Reason: fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not", plan.Base, remote, plan.Base),
-			Ways:   divergenceWays(),
+			Ways:   divergenceWays(selection, take, parents, nil),
 		}
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
@@ -210,13 +214,16 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// fetch and the fast-forward assessment come first.
 	// A location, never a parent: the trunk is about to be here, and recording
 	// a ref under refs/g2g/ as the parent is what broke every synced stack.
-	plan.Collect, plan.Repair, err = s.collect(ctx, remote, plan.Base, discovery.Branches, published, take)
+	collect, stuck, err := s.collect(ctx, remote, plan.Base, discovery.Branches, published, take, parents)
 	if err != nil {
 		return Plan{}, err
 	}
-	if plan.Blocked = plan.Repair.Sentence(); plan.Blocked != "" {
+	if len(stuck) != 0 {
+		plan.Repair = repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, take, parents, stuck)}
+		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
+	plan.Collect = collect
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
 	if err != nil {
 		return Plan{}, err

@@ -194,6 +194,9 @@ type fakePusher struct {
 	// refused, a hook that dropped it. It is a real outcome, and the wait
 	// afterwards has to survive it rather than blame GitHub for it.
 	silent bool
+	// level is a remote that already holds every branch exactly, so there is
+	// nothing to publish.
+	level bool
 }
 
 func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string) (push.Plan, error) {
@@ -207,6 +210,9 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	plan := push.Plan{Blocked: f.blocked}
 	plan.Snapshot = stack.Snapshot{Branches: branches, Base: selection.Trunk}
 	plan.Publishing = map[string]push.Publication{selection.Branch: {Ours: 1}}
+	if f.level {
+		plan.Publishing[selection.Branch] = push.Publication{}
+	}
 	return plan, nil
 }
 

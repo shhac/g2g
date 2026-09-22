@@ -30,6 +30,10 @@ type Stopped struct {
 	// Tidied names the branches that had already landed and whose cleanup this
 	// run finished: forgotten and deleted, which is not coming back either.
 	Tidied []string
+	// Changed says what else this run did that stays done: a branch published,
+	// a pull request retargeted, the stack brought up to date after a merge.
+	// None of it is a merge, and all of it is on the remote or in the graph.
+	Changed []string
 	// Branch is where it stopped.
 	Branch string
 	Err    error
@@ -40,7 +44,9 @@ type Stopped struct {
 // One that changed nothing is a failure like any other, and saying it stopped
 // part-way -- with the exit status that says so -- told a script something had
 // landed when nothing had.
-func (e *Stopped) PartWay() bool { return len(e.Landed) != 0 || len(e.Tidied) != 0 }
+func (e *Stopped) PartWay() bool {
+	return len(e.Landed) != 0 || len(e.Tidied) != 0 || len(e.Changed) != 0
+}
 
 func (e *Stopped) Error() string {
 	if len(e.Landed) == 0 {
@@ -65,8 +71,9 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	}
 	landed := make([]string, 0, len(plan.Steps))
 	tidied := make([]string, 0, len(plan.Steps))
+	changed := make([]string, 0)
 	for _, step := range plan.Steps {
-		merged, err := s.cycle(ctx, plan, step)
+		merged, err := s.cycle(ctx, plan, step, &changed)
 		// Recorded before the error is looked at. A merge is done once GitHub
 		// accepts it, whatever fails after -- the wait for it to reach the base,
 		// the replay above it -- and reporting only whole cycles told someone
@@ -75,7 +82,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			landed = append(landed, step.Branch)
 		}
 		if err != nil {
-			return &Stopped{Landed: landed, Tidied: tidied, Branch: step.Branch, Err: err}
+			return &Stopped{Landed: landed, Tidied: tidied, Changed: changed, Branch: step.Branch, Err: err}
 		}
 		if !step.Merges() {
 			tidied = append(tidied, step.Branch)
@@ -86,23 +93,26 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 
 // cycle lands one branch and tidies up after it, and says whether the merge
 // happened even when something after it did not.
-func (s Service) cycle(ctx context.Context, plan Plan, step Step) (merged bool, err error) {
+//
+// changed collects what it does short of a merge that stays done, so a stop
+// before the merge still says the remote moved.
+func (s Service) cycle(ctx context.Context, plan Plan, step Step, changed *[]string) (merged bool, err error) {
 	diagnostic.Event(ctx, "land.cycle",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
 		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
 	)
 	if step.Merges() {
-		if merged, err = s.merge(ctx, plan, step); err != nil {
+		if merged, err = s.merge(ctx, plan, step, changed); err != nil {
 			return merged, err
 		}
 	}
-	return merged, s.tidy(ctx, plan, step)
+	return merged, s.tidy(ctx, plan, step, changed)
 }
 
 // merge publishes the branch, points its pull request at the right base, waits
 // for GitHub to have seen both, and merges. It reports the merge as done once
 // GitHub has accepted it, even if the wait after it then fails.
-func (s Service) merge(ctx context.Context, plan Plan, step Step) (bool, error) {
+func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]string) (bool, error) {
 	// Unconditionally, whatever the plan said. Step.Push was decided before
 	// anything moved, and by the time a branch above the first comes round its
 	// replay has rewritten it -- so a plan that said "already published" is
@@ -110,8 +120,12 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) (bool, error) 
 	// again from the tips it reads itself and does nothing when there is
 	// nothing to do, which makes asking it every time free and trusting the
 	// preview wrong.
-	if err := s.publish(ctx, plan, step); err != nil {
+	pushed, err := s.publish(ctx, plan, step)
+	if err != nil {
 		return false, err
+	}
+	if pushed {
+		*changed = append(*changed, "published "+step.Branch)
 	}
 	if step.Retargets() {
 		// The base only goes stale during the run: the branch below merged and
@@ -126,6 +140,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) (bool, error) 
 		if err := s.GitHub.Retarget(ctx, step.Number, step.Base); err != nil {
 			return false, err
 		}
+		*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
 	}
 	tip, err := s.Git.Resolve(ctx, step.Branch)
 	if err != nil {
@@ -166,7 +181,10 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) (bool, error) 
 // remote has moved on, and a lease built here from tips read here would always
 // match its own reading and overwrite whatever a reviewer had pushed -- and
 // then merge it.
-func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
+//
+// It says whether it pushed, because a push is on the remote whatever happens
+// after it.
+func (s Service) publish(ctx context.Context, plan Plan, step Step) (bool, error) {
 	// Whether this branch's published version is its own or somebody else's is
 	// the one question push cannot answer here. After a replay the remote
 	// holds commits the branch no longer has, which is exactly the shape of a
@@ -175,10 +193,10 @@ func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
 	// and knows what it left there.
 	tips, err := s.Git.RemoteTips(ctx, plan.Options.Remote, []string{step.Branch})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if tips[step.Branch] != step.RemoteTip {
-		return fmt.Errorf("%s has moved on %s since this was planned, so it carries work this descent has not seen · fetch and reconcile it, then rerun", plan.Options.Remote, step.Branch)
+		return false, fmt.Errorf("%s has moved on %s since this was planned, so it carries work this descent has not seen · fetch and reconcile it, then rerun", plan.Options.Remote, step.Branch)
 	}
 	// The path, not the branch alone: push needs a base to compare against and
 	// a single-branch selection has no ancestry to take one from. Landing
@@ -186,21 +204,24 @@ func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
 	// the trunk holds exactly the branch being published.
 	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: shape.ScopePath}, plan.Options.Remote)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// More than one branch here means an earlier cycle did not tidy up, and the
 	// extra one has already merged -- pushing it would put it back.
 	if len(published.Branches) != 1 || published.Branches[0] != step.Branch {
-		return fmt.Errorf("publishing %s would also push %s, which has already landed", step.Branch, strings.Join(published.Branches, ", "))
+		return false, fmt.Errorf("publishing %s would also push %s, which has already landed", step.Branch, strings.Join(published.Branches, ", "))
 	}
 	if published.NothingToPublish() {
-		return nil
+		return false, nil
 	}
 	// push's own refusal is deliberately not consulted: it is the "the remote
 	// has moved" check, which the comparison above has just answered more
 	// precisely. Its lease still guards the push itself, pinned to the tips it
 	// read, so a ref that moves between here and the push is still rejected.
-	return s.Pusher.Execute(ctx, published)
+	if err := s.Pusher.Execute(ctx, published); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // settlePush waits until GitHub is looking at what was just pushed.
@@ -315,8 +336,12 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step) (Step, error
 // Nothing here can stop the descent. The work is merged; a branch that could
 // not be deleted is untidy, and reporting it as a failed land would be wrong
 // about the thing that matters and would strand the branches above.
-func (s Service) tidy(ctx context.Context, plan Plan, step Step) error {
-	if err := s.advance(ctx, plan); err != nil {
+func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]string) error {
+	advanced, err := s.advance(ctx, plan)
+	if advanced {
+		*changed = append(*changed, "brought the stack up to date after "+step.Branch)
+	}
+	if err != nil {
 		return err
 	}
 	if plan.Options.Forget {
@@ -329,22 +354,28 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step) error {
 }
 
 // advance fast-forwards the base and replays what is left onto it.
-func (s Service) advance(ctx context.Context, plan Plan) error {
+func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	// The top of what remains, always. A guard here read as a special case for
 	// the last step and was not one: where it held, index was already the last
 	// index, so both branches named the same branch.
 	target := plan.Steps[len(plan.Steps)-1].Branch
 	synced, err := s.Syncer.Plan(ctx, graph.Selection{Branch: target, Scope: graph.ScopeStack}, plan.Options.Remote, syncer.TakeNothing)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if synced.Blocked != "" {
-		return fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked)
+		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked)
 	}
 	if synced.Nothing() {
-		return nil
+		return false, nil
 	}
-	return s.Syncer.Apply(ctx, synced)
+	if err := s.Syncer.Apply(ctx, synced); err != nil {
+		// A sync that moved branches before failing has changed the stack as
+		// surely as one that finished.
+		var partial *syncer.Stopped
+		return errors.As(err, &partial), err
+	}
+	return true, nil
 }
 
 // forget reparents what sat on the landed branch, then drops it from the graph.

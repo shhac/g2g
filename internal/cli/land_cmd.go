@@ -146,6 +146,11 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	if len(stopped.Landed) != 0 {
 		landed = "Merged " + branchList(stopped.Landed) + ", and they stay merged."
 	}
+	if len(stopped.Changed) != 0 {
+		// What happened short of a merge is on the remote or in the graph too,
+		// and "nothing merged" alone read as nothing having happened.
+		landed += " Also " + branchList(stopped.Changed) + "."
+	}
 	if len(stopped.Tidied) != 0 {
 		landed += " Cleaned up after " + branchList(stopped.Tidied) + ", which had already landed."
 	}

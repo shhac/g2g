@@ -353,6 +353,7 @@ func TestStoppedCountsAMergeWhoseTidyingFailed(t *testing.T) {
 func TestStoppedBeforeAnythingChangedIsNotPartWay(t *testing.T) {
 	w := newWorld(t)
 	plan := w.plan(t, Defaults())
+	w.pusher.level = true
 	w.github.mergeErr = errors.New("synthetic merge refusal")
 
 	err := w.service.Apply(context.Background(), plan)
@@ -759,4 +760,23 @@ func (f *fakeHolds) HeldElsewhere(_ context.Context, branches []string) (repair.
 		}
 	}
 	return repair.Note{}, nil
+}
+
+// A push is on the remote whatever happens after it. Refused at the merge, the
+// descent has still changed something, and saying it failed as though nothing
+// had told a script nothing had moved.
+func TestAPublishBeforeARefusedMergeIsPartWay(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.github.mergeErr = errors.New("synthetic merge refusal")
+
+	err := w.service.Apply(context.Background(), plan)
+
+	var stopped *Stopped
+	if !errors.As(err, &stopped) {
+		t.Fatalf("Apply() error = %v, want a *Stopped", err)
+	}
+	if !stopped.PartWay() || !slices.Contains(stopped.Changed, "published synthetic-one") {
+		t.Errorf("stopped = %+v, want the publish counted", stopped)
+	}
 }

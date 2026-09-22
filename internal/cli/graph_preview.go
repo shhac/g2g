@@ -47,6 +47,8 @@ func nodeState(discovery graph.Discovery, branch string) (string, severity) {
 		return "fork point lost", severityBad
 	case graph.StateParentMissing:
 		return "parent missing", severityWarn
+	case graph.StateBranchMissing:
+		return "branch missing", severityWarn
 	case graph.StateLanded:
 		return "landed", severityOK
 	case graph.StateEmpty:
@@ -104,6 +106,12 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	}
 	if lost := discovery.InState(graph.StateForkUnresolvable); len(lost) != 0 {
 		view = view.note("Recorded fork point is gone for "+branchList(lost)+" · retrack to record it again.", severityBad)
+	}
+	// A branch deleted or renamed with plain Git leaves its edge behind, and the
+	// edge is all there is left to forget. One line each, because the command
+	// that forgets it names the branch.
+	for _, gone := range discovery.InState(graph.StateBranchMissing) {
+		view = view.note("Recorded but no longer a local branch: "+gone+" · run "+runnable("g2g untrack --branch "+gone)+" to forget it.", severityWarn)
 	}
 	if missing := discovery.MissingParents(); len(missing) != 0 {
 		view = view.note("Recorded parent is no longer a local branch for "+branchList(missing)+" · retrack onto its new parent.", severityWarn)

@@ -54,6 +54,13 @@ const (
 	// object in this repository, usually because it was collected after the
 	// parent branch went away.
 	StateForkUnresolvable NodeState = "fork point unresolvable"
+	// StateBranchMissing means the graph records an edge for a branch that is
+	// no longer a local branch: deleted or renamed with plain Git, where g2g
+	// was not looking. Nothing can be asked of Git about a name that is not a
+	// ref, so it is answered before anything is asked — otherwise the one
+	// stale edge fails every read of the stack around it, including the
+	// untrack that would forget it.
+	StateBranchMissing NodeState = "branch missing"
 	// StateUntracked means the graph records no parent for the branch.
 	StateUntracked NodeState = "untracked"
 )
@@ -115,6 +122,9 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 	edge, tracked := g.Edges[branch]
 	if !tracked {
 		return StateUntracked, nil
+	}
+	if !present[branch] {
+		return StateBranchMissing, nil
 	}
 	if !present[edge.Parent] {
 		return drifted(ctx, git, g, present, branch, StateParentMissing)

@@ -198,6 +198,12 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "land", args: []string{"land", "--apply"}, mutation: "gh pr merge"},
 		{name: "comment", args: []string{"comment", "--apply"}, mutation: "gh " + commentMutationPrefix},
 		{name: "create", args: []string{"create", "synthetic-new", "--apply"}, mutation: "git switch"},
+		// The navigation commands have no --apply, and still must not move the
+		// checkout out from under a rebase that is part-way through.
+		{name: "up", args: []string{"up"}, mutation: "git switch"},
+		{name: "down", args: []string{"down"}, mutation: "git switch"},
+		{name: "top", args: []string{"top"}, mutation: "git switch"},
+		{name: "bottom", args: []string{"bottom"}, mutation: "git switch"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder, common := lifecycleRepositoryIn(t, stackedPullRequests)

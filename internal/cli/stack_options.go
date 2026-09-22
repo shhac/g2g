@@ -40,15 +40,21 @@ func (o stackOptions) validate() error {
 }
 
 func (o *stackOptions) register(cmd *cobra.Command, completions stack.Completions, sources []stack.Source, branchUsage, trunkUsage string) {
+	cmd.Flags().StringVar(&o.branch, "branch", "", branchUsage)
+	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(completions.Branches))
+	o.registerSource(cmd, completions, sources, trunkUsage)
+}
+
+// registerSource is register without --branch, for a command whose selection
+// is always the branch the checkout is on.
+func (o *stackOptions) registerSource(cmd *cobra.Command, completions stack.Completions, sources []stack.Source, trunkUsage string) {
 	o.sources = sources
 	names := make([]string, 0, len(sources))
 	for _, source := range sources {
 		names = append(names, string(source))
 	}
-	cmd.Flags().StringVar(&o.branch, "branch", "", branchUsage)
 	cmd.Flags().StringVar(&o.trunk, "trunk", "", trunkUsage)
 	cmd.Flags().StringVar(&o.from, "from", "", "read the structure from this source only: "+strings.Join(names, ", ")+" (default: whichever describes the branch)")
-	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(completions.Branches))
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(func(ctx context.Context, prefix string) ([]string, error) {
 		return completions.Trunks(ctx, o.branch, prefix)
 	}))

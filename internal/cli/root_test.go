@@ -138,10 +138,17 @@ func TestCommandsSayWhetherTheyPreviewOrRead(t *testing.T) {
 		mutates := command.Flags().Lookup("apply") != nil
 		labelled := strings.Contains(command.Short, "(preview by default)")
 		readOnly := strings.Contains(command.Short, "(read-only)")
+		// The navigation commands are the one deliberate exception to preview
+		// first: they move the checkout and nothing else. They must say so, and
+		// they must offer the dry run a preview would otherwise have been.
+		moves := strings.Contains(command.Short, "(moves the checkout)")
 		if mutates && !labelled {
 			t.Errorf("%s takes --apply but does not say it previews by default: %q", command.Name(), command.Short)
 		}
-		if !mutates && !readOnly {
+		if moves && command.Flags().Lookup("dry-run") == nil {
+			t.Errorf("%s moves the checkout without --apply but offers no --dry-run", command.Name())
+		}
+		if !mutates && !readOnly && !moves {
 			t.Errorf("%s takes no --apply but does not say it is read-only: %q", command.Name(), command.Short)
 		}
 	}

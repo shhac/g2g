@@ -19,6 +19,7 @@ import (
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/land"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/navigate"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/restack"
@@ -80,6 +81,10 @@ type Options struct {
 	// Create starts a branch and records it in one step. It records through
 	// Graph's own track plan rather than owning a second way to write an edge.
 	Create create.Service
+	// Navigate moves the checkout around a stack. It is the one service that
+	// acts without --apply, because moving the checkout changes no ref, record
+	// or remote.
+	Navigate navigate.Service
 
 	// Completions supplies branch and trunk candidates for shell completion.
 	Completions stack.Completions
@@ -161,6 +166,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService,
 		},
 		Create:             create.Service{Git: gitClient, Graph: graphService},
+		Navigate:           navigate.Service{Selector: selector, Git: gitClient, Trunks: recordedChildren{service: graphService}},
 		Unstacker:          githubClient,
 		GraphiteConfigured: graphiteConfigured,
 	})
@@ -236,6 +242,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Create.Ready() {
 		root.AddCommand(newCreate(options.Create, options.Graph, guard, presentation))
+	}
+	if options.Navigate.Ready() {
+		root.AddCommand(newNavigations(options.Navigate, completions, guard, presentation)...)
 	}
 	if options.Restack.Ready() {
 		root.AddCommand(newRestack(options.Restack, presentation))

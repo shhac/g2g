@@ -1342,6 +1342,38 @@ func TestJourneySyncRefusesToAdvanceATrunkOpenInAnotherWorktree(t *testing.T) {
 	w.assertClean(elsewhere)
 }
 
+// You stand on the trunk with an edit of your own, and what landed upstream
+// touches the same file. Advancing the trunk would overwrite the edit, so it is
+// refused — and refused before the trunk moves. It used to move first, leaving
+// the trunk advanced under a tree that still described the old one, reported
+// as not applied.
+func TestJourneySyncOnADirtyTrunkMovesNothing(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.git(w.Local, "switch", "-q", "main")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "pull", "-q", "origin", "main")
+	w.commit(w.Other, "main", "shared.txt", "upstream")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	if err := os.WriteFile(filepath.Join(w.Local, "shared.txt"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := w.tip(w.Local, "main")
+
+	if _, _, err := run(t, "sync", "--apply"); err == nil {
+		t.Fatal("sync overwrote a local edit")
+	}
+	if after := w.tip(w.Local, "main"); after != before {
+		t.Errorf("main moved from %s to %s although the checkout could not follow", before, after)
+	}
+	if status := w.git(w.Local, "status", "--porcelain"); status != "?? shared.txt" {
+		t.Errorf("status = %q, want only the edit that was already there", status)
+	}
+}
+
 // sync moves contents, never structure. It replays onto a ref it fetched under
 // refs/g2g/, because that is where the trunk is about to be — and recording
 // that as the parent left every synced stack hanging from an internal ref:

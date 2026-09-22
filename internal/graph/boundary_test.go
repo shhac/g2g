@@ -21,8 +21,13 @@ func TestGraphDependsOnGitAlone(t *testing.T) {
 		t.Skipf("go list unavailable: %v", err)
 	}
 
-	// The packages this may reach. Anything that speaks to another tool or to
-	// a network belongs to a caller, not here.
+	// The packages this may reach, and no more than it does reach. Anything
+	// that speaks to another tool or to a network belongs to a caller, not
+	// here — and that includes Git's own client: this package asks Git through
+	// the Ancestry interface it declares, which is what keeps every decision in
+	// it testable without a process. The list once permitted internal/git and
+	// internal/subprocess although nothing imported either, so the check would
+	// have let the first such import through unremarked.
 	permitted := map[string]bool{
 		"github.com/shhac/g2g/internal/graph":      true,
 		"github.com/shhac/g2g/internal/shape":      true,
@@ -30,8 +35,6 @@ func TestGraphDependsOnGitAlone(t *testing.T) {
 		"github.com/shhac/g2g/internal/landed":     true,
 		"github.com/shhac/g2g/internal/repair":     true,
 		"github.com/shhac/g2g/internal/diagnostic": true,
-		"github.com/shhac/g2g/internal/subprocess": true,
-		"github.com/shhac/g2g/internal/git":        true,
 	}
 	for _, dep := range strings.Fields(string(out)) {
 		if !strings.HasPrefix(dep, "github.com/shhac/g2g/") {

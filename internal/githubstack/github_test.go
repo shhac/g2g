@@ -40,8 +40,10 @@ if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwn
 	for _, want := range []string{
 		// One round trip: gh fills the repository in from the directory it is
 		// run in, so nothing here asks which one it is first.
-		`api graphql -F owner={owner} -F name={repo} -f query=query($owner: String!, $name: String!) { repository(owner: $owner, name: $name)`,
-		`pr0: pullRequests(headRefName: "alpha", first: 10`,
+		`api graphql -F owner={owner} -F name={repo} -f query=query($owner: String!, $name: String!, $head0: String!) { repository(owner: $owner, name: $name)`,
+		`pr0: pullRequests(headRefName: $head0, first: 10`,
+		"isCrossRepository",
+		" -f head0=alpha\n",
 		"stack { number size } stackEntry { position }",
 		"stack link --base main alpha beta\n",
 	} {

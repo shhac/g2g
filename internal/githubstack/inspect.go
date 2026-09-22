@@ -26,9 +26,8 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 	// the same resolution gh repo view performed — documented for --field, and
 	// the query names the repository back so a reader can still see which one
 	// answered.
-	query := graphqlQuery(branches)
 	diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "batched_pull_requests"}, diagnostic.Field{Key: "branches", Value: strconv.Itoa(len(branches))}, diagnostic.Field{Key: "query", Value: "omitted"})
-	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+query)
+	output, err := c.Runner.Run(ctx, "gh", inspectArguments(branches)...)
 	if err != nil {
 		return nil, repositoryError(err, output)
 	}
@@ -110,7 +109,11 @@ type pullRequestNode struct {
 	HeadOID string `json:"headRefOid"`
 	Base    string `json:"baseRefName"`
 	State   string `json:"state"`
-	Stack   *struct {
+	// CrossRepository marks a head that lives in a fork. headRefName matches
+	// by name alone, so a contributor's fork with a branch of the same name
+	// answers too, and it is not this branch.
+	CrossRepository bool `json:"isCrossRepository"`
+	Stack           *struct {
 		Number int `json:"number"`
 		Size   int `json:"size"`
 	} `json:"stack"`
@@ -172,6 +175,12 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 			if node.Head != branch {
 				continue
 			}
+			// A fork's pull request is someone else's branch that happens to
+			// share the name. Counting it showed an open pull request where
+			// there is none, or two where there is one.
+			if node.CrossRepository {
+				continue
+			}
 			pr, err := node.pullRequest(alias)
 			if err != nil {
 				return nil, err
@@ -188,7 +197,25 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 	return matching, nil
 }
 
-// graphqlQuery batches one aliased head-ref lookup per selected branch.
+// inspectArguments is the whole gh invocation for one batched lookup.
+//
+// Each head travels as a variable rather than inside the query text. A literal
+// has to be escaped for GraphQL, and the escaping came from Go's own quoting,
+// which GraphQL rejects for some legal branch names — failing the batch, and
+// with it every branch in the stack. A variable is sent as JSON, so no branch
+// name can change what the query says. -f rather than -F, because the typed
+// form reads @file and fills {owner}-style placeholders, and a branch name
+// must reach GitHub as exactly what it is.
+func inspectArguments(branches []string) []string {
+	arguments := []string{"api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + graphqlQuery(branches)}
+	for index, branch := range branches {
+		arguments = append(arguments, "-f", fmt.Sprintf("head%d=%s", index, branch))
+	}
+	return arguments
+}
+
+// graphqlQuery batches one aliased head-ref lookup per selected branch, each
+// reading its head from the variable of the same index.
 //
 // headRefName filters the connection server-side, so neither the age of the
 // stack nor the repository's pull-request volume affects what comes back. The
@@ -198,12 +225,15 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 // its revalidation — besides matching heads loosely and drawing on the much
 // tighter search rate limit.
 func graphqlQuery(branches []string) string {
+	variables := make([]string, 0, len(branches)+2)
+	variables = append(variables, "$owner: String!", "$name: String!")
 	fields := make([]string, 0, len(branches)+1)
 	// Named back so the diagnostic can still say which repository answered,
 	// now that nothing here resolved it.
 	fields = append(fields, "nameWithOwner")
-	for index, branch := range branches {
-		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: %s, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName headRefOid baseRefName state stack { number size } stackEntry { position } } }", index, strconv.Quote(branch)))
+	for index := range branches {
+		variables = append(variables, fmt.Sprintf("$head%d: String!", index))
+		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: $head%d, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName headRefOid baseRefName state isCrossRepository stack { number size } stackEntry { position } } }", index, index))
 	}
-	return fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(fields, " "))
+	return fmt.Sprintf("query(%s) { repository(owner: $owner, name: $name) { %s } }", strings.Join(variables, ", "), strings.Join(fields, " "))
 }

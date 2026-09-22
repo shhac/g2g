@@ -156,8 +156,11 @@ func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 		// which is what removed the round trip that used to name it.
 		`-F owner={owner} -F name={repo}`,
 		`repository(owner: $owner, name: $name)`,
-		`pr0: pullRequests(headRefName: "synthetic-lower"`,
-		`pr1: pullRequests(headRefName: "synthetic-top"`,
+		// Heads travel as variables, so no branch name is ever part of the
+		// query text GitHub parses.
+		`pr0: pullRequests(headRefName: $head0,`,
+		`pr1: pullRequests(headRefName: $head1,`,
+		`-f head0=synthetic-lower -f head1=synthetic-top`,
 	} {
 		if !strings.Contains(query, want) {
 			t.Errorf("graphql request missing %q:\n%s", want, query)

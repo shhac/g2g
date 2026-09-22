@@ -48,8 +48,9 @@ func landingGitHub(t *testing.T, remote string) string {
 }
 
 // The two pull requests are fixed: #41 heads synthetic-a, #42 heads
-// synthetic-b. Both aliased queries are answered by walking the numbers or
-// head names out of the query in the order they appear, because the aliases
+// synthetic-b. Both aliased queries are answered by walking the numbers out of
+// the query, or the head variables out of the arguments, in the order they
+// appear, because the aliases
 // are positional and land asks about different subsets as it goes.
 const landingGitHubScript = `
 state_dir="$GH_STATE"
@@ -84,7 +85,7 @@ case "$1 $2" in
   *)
     printf '{"data":{"repository":{"nameWithOwner":"example/synthetic"'
     index=0
-    for branch in $(printf '%s' "$query" | grep -o 'headRefName: "[^"]*"' | sed 's/.*"\(.*\)"$/\1/'); do
+    for branch in $(for arg in "$@"; do case "$arg" in (head[0-9]*=*) printf '%s\n' "${arg#*=}" ;; esac; done); do
       number=$(number_for "$branch")
       merged=$(read_state "pr-$number.state" OPEN)
       base=$(read_state "pr-$number.base" main)

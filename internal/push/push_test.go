@@ -457,6 +457,10 @@ func (f *fakeGit) Absorbed(_ context.Context, _, branch string) (bool, error) {
 	return f.absorbed[branch], nil
 }
 
+// IsAncestor answers yes: the fakes' commits are a single run, so whether they
+// are excused is decided by Absorbed alone.
+func (f *fakeGit) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+
 // A branch that squash-merged and was deleted on the remote is absent from it
 // and has no commit with an equivalent in the base — a squash is equivalent to
 // none of a branch's commits, so Cherry alone reports every one as new.

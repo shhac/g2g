@@ -54,32 +54,62 @@ func Into(ctx context.Context, probe Probe, base, branch, limit string) (bool, e
 	return probe.Absorbed(ctx, base, branch)
 }
 
+// Lineage is Probe with the ancestry question Missing needs.
+type Lineage interface {
+	Probe
+	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
+}
+
 // Missing counts the commits of from that have no equivalent in into, by
-// content: zero when into already holds everything from carries.
+// content — the work a replacement of from by into would drop. from is
+// somebody else's version of into: the tip a remote holds, a pull request's
+// head.
 //
-// It is Into asked from the other side, with the whole-branch question first.
-// The per-commit form cannot be bounded here, because from is somebody else's
-// version of into — a pull request's head, the tip a remote holds — and git
-// cherry computes a patch id for every commit into holds that from does not,
-// which on a stack sitting on a busy trunk is the whole trunk. The merge
-// answers the common case at once, and only where it says otherwise is the
-// count taken. A Git too old for merge-tree answers "not absorbed" to
-// everything, which costs time here and never correctness.
+// One run of such commits is excused: the commits of the branch into sat on
+// when from was made, when that branch has since landed in base by squash.
+// Replaying onto a squashed parent leaves the parent's original commits in the
+// old version and nowhere here, each equivalent to nothing, and counting them
+// read every such branch as holding somebody else's work. They are excused
+// only as a run — every one an ancestor of the newest — that sits under
+// commits this branch still has, and whose newest merges into base and changes
+// nothing. A parent's commits are below the branch's own work; a reviewer's are
+// on top of it.
 //
-// status and push both ask this — whether the published version holds work
-// this checkout does not — and they are meant to say the same thing from
-// opposite sides, which they did not while each asked it its own way.
-func Missing(ctx context.Context, probe Probe, into, from string) (int, error) {
-	absorbed, err := probe.Absorbed(ctx, into, from)
+// The whole-branch merge alone must never decide. A commit whose net effect
+// cancels out against the merge base — a revert, a deleted file — vanishes
+// from a three-way merge, so a reviewer's revert pushed onto a branch read as
+// nothing lost and was published over.
+func Missing(ctx context.Context, probe Lineage, into, from, base string) (int, error) {
+	absent, present, err := probe.Cherry(ctx, into, from, "")
+	if err != nil || len(absent) == 0 {
+		return len(absent), err
+	}
+	landedBelow, err := runLandedIn(ctx, probe, absent, present, base)
 	if err != nil {
 		return 0, err
 	}
-	if absorbed {
+	if landedBelow {
 		return 0, nil
 	}
-	absent, _, err := probe.Cherry(ctx, into, from, "")
-	if err != nil {
-		return 0, err
-	}
 	return len(absent), nil
+}
+
+// runLandedIn reports commits that are one run under their newest, beneath the
+// newest commit this branch still has, whose work base already has.
+func runLandedIn(ctx context.Context, probe Lineage, commits, kept []string, base string) (bool, error) {
+	if base == "" || len(kept) == 0 {
+		return false, nil
+	}
+	newest := commits[len(commits)-1]
+	for _, commit := range commits[:len(commits)-1] {
+		below, err := probe.IsAncestor(ctx, commit, newest)
+		if err != nil || !below {
+			return false, err
+		}
+	}
+	under, err := probe.IsAncestor(ctx, newest, kept[len(kept)-1])
+	if err != nil || !under {
+		return false, err
+	}
+	return probe.Absorbed(ctx, base, newest)
 }

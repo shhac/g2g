@@ -265,3 +265,5 @@ func (f *cliPushGit) Cherry(_ context.Context, _, head, _ string) (absent, prese
 func (f *cliPushGit) Absorbed(_ context.Context, _, branch string) (bool, error) {
 	return f.absorbed[branch], nil
 }
+
+func (f *cliPushGit) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }

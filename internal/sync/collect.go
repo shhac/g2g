@@ -140,11 +140,11 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue
 		}
-		replayed, err := landed.Into(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), "")
+		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parentOrBase(parents, branch, base))
 		if err != nil {
 			return nil, nil, err
 		}
-		if replayed {
+		if theirs == 0 {
 			// The published version is this branch before it was replayed here:
 			// everything it has is here by content, and what is here and not
 			// there is the trunk it was replayed onto. That is unpublished work
@@ -155,7 +155,8 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// squashed its original commits are "published and not here" -- so
 			// a second sync before pushing, and every land of three branches
 			// whose bottom one had more than one commit, refused a branch
-			// nobody else had touched. Absorbed is what sees through the squash.
+			// nobody else had touched. Missing excuses exactly that squashed
+			// run, and nothing else: a reviewer's revert is still theirs.
 			continue
 		}
 		if take.AppliesTo(branch, parents) {
@@ -167,11 +168,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		// Both sides moved, so say both. "You have work the remote does not" is
 		// true of every ordinary commit, and a reader who has just made one has
 		// no way to tell that from this.
-		theirs, _, err := s.Git.Cherry(ctx, branch, localgit.IsolatedRef(remote, branch), "")
-		if err != nil {
-			return nil, nil, err
-		}
-		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: len(theirs)})
+		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: theirs})
 	}
 	if len(stuck) != 0 {
 		return nil, stuck, nil
@@ -288,4 +285,12 @@ func pick(count int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+// parentOrBase is what a branch sits on in the selection, the base for a root.
+func parentOrBase(parents map[string]string, branch, base string) string {
+	if parent := parents[branch]; parent != "" {
+		return parent
+	}
+	return base
 }

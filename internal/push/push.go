@@ -32,6 +32,7 @@ type Git interface {
 	// branch that is missing from the remote got that way.
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	Absorbed(ctx context.Context, base, branch string) (bool, error)
+	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
 }
 
 type Service struct {
@@ -237,13 +238,26 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 		// The remote tip is not an ancestor. Whether that loses anything is a
 		// question of content, and it is the same one status asks of a pull
 		// request's head, asked the same way.
-		theirs, err := landed.Missing(ctx, s.Git, branch, tip)
+		theirs, err := landed.Missing(ctx, s.Git, branch, tip, parentOf(base, branches, branch))
 		if err != nil {
 			return nil, err
 		}
 		publishing[branch] = Publication{Ours: ours, Theirs: theirs, Rewritten: theirs == 0}
 	}
 	return publishing, nil
+}
+
+// parentOf is the branch below this one on the path, which is what a squashed
+// parent's commits would have landed in.
+func parentOf(base string, branches []string, branch string) string {
+	below := base
+	for _, candidate := range branches {
+		if candidate == branch {
+			return below
+		}
+		below = candidate
+	}
+	return base
 }
 
 // blockedBy refuses a push the remote would reject.

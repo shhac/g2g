@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shhac/g2g/internal/landed"
-
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/parallel"
 )
@@ -161,9 +159,25 @@ func (s Service) compare(ctx context.Context, plan Plan, branch, head string) (C
 	return Currency{Unpushed: len(ours), Diverged: diverged, Rewritten: len(ours) == 0 && !diverged}, nil
 }
 
-// diverged reports a pull request carrying content this branch does not. It
-// is the question push asks of a remote tip, and asks it the same way.
+// diverged reports a pull request carrying content this branch does not.
+//
+// The whole-branch merge is asked first because the per-commit comparison
+// cannot be bounded on this side: it has to compute a patch id for every commit
+// the branch holds that the pull request does not, which on a stack sitting on
+// a busy trunk is the whole trunk, and it was most of what a status spent.
+//
+// That makes this a reading, not a decision. A pull request head whose only
+// extra commit cancels out against the merge base — a revert — merges away,
+// so status can call it rewritten. push and sync, which act on the answer,
+// ask landed.Missing, which counts per commit and is not fooled.
 func (s Service) diverged(ctx context.Context, branch, head string) (bool, error) {
-	missing, err := landed.Missing(ctx, s.Tips, branch, head)
-	return missing != 0, err
+	absorbed, err := s.Tips.Absorbed(ctx, branch, head)
+	if err != nil || absorbed {
+		return false, err
+	}
+	theirs, _, err := s.Tips.Cherry(ctx, branch, head, "")
+	if err != nil {
+		return false, err
+	}
+	return len(theirs) != 0, nil
 }

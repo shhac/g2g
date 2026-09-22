@@ -96,3 +96,38 @@ func TestAColleaguesCommitOnTheRemoteIsStillRefused(t *testing.T) {
 		t.Errorf("synthetic-top = %+v, want one commit only on the remote", top)
 	}
 }
+
+// A reviewer's commit that undoes something — here, deleting a file the branch
+// added — cancels out in a three-way merge, so a whole-branch comparison read
+// the remote as holding nothing this checkout lacks and published over it.
+// Counted per commit it is plainly theirs, and it sits on top of the branch's
+// own work rather than under it, so nothing excuses it.
+func TestAReviewersDeletionOnTheRemoteIsNotPublishedOver(t *testing.T) {
+	repo := publishedStack(t)
+	remote := repo.Run("remote", "get-url", "origin")
+	colleague := testutil.NewGitRepo(t, "synthetic-main")
+	colleague.Run("fetch", "-q", remote, "synthetic-top:synthetic-top")
+	colleague.Run("checkout", "-q", "synthetic-top")
+	colleague.Run("rm", "-q", "top.txt")
+	colleague.Run("commit", "-qm", "synthetic review: drop top.txt")
+	colleague.Run("push", "-q", remote, "synthetic-top")
+	repo.Run("fetch", "-q", "origin")
+
+	// The trunk moves and the stack is replayed onto it, so nothing published
+	// is an ancestor of anything here any more.
+	repo.Run("checkout", "-q", "synthetic-main")
+	repo.Commit("synthetic trunk moves", "trunk.txt", "moved")
+	repo.Run("rebase", "-q", "synthetic-main", "synthetic-lower")
+	repo.Run("rebase", "-q", "--onto", "synthetic-lower", "synthetic-lower@{1}", "synthetic-top")
+
+	plan := planPush(t, repo)
+	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Rewritten {
+		t.Fatalf("synthetic-top = %+v, want the reviewer's commit counted as theirs", top)
+	}
+	if !strings.Contains(plan.Blocked, "synthetic-top") {
+		t.Errorf("Blocked = %q, want the push refused", plan.Blocked)
+	}
+	if lower := plan.Publishing["synthetic-lower"]; !lower.Rewritten || lower.Theirs != 0 {
+		t.Errorf("synthetic-lower = %+v, want the plain replay still publishable", lower)
+	}
+}

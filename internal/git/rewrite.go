@@ -213,9 +213,5 @@ func (c Client) ConflictedPaths(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, 0)
-	for _, line := range outputLines(output) {
-		paths = append(paths, line)
-	}
-	return paths, nil
+	return append(make([]string, 0), outputLines(output)...), nil
 }

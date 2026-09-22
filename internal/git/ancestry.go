@@ -31,10 +31,7 @@ func (c Client) LocalBranches(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var branches []string
-	for _, line := range outputLines(output) {
-		branches = append(branches, line)
-	}
+	branches := append([]string(nil), outputLines(output)...)
 	sort.Strings(branches)
 	return branches, nil
 }

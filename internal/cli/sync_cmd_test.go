@@ -242,10 +242,10 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 	}
 }
 
-// A replay that fails without leaving a resumable rewrite is an ordinary
-// failure, and must still take the ordinary failure path.
+// A replay that fails without leaving a resumable rewrite, when nothing else
+// moved first, is an ordinary failure and takes the ordinary failure path.
 func TestSyncReportsAFailedReplayThatLeftNothingResumable(t *testing.T) {
-	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	git := &syncCLIGit{remoteTip: "base-local", published: map[string]string{"synthetic-main": "base-local"}}
 	replay := &syncCLIRestack{
 		steps:    []string{"synthetic-login"},
 		applyErr: errors.New("synthetic replay failure"),
@@ -258,6 +258,25 @@ func TestSyncReportsAFailedReplayThatLeftNothingResumable(t *testing.T) {
 	}
 	if !strings.Contains(out, "Not applied") {
 		t.Errorf("the ordinary failure path did not run:\n%s", out)
+	}
+}
+
+// The same failure after the trunk advanced is not "not applied": the trunk
+// is where the remote has it and stays there, so the run stopped part-way.
+func TestSyncReportsAFailedReplayAfterTheTrunkAdvanced(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	replay := &syncCLIRestack{
+		steps:    []string{"synthetic-login"},
+		applyErr: errors.New("synthetic replay failure"),
+	}
+
+	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
+
+	if !wasStopped(err) {
+		t.Errorf("error = %v, want the part-way status", err)
+	}
+	if strings.Contains(out, "Not applied") || !strings.Contains(out, "Brought synthetic-main to what the remote holds") {
+		t.Errorf("output does not say the trunk moved:\n%s", out)
 	}
 }
 

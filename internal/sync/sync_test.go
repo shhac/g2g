@@ -32,6 +32,13 @@ type fakeGit struct {
 	// ownCommits maps a branch to the commits it has that the published
 	// version does not, by content.
 	ownCommits map[string][]string
+	// absorbed names the refs whose merge into a branch would change nothing,
+	// keyed "base<-branch".
+	absorbed map[string]bool
+}
+
+func (f *fakeGit) Absorbed(_ context.Context, base, branch string) (bool, error) {
+	return f.absorbed[base+"<-"+branch], nil
 }
 
 func (f *fakeGit) Remote(_ context.Context, _ string) error { return f.remoteErr }

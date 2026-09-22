@@ -35,6 +35,10 @@ type Git interface {
 	// by content, which is how a branch somebody else rebased is recognised as
 	// still being your work rather than as a divergence.
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
+	// Absorbed answers the same of a whole branch at once, which is the only
+	// way to see that a published version's commits are here after its parent
+	// was squashed: the squash is equivalent to none of them individually.
+	Absorbed(ctx context.Context, base, branch string) (bool, error)
 }
 
 // Restacker is the replay step. It is an interface rather than the service

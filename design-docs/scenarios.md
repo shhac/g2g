@@ -102,6 +102,17 @@ cannot otherwise tell whether that is what it means. An ordinary commit leaves
 the published tip an ancestor of yours, which `sync` ignores: publishing is
 `push`'s business.
 
+**replayed, not yet published.** A sync replayed your stack onto a trunk that
+moved, and you have not pushed. Every branch is now ahead of its published
+version by content and beside it by commit id, and counted by id that reads as
+both moved: the trunk's new commits are "here and not published", and once a
+parent has been squashed its original commits are "published and not here".
+`sync` asks whether everything the published version has is here — by commit,
+then as a whole branch, which is what sees through a squash — and when it is,
+this is unpublished work like any other and it leaves it to `push`. The second
+sync of the day, and every `land` of three branches over a bottom branch with
+more than one commit, refused until it did.
+
 `sync` refuses by default: choosing between two versions of your own
 branch is not something to do behind your back. The refusal names the way
 through rather than being a dead end.

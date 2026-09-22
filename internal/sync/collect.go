@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -62,13 +63,15 @@ func (s Service) compare(ctx context.Context, base, remote string, take Take) (a
 
 // collect works out which branches of your own the remote has moved on.
 //
-// Four answers, and only the last is a refusal:
+// Five answers, and only the last is a refusal:
 //
 //   - not published, or level: nothing to do.
 //   - published ahead of here: fast-forward, which is a reviewer pushing a fix
 //     onto your branch.
 //   - published elsewhere but containing everything here by content: somebody
 //     rebased or amended your branch and published it, so theirs supersedes.
+//   - here containing everything published by content, ahead or rewritten:
+//     unpublished work, which is push's business.
 //   - genuinely diverged: you have work the published version does not, and
 //     choosing between them is not something to do behind your back.
 func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, repair.Note, error) {
@@ -112,6 +115,24 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 		}
 		if len(ours) == 0 {
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
+			continue
+		}
+		replayed, err := landed.Into(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), "")
+		if err != nil {
+			return nil, repair.Note{}, err
+		}
+		if replayed {
+			// The published version is this branch before it was replayed here:
+			// everything it has is here by content, and what is here and not
+			// there is the trunk it was replayed onto. That is unpublished work
+			// as surely as an ordinary commit is, so it is push's business too.
+			//
+			// Counted by commit it reads as both sides moving -- the trunk's
+			// commits are "here and not published", and once a parent has been
+			// squashed its original commits are "published and not here" -- so
+			// a second sync before pushing, and every land of three branches
+			// whose bottom one had more than one commit, refused a branch
+			// nobody else had touched. Absorbed is what sees through the squash.
 			continue
 		}
 		if take.AppliesTo(branch, branches) {

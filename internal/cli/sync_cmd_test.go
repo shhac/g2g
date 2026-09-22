@@ -333,6 +333,9 @@ func (g *syncCLIGit) Cherry(context.Context, string, string, string) ([]string, 
 	return nil, nil, nil
 }
 
+// Absorbed says no, so a case that means "diverged" stays diverged.
+func (g *syncCLIGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
 // RemoteTips reports the base as published and nothing else, so these tests
 // stay about the sequence. A branch the remote has moved on is collection's
 // subject, and it has its own tests.

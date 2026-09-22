@@ -474,6 +474,44 @@ func TestJourneyAnOrdinaryCommitDoesNotBlockSync(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// A replay you have not published yet is yours, not a divergence.
+//
+// After a sync replays the stack onto a trunk that moved, every branch is ahead
+// of its published version by content and behind it by commit id. Counted by
+// id, the trunk's new commits read as work here that is not published and the
+// branch as moved on both sides, so the second sync of the day refused a stack
+// nobody else had touched.
+func TestJourneySyncingAgainBeforePublishingTheReplay(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+	published := w.tip(w.Remote, "synthetic-b")
+
+	w.commit(w.Other, "main", "first.txt", "first")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	mustRun(t, "sync", "--apply")
+
+	w.commit(w.Other, "main", "second.txt", "second")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	mustRun(t, "sync", "--apply")
+
+	w.assertClean(w.Local)
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		if !w.contains(w.Local, "main", branch) {
+			t.Errorf("%s was not replayed onto the trunk the second time", branch)
+		}
+	}
+	w.assertHas(w.Local, "synthetic-b", "second.txt")
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	if now := w.tip(w.Remote, "synthetic-b"); now != published {
+		t.Errorf("sync published synthetic-b: the remote moved from %s to %s", published, now)
+	}
+}
+
 // The same divergence, resolved by naming which side wins. This is the one path
 // where sync loses work that exists nowhere else, so the preview lists every
 // commit it would discard before anything happens.

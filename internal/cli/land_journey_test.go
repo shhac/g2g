@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,12 +35,24 @@ import (
 // before.
 func landingGitHub(t *testing.T, remote string) string {
 	t.Helper()
+	return landingGitHubStack(t, remote, "synthetic-a", "synthetic-b")
+}
+
+// landingGitHubStack opens one pull request per branch, numbered from #41 up
+// the stack, each based on the branch below it and the first on the trunk --
+// which is where a stack's pull requests sit before any of it lands.
+func landingGitHubStack(t *testing.T, remote string, branches ...string) string {
+	t.Helper()
 	state := t.TempDir()
-	if err := os.WriteFile(filepath.Join(state, "pr-41.base"), []byte("main\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state, "pr-42.base"), []byte("synthetic-a\n"), 0o600); err != nil {
-		t.Fatal(err)
+	base := "main"
+	for index, branch := range branches {
+		number := fmt.Sprint(41 + index)
+		for name, value := range map[string]string{"head": branch, "base": base} {
+			if err := os.WriteFile(filepath.Join(state, "pr-"+number+"."+name), []byte(value+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		base = branch
 	}
 	t.Setenv("GH_STATE", state)
 	t.Setenv("GH_REMOTE", remote)
@@ -47,18 +60,27 @@ func landingGitHub(t *testing.T, remote string) string {
 	return state
 }
 
-// The two pull requests are fixed: #41 heads synthetic-a, #42 heads
-// synthetic-b. Both aliased queries are answered by walking the numbers out of
-// the query, or the head variables out of the arguments, in the order they
+// Each pull request's head and base live in files, so the stack is whatever
+// the test opened. Both aliased queries are answered by walking the numbers out
+// of the query, or the head variables out of the arguments, in the order they
 // appear, because the aliases
 // are positional and land asks about different subsets as it goes.
 const landingGitHubScript = `
 state_dir="$GH_STATE"
 remote="$GH_REMOTE"
 
-number_for() { case "$1" in synthetic-a) echo 41 ;; synthetic-b) echo 42 ;; *) echo 0 ;; esac; }
-branch_for() { case "$1" in 41) echo synthetic-a ;; 42) echo synthetic-b ;; *) echo "" ;; esac; }
 read_state() { cat "$state_dir/$1" 2>/dev/null || printf '%s' "$2"; }
+branch_for() { read_state "pr-$1.head" ""; }
+number_for() {
+  for file in "$state_dir"/pr-*.head; do
+    if [ "$(cat "$file")" = "$1" ]; then
+      number="${file##*/pr-}"
+      echo "${number%.head}"
+      return
+    fi
+  done
+  echo 0
+}
 head_oid() { git --git-dir="$remote" rev-parse "refs/heads/$1" 2>/dev/null || printf ''; }
 
 query="$*"
@@ -191,6 +213,48 @@ func TestJourneyLandTakesAStackDownOntoASquashedTrunk(t *testing.T) {
 		t.Errorf("origin/main has %d commits, want the base plus one squash per branch", got)
 	}
 
+	w.assertClean(w.Local)
+}
+
+// Three branches, and the bottom one has more than one commit.
+//
+// Only the branch about to merge is published, so by the third cycle the top
+// branch has been replayed once and its pull request still holds the version
+// from before. That version carries the bottom branch's two commits, which the
+// trunk now has as one squash equivalent to neither -- so counted by commit, the
+// top branch had moved on both sides and the descent stopped with one branch
+// merged, advising a --take published that would have undone the replay. Two
+// branches never reach a third cycle, and a one-commit bottom branch squashes
+// into a commit equivalent to itself, which is why nothing saw it.
+func TestJourneyLandTakesDownThreeBranchesAboveASeveralCommitBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.commit(w.Local, "synthetic-a", "a-more.txt", "more")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	w.branchOff("synthetic-b", "synthetic-c", "c.txt")
+	for _, edge := range [][2]string{{"synthetic-a", "main"}, {"synthetic-b", "synthetic-a"}, {"synthetic-c", "synthetic-b"}} {
+		mustRun(t, "track", "--branch", edge[0], "--parent", edge[1], "--apply")
+	}
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b", "synthetic-c")
+	w.git(w.Local, "switch", "-q", "synthetic-c")
+	state := landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b", "synthetic-c")
+
+	mustRun(t, "land", "--apply")
+
+	for _, number := range []string{"41", "42", "43"} {
+		if got := readState(t, state, "pr-"+number+".state"); got != "MERGED" {
+			t.Errorf("pull request #%s state = %q, want MERGED", number, got)
+		}
+	}
+	w.git(w.Local, "fetch", "-q", "origin")
+	for _, file := range []string{"a.txt", "a-more.txt", "b.txt", "c.txt"} {
+		if !remoteHasFile(t, w, file) {
+			t.Errorf("the trunk does not carry %s after landing", file)
+		}
+	}
+	if got := len(strings.Fields(w.git(w.Local, "rev-list", "origin/main"))); got != 4 {
+		t.Errorf("origin/main has %d commits, want the base plus one squash per branch", got)
+	}
 	w.assertClean(w.Local)
 }
 

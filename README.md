@@ -496,11 +496,13 @@ have decided, not that you have decided everywhere.
 Above the boundary your commits are kept, and replayed onto what was taken
 below — which is what `sync` does anyway.
 
-The set is a prefix rather than an arbitrary selection, because that is the
-shape the question has: a branch's published version is built on its parent's
-published version, so taking one and not the other describes a stack that never
-existed. The trunk sits below everything, so it is inside any boundary; naming
-the trunk takes it and nothing else.
+The boundary is the branch you name and what it is stacked on, rather than an
+arbitrary selection, because that is the shape the question has: a branch's
+published version is built on its parent's published version, so taking one and
+not the other describes a stack that never existed. A sibling on another fork is
+not below the branch you named, so it is outside the boundary. The trunk sits
+below everything, so it is inside any boundary; naming the trunk takes it and
+nothing else.
 
 `published` means the version on the remote you named with `--remote`, not
 `origin` in particular.
@@ -636,8 +638,10 @@ it is, including the three publishing decisions that were wrong first.
 | `2` | it failed, and achieved nothing |
 | `3` | it did part of what was asked and stopped somewhere you have to act |
 
-`3` is `sync` stopping on a conflict mid-replay, and `land` stopping part-way
-down a stack. Those are not failures to retry — the branches that replayed
+`3` is `sync` stopping on a conflict mid-replay, `land` stopping part-way down
+a stack after something merged, and `comment` stopping after writing some of
+its comments. A descent that stopped before changing anything is an ordinary
+failure. Those are not failures to retry — the branches that replayed
 stayed replayed and the pull requests that merged stayed merged — and they are
 not successes either. Both print what happened and what to do next; the status
 is there so something reading only the status can tell the difference.

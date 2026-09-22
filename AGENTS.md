@@ -117,12 +117,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   from `internal/stack` pulled Graphite and GitHub in transitively, through an
   import line that named neither. `internal/graph/boundary_test.go` checks the
   whole transitive set, because no single import line looked wrong.
-- `Candidates` is `Related` plus a fallback, and only `track`'s single-branch
+- `Candidates` is `related` plus a fallback, and only `track`'s single-branch
   preview wants the fallback. It measures every local branch when the preferred
   set comes back empty, so there is something to offer where nothing strictly
   qualifies — and those are branches the target cannot reach, so none of them is
-  ever an ancestor. Any caller that filters on `Ancestor` must ask `Related`:
-  `Attach`, `Chain`, `TrunkFor` and `originOf` all do, and asking for the
+  ever an ancestor. Any caller that filters on `Ancestor` must ask `related`:
+  `attach`, `chain`, `trunkFor` and `originOf` all do, and asking for the
   fallback made a whole-stack adoption quadratic in the repository's branches,
   measuring every one against every other and discarding the answer. It did not
   show up because every test of it used four branches, where quadratic and

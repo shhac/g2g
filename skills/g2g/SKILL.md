@@ -46,8 +46,10 @@ description: |
   invocation prints help.
 - `--take` only ever changes the outcome for a branch that has genuinely
   diverged from its own published version; every other classification `collect`
-  makes is take-independent. `--through <branch>` bounds it to a prefix of the
-  stack and refuses the divergence above, which is a narrowing rather than an
+  makes is take-independent. `--through <branch>` bounds it to that branch and
+  what it is stacked on — its ancestry, never a position in a flattened list,
+  so a sibling fork is outside the boundary — and refuses the divergence
+  elsewhere, which is a narrowing rather than an
   enabler: unbounded, `--take published` reaches every diverged branch in the
   selection, including ones the user was not thinking about.
 - `sync` has nothing to do with pull requests. It brings a stack up to date with
@@ -65,8 +67,10 @@ description: |
   weaker push mode.
 - A command that did part of what it was asked and stopped exits `3` — not `0`,
   which told a script the work had finished, and not the failure status, because
-  what it achieved is not coming back. `sync` stopping mid-replay and `land`
-  stopping mid-descent are both this. `stoppedPartWay` marks it and nothing
+  what it achieved is not coming back. `sync` stopping mid-replay, `land`
+  stopping after something merged or was tidied, and `comment` stopping after
+  writing some comments are all this; a descent that changed nothing is an
+  ordinary failure. `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
 - `land` takes a finished stack down onto its trunk, bottom branch first. Read
   `design-docs/land.md` before changing it. It refuses a stack g2g has not

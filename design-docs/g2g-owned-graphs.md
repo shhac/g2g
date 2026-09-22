@@ -190,6 +190,8 @@ g2g graph   [--branch <branch>] [--scope branch|path|subtree|stack|trunk|all]
 g2g track   [--branch <branch>] [--parent <branch> | --stack] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
 g2g restack [--branch <branch>] [--scope branch|path|subtree|stack] [--apply]
+g2g create  <branch> [--parent <branch>] [-m <message>] [--apply]
+g2g up [n] | down [n] | top | bottom   [--dry-run]
 ```
 
 `graph` is read-only. `track` and `untrack` follow the same
@@ -207,6 +209,51 @@ refused — that is how a stack looks before a restack — but never silently.
 Recording a branch under a parent that is not itself tracked also records that
 parent as a root. Without it the next branch up the stack could not find the
 trunk as a candidate once the trunk had moved past being an ancestor.
+
+### Creating a branch
+
+`create` was a non-goal, and became a command once the daily loop showed what
+it cost to leave out: `git switch -c`, a commit, then `track --branch X
+--parent Y --apply`, retyping a parent the user had been standing on a moment
+before. It does not weaken the rule `track` follows. The parent is the branch
+you stand on or the one `--parent` names — stated, never inferred — which is
+the same reason `track --parent` is not a guess, and why `create` shows no
+candidate list.
+
+It adds one refusal `track` has no reason to make. Recording a child under a
+branch the graph does not know makes that branch a root, so a feature branch
+nobody recorded would silently become a trunk. `create` therefore requires the
+parent to be recorded — tracked, or a trunk something is recorded under — or to
+be the repository's default branch, which is a trunk by the only evidence the
+repository gives (`refs/remotes/<remote>/HEAD`). Anything else is refused,
+naming `track --stack` and `--parent` as the ways out.
+
+The edge is written through `PlanTrack` and `ApplyTrack`, so a created branch
+is recorded exactly as `track` records one, fork point included. The order is
+switch, record, commit: a recording that fails is rolled back completely —
+back to where you were, the new branch deleted — because the branch has no
+commits of its own yet, while a commit that fails after the record stays
+recorded and reports exit status `3`, since the branch and its edge are what
+was asked for and the staged changes are still staged.
+
+### Moving between branches
+
+`up`, `down`, `top` and `bottom` move the checkout around a stack resolved the
+way every stack command resolves one. They are the one deliberate exception to
+preview-first: moving the checkout changes no ref, no record and no remote, and
+`git switch` already refuses to overwrite a local change, so a preview would
+only be a second command to type. `--dry-run` answers where without moving.
+What they keep is the refusal to choose — a fork names the branches above it
+and stops — and the guard every mutating command has, because switching away
+mid-restack strands the rebase in progress. The switch is `git switch
+--no-guess`, so a destination a stale record names is refused rather than
+recreated from a remote-tracking branch.
+
+A trunk is a branch nothing sits under, so no source describes it as part of a
+stack, and it is exactly where someone types `up`. When resolution finds
+nothing, the g2g graph is asked what it records directly on the branch; one
+child is the answer and the rest of the walk resolves from there, more than one
+is a fork.
 
 ### Why `--scope` and not `--tree`
 
@@ -242,8 +289,10 @@ a preview, never a record.
 
 ## Non-goals
 
-Creating branches, merging them locally — nothing here runs `git merge` — and
-silently sharing the graph between clones or machines. `land` merges pull
+Merging branches locally — nothing here runs `git merge` — and silently
+sharing the graph between clones or machines. Creating branches was listed
+here and is now `create`, for the reason given under
+[Creating a branch](#creating-a-branch). `land` merges pull
 requests, which is GitHub's merge rather than this tool's: asked for
 explicitly, previewed as the commands it would run, and refused whole if any
 branch in the stack cannot take it.

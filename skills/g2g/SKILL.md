@@ -4,9 +4,10 @@ description: |
   Develop, test, or safely use the g2g Go CLI, which records stacked
   branches itself and projects them onto GitHub. Graphite is an optional
   source it can read, mirror to, and import from, never a requirement. Use
-  when working on g2g's commands (track, link, sync, prune, restack,
-  retarget, submit, push, land, comment, graph, mirror, import), stack scope and
-  structure, source resolution and alignment, CLI tests, or release readiness.
+  when working on g2g's commands (track, create, up/down/top/bottom, link,
+  sync, prune, restack, retarget, submit, push, land, comment, graph, mirror,
+  import), stack scope and structure, source resolution and alignment, CLI
+  tests, or release readiness.
   Triggers: gt2gh, stack without Graphite, restack after squash merge,
   merge a stack down.
 ---
@@ -68,9 +69,10 @@ description: |
 - A command that did part of what it was asked and stopped exits `3` — not `0`,
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `sync` stopping mid-replay, `land`
-  stopping after something merged or was tidied, and `comment` stopping after
-  writing some comments are all this; a descent that changed nothing is an
-  ordinary failure. `stoppedPartWay` marks it and nothing
+  stopping after something merged or was tidied, `comment` stopping after
+  writing some comments, and `create -m` whose commit failed after the record
+  are all this; a descent that changed nothing is an ordinary failure.
+  `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
 - `land` takes a finished stack down onto its trunk, bottom branch first. Read
   `design-docs/land.md` before changing it. It refuses a stack g2g has not
@@ -163,6 +165,23 @@ description: |
   invariant; do not pair `Track` with a hand-rolled promotion step, and never
   take the trunk list from the graph as it was before the edge was recorded.
 - `untrack` must never reparent the children it strands. Report them.
+- `create` takes its parent from the branch you stand on or `--parent`, which
+  is the user stating it, so it offers no candidates. It refuses a parent the
+  graph does not record (tracked, or a trunk something sits under) unless it is
+  the repository's default branch, because recording a child under an unknown
+  branch silently makes that branch a trunk. It records through `PlanTrack` and
+  `ApplyTrack`, never its own write. Order is switch, record, commit: a failed
+  record is rolled back completely (switch back, delete the branch, which has
+  nothing on it), and a failed commit after the record keeps both and exits `3`.
+- `up`/`down`/`top`/`bottom` are the only commands that act without `--apply`,
+  and that exception is deliberate: moving the checkout changes no ref, record
+  or remote, and `git switch` refuses to clobber local changes. Do not add a
+  preview, and do not extend the exception to anything that writes. They
+  resolve through the same `stack.Resolver` as every stack command, refuse at a
+  fork naming the children, switch with `--no-guess`, honour the restack guard,
+  and offer `--dry-run`. A trunk is undescribed by every source, so from one
+  they ask the g2g graph for its recorded children and resolve onward from the
+  single child.
 - `mirror` and `import` must never remove a branch from the g2g graph.
   Alignment keeps the two records in step; it does not transfer ownership.
   `mirror` writes Graphite only, `import` writes the g2g graph only, and

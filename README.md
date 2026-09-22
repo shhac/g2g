@@ -51,6 +51,7 @@ has not already used it, g2g stays local instead of creating Graphite state.
 | Goal | Command family |
 |---|---|
 | Record and inspect local structure | `track`, `graph`, `untrack` |
+| Add a branch to a stack and move around it | `create`, `up`, `down`, `top`, `bottom` |
 | Keep branch contents consistent with that structure | `restack`, `sync`, `prune` |
 | Publish a linear path to GitHub | `push`, `submit`, `link`, `retarget`, `unlink` |
 | Give reviewers a map of the stack on every pull request | `comment` |
@@ -59,7 +60,9 @@ has not already used it, g2g stays local instead of creating Graphite state.
 
 All mutating commands preview first and require `--apply`. They re-discover and
 revalidate before mutation, render and flush the final plan first, and refuse
-ambiguous or unsafe work instead of guessing.
+ambiguous or unsafe work instead of guessing. The one exception is moving the
+checkout, which changes nothing else — see
+[Moving around and adding branches](#moving-around-and-adding-branches).
 
 ## The original Graphite-to-GitHub use case
 
@@ -303,6 +306,57 @@ those edges describe. Writes are a temporary file plus a rename, so a
 concurrent reader sees either the old graph or the new one. Its
 `storeSchemaVersion` is separate from the `--json` output's `schemaVersion`;
 an unrecognised store version fails closed rather than being rewritten.
+
+### Moving around and adding branches
+
+```sh
+# Start a branch on top of this one, switch to it, and record it. Preview first.
+g2g create feature/login
+g2g create feature/login --apply
+
+# The same, committing what is staged onto the new branch.
+g2g create feature/login -m "Add the login form" --apply
+
+# Start it on another recorded branch instead of the one you are on.
+g2g create feature/session --parent feature/auth --apply
+
+# Move the checkout. No --apply: these change nothing but where you stand.
+g2g up            # the branch above
+g2g down 2        # two below; from the bottom of a stack, down is the trunk
+g2g top           # follow the branch above until there is none
+g2g bottom        # the first branch above the trunk
+g2g up --dry-run  # say where, and the git switch that gets there, without moving
+```
+
+`create` replaces `git switch -c`, a commit, and a `track --parent` retyping the
+branch you were just on. The parent is the branch you stand on or the one
+`--parent` names, so it is stated rather than inferred and there is no candidate
+list. It must already be in the g2g graph, or be the repository's default branch
+(what `refs/remotes/origin/HEAD` names): recording a child under a branch the
+graph does not know would quietly make that branch a trunk, so `create` refuses
+and names `track --stack` instead. In a repository with no default branch
+recorded, start the first branch on the trunk by hand and record it with
+`track --parent`; `create` works from there on.
+
+It switches, records, then commits. A recording that fails is undone — you are
+put back where you were and the new branch is deleted — because nothing is on
+it yet. A commit that fails after the record (a hook refusing it, say) leaves
+the branch created, checked out and recorded with the changes still staged, and
+exits `3`.
+
+`up`, `down`, `top` and `bottom` resolve the stack the way every stack command
+does, including `--from`, and never choose: at a fork they refuse and name the
+branches above, each as the `git switch` that would go there. They are the one
+exception to preview-first, deliberately. Moving the checkout changes no ref, no
+record and no remote, and `git switch` already refuses to overwrite a local
+change, so a preview would only be a second command to type. The switch is
+`git switch --no-guess`, so a branch a record names but this checkout does not
+have is refused rather than recreated from a remote. Like every mutating
+command they refuse mid-restack, because switching away strands the rebase in
+progress. With `--json` or `--porcelain` they emit the usual document, with the
+destination as `target`, how it was reached as `targetSource`, the branches
+walked, and the switch as `command` — the one that ran, or with `--dry-run` the
+one that would. `command` is absent when you are already there.
 
 ### Restacking
 
@@ -639,9 +693,9 @@ it is, including the three publishing decisions that were wrong first.
 | `3` | it did part of what was asked and stopped somewhere you have to act |
 
 `3` is `sync` stopping on a conflict mid-replay, `land` stopping part-way down
-a stack after something merged, and `comment` stopping after writing some of
-its comments. A descent that stopped before changing anything is an ordinary
-failure. Those are not failures to retry — the branches that replayed
+a stack after something merged, `comment` stopping after writing some of its
+comments, and `create -m` whose commit failed after the branch was recorded. A
+descent that stopped before changing anything is an ordinary failure. Those are not failures to retry — the branches that replayed
 stayed replayed and the pull requests that merged stayed merged — and they are
 not successes either. Both print what happened and what to do next; the status
 is there so something reading only the status can tell the difference.

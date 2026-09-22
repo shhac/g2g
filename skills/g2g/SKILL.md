@@ -4,7 +4,8 @@ description: |
   Develop, test, or safely use the g2g Go CLI, which records stacked
   branches itself and projects them onto GitHub. Graphite is an optional
   source it can read, mirror to, and import from, never a requirement. Use
-  when working on g2g's commands (track, create, up/down/top/bottom, link,
+  when working on g2g's commands (track, create, delete, fold, rename,
+  up/down/top/bottom, link,
   sync, prune, restack, retarget, submit, push, land, comment, graph, mirror,
   import), stack scope and structure, source resolution and alignment, CLI
   tests, or release readiness.
@@ -70,8 +71,8 @@ description: |
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `sync` stopping mid-replay, `land`
   stopping after something merged or was tidied, `comment` stopping after
-  writing some comments, and `create -m` whose commit failed after the record
-  are all this; a descent that changed nothing is an ordinary failure.
+  writing some comments, `create -m` whose commit failed after the record, and
+  a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
 - `land` takes a finished stack down onto its trunk, bottom branch first. Read
@@ -165,6 +166,23 @@ description: |
   invariant; do not pair `Track` with a hand-rolled promotion step, and never
   take the trunk list from the graph as it was before the edge was recorded.
 - `untrack` must never reparent the children it strands. Report them.
+- `delete`, `fold` and `rename` (`internal/reshape`, which reaches Git and the
+  graph and nothing else) act only on branches the g2g graph records and refuse
+  the rest naming `g2g track`. `delete` is the one place children are
+  reparented, onto the deleted branch's parent, because the user asked for the
+  branch to go; do not extend that to `untrack` or `prune`. The children keep
+  their fork points, so the next restack drops the deleted branch's commits
+  from them, and the preview must say so and name each of those commits that
+  exists nowhere else (not in the parent by content, per `landed.Into` and
+  `Cherry`; on no remote-tracking ref — a local read). None of the three
+  replays a commit: `fold` only fast-forwards the parent under a lease, and
+  refuses a trunk (naming `g2g land`) and a parent that moved on (naming
+  `g2g restack`). A ref moved under the checkout brings the tree with it
+  through `SwitchTree`; a branch another worktree holds is refused for delete
+  and fold, and allowed for rename because `git branch -m` moves that
+  worktree's HEAD. Steps are ordered so all but the last can be put back, and a
+  rollback that cannot finish exits `3`. There is no `split`: choosing which
+  commit goes where is interactive and a guess.
 - `create` takes its parent from the branch you stand on or `--parent`, which
   is the user stating it, so it offers no candidates. It refuses a parent the
   graph does not record (tracked, or a trunk something sits under) unless it is

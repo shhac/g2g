@@ -191,6 +191,9 @@ g2g track   [--branch <branch>] [--parent <branch> | --stack] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
 g2g restack [--branch <branch>] [--scope branch|path|subtree|stack] [--apply]
 g2g create  <branch> [--parent <branch>] [-m <message>] [--apply]
+g2g delete  [--branch <branch>] [--apply]
+g2g fold    [--branch <branch>] [--apply]
+g2g rename  [--branch <branch>] <new-name> [--apply]
 g2g up [n] | down [n] | top | bottom   [--dry-run]
 ```
 
@@ -255,6 +258,62 @@ nothing, the g2g graph is asked what it records directly on the branch; one
 child is the answer and the rest of the walk resolves from there, more than one
 is a fork.
 
+### Reshaping a stack
+
+`delete`, `fold` and `rename` change which branches a stack is made of. They
+act only on branches the g2g graph records and refuse anything else naming
+`track`, because the record is what says where a removed branch's children
+belong. None of them replays a commit — deleting removes a ref, folding
+fast-forwards one, renaming moves one — so `restack` stays the only thing that
+rewrites history, and each says when a restack is the next step rather than
+running one.
+
+**Delete reparents; untrack does not.** `untrack` must never reparent the
+children it strands, because nobody said where they belong and choosing is the
+guess this tool does not make. `delete` records each child on the deleted
+branch's parent, and that is not the same guess: the user asked for the branch
+to go, and what it sat on is the only place its children can mean. The rule
+lives on the type, as `Graph.Remove`, beside the `Untrack` that keeps its own.
+
+The children keep their fork points. A fork point is where the parent's work
+ended when the edge was written, so after a delete it is where the deleted
+branch's work ended, and the next restack replays `forkPoint..child` onto the
+new parent: only the child's own commits, with the deleted branch's left
+behind. That changes what the child contains, so the preview says it plainly,
+and names every commit of the deleted branch that exists nowhere else — none
+of its content in the parent (`landed.Into`, then `Cherry` bounded by the fork
+point, so a squash-merged branch loses nothing) and no remote-tracking ref
+reaching it. That is a local read: a commit a remote holds that this clone has
+not fetched reads as unpublished, which errs toward warning. The remote branch
+is untouched.
+
+**Fold is a fast-forward, not a merge.** The parent moves to the branch's tip
+only when it is an ancestor of it, under a lease on its old tip; a parent that
+has moved on needs `restack` first. A trunk is never folded into: moving a
+trunk puts work on it that no review saw, one push from publishing it, and a
+branch joins its trunk through its pull request, which is `land`. The folded
+branch's children already sit on the parent's new tip and keep their fork
+points, which now match it; the parent's other children do not, and the preview
+names them.
+
+**Rename is a key rewrite.** Graph identity is derived, so renaming touches the
+branch's own edge, the edges recorded under it, the trunk list, and the
+fork-point pin, and nothing else. `git branch -m` moves HEAD in any worktree
+that has the branch, so a rename there is allowed where a delete or fold is
+refused. The published branch and its pull request stay under the old name;
+nothing here renames a remote.
+
+Every apply orders its steps so everything but the last can be put back: moves
+and switches first, where Git refuses outright rather than losing anything;
+then the record, which restores exactly; the branch ref last. A failure puts
+back what was done. A rollback that cannot finish, or a finished removal that
+could not release its fork-point pin, exits `3`.
+
+`split` is deliberately not offered: dividing a branch's commits means choosing
+which commit goes where, which is interactive by nature and at odds with never
+guessing — `git rebase -i` plus `g2g create`/`g2g track` does it with the person
+choosing.
+
 ### Why `--scope` and not `--tree`
 
 A boolean frames tree operation as the exception and cannot express "this
@@ -289,8 +348,9 @@ a preview, never a record.
 
 ## Non-goals
 
-Merging branches locally — nothing here runs `git merge` — and silently
-sharing the graph between clones or machines. Creating branches was listed
+Merging branches locally — nothing here runs `git merge`; `fold` only
+fast-forwards a parent the branch already contains — and silently sharing the
+graph between clones or machines. Creating branches was listed
 here and is now `create`, for the reason given under
 [Creating a branch](#creating-a-branch). `land` merges pull
 requests, which is GitHub's merge rather than this tool's: asked for

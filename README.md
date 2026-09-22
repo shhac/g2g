@@ -55,6 +55,12 @@ git commit --amend
 g2g restack --apply
 g2g top
 
+# Reshape: merge a branch into the one below, drop one, or give one a new name.
+g2g fold --apply
+g2g delete --branch synthetic-abandoned --apply
+g2g restack --apply
+g2g rename synthetic-better-name --apply
+
 # The trunk moved: fetch, fast-forward it, replay; then forget what landed.
 g2g sync --apply
 g2g prune --apply
@@ -222,7 +228,8 @@ the current `--apply` flow.
 
 `3` is `sync` stopping on a conflict mid-replay, `land` stopping part-way down
 a stack after something merged, `comment` stopping after writing some of its
-comments, and `create -m` whose commit failed after the branch was recorded. A
+comments, `create -m` whose commit failed after the branch was recorded, and a
+`delete`, `fold` or `rename` that could not put back what it had done. A
 descent that stopped before changing anything is an ordinary failure. Those are
 not failures to retry — what replayed stays replayed and what merged stays
 merged — and not successes either. Both print what happened and what to do
@@ -315,6 +322,17 @@ g2g create feature/login -m "Add the login form" --apply
 # Start it on another recorded branch instead of the one you are on.
 g2g create feature/session --parent feature/auth --apply
 
+# Delete a branch, recording what sat on it on what it sat on. Then replay
+# those onto their new parent, which drops the deleted branch's commits.
+g2g delete --branch feature/abandoned --apply
+g2g restack --branch feature/child --apply
+
+# Fold a branch into its parent: the parent fast-forwards to it, it goes.
+g2g fold --branch feature/login --apply
+
+# Rename a branch and every record of it.
+g2g rename --branch feature/login feature/sign-in --apply
+
 # Move the checkout. No --apply: these change nothing but where you stand.
 g2g up            # the branch above
 g2g down 2        # two below; from the bottom of a stack, down is the trunk
@@ -338,6 +356,42 @@ put back where you were and the new branch is deleted — because nothing is on
 it yet. A commit that fails after the record (a hook refusing it, say) leaves
 the branch created, checked out and recorded with the changes still staged, and
 exits `3`.
+
+`delete`, `fold` and `rename` change which branches a stack is made of, and act
+only on branches the g2g graph records — anything else is refused, naming
+`g2g track`. None of them replays a commit; that stays `restack`'s job.
+
+- `delete` removes the local branch and records each branch that sat on it on
+  the branch it sat on. Unlike `untrack`, which never reparents, this is what
+  asking for the branch to go means. The children keep their fork points, so
+  the next `restack` replays only their own commits onto the new parent and the
+  deleted branch's commits leave them. The preview names every one of those
+  commits that exists nowhere else — not in the parent by content, and on no
+  remote-tracking ref — and suggests the restack. Deleting the branch you stand
+  on switches to its parent first, which `git switch` refuses rather than
+  overwrite a local change. The remote branch and any pull request are left
+  alone. A trunk, and a branch checked out in another worktree, are refused.
+- `fold` fast-forwards the parent to the branch, so its commits become the
+  parent's, then removes it as `delete` does; what sat on it already sits on the
+  parent's new tip. Only a parent the branch sits directly on can be
+  fast-forwarded, so one that has moved on is refused, naming `g2g restack`.
+  Folding into a trunk is refused, naming `g2g land`: a branch joins its trunk
+  through its pull request. The parent's other children then need a restack,
+  and the preview says which. If the parent is checked out, the working tree
+  moves with it; a local change in the way stops the fold and puts the parent
+  back.
+- `rename` runs `git branch -m` and rewrites the record: the branch's own edge,
+  the branches recorded on it, its place among the trunks, and its fork-point
+  ref. The name is checked with `git check-ref-format --branch` and must be
+  free. Git moves another worktree along with the branch, so that is allowed. A
+  branch already published stays published under the old name, and so does its
+  pull request; the preview says so when a remote-tracking ref carries the old
+  name, and `push` then publishes the new name as a new branch.
+
+Each orders its steps so that everything but the last can be put back, and does
+put it back if a later step fails. There is no `split`: dividing a branch's
+commits means choosing which goes where, which `git rebase -i` and
+`g2g create`/`g2g track` do with a person choosing.
 
 `up`, `down`, `top` and `bottom` resolve the stack the way every stack command
 does, including `--from`, and never choose: at a fork they refuse and name the
@@ -852,6 +906,9 @@ step, and `--json` carries it as `repair`.
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |
 | A branch that has to move is checked out in another worktree | switch that worktree away or close it, or select less with `--branch` or `--scope` |
+| `fold` into a parent that has moved on since the branch was stacked on it | `g2g restack --branch <branch>`, then fold |
+| `fold` into a trunk | `g2g land --branch <branch>`: a branch joins its trunk through its pull request |
+| `delete`, `fold` or `rename` of a branch the g2g graph does not record | `g2g track --branch <branch>`, or plain `git branch`, which is all it would do |
 
 ## Output
 
@@ -1011,6 +1068,7 @@ neither authentication nor a network connection. Run them with `go test ./...`.
 | `internal/graphite` | strict, compatibility-gated read-only Graphite display parser |
 | `internal/git`, `internal/githubstack` | narrow repository, publication, and PR seams |
 | `internal/create`, `internal/navigate` | starting a branch on a recorded one, and moving the checkout |
+| `internal/reshape` | deleting, folding and renaming a recorded branch; moves refs, never replays |
 | `internal/restack` | the only history-rewriting service, with the journal that makes it resumable |
 | `internal/sync`, `internal/prune` | fetch, fast-forward and replay; forgetting landed branches |
 | `internal/landed` | the one by-content "has this landed" check every caller shares |

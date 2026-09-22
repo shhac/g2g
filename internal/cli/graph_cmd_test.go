@@ -442,7 +442,7 @@ func TestGraphReadsAnotherRecordInItsOwnFormat(t *testing.T) {
 			"synthetic-b":      "synthetic-a",
 			"synthetic-cousin": "synthetic-trunk",
 		},
-		Scope:  stack.ScopeTrunk,
+		Scope:  shape.ScopeTrunk,
 		Source: stack.SourceGraphite,
 	}
 

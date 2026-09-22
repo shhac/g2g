@@ -254,7 +254,7 @@ func TestAdoptingAChainFromTheTipLeavesOneTrunk(t *testing.T) {
 // Roots and Branches answer different questions and must keep doing so. Roots
 // is where a render of the forest starts, so it names the trunks the graph
 // hangs from even though nothing records an edge for them; Branches is what the
-// graph actually records. Sharing the traversal with stack.Forest must not
+// graph actually records. Sharing the traversal with shape.Forest must not
 // quietly merge the two — mirror reads both and would strand a stack if it did.
 func TestRootsNamesUntrackedTrunksAndBranchesDoesNot(t *testing.T) {
 	adopted := New()

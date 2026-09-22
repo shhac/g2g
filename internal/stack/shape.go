@@ -13,8 +13,9 @@ import (
 // in two places and held in neither.
 //
 // These are aliases rather than a second vocabulary: shape.Scope and
-// stack.Scope are the same type, so every existing caller keeps working and
-// there is still exactly one definition of each.
+// stack.Scope are the same type, and there is still exactly one definition of
+// each. They are for this package's own code; everything outside it names
+// shape directly, so a reader meets one name for one thing.
 type (
 	Scope  = shape.Scope
 	Forest = shape.Forest

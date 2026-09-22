@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/shape"
-	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
@@ -92,7 +91,7 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	// sync was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
-	selection.registerScope(cmd, shape.SyncScopes, stack.ScopeStack, scopeUsage("sync", shape.SyncScopes))
+	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("sync", shape.SyncScopes))
 	return cmd
 }
 

@@ -10,6 +10,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -183,7 +184,7 @@ func (s Service) publish(ctx context.Context, plan Plan, step Step) error {
 	// a single-branch selection has no ancestry to take one from. Landing
 	// forgets each branch as it lands, so by the time this runs the path from
 	// the trunk holds exactly the branch being published.
-	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: stack.ScopePath}, plan.Options.Remote)
+	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: step.Branch, Trunk: plan.Trunk, Scope: shape.ScopePath}, plan.Options.Remote)
 	if err != nil {
 		return err
 	}

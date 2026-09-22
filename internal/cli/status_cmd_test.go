@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -73,7 +74,7 @@ func TestStatusRendersAForkedSelection(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
 		Target:   "synthetic-trunk",
 		Base:     "synthetic-trunk",
-		Scope:    stack.ScopeSubtree,
+		Scope:    shape.ScopeSubtree,
 		Source:   stack.SourceGraphite,
 		Branches: []string{"synthetic-a", "synthetic-a-one", "synthetic-b"},
 		Parents: map[string]string{
@@ -110,7 +111,7 @@ func TestStatusAssessesSiblingsAgainstTheirParentNotEachOther(t *testing.T) {
 	snapshot := stack.Snapshot{
 		Target:   "synthetic-trunk",
 		Base:     "synthetic-trunk",
-		Scope:    stack.ScopeSubtree,
+		Scope:    shape.ScopeSubtree,
 		Source:   stack.SourceGraphite,
 		Branches: []string{"synthetic-a", "synthetic-b"},
 		Parents:  map[string]string{"synthetic-a": "synthetic-trunk", "synthetic-b": "synthetic-trunk"},
@@ -134,7 +135,7 @@ func TestStatusAssessesSiblingsAgainstTheirParentNotEachOther(t *testing.T) {
 // repository, so the reader has to be told.
 func TestStatusNamesTheRecordThatDescribedTheStack(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "synthetic-trunk", Scope: stack.ScopePath,
+		Target: "synthetic-top", Base: "synthetic-trunk", Scope: shape.ScopePath,
 		Source: stack.SourceG2G, Branches: []string{"synthetic-top"},
 	}}}
 	var out bytes.Buffer
@@ -166,7 +167,7 @@ func TestStatusLeavesALinearSelectionUnindented(t *testing.T) {
 // depending on which command was asked.
 func TestStatusRendersAChainFlatEvenWhenTheScopeCouldFork(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-a", Base: "synthetic-a", Scope: stack.ScopeSubtree, Source: stack.SourceGraphite,
+		Target: "synthetic-a", Base: "synthetic-a", Scope: shape.ScopeSubtree, Source: stack.SourceGraphite,
 		Branches: []string{"synthetic-b", "synthetic-c"},
 		Parents:  map[string]string{"synthetic-b": "synthetic-a", "synthetic-c": "synthetic-b"},
 	}}}
@@ -185,7 +186,7 @@ func TestStatusRendersAChainFlatEvenWhenTheScopeCouldFork(t *testing.T) {
 // and left to work out the relationship.
 func TestStatusMarksTheNativeStackInsideAForkedTree(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-trunk", Base: "synthetic-trunk", Scope: stack.ScopeStack, Source: stack.SourceGraphite,
+		Target: "synthetic-trunk", Base: "synthetic-trunk", Scope: shape.ScopeStack, Source: stack.SourceGraphite,
 		Branches: []string{"synthetic-a", "synthetic-a-one", "synthetic-b"},
 		Parents: map[string]string{
 			"synthetic-a":     "synthetic-trunk",
@@ -219,7 +220,7 @@ func TestStatusMarksTheNativeStackInsideAForkedTree(t *testing.T) {
 // the stack, so marking every node with the same number says nothing.
 func TestStatusLeavesALinearSelectionUnmarked(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "synthetic-trunk", Scope: stack.ScopePath,
+		Target: "synthetic-top", Base: "synthetic-trunk", Scope: shape.ScopePath,
 		Branches: []string{"synthetic-lower", "synthetic-top"},
 	}, PullRequests: []githubstack.PullRequest{
 		{Head: "synthetic-lower", Number: 11, State: "OPEN", StackNumber: 7, StackSize: 2, StackPosition: 1},

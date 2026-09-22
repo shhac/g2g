@@ -18,7 +18,7 @@ the worst place for it, because a trunk is exactly where several stacks meet:
 
 ```text
 error: selected Graphite branch "main" has multiple descendants
-(fix/…, paul/…, …); full-stack resolution requires one linear path
+(synthetic-fix, synthetic-other, …); full-stack resolution requires one linear path
 (rerun with --no-stack to stop at the selected branch)
 ```
 

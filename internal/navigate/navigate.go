@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -129,7 +130,7 @@ func (s Service) selectFrom(ctx context.Context, request Request, branch string)
 	return s.Selector.Select(ctx, stack.Selection{
 		Branch: branch,
 		Trunk:  request.Trunk,
-		Scope:  stack.ScopeStack,
+		Scope:  shape.ScopeStack,
 		From:   request.From,
 	}, "g2g "+string(request.Direction))
 }

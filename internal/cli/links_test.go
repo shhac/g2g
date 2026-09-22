@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -104,7 +105,7 @@ func TestLinksAreOffWhereNobodyCanFollowThem(t *testing.T) {
 
 func linkedStatusPlan() link.Plan {
 	return link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "synthetic-trunk", Scope: stack.ScopePath, Source: stack.SourceGraphite,
+		Target: "synthetic-top", Base: "synthetic-trunk", Scope: shape.ScopePath, Source: stack.SourceGraphite,
 		Branches: []string{"synthetic-top"},
 	}, PullRequests: []githubstack.PullRequest{
 		{Head: "synthetic-top", Number: 42, State: "OPEN", Base: "synthetic-trunk", URL: "https://github.com/synthetic-owner/synthetic-repo/pull/42"},

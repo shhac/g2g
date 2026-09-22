@@ -14,6 +14,7 @@ import (
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -298,7 +299,7 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 	if err := s.Git.Clean(ctx); err != nil {
 		return err.Error(), repair.Note{}
 	}
-	pushed, err := s.Pusher.Plan(ctx, stack.Selection{Branch: discovery.Target, Trunk: discovery.Base, Scope: stack.ScopeStack}, options.Remote)
+	pushed, err := s.Pusher.Plan(ctx, stack.Selection{Branch: discovery.Target, Trunk: discovery.Base, Scope: shape.ScopeStack}, options.Remote)
 	if err == nil && pushed.Blocked != "" {
 		return pushed.Blocked, pushed.Repair
 	}

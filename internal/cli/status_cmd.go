@@ -40,6 +40,6 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 	// and where the target sits between them. It stops short of all, because a
 	// repository's other trunks are not what someone triaging this one asked
 	// about.
-	selection.registerScope(cmd, shape.Scopes, stack.ScopeStack, scopeUsage("show", shape.Scopes))
+	selection.registerScope(cmd, shape.Scopes, shape.ScopeStack, scopeUsage("show", shape.Scopes))
 	return cmd
 }

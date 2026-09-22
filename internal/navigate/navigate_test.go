@@ -204,7 +204,7 @@ func TestLeavingATrunkWithOneStackResolvesFromTheBranchAbove(t *testing.T) {
 	if !slices.Equal(move.Walked, []string{"synthetic-main", "synthetic-a", "synthetic-b"}) {
 		t.Errorf("Walked = %v", move.Walked)
 	}
-	if last := selector.asked[len(selector.asked)-1]; last.Branch != "synthetic-a" || last.Scope != stack.ScopeStack {
+	if last := selector.asked[len(selector.asked)-1]; last.Branch != "synthetic-a" || last.Scope != shape.ScopeStack {
 		t.Errorf("resolved from %+v, want the stack through synthetic-a", last)
 	}
 }
@@ -252,7 +252,7 @@ func TestAMoveSelectsTheWholeStackThroughTheCurrentBranch(t *testing.T) {
 	if _, err := service.Plan(context.Background(), Request{Direction: Down, From: stack.SourceGraphite, Trunk: "synthetic-main"}); err != nil {
 		t.Fatal(err)
 	}
-	want := stack.Selection{Branch: "synthetic-e", Trunk: "synthetic-main", Scope: stack.ScopeStack, From: stack.SourceGraphite}
+	want := stack.Selection{Branch: "synthetic-e", Trunk: "synthetic-main", Scope: shape.ScopeStack, From: stack.SourceGraphite}
 	if len(selector.asked) != 1 || selector.asked[0] != want {
 		t.Errorf("asked %+v, want %+v", selector.asked, want)
 	}

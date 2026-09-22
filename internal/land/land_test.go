@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -71,7 +72,7 @@ func newWorld(t *testing.T) *world {
 				Ancestry:     []string{"synthetic-main", "synthetic-one", "synthetic-two"},
 				Base:         "synthetic-main",
 				Branches:     []string{"synthetic-one", "synthetic-two"},
-				Scope:        stack.ScopeStack,
+				Scope:        shape.ScopeStack,
 				Source:       stack.SourceG2G,
 			}},
 			GitHub: github,
@@ -85,7 +86,7 @@ func newWorld(t *testing.T) *world {
 
 func (w *world) plan(t *testing.T, options Options) Plan {
 	t.Helper()
-	plan, err := w.service.Plan(context.Background(), stack.Selection{Scope: stack.ScopeStack}, options)
+	plan, err := w.service.Plan(context.Background(), stack.Selection{Scope: shape.ScopeStack}, options)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

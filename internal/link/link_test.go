@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shhac/g2g/internal/stack"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/stack"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
@@ -64,7 +66,7 @@ func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 	service.GitHub = github
 	// One pull request is one pull request only within a selection that holds
 	// one branch; the default now reaches the stack above alpha.
-	selection := Selection{Branch: "alpha", Scope: stack.ScopeBranch}
+	selection := Selection{Branch: "alpha", Scope: shape.ScopeBranch}
 	preview, err := service.Plan(context.Background(), selection)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
@@ -318,7 +320,7 @@ func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing
 	// branch means the branch alone, which is what it always said and never
 	// did: resolving through a bool, it suppressed descendants only, so it
 	// returned the whole ancestry instead.
-	plan, err = service.Plan(context.Background(), Selection{Scope: stack.ScopeBranch})
+	plan, err = service.Plan(context.Background(), Selection{Scope: shape.ScopeBranch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +333,7 @@ func TestPlanDefaultsToFullStackAndNoStackStopsAtPivotWithoutCheckout(t *testing
 
 	// path is the trunk down to the branch, which is what --no-stack used to
 	// produce and is the value it becomes.
-	plan, err = service.Plan(context.Background(), Selection{Scope: stack.ScopePath})
+	plan, err = service.Plan(context.Background(), Selection{Scope: shape.ScopePath})
 	if err != nil {
 		t.Fatal(err)
 	}

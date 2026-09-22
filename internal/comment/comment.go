@@ -220,12 +220,12 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 // write the same comments. From a trunk, that is every stack on it.
 func (s Service) wholeStack(ctx context.Context, selection stack.Selection) (stack.Selection, stack.Snapshot, error) {
 	path := selection
-	path.Scope = stack.ScopePath
+	path.Scope = shape.ScopePath
 	snapshot, err := s.Selector.Select(ctx, path, command)
 	if err != nil {
 		return stack.Selection{}, stack.Snapshot{}, err
 	}
-	whole := stack.Selection{Branch: snapshot.Target, Trunk: selection.Trunk, Scope: stack.ScopeStack, From: selection.From}
+	whole := stack.Selection{Branch: snapshot.Target, Trunk: selection.Trunk, Scope: shape.ScopeStack, From: selection.From}
 	if len(snapshot.Branches) != 0 {
 		whole.Branch = snapshot.Branches[0]
 	}

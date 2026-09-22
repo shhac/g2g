@@ -53,7 +53,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 	selection.register(cmd, completions, stack.OfflineSources, "local branch to push (defaults to current branch)", "trunk to use as the push base")
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
-	selection.registerScope(cmd, shape.ProjectScopes, stack.ScopeStack, scopeUsage("push", shape.ProjectScopes))
+	selection.registerScope(cmd, shape.ProjectScopes, shape.ScopeStack, scopeUsage("push", shape.ProjectScopes))
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
 	return cmd

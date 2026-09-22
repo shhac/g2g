@@ -88,7 +88,7 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 	// path is the default rather than stack: standing in the middle of a stack
 	// and typing land means "take it down as far as here", and stack would
 	// merge everything above you as well.
-	selection.registerScope(cmd, shape.ProjectScopes, stack.ScopePath, scopeUsage("land", shape.ProjectScopes))
+	selection.registerScope(cmd, shape.ProjectScopes, shape.ScopePath, scopeUsage("land", shape.ProjectScopes))
 	cmd.Flags().StringVar(&method, "method", string(githubstack.MethodSquash), "how to merge each pull request: "+methodNames())
 	_ = cmd.RegisterFlagCompletionFunc("method", completionCallback(methodCompletions()))
 	cmd.Flags().StringVar(&options.Remote, "remote", "origin", "Git remote the branches are published to")

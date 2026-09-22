@@ -126,3 +126,19 @@ func TestMutationTimeoutLeavesOtherErrorsUnchanged(t *testing.T) {
 		t.Fatalf("mutationTimeout rewrote a non-deadline error: %v", got)
 	}
 }
+
+// A person who already raised the ceiling is told the one they set, not sent
+// to raise a flag they had raised.
+func TestDiscoveryTimeoutNamesTheCeilingInForce(t *testing.T) {
+	expired := context.DeadlineExceeded
+	if got := newBudgets(budgetCommand(t)).discoveryTimedOut(expired).Error(); !strings.Contains(got, discoveryTimeout.String()+" default") {
+		t.Errorf("default budget said %q", got)
+	}
+	got := newBudgets(budgetCommand(t, "--timeout", "7m")).discoveryTimedOut(expired).Error()
+	if !strings.Contains(got, "7m0s --timeout") || strings.Contains(got, "default") {
+		t.Errorf("an explicit --timeout said %q", got)
+	}
+	if other := errors.New("synthetic failure"); newBudgets(budgetCommand(t)).discoveryTimedOut(other) != other {
+		t.Error("a failure that is not a timeout was rewritten")
+	}
+}

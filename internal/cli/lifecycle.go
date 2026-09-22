@@ -116,7 +116,7 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	}
 	plan, err := f.plan(ctx)
 	if err != nil {
-		return discoveryTimedOut(err)
+		return budgets.discoveryTimedOut(err)
 	}
 	if !apply {
 		return f.preview(cmd, plan, p)
@@ -126,7 +126,7 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	if err != nil {
 		// Re-discovery runs under the same budget as discovery, so it runs out
 		// the same way and wants the same sentence.
-		return writeNotApplied(cmd.OutOrStdout(), p, discoveryTimedOut(err))
+		return writeNotApplied(cmd.OutOrStdout(), p, budgets.discoveryTimedOut(err))
 	}
 	switch f.outcome(validated) {
 	case planNoOp:

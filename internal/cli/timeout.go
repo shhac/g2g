@@ -76,9 +76,16 @@ func (b budgets) landing(ctx context.Context, branches int) (context.Context, co
 // in two branches rather than as a ceiling, and nothing in it suggests raising
 // one. Nobody should have to know that a rev-list between two strangers means
 // "this repository is bigger than the default allows".
-func discoveryTimedOut(err error) error {
+//
+// It names the ceiling that was actually in force. Saying "the 45s default" to
+// someone who had already passed --timeout 10m sent them to raise a flag they
+// had raised.
+func (b budgets) discoveryTimedOut(err error) error {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		return err
+	}
+	if b.override > 0 {
+		return fmt.Errorf("timed out working out what to do, before anything was changed · it ran out of the %s --timeout allowed", b.override)
 	}
 	return fmt.Errorf("timed out working out what to do, before anything was changed · a large repository can need longer than the %s default (raise it with --timeout)", discoveryTimeout)
 }

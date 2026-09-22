@@ -144,7 +144,7 @@ func graphiteBoundary(forest Forest, declaredTrunks, ancestry, selected []string
 	}
 	if len(ancestry) == 1 {
 		// The target is itself a trunk, so there is nothing above it to choose
-		// between and Hangs has already given the answer. SelectBoundary
+		// between and Hangs has already given the answer. selectBoundary
 		// cannot: it scans the ancestry excluding the target precisely because
 		// it exists to find the trunk *under* one, so asked from a trunk it can
 		// only report that there is no ancestor to use.
@@ -157,7 +157,7 @@ func graphiteBoundary(forest Forest, declaredTrunks, ancestry, selected []string
 		return base, "Graphite-declared trunk", append([]string(nil), selected[1:]...), nil
 	}
 
-	base, baseSource, _, err := SelectBoundary(ancestry, declaredTrunks, requestedTrunk)
+	base, baseSource, err := selectBoundary(ancestry, declaredTrunks, requestedTrunk)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -185,41 +185,41 @@ func validateBranchesLocalAndSafe(local map[string]bool, branches []string, comm
 	return validateSelectionIsSafe(branches, command)
 }
 
-// SelectBoundary chooses only among declared trunk candidates on the selected
+// selectBoundary chooses only among declared trunk candidates on the selected
 // ancestry. It never guesses by branch name.
-func SelectBoundary(path, trunks []string, requestedTrunk string) (string, string, []string, error) {
+//
+// It answers the base and nothing else. It used to return the branches above
+// the base too, which only a test read: graphiteBoundary takes them from the
+// selection, which is what the scope actually chose.
+func selectBoundary(path, trunks []string, requestedTrunk string) (string, string, error) {
 	if len(path) < 2 {
-		return "", "", nil, fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
+		return "", "", fmt.Errorf("selected branch has no Graphite ancestor that can be used as a link base")
 	}
-	declared := make(map[string]bool, len(trunks))
-	for _, trunk := range trunks {
-		declared[trunk] = true
-	}
-	indices := make(map[string]int)
-	for index, branch := range path[:len(path)-1] {
+	declared := branchSet(trunks)
+	onPath := make(map[string]bool)
+	for _, branch := range path[:len(path)-1] {
 		if declared[branch] {
-			indices[branch] = index
+			onPath[branch] = true
 		}
 	}
 	// Guard clauses in the order a reader asks the questions: was one chosen,
 	// is there none, is there more than one, and only then the single case.
 	if requestedTrunk != "" {
-		index, valid := indices[requestedTrunk]
-		if !valid {
-			if !declared[requestedTrunk] {
-				return "", "", nil, fmt.Errorf("requested trunk %q is not a Graphite-declared trunk", requestedTrunk)
-			}
-			return "", "", nil, fmt.Errorf("requested trunk %q is not an ancestor of selected branch %q", requestedTrunk, path[len(path)-1])
+		if onPath[requestedTrunk] {
+			return requestedTrunk, "--trunk", nil
 		}
-		return requestedTrunk, "--trunk", append([]string(nil), path[index+1:]...), nil
+		if !declared[requestedTrunk] {
+			return "", "", fmt.Errorf("requested trunk %q is not a Graphite-declared trunk", requestedTrunk)
+		}
+		return "", "", fmt.Errorf("requested trunk %q is not an ancestor of selected branch %q", requestedTrunk, path[len(path)-1])
 	}
-	if len(indices) == 0 {
-		return "", "", nil, fmt.Errorf("selected Graphite ancestry %q has no declared trunk; use supported Graphite configuration to resolve it", strings.Join(path, " -> "))
+	candidates := slices.Sorted(maps.Keys(onPath))
+	switch len(candidates) {
+	case 0:
+		return "", "", fmt.Errorf("selected Graphite ancestry %q has no declared trunk; use supported Graphite configuration to resolve it", strings.Join(path, " -> "))
+	case 1:
+		return candidates[0], "Graphite-declared ancestry", nil
+	default:
+		return "", "", fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
 	}
-	if len(indices) > 1 {
-		candidates := slices.Sorted(maps.Keys(indices))
-		return "", "", nil, fmt.Errorf("selected Graphite ancestry has multiple declared trunks (%s); rerun with --trunk <branch>", strings.Join(candidates, ", "))
-	}
-	trunk := slices.Collect(maps.Keys(indices))[0]
-	return trunk, "Graphite-declared ancestry", append([]string(nil), path[indices[trunk]+1:]...), nil
 }

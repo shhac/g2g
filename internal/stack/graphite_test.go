@@ -1,42 +1,41 @@
 package stack
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
 
-// SelectBoundary is the Graphite trunk rule: which declared trunk on an
-// ancestry a selection hangs from. It was tested from stack_test.go, so the
-// file named for the package tested one source's boundary and nothing else.
+// selectBoundary is the Graphite trunk rule: which declared trunk on an
+// ancestry a selection hangs from. What the selection then holds above that
+// trunk is graphiteBoundary's, and the parity table checks it.
 
 func TestSelectBoundaryUsesOnlyDeclaredGraphiteTrunks(t *testing.T) {
-	path := []string{"main", "feature-one", "feature-two"}
-	base, source, branches, err := SelectBoundary(path, []string{"main", "develop", "staging"}, "")
+	path := []string{"synthetic-main", "synthetic-one", "synthetic-two"}
+	base, source, err := selectBoundary(path, []string{"synthetic-main", "synthetic-develop", "synthetic-staging"}, "")
 	if err != nil {
-		t.Fatalf("SelectBoundary() error = %v", err)
+		t.Fatalf("selectBoundary() error = %v", err)
 	}
-	if base != "main" || source != "Graphite-declared ancestry" || !reflect.DeepEqual(branches, []string{"feature-one", "feature-two"}) {
-		t.Errorf("boundary = (%q, %q, %v)", base, source, branches)
+	if base != "synthetic-main" || source != "Graphite-declared ancestry" {
+		t.Errorf("boundary = (%q, %q)", base, source)
 	}
 }
 
 func TestSelectBoundaryRequiresOrValidatesTrunkOverride(t *testing.T) {
-	path := []string{"develop", "main", "feature"}
-	trunks := []string{"develop", "main", "staging"}
-	if _, _, _, err := SelectBoundary(path, trunks, ""); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
-		t.Fatalf("SelectBoundary() error = %v, want ambiguity", err)
+	path := []string{"synthetic-develop", "synthetic-main", "synthetic-feature"}
+	trunks := []string{"synthetic-develop", "synthetic-main", "synthetic-staging"}
+	if _, _, err := selectBoundary(path, trunks, ""); err == nil || !strings.Contains(err.Error(), "multiple declared trunks") {
+		t.Fatalf("selectBoundary() error = %v, want ambiguity", err)
 	}
-	base, source, branches, err := SelectBoundary(path, trunks, "main")
+	base, source, err := selectBoundary(path, trunks, "synthetic-main")
 	if err != nil {
-		t.Fatalf("SelectBoundary() override error = %v", err)
+		t.Fatalf("selectBoundary() override error = %v", err)
 	}
-	if base != "main" || source != "--trunk" || !reflect.DeepEqual(branches, []string{"feature"}) {
-		t.Errorf("override boundary = (%q, %q, %v)", base, source, branches)
+	if base != "synthetic-main" || source != "--trunk" {
+		t.Errorf("override boundary = (%q, %q)", base, source)
 	}
-	for _, requested := range []string{"missing", "staging", "feature"} {
-		if _, _, _, err := SelectBoundary(path, trunks, requested); err == nil {
-			t.Errorf("SelectBoundary(%q) error = nil", requested)
+	for _, requested := range []string{"synthetic-missing", "synthetic-staging", "synthetic-feature"} {
+		if _, _, err := selectBoundary(path, trunks, requested); err == nil {
+			t.Errorf("selectBoundary(%q) error = nil", requested)
 		}
 	}
 }

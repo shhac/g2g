@@ -201,7 +201,15 @@ func (s Service) settlePush(ctx context.Context, step Step, tip string, remote s
 	// and the answer to that is to wait longer -- so a push that never reached
 	// the remote at all sends somebody to raise a timeout that was never the
 	// problem. The remote is one cheap read and it separates them.
-	tips, readErr := s.Git.RemoteTips(ctx, remote, []string{step.Branch})
+	//
+	// Asked on a context of its own, because the wait only gives up once the
+	// budget has expired, and a read on that context never runs: the diagnosis
+	// existed and could not happen, which only a fake that ignored the context
+	// failed to notice. Bounded, so an unreachable remote cannot hold a command
+	// that has already run out of time.
+	diagnose, cancel := context.WithTimeout(context.WithoutCancel(ctx), diagnoseBudget)
+	defer cancel()
+	tips, readErr := s.Git.RemoteTips(diagnose, remote, []string{step.Branch})
 	if readErr != nil {
 		return err
 	}

@@ -23,6 +23,11 @@ const (
 	settleMost  = 8 * time.Second
 )
 
+// diagnoseBudget bounds the one read made after a wait has given up, which
+// runs past the mutation budget by design: that budget expiring is what ended
+// the wait, and the read is what says why.
+const diagnoseBudget = 10 * time.Second
+
 // pauser waits, or reports that the context gave up first.
 //
 // It is a parameter rather than a call to time.Sleep so that a test can drive

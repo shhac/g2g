@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
@@ -409,8 +410,17 @@ func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
 	}
 	w.pusher.silent = true
 	plan := w.plan(t, Defaults())
+	// The wait gives up the way the real one does: the budget runs out, and
+	// the context everything was asked on is done. The diagnosis ran on that
+	// context, so in production it never ran at all.
+	budget, expire := context.WithCancel(context.Background())
+	defer expire()
+	w.service.pause = func(ctx context.Context, _ time.Duration) error {
+		expire()
+		return ctx.Err()
+	}
 
-	err := w.service.Apply(context.Background(), plan)
+	err := w.service.Apply(budget, plan)
 
 	if err == nil {
 		t.Fatal("Apply() error = nil, want a refusal")

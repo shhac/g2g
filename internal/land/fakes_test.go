@@ -71,7 +71,12 @@ func (f *fakeGit) IsAncestor(_ context.Context, ancestor, descendant string) (bo
 	return slices.Contains(f.ancestors[descendant], ancestor), nil
 }
 
-func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (map[string]string, error) {
+// RemoteTips answers nothing on a context that is done, as a spawned process
+// does. A fake that answered anyway hid a diagnosis that could never run.
+func (f *fakeGit) RemoteTips(ctx context.Context, _ string, branches []string) (map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	tips := map[string]string{}
 	for _, branch := range branches {
 		if tip, published := f.tips[branch]; published {
@@ -276,6 +281,10 @@ func (f fakeSelector) Select(context.Context, stack.Selection, string) (stack.Sn
 // that never becomes true — which is not what the real one does, because it
 // stops when the context does. A test for a wait that never settles hung
 // instead of failing, so the fake gives up the way the budget would.
+//
+// It does not end the context, which the real budget does. A test of anything
+// that happens after a wait gives up has to end it itself, or it proves that
+// work runs on a context production has already cancelled.
 func instant(context.Context, time.Duration) error {
 	attempts.Add(1)
 	if attempts.Load() > 200 {

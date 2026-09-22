@@ -5,7 +5,7 @@ Target  beta  · --branch
   ● alpha  #1
   ● beta   unresolved: no open pull request  ← target
 
-Apply blocked: resolve every unresolved GitHub PR mapping first.
+Apply blocked: resolve every unresolved GitHub PR mapping first
 
 Command to run once unblocked
 gh stack link --base main alpha beta

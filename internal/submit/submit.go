@@ -82,6 +82,12 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	snapshot := discovery.Snapshot
+	// Missing pull requests are created each on the one before it, and the
+	// result is linked as one list, so a fork would open a pull request on its
+	// sibling and link the two as a line.
+	if err := snapshot.RequireLinear("submit"); err != nil {
+		return Plan{}, err
+	}
 	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
 	tips, err := s.Git.RemoteTips(ctx, remote, snapshot.Branches)
 	if err != nil {

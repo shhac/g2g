@@ -87,6 +87,7 @@ func statusView(plan link.Plan) stackView {
 		blocked.BlockedHeading = "Safe next action"
 		laid := repairAdvice(plan)
 		blocked.Advice = &laid
+		blocked.Repair, _ = plan.Repair()
 		return structureNote(blocked, plan.Snapshot)
 	}
 	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)

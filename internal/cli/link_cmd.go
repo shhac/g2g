@@ -30,7 +30,9 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 			}
 			root := commandContext(cmd.Context(), cmd, "link", applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[link.Plan]{
-				plan: func(ctx context.Context) (link.Plan, error) { return service.Plan(ctx, selection.Selection()) },
+				plan: func(ctx context.Context) (link.Plan, error) {
+					return linkable(service.Plan(ctx, selection.Selection()))
+				},
 				revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {
 					return service.Revalidate(ctx, selection.Selection(), preview)
 				},
@@ -39,6 +41,12 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 				execute:  service.Execute,
 				branches: func(plan link.Plan) int { return len(plan.Branches) },
 				noOp:     link.Plan.NothingToLink,
+				blocked: func(plan link.Plan) string {
+					if len(plan.Issues) == 0 {
+						return ""
+					}
+					return blockedReason(plan)
+				},
 				notices: flowNotices{
 					preview:       "Re-run with --apply to link.",
 					noOp:          "No changes were needed or made.",
@@ -57,6 +65,16 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 	selection.registerScope(cmd, shape.ProjectScopes, stack.ScopeStack, scopeUsage("link", shape.ProjectScopes))
 	cmd.Flags().BoolVar(&apply, "apply", false, "invoke gh stack link after revalidation")
 	return cmd
+}
+
+// linkable refuses a forked selection before anything is shown as a plan. The
+// plan itself is shared with status, which reads a fork happily, so the
+// refusal belongs to the command that projects it.
+func linkable(plan link.Plan, err error) (link.Plan, error) {
+	if err != nil {
+		return link.Plan{}, err
+	}
+	return plan, plan.Snapshot.RequireLinear("link")
 }
 
 func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) error {

@@ -12,8 +12,9 @@ import (
 // for a reader to agree to: they need to see which merge target changes.
 func retargetView(plan retarget.Plan) stackView {
 	view := stackView{Operation: "retarget", Target: plan.Target, TargetSource: plan.TargetSource}
+	view.Nodes = append(view.Nodes, stackNode{Branch: plan.Base, Trunk: true})
 	for _, branch := range plan.Discovery.Branches {
-		view.Nodes = append(view.Nodes, stackNode{Branch: branch})
+		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target})
 	}
 	if len(plan.Ambiguous) != 0 {
 		view = view.note(fmt.Sprintf("%s %s more than one open pull request · this leaves %s alone.",

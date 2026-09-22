@@ -7,7 +7,6 @@ import (
 
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/repair"
-	"github.com/shhac/g2g/internal/stack"
 )
 
 // advice is what to do and which branches it applies to.
@@ -42,56 +41,13 @@ type adviceStep struct {
 	Note   string
 }
 
-// repairAdvice names the command that actually repairs the state, and the
-// branches it acts on.
-//
-// The order is the order the cases have to be answered in, and merged comes
-// first because it is the only one no g2g command fixes: the stack itself is
-// stale, and Graphite has to restack around it before anything here helps.
+// repairAdvice lays out the repair link decided, with the branches it covers
+// down the left. The decision is link's; this is only how a person reads it,
+// so the sentence a machine reads and this column cannot name different
+// commands.
 func repairAdvice(plan link.Plan) advice {
-	if merged := plan.MergedBranches(); len(merged) != 0 {
-		return advice{
-			Ways:  []repair.Step{{Command: "gt sync", Effect: "restack in Graphite first · no g2g command fixes a merged branch"}},
-			Steps: steps(plan, link.IssueMerged),
-		}
-	}
-	// Landed comes before the pull-request cases for the same reason merged
-	// does: telling somebody to open a pull request for work already below the
-	// branch sends them to submit an empty change.
-	if landed := plan.LandedBranches(); len(landed) != 0 {
-		return advice{
-			Ways:  []repair.Step{forgetLanded(plan.Source)},
-			Steps: steps(plan, link.IssueLanded),
-		}
-	}
-	if plan.SyncRepairable() {
-		return advice{
-			Ways:  []repair.Step{{Command: "g2g sync", Effect: "every PR is open but based on the wrong branch"}},
-			Steps: steps(plan, link.IssueBase),
-		}
-	}
-	if plan.SubmitRepairable() {
-		return advice{
-			Ways:  []repair.Step{{Command: "g2g submit", Effect: pick(len(plan.Issues), "opens a new PR", fmt.Sprintf("opens a new PR for each of these %d branches", len(plan.Issues)))}},
-			Steps: steps(plan, link.IssueMissing, link.IssueClosed),
-		}
-	}
-	return advice{Ways: []repair.Step{{Effect: "resolve every unresolved GitHub PR mapping first"}}, Steps: steps(plan)}
-}
-
-// forgetLanded names what removes a branch whose work is already below it,
-// which depends on which record answered. prune edits g2g's own graph, so it
-// would find nothing to forget in a repository whose structure Graphite
-// declares — and a structure read from pull request bases is not a record
-// anything here edits at all.
-func forgetLanded(source stack.Source) repair.Step {
-	switch source {
-	case stack.SourceGraphite:
-		return repair.Step{Command: "gt sync", Effect: "restack in Graphite around the branches that have landed"}
-	case stack.SourceG2G:
-		return repair.Step{Command: "g2g prune", Effect: "forget the branches whose work is already below them"}
-	}
-	return repair.Step{Effect: "remove them wherever their structure is recorded · nothing here holds it"}
+	note, kinds := plan.Repair()
+	return advice{Ways: note.Ways, Steps: steps(plan, kinds...)}
 }
 
 // steps lists the branches this advice acts on, annotating only the ones the

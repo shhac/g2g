@@ -97,8 +97,15 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
+	// Which base each pull request should have is well defined on a fork, and
+	// the edges below are what answer it. The refusal is the projection rule
+	// every publishing command follows, so a person always retargets exactly
+	// the line they would link and push.
+	if err := discovery.Snapshot.RequireLinear("retarget"); err != nil {
+		return Plan{}, err
+	}
 	plan := Plan{Discovery: discovery, Changes: []Change{}, Ambiguous: []string{}}
-	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
+	for step := range githubstack.Across(expectedParents(discovery.Snapshot), discovery.Branches, discovery.PullRequests) {
 		switch step.Classify() {
 		case githubstack.StepAmbiguous:
 			plan.Ambiguous = append(plan.Ambiguous, step.Branch)
@@ -119,6 +126,29 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 		diagnostic.Field{Key: "ambiguous", Value: fmt.Sprintf("%d", len(plan.Ambiguous))},
 	)
 	return plan, nil
+}
+
+// expectedParents is the branch each selected one should be based on: its
+// recorded parent, and the base for the selection's own roots. A rolling base
+// would compare a pull request with whichever sibling happened to come first,
+// so it is used only for a selection that records no edges at all, which can
+// only be a line.
+func expectedParents(snapshot stack.Snapshot) map[string]string {
+	parents := make(map[string]string, len(snapshot.Branches))
+	below := snapshot.Base
+	for _, branch := range snapshot.Branches {
+		parent, within := snapshot.ParentOf(branch)
+		switch {
+		case within:
+		case len(snapshot.Parents) == 0:
+			parent = below
+		default:
+			parent = snapshot.Base
+		}
+		parents[branch] = parent
+		below = branch
+	}
+	return parents
 }
 
 // Revalidate re-reads the world and refuses if anything moved since preview.

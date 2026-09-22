@@ -170,11 +170,14 @@ to re-resolve anything.
 
 A blocked preview names the command that repairs the state rather than leaving
 the reader to work it out. A branch whose pull request has merged points at
-`gt sync`, because the stack itself is stale and only Graphite can restack
-around it; a branch with no pull request, or one closed without merging, points
-at `g2g submit`; a pull request open on the wrong branch points at `g2g link`.
-Two open pull requests for one branch is the only state with no command to
-offer, and it says so. `status` gives the same advice, phrased as a next step.
+whatever brings the stack past it — `g2g sync` for a stack g2g records, `gt
+sync` for one Graphite declares, and no command for one read from pull request
+bases, which nothing here records. A branch whose work has already landed points
+at `g2g prune` or `gt sync` the same way; a branch with no pull request, or one
+closed without merging, at `g2g submit`; a pull request open on the wrong
+branch at `g2g retarget`. Two open pull requests for one branch is the only
+state with no command to offer, and it says so. `status` gives the same advice,
+phrased as a next step, and `--json` carries it as `repair`.
 
 Color is enabled only for an interactive terminal. It is disabled for redirected
 output, CI, `NO_COLOR`, and `TERM=dumb`, so the plain graph is deterministic
@@ -717,7 +720,7 @@ missing a pull request, and the advice for that is to open one for a change
 already in the trunk.
 
 `pr✗`
-is a pull request that is missing, closed, merged, or ambiguous — not a
+is a pull request that is missing, closed, or ambiguous — not a
 statement about a base, because a branch with no pull request has no base to be
 wrong about. Read the column for `✗`: a wide line whose first word is green
 `base✓` and whose remainder is a divergence used to be one string in one

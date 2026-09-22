@@ -112,12 +112,20 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
 	}
+	if len(plan.Issues) != 0 {
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
+	}
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: "+runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft)))
 }
 
 func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
+	}
+	// A preview that is already blocked must not close by inviting an apply
+	// that will refuse; the rendered view names the reason.
+	if len(plan.Issues) != 0 {
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
 	}
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+" to push, create missing PRs, and link.")
 }

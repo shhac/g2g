@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
-	"github.com/shhac/g2g/internal/stack"
 )
 
 func linkView(plan link.Plan) stackView {
@@ -45,7 +43,9 @@ func linkView(plan link.Plan) stackView {
 		view.Action = append([]string{"gh", "stack", "link", "--base", plan.Base}, plan.Branches...)
 	}
 	if len(plan.Issues) != 0 {
-		return view.blockedBy(blockedReason(plan))
+		blocked := view.blockedBy(blockedReason(plan))
+		blocked.Repair, _ = plan.Repair()
+		return blocked
 	}
 	if len(view.Action) == 0 {
 		return view.note("Nothing to link — this stack has one pull request.", severityNeutral)
@@ -53,62 +53,16 @@ func linkView(plan link.Plan) stackView {
 	return view
 }
 
-// blockedReason names the command that actually repairs the state. A blocked
-// preview that only says "resolve the mappings" leaves the reader to work out
-// which of five commands — or which Graphite command — applies, and the plan
-// already knows.
+// blockedReason is link's repair as the one sentence a machine reads, with
+// each command marked so a person's renderer can draw it.
 //
 // It returns the reason without a label. status wants the same sentence under a
 // different heading, and it used to get one by string-replacing the prefix back
 // out of a rendered line — which quietly tied one command's output to a literal
 // six other files typed by hand.
 func blockedReason(plan link.Plan) string {
-	// Merged branches come first: they are the only case no g2g command
-	// fixes. The stack itself is stale, and Graphite has to restack around
-	// them before anything here can help.
-	if merged := plan.MergedBranches(); len(merged) != 0 {
-		return fmt.Sprintf("%s already merged. Run %s in Graphite to restack, then re-run.", branchList(merged), runnable("gt sync"))
-	}
-	if landed := plan.LandedBranches(); len(landed) != 0 {
-		return branchList(landed) + pick(len(landed), " has", " have") + " already landed. " + forgetSentence(plan.Source)
-	}
-	if plan.SyncRepairable() {
-		return "every pull request is open but based on the wrong branch. Run " + runnable("g2g sync") + " to preview reconciling them."
-	}
-	if plan.SubmitRepairable() {
-		return submitAdvice(plan) + " Run " + runnable("g2g submit") + " to create " + pick(len(plan.Issues), "it", "them") + "."
-	}
-	return "resolve every unresolved GitHub PR mapping first."
-}
-
-// forgetSentence says the same thing forgetLanded lays out, for the one line a
-// machine reads. Both come from the same step, so they cannot name different
-// commands.
-func forgetSentence(source stack.Source) string {
-	way := forgetLanded(source)
-	if way.Command == "" {
-		return way.Effect + "."
-	}
-	return "Run " + runnable(way.Command) + " to " + way.Effect + "."
-}
-
-func submitAdvice(plan link.Plan) string {
-	var missing, closed []string
-	for _, issue := range plan.Issues {
-		if issue.Kind == link.IssueClosed {
-			closed = append(closed, issue.Branch)
-			continue
-		}
-		missing = append(missing, issue.Branch)
-	}
-	switch {
-	case len(closed) == 0:
-		return branchList(missing) + pick(len(missing), " has", " have") + " no pull request."
-	case len(missing) == 0:
-		return branchList(closed) + " had its pull request closed."
-	default:
-		return branchList(missing) + pick(len(missing), " has", " have") + " no pull request, and " + branchList(closed) + " had one closed."
-	}
+	note, _ := plan.Repair()
+	return note.SentenceWith(runnable)
 }
 
 // branchList renders one or more branch names as a readable subject.

@@ -54,24 +54,22 @@ type Plan struct {
 	Currency map[string]Currency
 }
 
-// IssueKind classifies why a node blocks apply. link's policy is stricter than
-// sync's, and a caller needs to distinguish them to say which command fixes
-// what: sync reconciles a wrong base but deliberately refuses to invent,
-// disambiguate, or reopen a pull request.
+// IssueKind classifies why a node blocks apply. Each kind has a different
+// command that repairs it, and Repair is where that is decided.
 type IssueKind string
 
 const (
 	// IssueBase is a pull request that exists and is open but is not based on
-	// its Graphite predecessor. This is the one kind sync repairs.
+	// the branch below it. retarget repairs it.
 	IssueBase IssueKind = "base"
 	// IssueMissing is a branch with no open pull request.
 	IssueMissing IssueKind = "missing"
 	// IssueClosed is a branch whose pull requests were closed without merging.
 	// A replacement can be created, so submit resolves it.
 	IssueClosed IssueKind = "closed"
-	// IssueMerged is a branch whose work has landed. Nothing g2g does fixes
-	// this: the branch no longer belongs in the stack, and only Graphite can
-	// restack around it.
+	// IssueMerged is a branch whose pull request merged. The branch no longer
+	// belongs in the stack, and what brings the stack past it depends on which
+	// record describes it.
 	IssueMerged IssueKind = "merged"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
@@ -99,9 +97,9 @@ type Issue struct {
 	Number int
 }
 
-// MergedBranches lists branches whose pull requests have landed. They are
-// reported first, because no g2g command resolves them — the stack itself is
-// stale and Graphite has to restack around them.
+// MergedBranches lists branches whose pull requests have merged. They are
+// reported first: the stack itself is stale, and nothing else is worth doing
+// until it is brought past them.
 func (p Plan) MergedBranches() []string {
 	var merged []string
 	for _, issue := range p.Issues {
@@ -124,16 +122,6 @@ func (p Plan) LandedBranches() []string {
 	}
 	return landed
 }
-
-// SyncRepairable reports whether every blocker is a base that sync is designed
-// to reconcile, so a caller can name the command that actually fixes this
-// instead of leaving the user to work it out.
-func (p Plan) SyncRepairable() bool { return p.allIssuesAre(IssueBase) }
-
-// SubmitRepairable reports whether every blocker is a branch submit can
-// resolve: one with no pull request, or one whose pull request was closed
-// without merging, for which submit creates a replacement.
-func (p Plan) SubmitRepairable() bool { return p.allIssuesAre(IssueMissing, IssueClosed) }
 
 func (p Plan) allIssuesAre(kinds ...IssueKind) bool {
 	if len(p.Issues) == 0 {
@@ -238,6 +226,11 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		return fmt.Errorf("link service is not fully configured")
 	}
 	if err := plan.Snapshot.RequireActionable("g2g link"); err != nil {
+		return err
+	}
+	// gh stack link takes one ordered list. Handed a fork, it would link the
+	// siblings as though each sat on the one before it.
+	if err := plan.Snapshot.RequireLinear("link"); err != nil {
 		return err
 	}
 	if len(plan.Issues) != 0 {

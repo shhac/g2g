@@ -405,19 +405,6 @@ func TestAssessedIssuesCarryTheirKind(t *testing.T) {
 	}
 }
 
-func TestSyncRepairableRequiresEveryIssueToBeABase(t *testing.T) {
-	base := Issue{Branch: "a", Kind: IssueBase}
-	if !(Plan{Issues: []Issue{base, {Branch: "b", Kind: IssueBase}}}).SyncRepairable() {
-		t.Error("all-base plan = false, want true")
-	}
-	if (Plan{Issues: []Issue{base, {Branch: "b", Kind: IssueMissing}}}).SyncRepairable() {
-		t.Error("mixed plan = true, want false")
-	}
-	if (Plan{}).SyncRepairable() {
-		t.Error("clean plan = true, want false")
-	}
-}
-
 // applyPlan drives the sequence production actually performs: revalidate, then
 // execute. The service deliberately no longer composes the two, because the
 // CLI interposes the ready-to-apply render and its flush between them, so a

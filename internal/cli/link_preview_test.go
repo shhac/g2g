@@ -10,10 +10,10 @@ import (
 	"github.com/shhac/g2g/internal/stack"
 )
 
-// link refuses a wrong base but sync reconciles exactly that, so a path
-// blocked solely on bases must name sync rather than leave the reader to
-// discover it.
-func TestLinkBlockedOnlyOnBasesPointsAtSync(t *testing.T) {
+// link refuses a wrong base and retarget moves exactly that, so a path blocked
+// solely on bases must name retarget. It named sync once, which never touches a
+// pull request.
+func TestLinkBlockedOnlyOnBasesPointsAtRetarget(t *testing.T) {
 	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "beta", Base: "main", Branches: []string{"alpha", "beta"}}, PullRequests: []githubstack.PullRequest{
 		{Number: 1, Head: "alpha", Base: "main", State: "OPEN"},
 		{Number: 2, Head: "beta", Base: "main", State: "OPEN"},
@@ -23,8 +23,8 @@ func TestLinkBlockedOnlyOnBasesPointsAtSync(t *testing.T) {
 	if err := writeLinkPlan(&output, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "g2g sync") {
-		t.Errorf("base-only blocker did not name sync:\n%s", output.String())
+	if !strings.Contains(output.String(), "g2g retarget") || strings.Contains(output.String(), "g2g sync") {
+		t.Errorf("base-only blocker did not name retarget alone:\n%s", output.String())
 	}
 }
 
@@ -71,35 +71,50 @@ func TestLinkBlockedOnMixedCausesDoesNotPointAtSync(t *testing.T) {
 func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 	for _, test := range []struct {
 		name   string
+		source stack.Source
 		issues []link.Issue
 		want   string
 	}{
 		{
-			name:   "merged branch needs Graphite, not g2g",
+			name:   "merged branch in a Graphite stack is Graphite's to restack",
+			source: stack.SourceGraphite,
 			issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"}},
-			want:   "feat-a already merged. Run gt sync in Graphite to restack",
+			want:   "feat-a already merged · run gt sync to restack in Graphite",
+		},
+		{
+			name:   "merged branch in g2g's own graph is sync's",
+			source: stack.SourceG2G,
+			issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"}},
+			want:   "feat-a already merged · run g2g sync to advance the trunk",
+		},
+		{
+			name:   "merged branch read from pull request bases has no command here",
+			source: stack.SourcePullRequest,
+			issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"}},
+			want:   "feat-a already merged · update the trunk and restack wherever this stack is recorded",
 		},
 		{
 			// Merged wins over everything: nothing here helps until the stack
 			// itself is restacked.
-			name: "merged alongside other blockers still points at Graphite",
+			name:   "merged alongside other blockers is still answered first",
+			source: stack.SourceG2G,
 			issues: []link.Issue{
 				{Branch: "feat-a", Kind: link.IssueMerged, Reason: "merged pull request"},
 				{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"},
 			},
-			want: "feat-a already merged. Run gt sync in Graphite to restack",
+			want: "feat-a already merged · run g2g sync",
 		},
 		{
 			name:   "missing pull request needs submit",
 			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"}},
-			want:   "feat-c has no pull request. Run g2g submit",
+			want:   "feat-c has no pull request · run g2g submit to open a new pull request",
 		},
 		{
 			// submit creates a replacement for a closed pull request, so it is
 			// the right command here too.
 			name:   "closed pull request also needs submit",
 			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueClosed, Reason: "closed pull request"}},
-			want:   "feat-c had its pull request closed. Run g2g submit",
+			want:   "feat-c had its pull request closed · run g2g submit",
 		},
 		{
 			name: "several missing branches read as a list",
@@ -107,12 +122,12 @@ func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 				{Branch: "feat-b", Kind: link.IssueMissing, Reason: "no open pull request"},
 				{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open pull request"},
 			},
-			want: "feat-b and feat-c have no pull request. Run g2g submit",
+			want: "feat-b and feat-c have no pull request · run g2g submit to open a new pull request for each of these 2 branches",
 		},
 		{
-			name:   "wrong base needs sync",
+			name:   "wrong base needs retarget",
 			issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueBase, Reason: "PR #3 base main, want feat-b"}},
-			want:   "Run g2g sync",
+			want:   "run g2g retarget to point each pull request at the branch below it",
 		},
 		{
 			// Ambiguity is the one case a person has to resolve by hand.
@@ -122,7 +137,7 @@ func TestBlockedPreviewNamesTheCommandThatFixesIt(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "feat-c", Base: "main", Branches: []string{"feat-a", "feat-b", "feat-c"}}}, Issues: test.issues}
+			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "feat-c", Base: "main", Branches: []string{"feat-a", "feat-b", "feat-c"}, Source: test.source}}, Issues: test.issues}
 			// The wording is what this pins, not the decoration: a command
 			// inside the sentence is marked for the renderer, and the marks
 			// sit exactly where the reader sees a highlight.
@@ -160,17 +175,22 @@ func TestShellQuoteLeavesSafeArgumentsAloneAndQuotesTheRest(t *testing.T) {
 func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
 	for _, test := range []struct {
 		name    string
+		source  stack.Source
 		issues  []link.Issue
 		command string
 	}{
-		{name: "merged", issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "PR merged"}}, command: "gt sync"},
+		{name: "merged, graphite", source: stack.SourceGraphite, issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "PR merged"}}, command: "gt sync"},
+		{name: "merged, g2g", source: stack.SourceG2G, issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "PR merged"}}, command: "g2g sync"},
+		{name: "merged, pull requests", source: stack.SourcePullRequest, issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueMerged, Reason: "PR merged"}}, command: ""},
+		{name: "landed, g2g", source: stack.SourceG2G, issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueLanded, Reason: "landed"}}, command: "g2g prune"},
+		{name: "landed, graphite", source: stack.SourceGraphite, issues: []link.Issue{{Branch: "feat-a", Kind: link.IssueLanded, Reason: "landed"}}, command: "gt sync"},
 		{name: "missing", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueMissing, Reason: "no open PR"}}, command: "g2g submit"},
 		{name: "closed", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueClosed, Number: 7, Reason: "PR closed"}}, command: "g2g submit"},
-		{name: "wrong base", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueBase, Number: 3, Reason: "PR #3 base main, want feat-b"}}, command: "g2g sync"},
+		{name: "wrong base", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueBase, Number: 3, Reason: "PR #3 base main, want feat-b"}}, command: "g2g retarget"},
 		{name: "ambiguous has no command", issues: []link.Issue{{Branch: "feat-c", Kind: link.IssueAmbiguous, Reason: "2 open PRs"}}, command: ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{Issues: test.issues}
+			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Source: test.source}}, Issues: test.issues}
 
 			named := repairAdvice(plan).commands()
 			if test.command == "" {

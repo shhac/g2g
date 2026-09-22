@@ -304,11 +304,14 @@ description: |
   renderers over the same validated view, they suppress colour and every
   human-facing line, and `schemaVersion` signals breaking changes. Never scrape
   the pretty graph.
-- A blocked preview names the repairing command: merged pull requests point at
-  `g2g sync` when the recorded stack needs its base advanced and replayed,
-  missing or closed ones at `g2g submit`, and a wrong base at `g2g retarget`.
-  Two open pull requests for one branch is deliberately unadvised — a person
-  must choose.
+- A blocked preview names the repairing command, decided once in
+  `link.Plan.Repair` (a `repair.Note`) and rendered from it for both readers:
+  merged pull requests point at `g2g sync` for a g2g-recorded stack and `gt
+  sync` for a Graphite one, landed branches at `g2g prune`/`gt sync`, missing or
+  closed ones at `g2g submit`, and a wrong base at `g2g retarget` — never
+  `sync`, which does not touch pull requests. A structure read from pull request
+  bases gets no command, because nothing here records it. Two open pull
+  requests for one branch is deliberately unadvised — a person must choose.
 - A branch's annotation is a list of `stackMark` — one axis each, one severity
   each: `base✓`/`base✗`, `head✗`, `pr✗`, and a subject-less mark for what is
   about no axis. Build them and call `stackNode.marked`, which renders `State`

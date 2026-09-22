@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/submit"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // The submission spec is a document the user edits by hand, so its lifecycle —
@@ -81,9 +81,7 @@ func editSpec(ctx context.Context, path string) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("EDITOR is empty; use --write-spec <private-temp-dir> instead")
 	}
-	command := exec.CommandContext(ctx, parts[0], append(parts[1:], path)...)
-	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return command.Run()
+	return subprocess.RunInteractive(ctx, parts[0], append(parts[1:], path)...)
 }
 
 func actionableSpecError(err error, path string) error {

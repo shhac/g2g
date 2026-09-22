@@ -131,8 +131,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 - A trunk is evidenced, never guessed. `git.Client.DefaultBranch` reads
   `refs/remotes/<remote>/HEAD`, which clone writes, so the ordinary case is
   answered locally with no network and no config. It is wired as an optional
-  `TrunkEvidence` on `graph.Service` and `stack.Resolver`, and it may only
-  choose how advice is phrased — never what a command selects. An unset ref is
+  `TrunkEvidence` on `graph.Service` and `stack.Resolver`, and it never
+  chooses what a command selects. Two commands that record structure may let it
+  *permit* a root the user is building on — `create` from the default branch
+  and `import --from pull-request` onto it — because the user named the branch
+  and the evidence only confirms it is a trunk; without it they refuse and name
+  `g2g track`. It never picks a trunk nobody named. An unset ref is
   an empty answer rather than an error, because a repository nobody has told is
   ordinary. The g2g graph's own trunks cannot fill this role on their own: they
   are branches nothing sits under, so an empty store has none at all, which is

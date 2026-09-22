@@ -104,6 +104,7 @@ func TestEveryScopeSelectsTheSameBranchesFromEitherRecord(t *testing.T) {
 			if snapshot.Scope != test.scope {
 				t.Errorf("snapshot reports scope %q, want %q", snapshot.Scope, test.scope)
 			}
+			assertEveryBranchHangsFromSomething(t, "Graphite", snapshot, parents)
 
 			// What the g2g store answers, through the selector commands
 			// actually use. Comparing Graphite against a bare traversal proved
@@ -123,10 +124,32 @@ func TestEveryScopeSelectsTheSameBranchesFromEitherRecord(t *testing.T) {
 			if recorded.Scope != test.scope {
 				t.Errorf("the g2g snapshot reports scope %q, want %q", recorded.Scope, test.scope)
 			}
+			assertEveryBranchHangsFromSomething(t, "the g2g store", recorded, parents)
 			if !maps.Equal(recorded.Parents, snapshot.Parents) {
 				t.Errorf("the records carry different shapes:\n  store:    %v\n  Graphite: %v", recorded.Parents, snapshot.Parents)
 			}
 		})
+	}
+}
+
+// assertEveryBranchHangsFromSomething checks that the snapshot says where each
+// acted-on branch sits, including a selection root whose parent is the base
+// outside the selection.
+//
+// Dropping that one edge is what made a subtree's root read as having no
+// expected base: a consumer asking what the root's pull request should be
+// based on got the empty string, and reported "want " with nothing after it.
+func assertEveryBranchHangsFromSomething(t *testing.T, record string, snapshot Snapshot, parents map[string]string) {
+	t.Helper()
+	for _, branch := range snapshot.Branches {
+		got, ok := snapshot.ParentOf(branch)
+		if !ok {
+			t.Errorf("%s: %q has no parent in the snapshot, want %q", record, branch, parents[branch])
+			continue
+		}
+		if got != parents[branch] {
+			t.Errorf("%s: %q hangs from %q, want %q", record, branch, got, parents[branch])
+		}
 	}
 }
 

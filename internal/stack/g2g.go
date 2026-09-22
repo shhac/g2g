@@ -86,10 +86,7 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 		BaseSource:   baseSource,
 		Branches:     branches,
 		Scope:        scope,
-		// Shape, restricted to the selection, so a renderer knows where this
-		// selection's own roots are. A linear selection yields edges that form
-		// a chain, which renders exactly as it always has.
-		Parents: forest.Restrict(discovery.Branches),
+		Parents:      selectionParents(forest, discovery.Branches, base),
 	}, nil
 }
 

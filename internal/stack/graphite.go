@@ -109,7 +109,7 @@ func resolveGraphite(ctx context.Context, graphiteClient Graphite, target, sourc
 		Base:         base,
 		BaseSource:   baseSource,
 		Branches:     branches,
-		Parents:      forest.Restrict(selected),
+		Parents:      selectionParents(forest, selected, base),
 		Scope:        scope,
 	}, nil
 }

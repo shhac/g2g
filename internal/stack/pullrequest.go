@@ -146,7 +146,7 @@ func selectPullRequestSnapshot(selection Selection, target, source string, local
 		Base:         base,
 		BaseSource:   "pull request base",
 		Branches:     branches,
-		Parents:      forest.Restrict(selected),
+		Parents:      selectionParents(forest, selected, base),
 		Scope:        scope,
 		Absent:       selectedAbsent(branches, absent),
 		Unfollowed:   published.Unfollowed,

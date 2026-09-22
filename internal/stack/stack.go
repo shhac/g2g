@@ -126,12 +126,16 @@ type Snapshot struct {
 	Base       string
 	BaseSource string
 	Branches   []string
-	// Parents carries the shape that Branches alone cannot express, restricted
-	// to the selection: a branch whose parent lies outside it is absent, which
-	// is how a renderer knows the selection's own roots.
+	// Parents carries the shape that Branches alone cannot express: the edges
+	// among the selection, plus the edge from each of its roots to Base. Every
+	// acted-on branch therefore has its parent here, whether that parent is
+	// selected or is the base the selection hangs from; a branch whose parent
+	// is neither is absent.
 	//
-	// A linear selection leaves this nil. Every consumer that predates forked
-	// selection reads Branches and is unaffected.
+	// The edge to the base matters for a scope rooted at the target — branch
+	// and subtree — where the base sits outside the selection. Without it the
+	// target read as having no parent at all, and a consumer asking what its
+	// pull request should be based on got the empty string.
 	Parents map[string]string
 	// Scope is what was actually selected, so a renderer can say how much of
 	// the structure it is showing.
@@ -152,9 +156,7 @@ type Snapshot struct {
 	Source Source
 }
 
-// ParentOf reports the selected parent of a branch. A linear selection records
-// no edges, so it answers false for everything and any renderer asking about
-// shape gets the same answer it did before scopes existed.
+// ParentOf reports the parent of a branch within the selection or its base.
 func (s Snapshot) ParentOf(branch string) (string, bool) {
 	parent, within := s.Parents[branch]
 	if !within || parent == "" {
@@ -245,6 +247,17 @@ func branchSet(branches []string) map[string]bool {
 		set[branch] = true
 	}
 	return set
+}
+
+// selectionParents is the selection's shape together with what its roots hang
+// from.
+//
+// Restricting to the selection alone dropped the edge from a target-rooted
+// scope's root to its base, because the base is not selected. Restricting to
+// the selection and the base keeps that edge and nothing further: the base's
+// own parent is not in the set, so nothing above the base leaks in.
+func selectionParents(forest Forest, selected []string, base string) map[string]string {
+	return forest.Restrict(append(slices.Clone(selected), base))
 }
 
 // validateSelectionIsSafe refuses a name a process would read as an option.

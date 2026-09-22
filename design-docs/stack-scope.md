@@ -167,6 +167,16 @@ own to be tested through.
 selection where no branch has two selected children reads better as the list
 every other command shows than as a staircase that gains no information.
 
+The shape a selection carries (`Snapshot.Parents`) is the edges among the
+selected branches plus the edge from each selection root to the base. For a
+scope that reaches the trunk that edge was always there, because the base opens
+the selection. For `branch` and `subtree` the base is the target's parent and
+sits outside it, and dropping that one edge left the target with no parent at
+all — so a pull request check asked what it should be based on and got nothing.
+Every acted-on branch now has its parent in the shape, whichever scope selected
+it, and a forked subtree draws hanging from its base the way the same fork
+does under `stack`.
+
 Where a GitHub stack overlaps a tree, both are shown — the tree is the
 structure, and the native stack's members are marked within it, so the linear
 path is visible as part of the whole rather than instead of it.

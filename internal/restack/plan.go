@@ -37,8 +37,9 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		return Plan{}, err
 	}
 	plan := Plan{Discovery: discovery, Onto: onto, Absorb: absorb}
-	if blocked := s.blockedReason(discovery); blocked != "" {
-		plan.Blocked = blocked
+	if blocked := s.blockedReason(discovery); blocked.Reason != "" {
+		plan.Repair = blocked
+		plan.Blocked = blocked.Sentence()
 		return plan, nil
 	}
 	if roots := selectionRoots(discovery); onto.Reparents() && len(roots) > 1 {
@@ -104,15 +105,27 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 
 // blockedReason refuses any selection whose recorded structure cannot be
 // trusted to describe what to replay.
-func (s Service) blockedReason(discovery graph.Discovery) string {
+func (s Service) blockedReason(discovery graph.Discovery) repair.Note {
 	for _, branch := range discovery.Branches {
 		state := discovery.States[branch]
 		if state == graph.StateUntracked {
 			// The root of a path is the base, not something to rewrite.
 			continue
 		}
+		if state == graph.StateBranchMissing {
+			// An edge left behind by a branch deleted with plain Git. There is
+			// nothing to retrack -- no branch to record a parent for -- so the
+			// way out is to forget the edge.
+			return repair.Note{
+				Reason: fmt.Sprintf("%s is recorded but is no longer a local branch", branch),
+				Ways: []repair.Step{{
+					Command: "g2g untrack --branch " + branch,
+					Effect:  "forget the edge it left behind",
+				}},
+			}
+		}
 		if !state.Restackable() {
-			return fmt.Sprintf("%s is %s · retrack it before restacking", branch, state)
+			return repair.Note{Reason: fmt.Sprintf("%s is %s · retrack it before restacking", branch, state)}
 		}
 		// An edge written before fork points were recorded says where the
 		// branch hangs but not where its own commits begin. Standing in the
@@ -121,10 +134,10 @@ func (s Service) blockedReason(discovery graph.Discovery) string {
 		// rewrite silently becomes a no-op. Refuse and say so, rather than
 		// report success having replayed nothing.
 		if edge, tracked := discovery.Graph.Edges[branch]; tracked && edge.ForkPoint == "" && state != graph.StateAligned {
-			return fmt.Sprintf("%s was recorded before fork points were · retrack it before restacking", branch)
+			return repair.Note{Reason: fmt.Sprintf("%s was recorded before fork points were · retrack it before restacking", branch)}
 		}
 	}
-	return ""
+	return repair.Note{}
 }
 
 // selectionRoots names the branches the selection records an edge for whose

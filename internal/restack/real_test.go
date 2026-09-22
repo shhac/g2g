@@ -470,6 +470,35 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	}
 }
 
+// A branch deleted with plain Git leaves its edge behind. The refusal told the
+// reader to retrack it, but there is no branch to record a parent for; the
+// way out is to forget the edge.
+func TestAMissingBranchIsRefusedWithUntrackAsTheWayOut(t *testing.T) {
+	r := newRealStack(t)
+	r.branch("synthetic-a", "synthetic-main", "a.txt", "a")
+	r.branch("synthetic-b", "synthetic-a", "b.txt", "b")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Run("branch", "-q", "-D", "synthetic-b")
+
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, nil)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if !strings.Contains(plan.Blocked, "synthetic-b") {
+		t.Fatalf("Blocked = %q, want a refusal naming synthetic-b", plan.Blocked)
+	}
+	if strings.Contains(plan.Blocked, "retrack") {
+		t.Errorf("Blocked = %q; there is no branch left to retrack", plan.Blocked)
+	}
+	var commands []string
+	for _, way := range plan.Repair.Ways {
+		commands = append(commands, way.Command)
+	}
+	if got := strings.Join(commands, ","); got != "g2g untrack --branch synthetic-b" {
+		t.Errorf("ways out = %q, want the untrack that forgets the edge", got)
+	}
+}
+
 // The rebase engine checks out what it rewrites, so a restack run from outside
 // the stack ended on whichever branch was rebased last. The journal recorded a
 // branch to return to, and nothing read it -- and what it recorded was the

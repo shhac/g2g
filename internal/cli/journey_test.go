@@ -602,15 +602,17 @@ func TestJourneyAChildOfASupersededBranchIsReplayedOntoIt(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
-// Taking the published version of the bottom of a stack and keeping your own
-// work above it. The case: the lower branches were rebased somewhere else and
-// pushed, and the upper ones carry work only this machine has.
+// The boundary is a narrowing, not an enabler: it stops --take published
+// reaching branches you were not thinking about.
 //
-// What is kept above the boundary is not left alone — it is replayed onto the
-// taken branch below, which is what sync does anyway. And what has diverged
-// above the boundary is still refused, because a boundary says where you have
-// decided, not that you have decided everywhere.
-func TestJourneyTakingThePublishedVersionThroughABranch(t *testing.T) {
+// --take published is otherwise all or nothing, and it only ever changes the
+// outcome for a branch that has genuinely diverged from its own published
+// version — that is the single case collect consults it for. So with two
+// diverged branches it takes both, discarding local work on the upper one
+// alongside the lower one you actually meant. --through stops at the branch
+// you named and refuses the rest, which is the whole point: a boundary says
+// where you have decided.
+func TestJourneyABoundaryRefusesTheDivergenceAboveIt(t *testing.T) {
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "a.txt")
 	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
@@ -618,35 +620,66 @@ func TestJourneyTakingThePublishedVersionThroughABranch(t *testing.T) {
 	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
 	mustRun(t, "push", "--apply")
 
-	// Somebody rebases synthetic-a and publishes it, so the published version
-	// shares no commit ids with yours and carries work of its own.
+	// Somebody publishes their own version of both branches.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "theirs-a.txt", "theirs")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-b", "origin/synthetic-b")
+	w.commit(w.Other, "synthetic-b", "theirs-b.txt", "theirs")
+	w.git(w.Other, "push", "-q", "--force", "origin", "synthetic-a", "synthetic-b")
+
+	// And you have your own on both, so both have genuinely diverged.
+	w.commit(w.Local, "synthetic-a", "mine-a.txt", "mine")
+	w.commit(w.Local, "synthetic-b", "mine-b.txt", "mine")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	before := w.tip(w.Local, "synthetic-b")
+
+	// Bounded at synthetic-a: the branch above it still needs a decision, and
+	// nothing is touched until one is made.
+	bounded, _, _ := run(t, "sync", "--take", "published", "--through", "synthetic-a", "--apply")
+	if !strings.Contains(bounded, "synthetic-b") {
+		t.Errorf("the refusal does not name the branch above the boundary:\n%s", bounded)
+	}
+	if now := w.tip(w.Local, "synthetic-b"); now != before {
+		t.Errorf("synthetic-b moved to %s despite the run being refused", now)
+	}
+
+	// Unbounded, the same command takes synthetic-b as well — which is exactly
+	// what the boundary is there to prevent.
+	mustRun(t, "sync", "--take", "published", "--apply")
+	w.assertHas(w.Local, "synthetic-b", "theirs-b.txt")
+	w.assertClean(w.Local)
+}
+
+// Work above the boundary that has not diverged is kept and replayed onto what
+// was taken below it. Nothing consults --take for this branch at all: being
+// ahead of your published version is push's business, so the boundary changes
+// nothing here and the branch simply follows its parent.
+func TestJourneyUnpushedWorkAboveTheBoundaryIsReplayedOntoWhatWasTaken(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
 	w.git(w.Other, "fetch", "-q", "origin")
 	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
 	w.commit(w.Other, "synthetic-a", "theirs.txt", "theirs")
 	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
 	theirs := w.tip(w.Other, "synthetic-a")
 
-	// You have your own divergent version of synthetic-a, and new work on
-	// synthetic-b that exists nowhere else.
 	w.commit(w.Local, "synthetic-a", "mine.txt", "mine")
 	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic mine, revised")
 	w.commit(w.Local, "synthetic-b", "b-new.txt", "b-new")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
 
-	preview := mustRun(t, "sync", "--take", "published", "--through", "synthetic-a")
-	if !strings.Contains(preview, "discards") {
-		t.Errorf("the preview does not say what it would lose:\n%s", preview)
-	}
-
 	mustRun(t, "sync", "--take", "published", "--through", "synthetic-a", "--apply")
 
-	// Below the boundary: theirs won.
 	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
 		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
 	}
 	w.assertHas(w.Local, "synthetic-a", "theirs.txt")
-
-	// Above it: yours survived, replayed onto what was taken.
 	w.assertHas(w.Local, "synthetic-b", "b-new.txt")
 	w.assertHas(w.Local, "synthetic-b", "theirs.txt")
 	if !w.contains(w.Local, "synthetic-a", "synthetic-b") {

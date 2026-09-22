@@ -262,6 +262,77 @@ func TestAbsorbedSeesASquashCherryCannot(t *testing.T) {
 	}
 }
 
+// A squash the trunk has since edited over is still a squash that landed.
+// Merging the branch into the trunk as it is now conflicts -- both sides
+// changed the same lines, differently -- and a conflict read as "not absorbed"
+// sent a finished branch back to be replayed, where each of its commits
+// conflicts with the squashed and edited version of itself.
+func TestAbsorbedSeesASquashTheTrunkHasSinceEdited(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "base.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic first", "work.txt", "one")
+	repo.Commit("synthetic second", "work.txt", "one\ntwo")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	repo.Run("merge", "-q", "--squash", "synthetic-a")
+	repo.Run("commit", "-qm", "synthetic squash")
+	repo.Commit("synthetic follow-up", "work.txt", "one\nthree")
+	repo.Commit("synthetic other", "other.txt", "other")
+
+	inRepo(t, repo.Dir)
+	absorbed, err := Client{Runner: subprocess.ExecRunner{}}.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if !absorbed {
+		t.Error("a squash the trunk later edited over was not seen as absorbed")
+	}
+}
+
+// The trunk changing the same lines is not the branch landing. The earlier
+// look must find no trunk commit that already held the branch's work.
+func TestAConflictWithTheTrunkIsNotAbsorbed(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "work.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic mine", "work.txt", "mine")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	repo.Commit("synthetic theirs", "work.txt", "theirs")
+	repo.Commit("synthetic theirs again", "work.txt", "theirs again")
+
+	inRepo(t, repo.Dir)
+	absorbed, err := Client{Runner: subprocess.ExecRunner{}}.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if absorbed {
+		t.Error("a branch that conflicts with the trunk was reported as absorbed")
+	}
+}
+
+// A squash that was reverted is not landed: the work is not in the trunk. A
+// revert merges cleanly, so the earlier look is never reached.
+func TestARevertedSquashIsNotAbsorbed(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "base.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic first", "work.txt", "one")
+	repo.Commit("synthetic second", "work.txt", "one\ntwo")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	repo.Run("merge", "-q", "--squash", "synthetic-a")
+	repo.Run("commit", "-qm", "synthetic squash")
+	repo.Run("revert", "--no-edit", "HEAD")
+
+	inRepo(t, repo.Dir)
+	absorbed, err := Client{Runner: subprocess.ExecRunner{}}.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if absorbed {
+		t.Error("a branch whose squash was reverted was reported as absorbed")
+	}
+}
+
 // A branch with work of its own is not absorbed, however much it shares.
 func TestABranchWithWorkOfItsOwnIsNotAbsorbed(t *testing.T) {
 	repo := testutil.NewGitRepo(t, "synthetic-trunk")

@@ -21,7 +21,12 @@ import (
 // one at a time, the way land and restack already separate theirs.
 
 // compare asks how the base stands against the remote without changing it.
-func (s Service) compare(ctx context.Context, base, remote string, take Take) (advance, supersede, diverged bool, discards []string, err error) {
+func (s Service) compare(ctx context.Context, base, remote string, published map[string]string, take Take) (advance, supersede, diverged bool, discards []string, err error) {
+	// The base is not on the remote at all, which is ordinary for a local trunk
+	// that was never pushed.
+	if published[base] == "" {
+		return false, false, false, nil, nil
+	}
 	fetched := localgit.IsolatedRef(remote, base)
 	local, err := s.Git.Resolve(ctx, base)
 	if err != nil {
@@ -29,8 +34,6 @@ func (s Service) compare(ctx context.Context, base, remote string, take Take) (a
 	}
 	upstream, err := s.Git.Resolve(ctx, fetched)
 	if err != nil {
-		// The base is not on the remote at all, which is ordinary for a local
-		// trunk that was never pushed.
 		return false, false, false, nil, nil
 	}
 	if local == upstream {
@@ -74,16 +77,22 @@ func (s Service) compare(ctx context.Context, base, remote string, take Take) (a
 //     unpublished work, which is push's business.
 //   - genuinely diverged: you have work the published version does not, and
 //     choosing between them is not something to do behind your back.
-func (s Service) collect(ctx context.Context, remote, base string, branches []string, take Take) ([]Collection, repair.Note, error) {
+//
+// Whether a branch is published at all comes from the remote, never from the
+// fetched ref. Nothing prunes refs/g2g/remotes/, so a branch the remote has
+// since deleted still resolves there to whatever it last held -- and reading
+// that as the published version fast-forwarded a branch onto commits its
+// owner had dropped, or refused it as diverged from a version nobody has.
+func (s Service) collect(ctx context.Context, remote, base string, branches []string, onRemote map[string]string, take Take) ([]Collection, repair.Note, error) {
 	collect := make([]Collection, 0, len(branches))
 	stuck := make([]divergence, 0)
 	for _, branch := range branches {
-		if branch == base {
+		if branch == base || onRemote[branch] == "" {
+			// Not on the remote at all, which is ordinary for work in progress.
 			continue
 		}
 		published, err := s.Git.Resolve(ctx, localgit.IsolatedRef(remote, branch))
 		if err != nil {
-			// Not on the remote at all, which is ordinary for work in progress.
 			continue
 		}
 		local, err := s.Git.Resolve(ctx, branch)

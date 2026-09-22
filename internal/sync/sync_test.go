@@ -298,6 +298,23 @@ func TestPlanToleratesABaseTheRemoteDoesNotHave(t *testing.T) {
 	}
 }
 
+// The fetched ref outlives the branch: nothing prunes refs/g2g/remotes/, so a
+// base the remote has since deleted still resolves there to whatever it last
+// held. Advancing onto that would move the trunk to a version nobody publishes.
+func TestPlanIgnoresAFetchedRefTheRemoteNoLongerHas(t *testing.T) {
+	git := behindGit()
+	git.absentOnRemote = map[string]bool{"synthetic-trunk": true}
+	service, _ := newService(git, nil)
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Advance || plan.Diverged || plan.Blocked != "" {
+		t.Errorf("Advance = %t, Diverged = %t, Blocked = %q; want a base the remote deleted left alone", plan.Advance, plan.Diverged, plan.Blocked)
+	}
+}
+
 func TestPlanRequiresSomethingToSync(t *testing.T) {
 	git := behindGit()
 	store := &memoryStore{graph: graph.New()}

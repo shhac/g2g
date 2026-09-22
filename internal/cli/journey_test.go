@@ -512,6 +512,33 @@ func TestJourneySyncingAgainBeforePublishingTheReplay(t *testing.T) {
 	}
 }
 
+// A branch the remote deleted is not published, whatever g2g fetched of it
+// before.
+//
+// Nothing prunes refs/g2g/remotes/, so the version fetched by an earlier sync
+// is still there after the remote lets the branch go. Reading it as the
+// published version fast-forwarded a branch back onto the commit its owner had
+// just dropped.
+func TestJourneyABranchTheRemoteDeletedIsNotPublished(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.commit(w.Local, "synthetic-a", "regret.txt", "regret")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+	mustRun(t, "sync", "--apply")
+
+	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-a")
+	w.git(w.Local, "reset", "-q", "--hard", "HEAD~1")
+	dropped := w.tip(w.Local, "synthetic-a")
+
+	mustRun(t, "sync", "--apply")
+
+	if now := w.tip(w.Local, "synthetic-a"); now != dropped {
+		t.Errorf("sync moved synthetic-a from %s to %s · it brought back the commit that was dropped", dropped, now)
+	}
+	w.assertClean(w.Local)
+}
+
 // The same divergence, resolved by naming which side wins. This is the one path
 // where sync loses work that exists nowhere else, so the preview lists every
 // commit it would discard before anything happens.

@@ -191,7 +191,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
-	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, take)
+	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, published, take)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -210,7 +210,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// fetch and the fast-forward assessment come first.
 	// A location, never a parent: the trunk is about to be here, and recording
 	// a ref under refs/g2g/ as the parent is what broke every synced stack.
-	plan.Collect, plan.Repair, err = s.collect(ctx, remote, plan.Base, discovery.Branches, take)
+	plan.Collect, plan.Repair, err = s.collect(ctx, remote, plan.Base, discovery.Branches, published, take)
 	if err != nil {
 		return Plan{}, err
 	}

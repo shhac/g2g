@@ -175,6 +175,33 @@ func TestLandDefaultsToEveryCleanupAndToSquash(t *testing.T) {
 	}
 }
 
+// Exit 3 says something was achieved and is not coming back. A descent that
+// stopped before merging or tidying anything achieved nothing, so it is left to
+// the ordinary failure path -- "not applied", and the failure status -- rather
+// than telling a script that part of the stack had landed.
+func TestADescentThatChangedNothingIsAFailureNotAStop(t *testing.T) {
+	for name, test := range map[string]struct {
+		stopped *land.Stopped
+		claimed bool
+	}{
+		"nothing changed": {&land.Stopped{Branch: "synthetic-one", Err: errors.New("synthetic refusal")}, false},
+		"one merged":      {&land.Stopped{Landed: []string{"synthetic-one"}, Branch: "synthetic-two", Err: errors.New("synthetic refusal")}, true},
+		"one tidied":      {&land.Stopped{Tidied: []string{"synthetic-one"}, Branch: "synthetic-two", Err: errors.New("synthetic refusal")}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			cmd := newLand(land.Service{}, testCompletions(), nil, Presentation{})
+			cmd.SetOut(&out)
+
+			claimed, err := landInterrupted(cmd, test.stopped, Presentation{})
+
+			if claimed != test.claimed || wasStopped(err) != test.claimed {
+				t.Errorf("claimed = %t, stopped = %t; want both %t", claimed, wasStopped(err), test.claimed)
+			}
+		})
+	}
+}
+
 // A descent that stopped part-way is not a failure to retry — the merges that
 // happened are permanent — but it is not what was asked for either, and zero
 // told a script the whole stack had landed.

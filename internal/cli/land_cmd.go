@@ -66,13 +66,11 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 			blocked: func(plan land.Plan) string { return plan.Blocked },
 			// A descent that stops part-way has landed everything below where
 			// it stopped, and those merges stay. Reporting it as "not applied"
-			// would be wrong about the thing that matters most.
+			// would be wrong about the thing that matters most. One that
+			// stopped before changing anything is exactly "not applied", and
+			// exits as the failure it is.
 			interrupted: func(_ context.Context, err error) (bool, error) {
-				var stopped *land.Stopped
-				if !errors.As(err, &stopped) {
-					return false, nil
-				}
-				return true, stoppedMidLand(cmd, stopped, presentation)
+				return landInterrupted(cmd, err, presentation)
 			},
 			notices: flowNotices{
 				preview:       "Rerun with --apply to land this stack.",
@@ -127,6 +125,16 @@ func methodNames() string {
 	return strings.Join(names, ", ")
 }
 
+// landInterrupted claims a descent that stopped having changed something, and
+// leaves one that changed nothing to the ordinary failure path.
+func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error) {
+	var stopped *land.Stopped
+	if !errors.As(err, &stopped) || !stopped.PartWay() {
+		return false, nil
+	}
+	return true, stoppedMidLand(cmd, stopped, p)
+}
+
 // stoppedMidLand reports how far a descent got.
 //
 // It reads everything it needs from the error, making no call of its own: the
@@ -137,6 +145,9 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	landed := "Nothing merged."
 	if len(stopped.Landed) != 0 {
 		landed = "Merged " + branchList(stopped.Landed) + ", and they stay merged."
+	}
+	if len(stopped.Tidied) != 0 {
+		landed += " Cleaned up after " + branchList(stopped.Tidied) + ", which had already landed."
 	}
 	if err := prose(writer, p, "\n"+p.problem("Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error())); err != nil {
 		return err

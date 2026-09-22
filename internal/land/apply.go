@@ -23,11 +23,23 @@ import (
 // has usually expired with it.
 type Stopped struct {
 	// Landed names the branches whose merge completed, in the order they did.
+	// A merge completes when GitHub accepts it, so the branch the descent
+	// stopped at is among them when what failed came after its merge.
 	Landed []string
+	// Tidied names the branches that had already landed and whose cleanup this
+	// run finished: forgotten and deleted, which is not coming back either.
+	Tidied []string
 	// Branch is where it stopped.
 	Branch string
 	Err    error
 }
+
+// PartWay reports a descent that changed something before it stopped.
+//
+// One that changed nothing is a failure like any other, and saying it stopped
+// part-way -- with the exit status that says so -- told a script something had
+// landed when nothing had.
+func (e *Stopped) PartWay() bool { return len(e.Landed) != 0 || len(e.Tidied) != 0 }
 
 func (e *Stopped) Error() string {
 	if len(e.Landed) == 0 {
@@ -51,34 +63,45 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		return err
 	}
 	landed := make([]string, 0, len(plan.Steps))
+	tidied := make([]string, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
-		if err := s.cycle(ctx, plan, step); err != nil {
-			return &Stopped{Landed: landed, Branch: step.Branch, Err: err}
-		}
-		if step.Merges() {
+		merged, err := s.cycle(ctx, plan, step)
+		// Recorded before the error is looked at. A merge is done once GitHub
+		// accepts it, whatever fails after -- the wait for it to reach the base,
+		// the replay above it -- and reporting only whole cycles told someone
+		// whose branch had merged that it had not.
+		if merged {
 			landed = append(landed, step.Branch)
+		}
+		if err != nil {
+			return &Stopped{Landed: landed, Tidied: tidied, Branch: step.Branch, Err: err}
+		}
+		if !step.Merges() {
+			tidied = append(tidied, step.Branch)
 		}
 	}
 	return nil
 }
 
-// cycle lands one branch and tidies up after it.
-func (s Service) cycle(ctx context.Context, plan Plan, step Step) error {
+// cycle lands one branch and tidies up after it, and says whether the merge
+// happened even when something after it did not.
+func (s Service) cycle(ctx context.Context, plan Plan, step Step) (merged bool, err error) {
 	diagnostic.Event(ctx, "land.cycle",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
 		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
 	)
 	if step.Merges() {
-		if err := s.merge(ctx, plan, step); err != nil {
-			return err
+		if merged, err = s.merge(ctx, plan, step); err != nil {
+			return merged, err
 		}
 	}
-	return s.tidy(ctx, plan, step)
+	return merged, s.tidy(ctx, plan, step)
 }
 
 // merge publishes the branch, points its pull request at the right base, waits
-// for GitHub to have seen both, and merges.
-func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
+// for GitHub to have seen both, and merges. It reports the merge as done once
+// GitHub has accepted it, even if the wait after it then fails.
+func (s Service) merge(ctx context.Context, plan Plan, step Step) (bool, error) {
 	// Unconditionally, whatever the plan said. Step.Push was decided before
 	// anything moved, and by the time a branch above the first comes round its
 	// replay has rewritten it -- so a plan that said "already published" is
@@ -87,7 +110,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 	// nothing to do, which makes asking it every time free and trusting the
 	// preview wrong.
 	if err := s.publish(ctx, plan, step); err != nil {
-		return err
+		return false, err
 	}
 	if step.Retargets() {
 		// The base only goes stale during the run: the branch below merged and
@@ -100,15 +123,15 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 			diagnostic.Field{Key: "to", Value: step.Base},
 		)
 		if err := s.GitHub.Retarget(ctx, step.Number, step.Base); err != nil {
-			return err
+			return false, err
 		}
 	}
 	tip, err := s.Git.Resolve(ctx, step.Branch)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {
-		return err
+		return false, err
 	}
 	// Decided again, immediately before the one act that cannot be undone. The
 	// plan was made before anything moved; this branch has since been rebuilt
@@ -123,7 +146,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 	// recipe said it would be.
 	now, err := s.recheck(ctx, plan, step)
 	if err != nil {
-		return err
+		return false, err
 	}
 	diagnostic.Event(ctx, "land.merge",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
@@ -131,9 +154,9 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step) error {
 		diagnostic.Field{Key: "admin", Value: fmt.Sprintf("%t", now.Admin || step.Admin)},
 	)
 	if err := s.GitHub.Merge(ctx, step.Number, plan.Options.Method, now.Admin || step.Admin); err != nil {
-		return err
+		return false, err
 	}
-	return s.settleMerge(ctx, plan, step)
+	return true, s.settleMerge(ctx, plan, step)
 }
 
 // publish pushes exactly this branch, through push's own plan.

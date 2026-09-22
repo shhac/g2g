@@ -170,6 +170,12 @@ recorded as it went, making no call of its own, because the context it is
 handed is the mutation budget and the usual reason for stopping is that budget
 expiring.
 
+A merge counts from the moment GitHub accepts it, not once its cycle finishes:
+the wait after it or the replay above it can still fail, and neither undoes it.
+A descent that stopped before merging or tidying anything has not stopped
+part-way; it is "not applied", with the failure status, because exit `3` says
+something was achieved.
+
 ## Cleanup cannot fail a descent
 
 Landing is the act; tidying after it is not. A ref that will not delete is

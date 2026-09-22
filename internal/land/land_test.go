@@ -323,6 +323,46 @@ func TestStoppedCarriesTheBranchesThatLanded(t *testing.T) {
 	}
 }
 
+// A merge is done once GitHub accepts it. What fails after it -- here the
+// replay of the branch above -- does not undo it, and reporting only whole
+// cycles told someone whose branch had merged that nothing had.
+func TestStoppedCountsAMergeWhoseTidyingFailed(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.syncer.blocked = "synthetic replay refusal"
+
+	err := w.service.Apply(context.Background(), plan)
+
+	var stopped *Stopped
+	if !errors.As(err, &stopped) {
+		t.Fatalf("Apply() error = %v, want a *Stopped", err)
+	}
+	if len(stopped.Landed) != 1 || stopped.Landed[0] != "synthetic-one" || stopped.Branch != "synthetic-one" {
+		t.Errorf("Landed = %v at %q, want synthetic-one merged and stopped after it", stopped.Landed, stopped.Branch)
+	}
+	if !stopped.PartWay() {
+		t.Error("PartWay() = false for a descent that merged a pull request")
+	}
+}
+
+// Stopping before anything changed is not stopping part-way. It is a failure,
+// and exiting as though something had landed misled whatever read the status.
+func TestStoppedBeforeAnythingChangedIsNotPartWay(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.github.mergeErr = errors.New("synthetic merge refusal")
+
+	err := w.service.Apply(context.Background(), plan)
+
+	var stopped *Stopped
+	if !errors.As(err, &stopped) {
+		t.Fatalf("Apply() error = %v, want a *Stopped", err)
+	}
+	if stopped.PartWay() {
+		t.Errorf("PartWay() = true with nothing merged or tidied: %+v", stopped)
+	}
+}
+
 type failingSecondMerge struct {
 	*fakeGitHub
 	failFor int

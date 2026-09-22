@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -196,6 +197,11 @@ func (f Forest) Stack(branch string) ([]string, error) {
 	return append(path, f.Subtree(branch)[1:]...), nil
 }
 
+// ErrNoRecordedParent is the refusal for a selection with nothing to hang
+// from. It is one value because every record has to refuse this identically,
+// and a selector that meets the case before Hangs does must not word it anew.
+var ErrNoRecordedParent = errors.New("selected branch has no recorded parent that can be used as a base")
+
 // Hangs reports what a selection sits on, and whether that branch is part of
 // the selection itself.
 //
@@ -214,7 +220,7 @@ func (f Forest) Hangs(selected []string, target string, scope Scope) (base strin
 	if scope == ScopeBranch || scope == ScopeSubtree {
 		parent, hasParent := f.Parent(target)
 		if !hasParent {
-			return "", false, fmt.Errorf("selected branch has no recorded parent that can be used as a base")
+			return "", false, ErrNoRecordedParent
 		}
 		return parent, false, nil
 	}

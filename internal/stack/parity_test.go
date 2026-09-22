@@ -2,9 +2,11 @@ package stack
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
 )
 
@@ -102,8 +104,47 @@ func TestEveryScopeSelectsTheSameBranchesFromEitherRecord(t *testing.T) {
 			if snapshot.Scope != test.scope {
 				t.Errorf("snapshot reports scope %q, want %q", snapshot.Scope, test.scope)
 			}
+
+			// What the g2g store answers, through the selector commands
+			// actually use. Comparing Graphite against a bare traversal proved
+			// the traversal and nothing about the selector: the store's own
+			// refused branch and subtree on every branch it records, because it
+			// demanded two branches of a selection these scopes make of one.
+			recorded, err := g2gRecord(parents, local).Select(context.Background(), Selection{Branch: "synthetic-b", Scope: test.scope}, "synthetic command")
+			if err != nil {
+				t.Fatalf("G2GSelector.Select() error = %v", err)
+			}
+			if got := strings.Join(recorded.Branches, ","); got != test.want {
+				t.Errorf("the g2g store selected %q, want %q", got, test.want)
+			}
+			if recorded.Base != test.base {
+				t.Errorf("the g2g store hangs the selection from %q, want %q", recorded.Base, test.base)
+			}
+			if recorded.Scope != test.scope {
+				t.Errorf("the g2g snapshot reports scope %q, want %q", recorded.Scope, test.scope)
+			}
+			if !maps.Equal(recorded.Parents, snapshot.Parents) {
+				t.Errorf("the records carry different shapes:\n  store:    %v\n  Graphite: %v", recorded.Parents, snapshot.Parents)
+			}
 		})
 	}
+}
+
+// g2gRecord is the g2g store holding exactly the edges a parity case declares,
+// behind the selector every command resolves through.
+func g2gRecord(parents map[string]string, local []string) G2GSelector {
+	adopted := graph.New()
+	for branch, parent := range parents {
+		if parent == "" {
+			adopted.Trunks = append(adopted.Trunks, branch)
+			continue
+		}
+		adopted.Edges[branch] = graph.Edge{Parent: parent}
+	}
+	return G2GSelector{Service: graph.Service{
+		Git:   g2gAncestry{current: "synthetic-b", local: local},
+		Store: &g2gStore{graph: adopted},
+	}}
 }
 
 // The shape travels with the selection, so a renderer does not have to re-derive
@@ -201,6 +242,20 @@ func TestEveryScopeSelectsTheSameBranchesFromATrunkFromEitherRecord(t *testing.T
 			if snapshot.Base != "synthetic-trunk" {
 				t.Errorf("Graphite hangs the selection from %q, want the trunk", snapshot.Base)
 			}
+
+			recorded, err := g2gRecord(parents, local).Select(context.Background(), Selection{Branch: "synthetic-trunk", Scope: test.scope}, "synthetic command")
+			if err != nil {
+				t.Fatalf("G2GSelector.Select() error = %v", err)
+			}
+			if got := strings.Join(recorded.Branches, ","); got != test.want {
+				t.Errorf("the g2g store selected %q, want %q", got, test.want)
+			}
+			if recorded.Base != "synthetic-trunk" {
+				t.Errorf("the g2g store hangs the selection from %q, want the trunk", recorded.Base)
+			}
+			if !maps.Equal(recorded.Parents, snapshot.Parents) {
+				t.Errorf("the records carry different shapes:\n  store:    %v\n  Graphite: %v", recorded.Parents, snapshot.Parents)
+			}
 		})
 	}
 }
@@ -229,11 +284,13 @@ func TestATargetRootedScopeOnATrunkIsRefusedByBothRecords(t *testing.T) {
 				"synthetic command",
 			)
 
-			if storeErr == nil || graphiteErr == nil {
-				t.Fatalf("store error = %v, Graphite error = %v; both must refuse", storeErr, graphiteErr)
+			_, selectorErr := g2gRecord(parents, local).Select(context.Background(), Selection{Branch: "synthetic-trunk", Scope: scope}, "synthetic command")
+
+			if storeErr == nil || graphiteErr == nil || selectorErr == nil {
+				t.Fatalf("store error = %v, Graphite error = %v, g2g selector error = %v; all must refuse", storeErr, graphiteErr, selectorErr)
 			}
-			if storeErr.Error() != graphiteErr.Error() {
-				t.Errorf("the records refuse differently:\n  store:    %v\n  Graphite: %v", storeErr, graphiteErr)
+			if storeErr.Error() != graphiteErr.Error() || selectorErr.Error() != graphiteErr.Error() {
+				t.Errorf("the records refuse differently:\n  store:    %v\n  selector: %v\n  Graphite: %v", storeErr, selectorErr, graphiteErr)
 			}
 		})
 	}

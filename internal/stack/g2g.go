@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/graph"
-	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // Selector describes branches g2g's own store records, so the commands that
@@ -45,10 +45,17 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if err := validateG2GPath(discovery.Branches, command); err != nil {
+	forest := discovery.Graph.Shape()
+	// A branch the store places nowhere has no base to sit on. It is asked of
+	// the forest rather than of the selection's length: branch and subtree
+	// scopes select the target alone and hang it from its parent, so counting
+	// two branches refused both on every branch the store records.
+	if !forest.Knows(discovery.Target) {
+		return Snapshot{}, shape.ErrNoRecordedParent
+	}
+	if err := validateSelectionIsSafe(discovery.Branches, command); err != nil {
 		return Snapshot{}, err
 	}
-	forest := discovery.Graph.Shape()
 	hangsFrom, within, err := forest.Hangs(discovery.Branches, discovery.Target, scope)
 	if err != nil {
 		return Snapshot{}, err
@@ -138,19 +145,4 @@ func (c G2GCandidates) load(ctx context.Context) (graph.Graph, error) {
 		return graph.New(), nil
 	}
 	return c.Service.Store.Load(ctx)
-}
-
-// validatePath applies the same safety the Graphite path has always had: a
-// selection needs a base to sit on, and no branch name may be readable as an
-// option by the command it is passed to.
-func validateG2GPath(path []string, command string) error {
-	if len(path) < 2 {
-		return fmt.Errorf("selected branch has no recorded parent that can be used as a base")
-	}
-	for _, branch := range path {
-		if subprocess.OptionLike(branch) {
-			return fmt.Errorf("branch %q cannot be passed safely to %s", branch, command)
-		}
-	}
-	return nil
 }

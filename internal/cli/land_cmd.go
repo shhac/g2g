@@ -97,7 +97,12 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 	cmd.Flags().BoolVar(&options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
 	cmd.Flags().BoolVar(&noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
 	cmd.Flags().BoolVar(&noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
-	cmd.Flags().BoolVar(&noForget, "no-forget", false, "keep the landed branch in the g2g graph")
+	// Registered only so that asking for it is answered with why not: a
+	// branch left recorded under a landed, deleted one breaks every later
+	// replay. It is hidden because a help line offering it would be offering
+	// something that always refuses.
+	cmd.Flags().BoolVar(&noForget, "no-forget", false, "refused: the branches above a landed one must be reparented")
+	_ = cmd.Flags().MarkHidden("no-forget")
 	cmd.Flags().BoolVar(&apply, "apply", false, "merge the stack instead of previewing the descent")
 	return cmd
 }

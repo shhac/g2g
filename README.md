@@ -612,9 +612,11 @@ of letting the run discover it at the second branch. `--admin` also bypasses
 approvals, so a pull request nobody has approved is refused under its own name
 rather than folded into the protection refusal.
 
-Each cleanup is on by default and can be turned off on its own:
-`--no-delete-remote`, `--no-delete-local`, `--no-forget`. None of them can stop
-a descent — the work is merged, and a ref that would not delete is untidiness,
+Each deletion is on by default and can be turned off on its own:
+`--no-delete-remote`, `--no-delete-local`. Forgetting the landed branch in
+g2g's graph cannot be: the branches above it are reparented onto the trunk as it
+goes, and leaving it recorded would put them under a branch that no longer
+exists. None of the cleanups can stop a descent — the work is merged, and a ref that would not delete is untidiness,
 not a failed land. A branch the remote deleted on merge is already in the state
 it was asked for.
 

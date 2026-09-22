@@ -64,10 +64,20 @@ func (f *fakeGit) Divergence(_ context.Context, other, target string) (int, int,
 	return 1, f.behind[other+".."+target], nil
 }
 
-func (f *fakeGit) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
+func (f *fakeGit) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
 	resolved := ancestor
 	if object, listed := f.objects[ancestor]; listed {
 		resolved = object
+	}
+	// A branch can be asked about by the object it points at, and ancestry
+	// here is listed by branch name.
+	if _, listed := f.ancestors[descendant]; !listed {
+		for _, branch := range f.local {
+			if tip, _ := f.Resolve(ctx, branch); tip == descendant && tip != branch {
+				descendant = branch
+				break
+			}
+		}
 	}
 	for _, candidate := range f.ancestors[descendant] {
 		if candidate == ancestor || candidate == resolved || f.objects[candidate] == resolved {
@@ -182,9 +192,17 @@ func (f *fakeGit) CherryDropped(_ context.Context, upstream, head string) ([]str
 
 // Cherry answers what a branch still contributes. Unlisted means "one commit
 // of its own", which keeps cases that are not about collapsing free of noise.
-func (f *fakeGit) Cherry(_ context.Context, upstream, head, limit string) ([]string, []string, error) {
-	if f.collapses[head] {
-		return nil, []string{"already-upstream"}, nil
+//
+// A branch is asked about by where it will be, which is an object rather than
+// its name, so a listed branch answers for its object too.
+func (f *fakeGit) Cherry(ctx context.Context, upstream, head, limit string) ([]string, []string, error) {
+	for branch, collapses := range f.collapses {
+		if !collapses {
+			continue
+		}
+		if resolved, _ := f.Resolve(ctx, branch); branch == head || resolved == head {
+			return nil, []string{"already-upstream"}, nil
+		}
 	}
 	return []string{"own-" + head}, nil, nil
 }

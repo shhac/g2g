@@ -197,7 +197,7 @@ func (s Service) verify(ctx context.Context, plan Plan) error {
 // and failed for a case the design has an answer to.
 func (s Service) collapse(ctx context.Context, plan Plan) error {
 	for _, step := range plan.collapsing() {
-		if step.Tip == step.Base {
+		if step.Head == step.Base {
 			continue
 		}
 		diagnostic.Event(ctx, "restack.collapse", diagnostic.Field{Key: "branch", Value: step.Branch})

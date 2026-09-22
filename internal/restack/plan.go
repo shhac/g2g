@@ -4,6 +4,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -48,6 +49,12 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		return plan, nil
 	}
 	steps, err := s.steps(ctx, discovery, onto.Object, pending)
+	var unmeasurable unmeasured
+	if errors.As(err, &unmeasurable) {
+		plan.Repair = unmeasurable.note()
+		plan.Blocked = plan.Repair.Sentence()
+		return plan, nil
+	}
 	if err != nil {
 		return Plan{}, err
 	}
@@ -179,6 +186,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 	// landing records where a collapsed branch ends up, so its children are
 	// measured against that rather than against a tip about to disappear.
 	landing := map[string]string{}
+	placed := map[string]Step{}
 	roots := selectionRoots(discovery)
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
@@ -195,6 +203,12 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 		if err != nil {
 			return nil, err
 		}
+		head := pending.at(branch, tip)
+		if head != tip {
+			if resolvedFork, err = s.pendingFork(ctx, branch, edge.Parent, base, resolvedFork, head); err != nil {
+				return nil, err
+			}
+		}
 		if resolvedFork == base && !rewriting[parent] {
 			// Sitting where it belongs, under a parent that is not moving.
 			continue
@@ -205,7 +219,14 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 		if landed, collapsed := landing[parent]; collapsed {
 			base = landed
 		}
-		step := Step{Branch: branch, Parent: parent, Base: base, ForkPoint: resolvedFork, Tip: tip}
+		step := Step{Branch: branch, Parent: parent, Base: base, ForkPoint: resolvedFork, Tip: tip, Head: head}
+		if below, replayed := placed[parent]; replayed && !below.Collapses {
+			contains, err := s.Git.IsAncestor(ctx, below.Head, head)
+			if err != nil {
+				return nil, err
+			}
+			step.Behind = !contains
+		}
 		if err := s.classifyOrphans(ctx, &step); err != nil {
 			return nil, err
 		}
@@ -214,13 +235,14 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 		// starting below its parent's landed work -- offered individually, a
 		// squashed parent's commits conflict with the squashed version of
 		// themselves.
-		step.Collapses, err = landed.Into(ctx, s.Git, step.Base, branch, step.ForkPoint)
+		step.Collapses, err = landed.Into(ctx, s.Git, step.Base, head, step.ForkPoint)
 		if err != nil {
 			return nil, err
 		}
 		if step.Collapses {
 			landing[branch] = step.Base
 		}
+		placed[branch] = step
 		steps = append(steps, step)
 	}
 	return steps, nil
@@ -248,6 +270,51 @@ func (s Service) resolveStep(ctx context.Context, branch, parent, forkPoint stri
 		return "", "", "", err
 	}
 	return base, fork, tip, nil
+}
+
+// pendingFork is where the version of a branch a caller is about to put in
+// place begins.
+//
+// The recorded fork point describes the version being replaced. When somebody
+// restacked the branch onto a trunk that moved and published it, that fork
+// point is still in the new version, but below the trunk commits it was
+// replayed onto, so forkPoint..branch took those in: sync collected a stack
+// that was already right and then replayed it a second time. A version that
+// already sits on its parent's new tip begins there; one that still contains
+// its recorded fork point, as a reviewer's commit on top does, begins there;
+// and one that contains neither gives no range holding only its own commits,
+// which is refused rather than guessed.
+func (s Service) pendingFork(ctx context.Context, branch, parent, base, fork, head string) (string, error) {
+	onParent, err := s.Git.IsAncestor(ctx, base, head)
+	if err != nil {
+		return "", err
+	}
+	if onParent {
+		return base, nil
+	}
+	forked, err := s.Git.IsAncestor(ctx, fork, head)
+	if err != nil {
+		return "", err
+	}
+	if forked {
+		return fork, nil
+	}
+	return "", unmeasured{branch: branch, parent: parent}
+}
+
+// unmeasured is a branch whose incoming version cannot be given a replay range.
+type unmeasured struct{ branch, parent string }
+
+func (u unmeasured) Error() string { return u.note().Sentence() }
+
+func (u unmeasured) note() repair.Note {
+	return repair.Note{
+		Reason: fmt.Sprintf("the version of %s about to be taken is built on neither %s nor where %s was recorded as forking, so which commits are its own cannot be told", u.branch, u.parent, u.branch),
+		Ways: []repair.Step{{
+			Command: fmt.Sprintf("g2g track --branch %s --parent %s", u.branch, u.parent),
+			Effect:  "record where it forks, once it is built on its parent",
+		}},
+	}
 }
 
 // classifyOrphans records the commits the parent no longer has that this
@@ -304,14 +371,35 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 	// and asking the engine anyway failed the whole command with "no commit
 	// ranges selected for replay" — on precisely the case where a stack has
 	// finished landing.
+	//
+	// A root behind its parent lands on the parent's result, which only the
+	// parent's own preview knows. It prints the object for a branch it names;
+	// a parent the caller is replacing is named by object instead and prints
+	// nothing, and then there is no honest prediction to make.
 	clean = true
+	replayedTo := map[string]string{}
 	for _, group := range plan.groups() {
-		grouped, groupClean, err := s.Git.PreviewReplay(ctx, group.onto(), group.ranges())
+		onto := group.onto()
+		if group[0].Behind {
+			tip, known := replayedTo[group[0].Parent]
+			if !known {
+				return nil, false, false, nil
+			}
+			onto = tip
+		}
+		grouped, groupClean, err := s.Git.PreviewReplay(ctx, onto, group.previewed())
 		if err != nil {
 			return nil, false, false, err
 		}
+		if !groupClean {
+			// A conflict anywhere sends the whole rewrite to the resumable
+			// engine, so what the groups above it would do is moot.
+			return nil, false, true, nil
+		}
 		updates = append(updates, grouped...)
-		clean = clean && groupClean
+		for _, update := range grouped {
+			replayedTo[update.Branch()] = update.New
+		}
 	}
 	// Predicted means the preview actually ran, which the two returns above
 	// already answer for the cases where it did not. Deriving it from the error
@@ -334,7 +422,7 @@ func moving(steps []Step, absorb bool, pending Pending) []string {
 		return branches
 	}
 	for _, step := range steps {
-		if step.Collapses && step.Tip == step.Base {
+		if step.Collapses && step.Head == step.Base {
 			continue
 		}
 		if !slices.Contains(branches, step.Branch) {

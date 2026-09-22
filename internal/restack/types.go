@@ -68,6 +68,17 @@ type Step struct {
 	ForkPoint string
 	// Tip is the branch's current object, recorded so an abort can restore it.
 	Tip string
+	// Head is where the branch will be when the rewrite runs, which is Tip
+	// unless the caller moves it first. Everything the plan measures about the
+	// branch is measured here.
+	Head string
+	// Behind means the parent is being replayed too and this branch does not
+	// contain the version of it being replayed: the parent gained commits
+	// after this branch forked, or the caller is bringing in a version of the
+	// parent this branch never had. Sharing the parent's replay would put it
+	// back on the commit it forked from, so it lands on the parent's result
+	// instead, in a replay of its own after the parent's.
+	Behind bool
 	// Orphans are commits the parent no longer has that this branch still
 	// carries, and Absorbable reports that every one of them was genuinely
 	// dropped rather than rewritten.
@@ -106,9 +117,29 @@ func (g replayGroup) ranges() []localgit.Range {
 	return ranges
 }
 
-// onto is the object the group lands on: its root's base, once any collapse
-// below it has been accounted for.
-func (g replayGroup) onto() string { return g[0].Base }
+// previewed are the ranges as they will be when the rewrite runs. A branch the
+// caller moves first is named by where it is going, because naming the branch
+// would preview the version about to be replaced.
+func (g replayGroup) previewed() []localgit.Range {
+	ranges := g.ranges()
+	for index, step := range g {
+		if step.Head != "" && step.Head != step.Tip {
+			ranges[index].To = step.Head
+		}
+	}
+	return ranges
+}
+
+// onto is what the group lands on: its root's base, once any collapse below it
+// has been accounted for. A root that is behind its parent lands on wherever
+// the parent's own replay has just put it, so it names the parent rather than
+// an object that will be stale by then.
+func (g replayGroup) onto() string {
+	if g[0].Behind {
+		return g[0].Parent
+	}
+	return g[0].Base
+}
 
 // groups splits the replay into one invocation per independent root.
 //
@@ -118,11 +149,16 @@ func (g replayGroup) onto() string { return g[0].Base }
 // can land on different bases, and giving them the first root's origin
 // widened the second's range to take in the trunk's own commits, replaying
 // onto the first root's base a stale copy of work the second had rewritten.
+//
+// A branch behind its parent is a root of its own for the same reason: the
+// engine keeps each commit on the replayed copy of its own parent, so sharing
+// the parent's replay put the branch back on the commit it forked from.
+// Groups come out parents first, which is the order they have to run in.
 func (p Plan) groups() []replayGroup {
 	groups := make([]replayGroup, 0, 1)
 	member := map[string]int{}
 	for _, step := range p.rewriting() {
-		if at, above := member[step.Parent]; above {
+		if at, above := member[step.Parent]; above && !step.Behind {
 			groups[at] = append(groups[at], step)
 			member[step.Branch] = at
 			continue
@@ -337,6 +373,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
 			return left.Branch == right.Branch && left.Parent == right.Parent &&
 				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&
-				left.Tip == right.Tip && slices.Equal(left.Orphans, right.Orphans)
+				left.Tip == right.Tip && left.Head == right.Head && left.Behind == right.Behind &&
+				slices.Equal(left.Orphans, right.Orphans)
 		})
 }

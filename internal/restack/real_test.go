@@ -322,6 +322,154 @@ func TestAResumeThatIsRefusedKeepsTheJournal(t *testing.T) {
 	}
 }
 
+// publishedRestack is a stack a colleague has already restacked onto a trunk
+// that moved, and published: every published ref is a branch here standing in
+// for what a fetch would have brought down, and nothing local has moved yet.
+func publishedRestack(t *testing.T) (r realStack, published map[string]string) {
+	t.Helper()
+	r = newRealStack(t)
+	r.branch("synthetic-a", "synthetic-main", "a.txt", "a")
+	r.branch("synthetic-b", "synthetic-a", "b.txt", "b")
+	r.Run("switch", "-q", "-c", "synthetic-published-main", "synthetic-main")
+	r.Commit("synthetic trunk moved", "trunk.txt", "moved")
+	r.Run("switch", "-q", "-c", "synthetic-published-a")
+	r.Run("cherry-pick", "synthetic-a")
+	r.Run("switch", "-q", "-c", "synthetic-published-b")
+	r.Run("cherry-pick", "synthetic-b")
+	r.Run("switch", "-q", "synthetic-published-main")
+	return r, map[string]string{
+		"synthetic-main": r.Revision("synthetic-published-main"),
+		"synthetic-a":    r.Revision("synthetic-published-a"),
+		"synthetic-b":    r.Revision("synthetic-published-b"),
+	}
+}
+
+// sync plans the replay before it collects the published branches, so it says
+// where they will be through Pending. The branches themselves were still
+// measured where they were: the recorded fork point sits below the trunk
+// commit the colleague replayed them onto, so the range took that commit in,
+// the preview judged a version about to be replaced, and a stack that was
+// already exactly right was rewritten a second time -- new ids, a force push
+// nobody needed.
+func TestABranchTheCallerMovesIsMeasuredWhereItWillBe(t *testing.T) {
+	r, published := publishedRestack(t)
+	pending := Pending{"synthetic-a": published["synthetic-a"], "synthetic-b": published["synthetic-b"]}
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
+		ToLocation("synthetic-published-main"), false, pending)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Plan() blocked: %s", plan.Blocked)
+	}
+
+	// What sync does between planning and applying: advance the trunk and
+	// collect both branches.
+	for branch, tip := range published {
+		r.Run("update-ref", "refs/heads/"+branch, tip)
+	}
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if replaying := plan.Replaying(); len(replaying) != 0 {
+		t.Errorf("plan replays %v, want nothing: the published stack already sits on the trunk", replaying)
+	}
+	for branch, tip := range published {
+		if got := r.Revision(branch); got != tip {
+			t.Errorf("%s was rewritten to %s, want it left at the published %s", branch, got, tip)
+		}
+	}
+}
+
+// A reviewer's commit on top of the published branch leaves the recorded fork
+// point in it, so its range is still recorded fork to published tip: the
+// branch's own commit and the reviewer's, replayed onto the trunk that moved.
+//
+// The child never had the reviewer's commit, so it is behind the version of
+// its parent being replayed. Sharing the parent's replay put it back on the
+// parent's first commit, beside the reviewer's rather than on top of it.
+func TestABranchTheCallerMovesKeepsARecordedForkItStillContains(t *testing.T) {
+	r, published := publishedRestack(t)
+	r.Run("switch", "-q", "-c", "synthetic-reviewed-a", "synthetic-a")
+	r.Commit("synthetic review", "review.txt", "review")
+	r.Run("switch", "-q", "synthetic-published-main")
+	pending := Pending{"synthetic-a": r.Revision("synthetic-reviewed-a")}
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
+		ToLocation("synthetic-published-main"), false, pending)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Plan() blocked: %s", plan.Blocked)
+	}
+	// Where synthetic-a lands is only known once it has been replayed, and a
+	// version named by object prints nothing, so there is nothing to predict
+	// synthetic-b against. Saying it would apply cleanly would be a guess.
+	if plan.Predicted {
+		t.Errorf("Plan() predicted a result it cannot have looked at")
+	}
+
+	r.Run("update-ref", "refs/heads/synthetic-main", published["synthetic-main"])
+	r.Run("update-ref", "refs/heads/synthetic-a", pending["synthetic-a"])
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if got := r.own("synthetic-main", "synthetic-a"); got != 2 {
+		t.Errorf("synthetic-a carries %d commits above the trunk, want its own and the reviewer's", got)
+	}
+	r.builtOn("synthetic-a", "synthetic-b")
+	r.assertClean()
+}
+
+// The same shape with nobody else involved: the parent gained a commit after
+// the child forked, and the trunk moved under both. The child is behind its
+// parent, so it gets a replay of its own onto the parent's result -- and that
+// one can be predicted exactly, from the object the parent's preview prints.
+func TestABranchBehindItsParentLandsOnItsParentsReplay(t *testing.T) {
+	r := newRealStack(t)
+	r.branch("synthetic-a", "synthetic-main", "a.txt", "a")
+	r.branch("synthetic-b", "synthetic-a", "b.txt", "b")
+	r.Run("switch", "-q", "synthetic-a")
+	r.Commit("synthetic a again", "a2.txt", "a2")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Commit("synthetic trunk moved", "trunk.txt", "moved")
+
+	plan := r.plan(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	if !plan.Predicted || !plan.Clean {
+		t.Fatalf("Plan() predicted=%t clean=%t, want an exact clean prediction", plan.Predicted, plan.Clean)
+	}
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if got := r.own("synthetic-main", "synthetic-a"); got != 2 {
+		t.Errorf("synthetic-a carries %d commits above the trunk, want both of its own", got)
+	}
+	r.builtOn("synthetic-a", "synthetic-b")
+	r.assertClean()
+}
+
+// A published version that is built on neither its parent's new tip nor where
+// it was recorded as forking gives no range that holds only its own commits.
+// Guessing one is how a replay silently takes in somebody else's.
+func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
+	r, published := publishedRestack(t)
+	r.Run("switch", "-q", "--orphan", "synthetic-unrelated")
+	r.Commit("synthetic unrelated", "unrelated.txt", "unrelated")
+	pending := Pending{"synthetic-a": r.Revision("synthetic-unrelated")}
+
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
+		ToLocation(published["synthetic-main"]), false, pending)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if !strings.Contains(plan.Blocked, "synthetic-a") {
+		t.Errorf("Blocked = %q, want a refusal naming synthetic-a", plan.Blocked)
+	}
+}
+
 // The rebase engine checks out what it rewrites, so a restack run from outside
 // the stack ended on whichever branch was rebased last. The journal recorded a
 // branch to return to, and nothing read it -- and what it recorded was the

@@ -175,6 +175,29 @@ own commits and its child landed on the first root carrying a stale copy of its
 parent. `--onto` over several roots is refused, one command per root offered in
 its place; a caller's location moves every root.
 
+**A caller may move branches before the rewrite runs**, and says where through
+`Pending`: sync collects published versions of your branches, then replays. A
+branch is measured where it will be, not where it is. Its recorded fork point
+describes the version being replaced, and after a colleague restacked the stack
+and published it, that point is still in the new version but below the trunk
+commits it was replayed onto — so the range took them in and a stack that was
+already right was rewritten again. A version already on its parent's new tip
+begins there; one that still contains its recorded fork point, as a reviewer's
+commit on top does, begins there; one that contains neither is refused rather
+than given a range that holds somebody else's commits. The preview names such a
+branch by the object it is about to be.
+
+**A branch behind its parent** — the parent is being replayed too, and the
+branch does not contain the version of it being replayed — gets a replay of its
+own onto the parent's result. The engine keeps each commit on the replayed copy
+of its own parent, so sharing the parent's replay put the branch back on the
+commit it forked from. That happens when the parent gained commits after the
+branch forked, and when a caller brings in a version of the parent the branch
+never had. The first is predicted exactly, from the object the parent's preview
+prints for its ref; a parent named by object prints nothing, so the second
+cannot be predicted and says so, and takes the resumable engine, which rebases
+each branch onto its parent as it then is.
+
 Several replays are several invocations, and the engine's atomicity covers one.
 An in-place rewrite therefore notes every tip it may move first and, on any
 failure before the checkout is touched, puts them all back and says so; it is

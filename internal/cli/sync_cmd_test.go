@@ -170,8 +170,8 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	if !strings.Contains(out, "Synced.") {
 		t.Errorf("output does not report the sync:\n%s", out)
 	}
-	if !strings.Contains(out, "Suggested next step: g2g status") {
-		t.Errorf("successful sync does not suggest inspecting status:\n%s", out)
+	if !strings.Contains(out, "Suggested next step: g2g push") {
+		t.Errorf("successful sync does not suggest publishing what it replayed:\n%s", out)
 	}
 }
 

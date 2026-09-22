@@ -62,7 +62,9 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 				applied:       "Synced.",
 				changed:       "The stack sits on the current base.",
 				recovery:      "The base may already have been advanced; rerunning is safe.",
-				suggestedNext: "g2g status",
+				// A replay leaves the published branches behind their local
+				// ones; push previews what publishing them would do.
+				suggestedNext: "g2g push",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

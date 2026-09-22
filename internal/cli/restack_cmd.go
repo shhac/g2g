@@ -195,7 +195,9 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			applied:       "Replayed.",
 			changed:       "Branch contents now match the recorded structure.",
 			recovery:      "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
-			suggestedNext: "g2g status",
+			// Replayed branches are not what their pull requests hold until
+			// they are published, and push previews before it does anything.
+			suggestedNext: "g2g push",
 		},
 	}
 	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)

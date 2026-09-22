@@ -1310,6 +1310,38 @@ func TestJourneyABranchIsOpenInASecondWorktree(t *testing.T) {
 	w.assertClean(elsewhere)
 }
 
+// The trunk is checked out in another worktree — the ordinary layout of a
+// checkout with several — and somebody lands on it. sync advances the trunk
+// itself rather than through the rewrite, so the rewrite's own check never saw
+// it and the trunk moved underneath that worktree. It is refused now, and
+// nothing moves.
+func TestJourneySyncRefusesToAdvanceATrunkOpenInAnotherWorktree(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	elsewhere := filepath.Join(t.TempDir(), "second")
+	w.git(w.Local, "worktree", "add", "-q", elsewhere, "main")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "pull", "-q", "origin", "main")
+	w.commit(w.Other, "main", "landed.txt", "landed")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	before := w.tip(w.Local, "main")
+
+	stdout, _, err := run(t, "sync", "--apply")
+	if err == nil {
+		t.Fatalf("sync advanced a trunk another worktree had checked out:\n%s", stdout)
+	}
+	if !strings.Contains(stdout+err.Error(), "another worktree") {
+		t.Errorf("the refusal does not name the cause:\n%s\n%v", stdout, err)
+	}
+	if after := w.tip(w.Local, "main"); after != before {
+		t.Errorf("main moved from %s to %s", before, after)
+	}
+	w.assertClean(elsewhere)
+}
+
 // sync moves contents, never structure. It replays onto a ref it fetched under
 // refs/g2g/, because that is where the trunk is about to be — and recording
 // that as the parent left every synced stack hanging from an internal ref:

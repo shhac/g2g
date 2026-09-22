@@ -344,13 +344,21 @@ func syncScope(scope graph.Scope) graph.Scope {
 // pending is where collect will leave each branch, which is what the replay has
 // to be planned against: collect runs first, so by the time the rewrite happens
 // a collected branch is no longer where Git said it was when this was planned.
+//
+// The base is one of them when sync advances it. restack never moves a trunk
+// itself, so without being told it would not ask whether another worktree has
+// the trunk checked out — the ordinary layout of a checkout with several — and
+// sync would move it underneath that worktree.
 func (p Plan) pending() restack.Pending {
-	if len(p.Collect) == 0 {
+	if len(p.Collect) == 0 && p.onto() == "" {
 		return nil
 	}
-	moving := make(restack.Pending, len(p.Collect))
+	moving := make(restack.Pending, len(p.Collect)+1)
 	for _, collection := range p.Collect {
 		moving[collection.Branch] = collection.To
+	}
+	if onto := p.onto(); onto != "" {
+		moving[p.Base] = onto
 	}
 	return moving
 }

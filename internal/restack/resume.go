@@ -65,9 +65,35 @@ func (s Service) finish(ctx context.Context, record Record) error {
 			return err
 		}
 		if outcome == finishComplete {
-			return s.Journal.Clear(ctx)
+			return s.conclude(ctx, record)
 		}
 	}
+}
+
+// conclude forgets the operation and puts the user back on the branch they
+// started from.
+//
+// The rebase engine checks out every branch it rewrites, so a restack that
+// went through it finished on whichever branch was rebased last -- or, after
+// a conflict, the one that stopped -- rather than where the person had been
+// standing. The journal is cleared first: the rewrite is done either way, and
+// a failure to switch back must not leave every other command refusing.
+func (s Service) conclude(ctx context.Context, record Record) error {
+	if err := s.Journal.Clear(ctx); err != nil {
+		return err
+	}
+	if record.ReturnTo == "" {
+		return nil
+	}
+	current, err := s.Git.CurrentBranch(ctx)
+	if err != nil || current == record.ReturnTo {
+		return err
+	}
+	diagnostic.Event(ctx, "restack.return", diagnostic.Field{Key: "branch", Value: record.ReturnTo})
+	if err := s.Git.SwitchBranch(ctx, record.ReturnTo); err != nil {
+		return fmt.Errorf("the restack is finished, but switching back to %s failed: %w", record.ReturnTo, err)
+	}
+	return nil
 }
 
 // finishPass makes one explicit convergence decision. Recording comes before
@@ -161,7 +187,7 @@ func (s Service) Abort(ctx context.Context) error {
 	if err := s.resettle(ctx, standing); err != nil {
 		return err
 	}
-	return s.Journal.Clear(ctx)
+	return s.conclude(ctx, record)
 }
 
 // Conflicted lists the files an interrupted rewrite left for the user.

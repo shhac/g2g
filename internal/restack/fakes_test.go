@@ -43,6 +43,7 @@ type fakeGit struct {
 	ontos    []string
 	resets   int
 	switched []string
+	returned []string
 	// tips is where a branch points after a rewrite, which is not the same
 	// question as what objects the repository has.
 	tips     map[string]string
@@ -164,6 +165,14 @@ func (f *fakeGit) ConflictedPaths(context.Context) ([]string, error) { return f.
 func (f *fakeGit) SwitchTree(_ context.Context, from, to string) error {
 	f.resets++
 	f.switched = append(f.switched, from+"->"+to)
+	return nil
+}
+
+// SwitchBranch moves the checkout, which is all a finished or aborted restack
+// does to put the user back where they started.
+func (f *fakeGit) SwitchBranch(_ context.Context, branch string) error {
+	f.returned = append(f.returned, branch)
+	f.current = branch
 	return nil
 }
 

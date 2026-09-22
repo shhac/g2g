@@ -174,10 +174,12 @@ func (c Client) DeleteBranch(ctx context.Context, branch string) error {
 
 // SwitchBranch moves the checkout.
 //
-// Nothing else here needs it: a rewrite moves refs underneath the checkout and
-// reconciles the tree in place, deliberately, rather than switching away and
-// back. Landing is the one thing that removes the branch someone is standing
-// on, and git will not delete the current branch.
+// A rewrite moves refs underneath the checkout and reconciles the tree in
+// place, deliberately, rather than switching away and back. Two things do need
+// it. Landing removes the branch someone is standing on, and git will not
+// delete the current branch. And the rebase engine checks out every branch it
+// rewrites, so a restack that went through it puts the user back on the branch
+// they started from.
 func (c Client) SwitchBranch(ctx context.Context, branch string) error {
 	if err := safeRef(branch); err != nil {
 		return err

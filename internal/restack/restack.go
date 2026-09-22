@@ -76,7 +76,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // while it exists, which is right while branches may have moved and wrong once
 // they are back where they were.
 func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout) error {
-	if err := s.Journal.Save(ctx, s.record(plan)); err != nil {
+	if err := s.Journal.Save(ctx, s.record(plan, standing)); err != nil {
 		return err
 	}
 	if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
@@ -91,14 +91,16 @@ func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout)
 	return s.Journal.Clear(ctx)
 }
 
-// record is what survives an interrupted rewrite.
-func (s Service) record(plan Plan) Record {
+// record is what survives an interrupted rewrite. ReturnTo is where the
+// checkout stood, not the selection's target: the two differ whenever someone
+// restacks a stack from outside it, and it was the target that was written.
+func (s Service) record(plan Plan, standing checkout) Record {
 	record := Record{
 		OntoParent: plan.Onto.Parent,
 		Absorb:     plan.Absorb,
 		Branch:     plan.Target,
 		Scope:      string(plan.Scope),
-		ReturnTo:   plan.Target,
+		ReturnTo:   standing.Branch,
 		Original:   map[string]string{},
 		Reparent:   plan.reparenting(),
 	}
@@ -310,7 +312,7 @@ func (s Service) putBack(ctx context.Context, before map[string]string, cause er
 // The journal comes first: a collapse moves refs too, and a branch moved with
 // no record of where it was is one --abort cannot put back.
 func (s Service) rebase(ctx context.Context, plan Plan, standing checkout) error {
-	record := s.record(plan)
+	record := s.record(plan, standing)
 	if err := s.Journal.Save(ctx, record); err != nil {
 		return err
 	}

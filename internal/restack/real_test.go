@@ -250,3 +250,41 @@ func TestAbortAfterAHandFinishedRebaseBringsTheCheckoutBack(t *testing.T) {
 	}
 	r.assertClean()
 }
+
+// The rebase engine checks out what it rewrites, so a restack run from outside
+// the stack ended on whichever branch was rebased last. The journal recorded a
+// branch to return to, and nothing read it -- and what it recorded was the
+// selection's target rather than where the user had been.
+func TestARestackThroughTheRebaseEngineEndsWhereItStarted(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		finish func(realStack) error
+	}{
+		{name: "continue", finish: func(r realStack) error {
+			r.Write("a.txt", "resolved")
+			r.Run("add", "a.txt")
+			// Both branches conflict with the trunk, so resuming stops again.
+			if err := r.service.Continue(context.Background()); err == nil {
+				r.t.Fatal("Continue() error = nil; synthetic-b was meant to conflict too")
+			}
+			r.Write("b.txt", "resolved")
+			r.Run("add", "b.txt")
+			return r.service.Continue(context.Background())
+		}},
+		{name: "abort", finish: func(r realStack) error {
+			return r.service.Abort(context.Background())
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := conflictingStack(t)
+			r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+			if err := test.finish(r); err != nil {
+				t.Fatalf("%s error = %v", test.name, err)
+			}
+			if current := r.Run("branch", "--show-current"); current != "synthetic-main" {
+				t.Errorf("checkout is on %q, want synthetic-main, where the restack was run from", current)
+			}
+			r.assertClean()
+		})
+	}
+}

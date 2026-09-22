@@ -40,7 +40,8 @@ type Record struct {
 	// Branch and Scope are the selection, so continuing covers the same set.
 	Branch string `json:"branch,omitempty"`
 	Scope  string `json:"scope,omitempty"`
-	// ReturnTo is the branch the user was on, restored when the work finishes.
+	// ReturnTo is the branch the user was on, switched back to when the work
+	// finishes or is aborted. Empty when they were on no branch.
 	ReturnTo string `json:"returnTo,omitempty"`
 	// Original maps every branch in the operation to its tip when the
 	// operation began. This is the whole reason for --abort.

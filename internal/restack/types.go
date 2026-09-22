@@ -33,6 +33,7 @@ type Git interface {
 	RebaseInProgress(context.Context) (bool, error)
 	ConflictedPaths(context.Context) ([]string, error)
 	SwitchTree(ctx context.Context, from, to string) error
+	SwitchBranch(ctx context.Context, branch string) error
 	CherryDropped(context.Context, string, string) ([]string, error)
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	Absorbed(ctx context.Context, base, branch string) (bool, error)

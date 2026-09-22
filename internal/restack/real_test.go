@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -292,6 +293,32 @@ func TestAbortPutsBackTheStructureAResumeRecorded(t *testing.T) {
 	// The stack is back where it was, so it plans exactly as it did before.
 	if replaying := strings.Join(r.plan(selection).Replaying(), ","); replaying != "synthetic-a,synthetic-b" {
 		t.Errorf("after abort the plan replays %q, want the whole stack again", replaying)
+	}
+}
+
+// Resuming recomputes the plan, and the recomputed plan can refuse: here a
+// branch still to be rewritten was opened in another worktree while the first
+// conflict was being resolved. That refusal was read as completion, so the
+// command said "Restack complete" and deleted the journal over a stack that
+// was half rewritten, leaving nothing for --abort.
+func TestAResumeThatIsRefusedKeepsTheJournal(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	untouched := r.Revision("synthetic-b")
+	r.Run("worktree", "add", "-q", filepath.Join(t.TempDir(), "elsewhere"), "synthetic-b")
+	r.Write("a.txt", "resolved")
+	r.Run("add", "a.txt")
+
+	err := r.service.Continue(ctx)
+	if err == nil || !strings.Contains(err.Error(), "another worktree") {
+		t.Fatalf("Continue() error = %v, want the refusal", err)
+	}
+	if inProgress, _ := r.service.InProgress(ctx); !inProgress {
+		t.Error("a refused resume deleted the journal, so --abort has nothing to undo")
+	}
+	if got := r.Revision("synthetic-b"); got != untouched {
+		t.Errorf("synthetic-b moved to %s while another worktree held it", got)
 	}
 }
 

@@ -270,6 +270,11 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
   back only the tips left each branch recorded as forking at a parent tip it no
   longer contained
 
+Because the plan is recomputed, a resume can find it refused — a branch still
+to be rewritten opened in another worktree meanwhile. That is not completion:
+the journal stays and the refusal is reported, so the half-rewritten stack can
+still be continued once the cause is gone, or aborted.
+
 Restoring a tip is a bare ref move, so `--abort` brings the checkout along with
 the branch it is standing on. A user who finished git's own rebase by hand is
 left on a rewritten branch with no rebase in progress, and moving that branch's

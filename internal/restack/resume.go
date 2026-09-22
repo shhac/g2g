@@ -113,7 +113,13 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err != nil {
 		return finishComplete, err
 	}
-	if len(plan.Steps) == 0 || plan.Blocked != "" {
+	if plan.Blocked != "" {
+		// The work is not done, so the journal stays and --abort can still
+		// undo it. Reading a refusal as completion reported "Restack complete"
+		// and deleted the journal over a stack that was half rewritten.
+		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", plan.Blocked)
+	}
+	if len(plan.Steps) == 0 {
 		// Reparenting is held by the durable record: after a rewrite, the fresh
 		// plan cannot recover where an edge used to point.
 		if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {

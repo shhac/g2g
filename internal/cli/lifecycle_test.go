@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,26 +170,33 @@ func indexOfPrefix(t *testing.T, calls []string, prefix string) int {
 // nothing noticed.
 func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		args     []string
+		name string
+		args []string
+		// mutation is the recorded call the command would make, led by its
+		// tool the way the recorder writes it. A prefix without the tool
+		// matches nothing, so the assertion it guards passes whatever runs.
 		mutation string
+		// store marks a command whose mutation is the graph store, which is a
+		// file write rather than a process, so no recorded call can show it.
+		store bool
 		// spec means the command needs a submission spec before --apply does
 		// anything at all; without one it only previews, so a row that omits
 		// it would assert nothing.
 		spec bool
 	}{
-		{name: "link", args: []string{"link", "--apply"}, mutation: "stack link"},
-		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "stack unstack"},
-		{name: "push", args: []string{"push", "--apply"}, mutation: "push --atomic"},
-		{name: "track", args: []string{"track", "--branch", "synthetic-top", "--parent", "synthetic-lower", "--apply"}, mutation: "update-ref"},
-		{name: "untrack", args: []string{"untrack", "--branch", "synthetic-top", "--apply"}, mutation: "update-ref"},
-		{name: "retarget", args: []string{"retarget", "--apply"}, mutation: "pr edit"},
-		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "track"},
-		{name: "import", args: []string{"import", "--apply"}, mutation: "update-ref"},
-		{name: "sync", args: []string{"sync", "--apply"}, mutation: "push"},
-		{name: "submit", args: []string{"submit", "--apply"}, mutation: "push --atomic", spec: true},
-		{name: "prune", args: []string{"prune", "--apply"}, mutation: "update-ref"},
-		{name: "land", args: []string{"land", "--apply"}, mutation: "pr merge"},
+		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
+		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
+		{name: "push", args: []string{"push", "--apply"}, mutation: "git push"},
+		{name: "track", args: []string{"track", "--branch", "synthetic-top", "--parent", "synthetic-lower", "--apply"}, store: true},
+		{name: "untrack", args: []string{"untrack", "--branch", "synthetic-top", "--apply"}, store: true},
+		{name: "retarget", args: []string{"retarget", "--apply"}, mutation: "gh pr edit"},
+		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "gt track"},
+		{name: "import", args: []string{"import", "--apply"}, store: true},
+		{name: "sync", args: []string{"sync", "--apply"}, mutation: "git fetch"},
+		{name: "submit", args: []string{"submit", "--apply"}, mutation: "git push", spec: true},
+		{name: "prune", args: []string{"prune", "--apply"}, store: true},
+		{name: "land", args: []string{"land", "--apply"}, mutation: "gh pr merge"},
+		{name: "comment", args: []string{"comment", "--apply"}, mutation: "gh " + commentMutationPrefix},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder, common := lifecycleRepositoryIn(t, stackedPullRequests)
@@ -212,7 +220,12 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 			if !strings.Contains(err.Error(), "restack") {
 				t.Errorf("refusal does not mention the restack that caused it: %v", err)
 			}
-			recorder.AssertNone(test.mutation)
+			if test.mutation != "" {
+				recorder.AssertNone(test.mutation)
+			}
+			if _, statErr := os.Stat(filepath.Join(common, "g2g", "graph.json")); !errors.Is(statErr, os.ErrNotExist) {
+				t.Errorf("%s --apply wrote the graph store during an interrupted restack: %v", test.name, statErr)
+			}
 		})
 	}
 }

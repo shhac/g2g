@@ -60,6 +60,13 @@ func commentView(plan comment.Plan) stackView {
 		}
 		view = view.note("Merged out of the stack and still listed: "+strings.Join(merged, ", "), severityNeutral)
 	}
+	if len(plan.Unread) != 0 {
+		unread := make([]string, 0, len(plan.Unread))
+		for _, number := range plan.Unread {
+			unread = append(unread, fmt.Sprintf("#%d", number))
+		}
+		view = view.note("Named by a comment and not read, so not listed: "+strings.Join(unread, ", "), severityWarn)
+	}
 	for _, write := range plan.Writes {
 		view.Comments = append(view.Comments, stackComment{PullRequest: write.Number, Branch: write.Branch, Action: string(write.Action), Reason: write.Reason, Body: write.Body})
 		switch {

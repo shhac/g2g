@@ -99,7 +99,7 @@ func pr(number int, head, base, state string) githubstack.PullRequest {
 }
 
 func conversation(number int, head, state string, bodies ...string) githubstack.Conversation {
-	found := githubstack.Conversation{ID: fmt.Sprintf("PR_synthetic_%d", number), Number: number, Head: head, State: state}
+	found := githubstack.Conversation{ID: fmt.Sprintf("PR_synthetic_%d", number), Number: number, Head: head, Base: "synthetic-trunk", State: state, Commentable: true}
 	for index, body := range bodies {
 		found.Comments = append(found.Comments, githubstack.Comment{ID: fmt.Sprintf("IC_synthetic_%d_%d", number, index), Body: body, Author: "synthetic-author", Editable: true})
 	}
@@ -158,7 +158,7 @@ func TestPlanAddsACommentToEveryOpenPullRequest(t *testing.T) {
 	for _, want := range []string{
 		Marker,
 		"- `synthetic-trunk`\n- #11 `synthetic-one`\n- **#12 `synthetic-two`** 👈 this pull request\n- #13 `synthetic-three`\n",
-		dataOpen + "11,12,13" + dataClose,
+		dataOpen + "11,12>11,13>12" + dataClose,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body for #12 missing %q:\n%s", want, body)
@@ -224,7 +224,7 @@ func TestPlanDrawsEachPullRequestsOwnLineage(t *testing.T) {
 	}
 	// Every comment records the whole stack, so the next run can find all of it
 	// from any one of them.
-	if !strings.Contains(left, dataOpen+"21,22,23,24"+dataClose) {
+	if !strings.Contains(left, dataOpen+"21,22>21,23>22,24>21"+dataClose) {
 		t.Errorf("#22 does not record the whole stack:\n%s", left)
 	}
 }
@@ -233,7 +233,7 @@ func TestPlanEditsTheCommentItFinds(t *testing.T) {
 	first := plan(t, chain(), "synthetic-one", chainGitHub())
 	github := chainGitHub()
 	github.conversations[11] = conversation(11, "synthetic-one", "OPEN", bodyFor(t, first, 11))
-	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", "stale "+Marker)
+	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" stale")
 	// A comment edited in a browser comes back with CRLF endings, and that is
 	// no reason to edit it again.
 	github.conversations[13] = conversation(13, "synthetic-three", "OPEN", strings.ReplaceAll(bodyFor(t, first, 13), "\n", "\r\n"))
@@ -258,7 +258,7 @@ func TestPlanKeepsListingAPullRequestThatMergedOutOfTheStack(t *testing.T) {
 		"synthetic-two":   "synthetic-trunk",
 		"synthetic-three": "synthetic-two",
 	}}
-	previous := "old " + Marker + "\n" + dataOpen + "11,12,13" + dataClose
+	previous := Marker + "\nold\n" + dataOpen + "11,12>11,13>12" + dataClose
 	github := &fakeGitHub{
 		prs: []githubstack.PullRequest{
 			pr(12, "synthetic-two", "synthetic-trunk", "OPEN"),
@@ -277,7 +277,7 @@ func TestPlanKeepsListingAPullRequestThatMergedOutOfTheStack(t *testing.T) {
 	if actions(got) != "#12:update #13:create #11:update" {
 		t.Fatalf("writes = %s", actions(got))
 	}
-	if body := bodyFor(t, got, 13); !strings.Contains(body, "Merged into `synthetic-trunk`: #11\n") || !strings.Contains(body, dataOpen+"11,12,13"+dataClose) {
+	if body := bodyFor(t, got, 13); !strings.Contains(body, "Merged into `synthetic-trunk`: #11\n") || !strings.Contains(body, dataOpen+"11,12,13>12"+dataClose) {
 		t.Errorf("#13 does not list what merged:\n%s", body)
 	}
 	merged := bodyFor(t, got, 11)
@@ -294,7 +294,7 @@ func TestPlanKeepsListingAPullRequestThatMergedOutOfTheStack(t *testing.T) {
 // Only a merged pull request is kept. One closed without merging, or open in
 // some other stack now, has left this one.
 func TestPlanDropsWhatDidNotMerge(t *testing.T) {
-	previous := Marker + "\n" + dataOpen + "11,12,13,17,18" + dataClose
+	previous := Marker + "\n" + dataOpen + "11,12>11,13>12,17,18>12" + dataClose
 	github := chainGitHub()
 	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", previous)
 	github.conversations[17] = conversation(17, "synthetic-abandoned", "CLOSED")
@@ -303,7 +303,7 @@ func TestPlanDropsWhatDidNotMerge(t *testing.T) {
 	if len(got.Merged) != 0 {
 		t.Errorf("Merged = %v, want nothing kept", got.Merged)
 	}
-	if body := bodyFor(t, got, 12); !strings.Contains(body, dataOpen+"11,12,13"+dataClose) {
+	if body := bodyFor(t, got, 12); !strings.Contains(body, dataOpen+"11,12>11,13>12"+dataClose) {
 		t.Errorf("#12 still records what left:\n%s", body)
 	}
 }
@@ -325,8 +325,8 @@ func TestPlanNeverAddsACommentToAMergedPullRequest(t *testing.T) {
 
 func TestPlanLeavesAloneWhatItCannotSafelyEdit(t *testing.T) {
 	github := chainGitHub()
-	github.conversations[11] = conversation(11, "synthetic-one", "OPEN", "first "+Marker, "second "+Marker)
-	notMine := conversation(12, "synthetic-two", "OPEN", "theirs "+Marker)
+	github.conversations[11] = conversation(11, "synthetic-one", "OPEN", Marker+" first", Marker+" second")
+	notMine := conversation(12, "synthetic-two", "OPEN", Marker+" theirs")
 	notMine.Comments[0].Editable = false
 	github.conversations[12] = notMine
 	got := plan(t, chain(), "synthetic-one", github)
@@ -386,7 +386,7 @@ func TestPlanFromATrunkKeepsEachStacksHistoryApart(t *testing.T) {
 		},
 		conversations: map[int]githubstack.Conversation{
 			30: conversation(30, "synthetic-a-landed", "MERGED"),
-			31: conversation(31, "synthetic-a", "OPEN", Marker+"\n"+dataOpen+"30,31,32"+dataClose),
+			31: conversation(31, "synthetic-a", "OPEN", Marker+"\n"+dataOpen+"30,31>30,32>31"+dataClose),
 			32: conversation(32, "synthetic-a-top", "OPEN"),
 			41: conversation(41, "synthetic-b", "OPEN"),
 			42: conversation(42, "synthetic-b-top", "OPEN"),
@@ -403,7 +403,7 @@ func TestPlanFromATrunkKeepsEachStacksHistoryApart(t *testing.T) {
 
 func TestExecuteSendsEachChangeInOrderAndStopsAtAFailure(t *testing.T) {
 	github := chainGitHub()
-	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", "stale "+Marker)
+	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" stale")
 	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
 	planned, err := service.Plan(context.Background(), stack.Selection{})
 	if err != nil {
@@ -436,8 +436,113 @@ func TestRevalidateRefusesACommentThatChangedUnderneath(t *testing.T) {
 	if _, err := service.Revalidate(context.Background(), stack.Selection{}, preview); err != nil {
 		t.Fatalf("Revalidate() of an unchanged world = %v", err)
 	}
-	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", "someone else's "+Marker)
+	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" someone else's")
 	if _, err := service.Revalidate(context.Background(), stack.Selection{}, preview); err == nil {
 		t.Fatal("Revalidate() accepted a comment added since the preview")
+	}
+}
+
+// A pull request moved in from another stack brings a comment describing that
+// one. Its merged history is somebody else's, and adopting it would record it
+// here for every later run.
+func TestPlanDoesNotAdoptHistoryAPullRequestBroughtFromAnotherStack(t *testing.T) {
+	github := chainGitHub()
+	// #13 used to sit on #51 in another stack, whose bottom #50 merged.
+	github.conversations[13] = conversation(13, "synthetic-three", "OPEN", Marker+"\n"+dataOpen+"50,51,13>51"+dataClose)
+	github.conversations[50] = conversation(50, "synthetic-elsewhere-landed", "MERGED")
+	github.conversations[51] = conversation(51, "synthetic-elsewhere", "OPEN")
+	got := plan(t, chain(), "synthetic-one", github)
+	if len(got.Merged) != 0 {
+		t.Fatalf("Merged = %v, want another stack's history left alone", got.Merged)
+	}
+	if body := bodyFor(t, got, 13); strings.Contains(body, "#50") {
+		t.Errorf("#13 still lists the other stack:\n%s", body)
+	}
+}
+
+// The branch below landed and #12 was put on the trunk in its place: its
+// comment still records #11 below it, and that is this stack's own history.
+func TestPlanTrustsACommentWhosePullRequestMovedOntoWhatItsParentMergedInto(t *testing.T) {
+	landed := shape.Forest{Parents: map[string]string{"synthetic-trunk": "", "synthetic-two": "synthetic-trunk"}}
+	github := &fakeGitHub{
+		prs: []githubstack.PullRequest{pr(12, "synthetic-two", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{
+			11: conversation(11, "synthetic-one", "MERGED"),
+			12: conversation(12, "synthetic-two", "OPEN", Marker+"\n"+dataOpen+"11,12>11"+dataClose),
+		},
+	}
+	got := plan(t, landed, "synthetic-two", github)
+	if !slices.Equal(got.Merged, []int{11}) {
+		t.Fatalf("Merged = %v, want #11", got.Merged)
+	}
+
+	// Merged somewhere other than where #12 sits now is not the same story.
+	elsewhere := conversation(11, "synthetic-one", "MERGED")
+	elsewhere.Base = "synthetic-release"
+	github.conversations[11] = elsewhere
+	if got := plan(t, landed, "synthetic-two", github); len(got.Merged) != 0 {
+		t.Errorf("Merged = %v, want nothing adopted from a pull request that merged elsewhere", got.Merged)
+	}
+}
+
+// From a trunk, two stacks may both name a number; each still sees it, so the
+// comments agree with a run from inside either stack.
+func TestPlanFromATrunkAgreesWithAPlanFromEachStack(t *testing.T) {
+	forest := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-a":     "synthetic-trunk",
+		"synthetic-b":     "synthetic-trunk",
+	}}
+	shared := Marker + "\n" + dataOpen + "30,31,41" + dataClose
+	fresh := func() *fakeGitHub {
+		return &fakeGitHub{
+			prs: []githubstack.PullRequest{pr(31, "synthetic-a", "synthetic-trunk", "OPEN"), pr(41, "synthetic-b", "synthetic-trunk", "OPEN")},
+			conversations: map[int]githubstack.Conversation{
+				30: conversation(30, "synthetic-landed", "MERGED"),
+				31: conversation(31, "synthetic-a", "OPEN", shared),
+				41: conversation(41, "synthetic-b", "OPEN", shared),
+			},
+		}
+	}
+	whole := plan(t, forest, "synthetic-trunk", fresh())
+	for _, from := range []string{"synthetic-a", "synthetic-b"} {
+		alone := plan(t, forest, from, fresh())
+		for _, write := range alone.Writes {
+			if write.Historic {
+				continue
+			}
+			if body := bodyFor(t, whole, write.Number); body != write.Body {
+				t.Errorf("#%d differs between a trunk run and a run from %s:\n%s\nvs\n%s", write.Number, from, body, write.Body)
+			}
+		}
+	}
+}
+
+// A locked conversation takes no new comment, and finding that out from a
+// failed write part-way down a stack is the wrong time.
+func TestPlanSkipsAConversationThatTakesNoComments(t *testing.T) {
+	github := chainGitHub()
+	locked := github.conversations[12]
+	locked.Commentable = false
+	github.conversations[12] = locked
+	got := plan(t, chain(), "synthetic-one", github)
+	if actions(got) != "#11:create #12:skip #13:create" || !strings.Contains(got.Writes[1].Reason, "locked") {
+		t.Fatalf("writes = %s, reason %q", actions(got), got.Writes[1].Reason)
+	}
+}
+
+// A recorded number GitHub no longer answers for is dropped rather than
+// failing the run; one the stack carries is not allowed to vanish.
+func TestPlanDropsARecordedNumberNothingAnswersTo(t *testing.T) {
+	github := chainGitHub()
+	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+"\n"+dataOpen+"9,11>9,12>11,13>12"+dataClose)
+	got := plan(t, chain(), "synthetic-one", github)
+	if len(got.Merged) != 0 || len(got.Unread) != 0 {
+		t.Errorf("Merged = %v, Unread = %v", got.Merged, got.Unread)
+	}
+
+	delete(github.conversations, 13)
+	if _, err := (Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}).Plan(context.Background(), stack.Selection{}); err == nil {
+		t.Error("Plan() accepted a stack whose pull request GitHub did not answer for")
 	}
 }

@@ -24,24 +24,27 @@ func TestCodeCannotBeClosedByTheNameInside(t *testing.T) {
 
 // The recorded numbers are editable by anyone who can edit the pull request,
 // so reading them back tolerates what a person might leave there.
-func TestListedInReadsWhatItCanAndIgnoresTheRest(t *testing.T) {
-	for body, want := range map[string][]int{
-		"no data":                      nil,
-		dataOpen + "3,1,2" + dataClose: {3, 1, 2},
-		dataOpen + " 4, x, -5, 0, 4 ,6" + dataClose: {4, 6},
+func TestRecordedInReadsWhatItCanAndIgnoresTheRest(t *testing.T) {
+	for body, want := range map[string][]entry{
+		"no data":                          nil,
+		dataOpen + "3,1>3,2>1" + dataClose: {{3, 0}, {1, 3}, {2, 1}},
+		dataOpen + " 4, x, -5, 0, 4 ,6>6,7>" + dataClose: {{4, 0}},
 		dataOpen + "7,8": nil,
-		"before " + dataOpen + "9" + dataClose + "\n": {9},
+		"before " + dataOpen + "9>2" + dataClose + "\n": {{9, 2}},
 	} {
-		if got := listedIn(body); !slices.Equal(got, want) {
-			t.Errorf("listedIn(%q) = %v, want %v", body, got, want)
+		if got := recordedIn(body); !slices.Equal(got, want) {
+			t.Errorf("recordedIn(%q) = %v, want %v", body, got, want)
 		}
 	}
-	long := make([]string, 0, listedLimit+50)
-	for number := 1; number <= listedLimit+50; number++ {
+	long := make([]string, 0, recordedLimit+50)
+	for number := 1; number <= recordedLimit+50; number++ {
 		long = append(long, strconv.Itoa(number))
 	}
-	if got := listedIn(dataOpen + strings.Join(long, ",") + dataClose); len(got) != listedLimit {
-		t.Errorf("listedIn read %d numbers, want it bounded at %d", len(got), listedLimit)
+	if got := recordedIn(dataOpen + strings.Join(long, ",") + dataClose); len(got) != recordedLimit {
+		t.Errorf("recordedIn read %d entries, want it bounded at %d", len(got), recordedLimit)
+	}
+	if encoded := encode([]entry{{11, 0}, {12, 11}}); encoded != "11,12>11" {
+		t.Errorf("encode = %q", encoded)
 	}
 }
 
@@ -52,7 +55,7 @@ func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {
 	body := view{
 		Trunk: "synthetic-trunk",
 		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Branch: hostile, Number: 5, State: stateOpen}},
-		Here:  5, Listed: []int{5},
+		Here:  5, Recorded: []entry{{Number: 5}},
 	}.body()
 	for _, comment := range []string{Marker, dataOpen + "5" + dataClose} {
 		if !strings.Contains(body, comment) {

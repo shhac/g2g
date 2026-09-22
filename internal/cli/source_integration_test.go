@@ -106,8 +106,8 @@ const ownedMergeability = `{"data":{"repository":{"squashMergeAllowed":true,"mer
 
 // ownedConversations is the same two pull requests with nothing said yet.
 const ownedConversations = `{"data":{"repository":{` +
-	`"c0":{"__typename":"PullRequest","id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}},` +
-	`"c1":{"__typename":"PullRequest","id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`
+	`"c0":{"__typename":"PullRequest","id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}},` +
+	`"c1":{"__typename":"PullRequest","id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`
 
 // The default stack is open but not yet projected onto GitHub, which is what
 // link has work to do about; the linked variant is what unlink needs.

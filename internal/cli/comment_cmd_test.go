@@ -56,8 +56,8 @@ func TestCommentApplyAddsOneCommentToEachPullRequest(t *testing.T) {
 // second one.
 func TestCommentApplyEditsTheCommentItFinds(t *testing.T) {
 	conversations := strings.Replace(ownedConversations,
-		`"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}`,
-		`"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","state":"OPEN","comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[`+
+		`"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}`,
+		`"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[`+
 			`{"id":"IC_synthetic_reviewer","body":"a reviewer's words","viewerCanUpdate":false,"author":{"login":"synthetic-reviewer"}},`+
 			`{"id":"IC_synthetic_stale","body":"<!-- g2g:stack-comment -->\nstale","viewerCanUpdate":true,"author":{"login":"synthetic-author"}}]}`, 1)
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, conversations)

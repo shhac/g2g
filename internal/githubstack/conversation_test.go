@@ -19,8 +19,11 @@ const syntheticMarker = "<!-- synthetic-marker -->"
 // round asked about.
 type scriptedRunner struct {
 	responses []string
-	queries   []string
-	argv      [][]string
+	// failing makes the matching response come back with a non-zero exit, the
+	// way gh reports a response that carries GraphQL errors.
+	failing map[int]bool
+	queries []string
+	argv    [][]string
 }
 
 func (r *scriptedRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -35,6 +38,9 @@ func (r *scriptedRunner) Run(_ context.Context, name string, args ...string) ([]
 	}
 	response := r.responses[0]
 	r.responses = r.responses[1:]
+	if r.failing[len(r.argv)-1] {
+		return []byte(response + "\ngh: synthetic GraphQL failure\n"), fmt.Errorf("exit status 1")
+	}
 	return []byte(response), nil
 }
 
@@ -43,7 +49,7 @@ func conversationJSON(alias string, number int, state string, hasNext bool, curs
 	for index, body := range comments {
 		nodes = append(nodes, fmt.Sprintf(`{"id":"IC_synthetic_%d_%d","body":%q,"viewerCanUpdate":true,"author":{"login":"synthetic-author"}}`, number, index, body))
 	}
-	return fmt.Sprintf(`%q:{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"url":"https://example.test/pull/%d","headRefName":"synthetic-%d","state":%q,"comments":{"pageInfo":{"hasNextPage":%t,"endCursor":%q},"nodes":[%s]}}`,
+	return fmt.Sprintf(`%q:{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"url":"https://example.test/pull/%d","headRefName":"synthetic-%d","baseRefName":"synthetic-trunk","state":%q,"viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":%t,"endCursor":%q},"nodes":[%s]}}`,
 		alias, number, number, number, number, state, hasNext, cursor, strings.Join(nodes, ","))
 }
 
@@ -51,12 +57,15 @@ func repositoryJSON(fields ...string) string {
 	return `{"data":{"repository":{` + strings.Join(fields, ",") + `}}}`
 }
 
-func TestConversationsKeepsOnlyMarkedCommentsAndSkipsIssues(t *testing.T) {
-	runner := &scriptedRunner{responses: []string{repositoryJSON(
-		conversationJSON("c0", 11, "OPEN", false, "", "a reviewer's words", "synthetic body "+syntheticMarker),
+// A number that is an issue answers nothing, and one nothing answers to comes
+// back as null with a NOT_FOUND error and a failing exit — which is what GitHub
+// sends, and not a reason to lose the rest of the response.
+func TestConversationsKeepsOnlyMarkedCommentsAndSkipsWhatIsNotAPullRequest(t *testing.T) {
+	runner := &scriptedRunner{responses: []string{`{"data":{"repository":{` + strings.Join([]string{
+		conversationJSON("c0", 11, "OPEN", false, "", "a reviewer's words", "quoting `"+syntheticMarker+"` in passing", "\n"+syntheticMarker+"\nsynthetic body"),
 		`"c1":{"__typename":"Issue"}`,
 		`"c2":null`,
-	)}}
+	}, ",") + `}},"errors":[{"type":"NOT_FOUND","path":["repository","c2"],"message":"Could not resolve to an issue or pull request with the number of 13."}]}`}, failing: map[int]bool{0: true}}
 	conversations, err := Client{Runner: runner}.Conversations(context.Background(), []int{11, 12, 13, 11}, syntheticMarker)
 	if err != nil {
 		t.Fatal(err)
@@ -65,11 +74,11 @@ func TestConversationsKeepsOnlyMarkedCommentsAndSkipsIssues(t *testing.T) {
 		t.Fatalf("conversations = %#v, want only the pull request", conversations)
 	}
 	got := conversations[0]
-	if got.ID != "PR_synthetic_11" || got.State != "OPEN" || got.Head != "synthetic-11" {
+	if got.ID != "PR_synthetic_11" || got.State != "OPEN" || got.Head != "synthetic-11" || got.Base != "synthetic-trunk" || !got.Commentable {
 		t.Errorf("conversation = %#v", got)
 	}
-	if len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, syntheticMarker) || !got.Comments[0].Editable || got.Comments[0].Author != "synthetic-author" {
-		t.Errorf("comments = %#v, want the one marked comment", got.Comments)
+	if len(got.Comments) != 1 || !strings.Contains(got.Comments[0].Body, "synthetic body") || !got.Comments[0].Editable || got.Comments[0].Author != "synthetic-author" {
+		t.Errorf("comments = %#v, want only the comment that opens with the marker", got.Comments)
 	}
 	// A duplicate number is one pull request, asked about once.
 	if strings.Count(runner.queries[0], "issueOrPullRequest") != 3 {
@@ -83,9 +92,9 @@ func TestConversationsFollowsOnlyThePagesThatContinue(t *testing.T) {
 	runner := &scriptedRunner{responses: []string{
 		repositoryJSON(
 			conversationJSON("c0", 21, "OPEN", true, "synthetic-cursor", "first page"),
-			conversationJSON("c1", 22, "MERGED", false, "", "done "+syntheticMarker),
+			conversationJSON("c1", 22, "MERGED", false, "", syntheticMarker+" done"),
 		),
-		repositoryJSON(conversationJSON("c0", 21, "OPEN", false, "", "second page "+syntheticMarker)),
+		repositoryJSON(conversationJSON("c0", 21, "OPEN", false, "", syntheticMarker+" second page")),
 	}}
 	conversations, err := Client{Runner: runner}.Conversations(context.Background(), []int{21, 22}, syntheticMarker)
 	if err != nil {
@@ -103,6 +112,14 @@ func TestConversationsFollowsOnlyThePagesThatContinue(t *testing.T) {
 }
 
 func TestConversationsRefusesWhatItCannotTrust(t *testing.T) {
+	notFoundElsewhere := `{"data":{"repository":{"c0":null}},"errors":[{"type":"NOT_FOUND","path":["repository","c9"],"message":"synthetic"}]}`
+	forbidden := `{"data":{"repository":{"c0":null}},"errors":[{"type":"FORBIDDEN","path":["repository","c0"],"message":"synthetic"}]}`
+	for _, response := range []string{notFoundElsewhere, forbidden} {
+		runner := &scriptedRunner{responses: []string{response}, failing: map[int]bool{0: true}}
+		if _, err := (Client{Runner: runner}).Conversations(context.Background(), []int{31}, syntheticMarker); err == nil {
+			t.Errorf("Conversations() accepted a failure it cannot explain: %s", response)
+		}
+	}
 	for name, response := range map[string]string{
 		"errors":         `{"errors":[{"message":"synthetic failure"}]}`,
 		"no repository":  `{"data":{}}`,

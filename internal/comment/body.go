@@ -2,7 +2,6 @@ package comment
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,10 +11,12 @@ import (
 // this tool's to edit: a comment without it is somebody's words.
 const Marker = "<!-- g2g:stack-comment -->"
 
-// The data line records every pull request the stack has listed. It is what
-// lets a merged pull request go on being listed after its branch is pruned and
-// deleted, when nothing local remembers it and GitHub has no idea it was ever
-// part of a stack.
+// The data line records every pull request the stack has listed, each with the
+// pull request it sat on: `11,12>11,13>12`. It is what lets a merged pull
+// request go on being listed after its branch is pruned and deleted, when
+// nothing local remembers it and GitHub has no idea it was ever part of a
+// stack; the parent is what tells a comment about this stack from one a pull
+// request brought with it from another.
 //
 // Only numbers go inside it, so nothing a branch name or a title contains can
 // close the HTML comment and spill into what GitHub renders.
@@ -24,10 +25,16 @@ const (
 	dataClose = " -->"
 )
 
-// listedLimit bounds how many numbers one comment may hand the next run. A
-// person can edit a comment, and an edit is not a reason to read a thousand
-// pull requests.
-const listedLimit = 200
+// recordedLimit bounds how many pull requests one comment may hand the next
+// run. A person can edit a comment, and an edit is not a reason to read a
+// thousand pull requests.
+const recordedLimit = 200
+
+// entry is one recorded pull request and the one it sat on, zero for none.
+type entry struct {
+	Number int
+	Parent int
+}
 
 // line is one entry of the list a comment draws.
 type line struct {
@@ -46,9 +53,9 @@ type view struct {
 	Lines  []line
 	// Here is the pull request this comment is on.
 	Here int
-	// Listed is every pull request the stack knows of, recorded for the next
-	// run. It is the same on every comment of a stack.
-	Listed []int
+	// Recorded is every pull request the stack knows of, for the next run. It
+	// is the same on every comment of a stack.
+	Recorded []entry
 }
 
 func (v view) body() string {
@@ -66,7 +73,7 @@ func (v view) body() string {
 		out.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
 	out.WriteString("\n<sub>Kept up to date by g2g, which edits this comment when the stack changes.</sub>\n")
-	out.WriteString(dataOpen + joinNumbers(v.Listed) + dataClose + "\n")
+	out.WriteString(dataOpen + encode(v.Recorded) + dataClose + "\n")
 	return out.String()
 }
 
@@ -121,19 +128,23 @@ func code(text string) string {
 	return fence + " " + text + " " + fence
 }
 
-func joinNumbers(numbers []int) string {
-	said := make([]string, 0, len(numbers))
-	for _, number := range numbers {
-		said = append(said, strconv.Itoa(number))
+func encode(entries []entry) string {
+	said := make([]string, 0, len(entries))
+	for _, recorded := range entries {
+		if recorded.Parent == 0 {
+			said = append(said, strconv.Itoa(recorded.Number))
+			continue
+		}
+		said = append(said, strconv.Itoa(recorded.Number)+">"+strconv.Itoa(recorded.Parent))
 	}
 	return strings.Join(said, ",")
 }
 
-// listedIn reads back the pull requests a comment recorded. Anything it cannot
-// read as a positive number is ignored rather than refused: the comment is
-// editable by anyone who can edit the pull request, and a stray character is
-// no reason to stop keeping the rest of it.
-func listedIn(body string) []int {
+// recordedIn reads back what a comment recorded. Anything it cannot read is
+// ignored rather than refused: the comment is editable by anyone who can edit
+// the pull request, and a stray character is no reason to stop keeping the
+// rest of it.
+func recordedIn(body string) []entry {
 	start := strings.Index(body, dataOpen)
 	if start < 0 {
 		return nil
@@ -143,18 +154,36 @@ func listedIn(body string) []int {
 	if end < 0 {
 		return nil
 	}
-	numbers := make([]int, 0)
+	entries := make([]entry, 0)
+	seen := map[int]bool{}
 	for _, field := range strings.Split(rest[:end], ",") {
-		number, err := strconv.Atoi(strings.TrimSpace(field))
-		if err != nil || number <= 0 || slices.Contains(numbers, number) {
+		number, parent, ok := parseEntry(strings.TrimSpace(field))
+		if !ok || seen[number] {
 			continue
 		}
-		numbers = append(numbers, number)
-		if len(numbers) == listedLimit {
+		seen[number] = true
+		entries = append(entries, entry{Number: number, Parent: parent})
+		if len(entries) == recordedLimit {
 			break
 		}
 	}
-	return numbers
+	return entries
+}
+
+func parseEntry(field string) (int, int, bool) {
+	own, below, sits := strings.Cut(field, ">")
+	number, err := strconv.Atoi(own)
+	if err != nil || number <= 0 {
+		return 0, 0, false
+	}
+	if !sits {
+		return number, 0, true
+	}
+	parent, err := strconv.Atoi(below)
+	if err != nil || parent <= 0 || parent == number {
+		return 0, 0, false
+	}
+	return number, parent, true
 }
 
 // same reports whether an existing comment already says what this one would.

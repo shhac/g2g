@@ -7,6 +7,7 @@
 package githubstack
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,10 +26,19 @@ type Conversation struct {
 	Number int
 	URL    string
 	Head   string
-	State  string
-	// Comments are only those whose body carries the marker asked for, oldest
-	// first. Everything else in the conversation is somebody's words and none
-	// of this tool's business.
+	// Base is where the pull request merges, or merged. For a merged one it
+	// is the branch that took the work, which is how a stack tells its own
+	// history from a pull request that only passed through it.
+	Base  string
+	State string
+	// Commentable is whether the person running this may add a comment. A
+	// locked conversation takes none, and finding that out from a failed
+	// write part-way down a stack is the wrong time.
+	Commentable bool
+	// Comments are only those whose body opens with the marker asked for,
+	// oldest first. Everything else in the conversation is somebody's words
+	// and none of this tool's business — including a comment that merely
+	// quotes the marker, as one about this tool would.
 	Comments []Comment
 }
 
@@ -58,9 +68,9 @@ const commentPages = 100
 //
 // One query per round answers every pull request still being read, so a stack
 // costs one round trip unless a conversation runs past a page. A number that is
-// an issue rather than a pull request answers nothing and is left out: the
-// numbers come from comments a person can edit, and an edit is not a reason to
-// fail the command.
+// an issue rather than a pull request, or that nothing answers to, is left out:
+// the numbers come from comments a person can edit, and an edit is not a reason
+// to fail the command. A caller that needs a number to exist checks for it.
 func (c Client) Conversations(ctx context.Context, numbers []int, marker string) ([]Conversation, error) {
 	if c.Runner == nil {
 		return nil, fmt.Errorf("GitHub runner is not configured")
@@ -85,7 +95,9 @@ func (c Client) Conversations(ctx context.Context, numbers []int, marker string)
 		}
 		diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "pull_request_comments"}, diagnostic.Field{Key: "pull_requests", Value: strconv.Itoa(len(pending))}, diagnostic.Field{Key: "query", Value: "omitted"})
 		output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+conversationQuery(pending))
-		if err != nil {
+		// gh exits non-zero when any alias failed, and a number nothing answers
+		// to is one; the response it printed still answers the rest.
+		if err != nil && !onlyUnresolved(output, len(pending)) {
 			return nil, repositoryError(err, output)
 		}
 		next, err := parseConversations(output, pending, marker, read)
@@ -109,6 +121,44 @@ type conversationPage struct {
 	After  string
 }
 
+// conversationErrors are the GraphQL errors this read can live with: one per
+// alias that named no issue or pull request.
+type conversationErrors struct {
+	Errors []struct {
+		Type string        `json:"type"`
+		Path []interface{} `json:"path"`
+	} `json:"errors"`
+}
+
+// onlyUnresolved reports a failed response whose every error is an alias that
+// resolved to nothing. The output is combined, so the response is read as the
+// first JSON value in it and whatever gh wrote after it is ignored.
+func onlyUnresolved(output []byte, aliases int) bool {
+	var response conversationErrors
+	if err := decodeFirstJSON(output, &response); err != nil || len(response.Errors) == 0 {
+		return false
+	}
+	for _, failure := range response.Errors {
+		if failure.Type != "NOT_FOUND" || len(failure.Path) != 2 || failure.Path[0] != "repository" {
+			return false
+		}
+		alias, _ := failure.Path[1].(string)
+		index, err := strconv.Atoi(strings.TrimPrefix(alias, "c"))
+		if !strings.HasPrefix(alias, "c") || err != nil || index < 0 || index >= aliases {
+			return false
+		}
+	}
+	return true
+}
+
+func decodeFirstJSON(output []byte, into interface{}) error {
+	start := bytes.IndexByte(output, '{')
+	if start < 0 {
+		return fmt.Errorf("no JSON in gh api graphql output")
+	}
+	return json.NewDecoder(bytes.NewReader(output[start:])).Decode(into)
+}
+
 func conversationQuery(pending []conversationPage) string {
 	fields := make([]string, 0, len(pending))
 	for index, page := range pending {
@@ -116,7 +166,7 @@ func conversationQuery(pending []conversationPage) string {
 		if page.After != "" {
 			after = ", after: " + strconv.Quote(page.After)
 		}
-		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number url headRefName state comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
+		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number url headRefName baseRefName state viewerCanComment comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
 	}
 	// Named, as the mergeability query is, because both go to the same
 	// endpoint as the head-ref lookup and a reader of a recorded call — or a
@@ -125,13 +175,15 @@ func conversationQuery(pending []conversationPage) string {
 }
 
 type conversationNode struct {
-	TypeName string `json:"__typename"`
-	ID       string `json:"id"`
-	Number   int    `json:"number"`
-	URL      string `json:"url"`
-	Head     string `json:"headRefName"`
-	State    string `json:"state"`
-	Comments struct {
+	TypeName    string `json:"__typename"`
+	ID          string `json:"id"`
+	Number      int    `json:"number"`
+	URL         string `json:"url"`
+	Head        string `json:"headRefName"`
+	Base        string `json:"baseRefName"`
+	State       string `json:"state"`
+	Commentable bool   `json:"viewerCanComment"`
+	Comments    struct {
 		PageInfo struct {
 			HasNextPage bool   `json:"hasNextPage"`
 			EndCursor   string `json:"endCursor"`
@@ -151,10 +203,10 @@ type conversationNode struct {
 // pull requests that have another page.
 func parseConversations(output []byte, pending []conversationPage, marker string, read map[int]*Conversation) ([]conversationPage, error) {
 	var response graphqlResponse
-	if err := json.Unmarshal(output, &response); err != nil {
+	if err := decodeFirstJSON(output, &response); err != nil {
 		return nil, fmt.Errorf("parse gh api graphql JSON: %w", err)
 	}
-	if len(response.Errors) != 0 {
+	if len(response.Errors) != 0 && !onlyUnresolved(output, len(pending)) {
 		return nil, fmt.Errorf("gh api graphql returned errors: %s", diagnostic.BoundedOutput([]byte(response.Errors[0].Message)))
 	}
 	if response.Data.Repository == nil {
@@ -179,11 +231,11 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		}
 		conversation := read[page.Number]
 		if conversation == nil {
-			conversation = &Conversation{ID: node.ID, Number: node.Number, URL: node.URL, Head: node.Head, State: node.State}
+			conversation = &Conversation{ID: node.ID, Number: node.Number, URL: node.URL, Head: node.Head, Base: node.Base, State: node.State, Commentable: node.Commentable}
 			read[page.Number] = conversation
 		}
 		for _, comment := range node.Comments.Nodes {
-			if !strings.Contains(comment.Body, marker) {
+			if !strings.HasPrefix(strings.TrimSpace(comment.Body), marker) {
 				continue
 			}
 			if comment.ID == "" {

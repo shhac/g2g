@@ -53,6 +53,10 @@ type Plan struct {
 	// Landed is the branches whose work is entirely in their parent, in the
 	// order they were selected.
 	Landed []string
+	// Missing are recorded branches that are no longer local: deleted or
+	// renamed with plain Git. Nothing can be asked of Git about them, so they
+	// are not judged landed; untrack is what forgets a stale edge.
+	Missing []string
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 	// Repair is Blocked in the shape a caller can lay out.
@@ -66,7 +70,8 @@ func (p Plan) Nothing() bool { return len(p.Landed) == 0 }
 func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Blocked == other.Blocked &&
-		slices.Equal(p.Landed, other.Landed)
+		slices.Equal(p.Landed, other.Landed) &&
+		slices.Equal(p.Missing, other.Missing)
 }
 
 // Ready reports a service with everything it needs.
@@ -91,11 +96,15 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Discovery: discovery, Landed: make([]string, 0)}
+	plan := Plan{Discovery: discovery, Landed: make([]string, 0), Missing: make([]string, 0)}
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
 			// A trunk is not a branch with work to land.
+			continue
+		}
+		if discovery.States[branch] == graph.StateBranchMissing {
+			plan.Missing = append(plan.Missing, branch)
 			continue
 		}
 		landed, err := s.landed(ctx, branch, edge)

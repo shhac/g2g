@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 )
 
@@ -19,8 +20,11 @@ func pruneView(plan prune.Plan) stackView {
 	view := graphView(plan.Discovery, "prune")
 	for index, node := range view.Nodes {
 		if forgetting[node.Branch] {
-			view.Nodes[index].State, view.Nodes[index].Severity = "landed · forget", severityWarn
+			view.Nodes[index].State, view.Nodes[index].Severity = forgetState(plan, node.Branch), severityWarn
 		}
+	}
+	for _, branch := range plan.Missing {
+		view = view.note(branch+" is recorded and no longer a local branch · run "+runnable("g2g untrack --branch "+branch)+" to forget it", severityWarn)
 	}
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)
@@ -29,6 +33,16 @@ func pruneView(plan prune.Plan) stackView {
 		return view
 	}
 	return view.note("Forgets "+branchList(plan.Landed)+" from the recorded graph. No branch is deleted.", severityWarn)
+}
+
+// forgetState says why a branch is forgotten in the words graph uses for it. A
+// branch with no commits of its own is not called landed: it may be one nobody
+// has committed to yet, and the two are identical from the recorded state.
+func forgetState(plan prune.Plan, branch string) string {
+	if plan.Discovery.States[branch] == graph.StateEmpty {
+		return "no commits of its own · forget"
+	}
+	return "landed · forget"
 }
 
 func writePrunePlan(w io.Writer, plan prune.Plan, p Presentation) error {

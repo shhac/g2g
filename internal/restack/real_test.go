@@ -146,3 +146,48 @@ func TestIndependentRootsAreEachReplayedOntoTheirOwnParent(t *testing.T) {
 	r.builtOn("synthetic-x", "synthetic-y")
 	r.assertClean()
 }
+
+// A squash-merged parent collapses onto the trunk, and the child above it
+// conflicts. Standing on the parent, the collapse moved the checked-out
+// branch, and the rebase that followed refused to start: git read the index
+// that still described the old commit as uncommitted changes, left them
+// staged, and left the journal behind with nothing to continue.
+func TestACollapseOfTheCheckedOutBranchLetsTheRebaseStart(t *testing.T) {
+	r := newRealStack(t)
+	r.Commit("synthetic shared", "shared.txt", "base")
+	r.branch("synthetic-a", "synthetic-main", "a.txt", "a")
+	r.Commit("synthetic a again", "a2.txt", "a2")
+	r.branch("synthetic-b", "synthetic-a", "shared.txt", "from b")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Run("merge", "-q", "--squash", "synthetic-a")
+	r.Run("commit", "-qm", "synthetic squash of a")
+	r.Commit("synthetic trunk change", "shared.txt", "from the trunk")
+	r.Run("switch", "-q", "synthetic-a")
+
+	plan := r.plan(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	if plan.Clean {
+		t.Fatal("the plan predicts no conflict; this case needs the resumable engine")
+	}
+	if err := r.service.Apply(context.Background(), plan); err == nil {
+		t.Fatal("Apply() error = nil; the rebase was meant to stop on the conflict")
+	}
+
+	conflicted, err := r.client.ConflictedPaths(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(conflicted, ",") != "shared.txt" {
+		t.Fatalf("conflicted = %v, want the rebase stopped on shared.txt rather than refusing to start", conflicted)
+	}
+
+	r.Write("shared.txt", "resolved")
+	r.Run("add", "shared.txt")
+	if err := r.service.Continue(context.Background()); err != nil {
+		t.Fatalf("Continue() error = %v", err)
+	}
+	if got := r.Revision("synthetic-a"); got != r.Revision("synthetic-main") {
+		t.Errorf("synthetic-a = %s, want it collapsed onto the trunk", got)
+	}
+	r.builtOn("synthetic-main", "synthetic-b")
+	r.assertClean()
+}

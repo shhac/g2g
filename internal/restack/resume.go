@@ -117,11 +117,8 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 		}
 		return finishComplete, nil
 	}
-	if err := s.collapse(ctx, plan); err != nil {
-		return finishComplete, err
-	}
 	// A rebase may stop again; leaving the journal lets --continue recompute.
-	if err := s.rebaseEach(ctx, plan); err != nil {
+	if err := s.collapseAndRebase(ctx, plan, standing); err != nil {
 		return finishComplete, err
 	}
 	return finishAgain, nil

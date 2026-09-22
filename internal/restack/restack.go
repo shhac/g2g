@@ -65,10 +65,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.inPlace() {
 		return s.applyInPlace(ctx, plan, standing)
 	}
-	if err := s.collapse(ctx, plan); err != nil {
-		return err
-	}
-	return s.rebase(ctx, plan)
+	return s.rebase(ctx, plan, standing)
 }
 
 // applyInPlace journals a rewrite that needs no working tree before it moves
@@ -309,22 +306,44 @@ func (s Service) putBack(ctx context.Context, before map[string]string, cause er
 // rebase runs the resumable engine and journals enough to undo the whole
 // operation, which git cannot do because it only restores the invocation it is
 // running.
-func (s Service) rebase(ctx context.Context, plan Plan) error {
+//
+// The journal comes first: a collapse moves refs too, and a branch moved with
+// no record of where it was is one --abort cannot put back.
+func (s Service) rebase(ctx context.Context, plan Plan, standing checkout) error {
 	record := s.record(plan)
 	if err := s.Journal.Save(ctx, record); err != nil {
 		return err
 	}
 	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	if err := s.rebaseEach(ctx, plan); err != nil {
+	if err := s.collapseAndRebase(ctx, plan, standing); err != nil {
 		return err
 	}
 	return s.finish(ctx, record)
 }
 
+// collapseAndRebase moves what has nothing left, brings the checkout along,
+// and rebases the rest.
+//
+// The resumable engine checks out as it goes, and it refuses to start over an
+// index describing a commit its branch no longer points at -- which is exactly
+// what collapsing the checked-out branch leaves. Running it straight after the
+// collapse stopped every such restack on "your index contains uncommitted
+// changes", with the phantom changes staged and the journal left behind.
+func (s Service) collapseAndRebase(ctx context.Context, plan Plan, standing checkout) error {
+	if err := s.collapse(ctx, plan); err != nil {
+		return err
+	}
+	if err := s.resettle(ctx, standing); err != nil {
+		return err
+	}
+	return s.rebaseEach(ctx, plan)
+}
+
 // rebaseEach replays one branch at a time, bottom-up.
 //
 // The engines model the work differently and are given it differently. Replay
-// takes the whole set at once and needs one shared origin. Rebase moves a
+// takes a root and everything above it at once and needs one shared origin.
+// Rebase moves a
 // single line of descent, so each branch is rebased onto the parent it now
 // has, re-resolved after that parent has itself moved. Handing rebase the
 // whole chain and asking --update-refs to carry the intermediate branches

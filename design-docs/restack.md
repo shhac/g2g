@@ -225,6 +225,11 @@ invariant: resolving a conflict requires a working tree the user can edit with
 their own tools, and that is their checkout. The alternative was rejected on
 evidence, below.
 
+Collapses run before either engine, and a collapse is a bare ref move. When it
+moves the checked-out branch, the checkout is reconciled before the rebase
+starts, on the first pass and on every resumed one: git reads an index that
+still describes the old commit as uncommitted changes and refuses to begin.
+
 ## Why not a dedicated worktree
 
 Running the rebase in a private worktree keeps the user's checkout usable, and

@@ -8,6 +8,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/testutil"
 )
@@ -526,3 +527,27 @@ func (a stubAncestry) Cherry(_ context.Context, _, head, _ string) (absent, pres
 // Absorbed answers of a whole branch what Cherry answers per commit, which is
 // what a squash merge needs. Nothing here is absorbed unless a case says so.
 func (a stubAncestry) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// A forked stack whose replay conflicts is taken one line at a time. restack's
+// refusal names restack --scope path, which sync does not accept; from a leaf,
+// sync's own stack scope is exactly that line, so that is what it names.
+func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
+	restacker := &stubRestacker{plan: restack.Plan{
+		Lines:   []string{"synthetic-left", "synthetic-right"},
+		Blocked: "this selection forks and the rewrite conflicts · run g2g restack --branch synthetic-left --scope path to …",
+		Repair:  repair.Note{Reason: "this selection forks and the rewrite conflicts"},
+	}}
+	service, _ := newService(behindGit(), restacker)
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commands []string
+	for _, way := range plan.Repair.Ways {
+		commands = append(commands, way.Command)
+	}
+	if strings.Join(commands, ",") != "g2g sync --branch synthetic-left,g2g sync --branch synthetic-right" || strings.Contains(plan.Blocked, "--scope path") {
+		t.Errorf("Blocked = %q, ways = %v", plan.Blocked, commands)
+	}
+}

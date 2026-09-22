@@ -233,6 +233,17 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// carrying only the sentence handed every machine reader a null where the
 	// ways out were.
 	plan.Blocked, plan.Repair = plan.Restack.Blocked, plan.Restack.Repair
+	// A fork whose replay conflicts is taken one line at a time, and from a
+	// leaf sync's own stack scope is exactly that line — whereas the restack
+	// command restack offers takes a scope sync does not.
+	if len(plan.Restack.Lines) != 0 {
+		ways := make([]repair.Step, 0, len(plan.Restack.Lines))
+		for _, leaf := range plan.Restack.Lines {
+			ways = append(ways, repair.Step{Command: "g2g sync --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
+		}
+		plan.Repair = repair.Note{Reason: plan.Restack.Repair.Reason, Ways: ways}
+		plan.Blocked = plan.Repair.Sentence()
+	}
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
 		diagnostic.Field{Key: "advance", Value: fmt.Sprintf("%t", plan.Advance)},

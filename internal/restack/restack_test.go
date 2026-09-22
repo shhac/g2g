@@ -280,6 +280,16 @@ func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
 	if !strings.Contains(plan.Blocked, "--scope path") {
 		t.Errorf("Blocked = %q, want it to name the way forward", plan.Blocked)
 	}
+	// One way out per line of descent, each naming its own leaf: a bare
+	// "--scope path" from where the reader stands takes only one of them.
+	if len(plan.Repair.Ways) != len(plan.Lines) || len(plan.Lines) < 2 {
+		t.Fatalf("Lines = %v, Ways = %+v, want one way per line", plan.Lines, plan.Repair.Ways)
+	}
+	for index, leaf := range plan.Lines {
+		if plan.Repair.Ways[index].Command != "g2g restack --branch "+leaf+" --scope path" {
+			t.Errorf("way %d = %q", index, plan.Repair.Ways[index].Command)
+		}
+	}
 }
 
 func TestRequiresAConfiguredService(t *testing.T) {

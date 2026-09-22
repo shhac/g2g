@@ -89,10 +89,12 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// The resumable engine rewrites one line of descent per invocation, so
 		// a conflicting fork would need several and a journal that tracks
 		// which of them finished. Refusing is honest until it does.
-		plan.Repair = repair.Note{
-			Reason: "this selection forks and the rewrite conflicts",
-			Ways:   []repair.Step{{Command: "g2g restack --scope path", Effect: "rewrite one line of descent at a time"}},
+		plan.Lines = plan.leaves()
+		ways := make([]repair.Step, 0, len(plan.Lines))
+		for _, leaf := range plan.Lines {
+			ways = append(ways, repair.Step{Command: "g2g restack --branch " + leaf + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
 		}
+		plan.Repair = repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: ways}
 		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "restack.plan",

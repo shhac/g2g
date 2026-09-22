@@ -230,6 +230,22 @@ func (p Plan) reparenting() map[string]string {
 
 // chain reports whether the steps form a single line of descent, which is the
 // only shape the resumable engine can rewrite in one invocation.
+// leaves are the rewriting branches nothing else being rewritten sits on: one
+// per line of descent, which is what a refusal to rewrite a fork can offer.
+func (p Plan) leaves() []string {
+	parents := map[string]bool{}
+	for _, step := range p.rewriting() {
+		parents[step.Parent] = true
+	}
+	leaves := make([]string, 0)
+	for _, step := range p.rewriting() {
+		if !parents[step.Branch] {
+			leaves = append(leaves, step.Branch)
+		}
+	}
+	return leaves
+}
+
 func (p Plan) chain() bool {
 	rewriting := p.rewriting()
 	for index, step := range rewriting {
@@ -302,6 +318,9 @@ type Plan struct {
 	Onto   Onto
 	Absorb bool
 	Steps  []Step
+	// Lines are the leaves of a forked selection whose rewrite conflicts,
+	// one per line of descent, which is how it can be taken instead.
+	Lines []string
 	// Updates is what a replay says the refs would become, and Clean reports
 	// that it would apply without a conflict. Both come from a preview that
 	// moves nothing.

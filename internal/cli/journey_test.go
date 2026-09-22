@@ -506,6 +506,64 @@ func TestJourneyTakingThePublishedVersionOfADivergedBranch(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// The trunk itself, both sides moved. This is the most destructive thing the
+// tool does — it hard-resets the branch everything else is built on, dropping
+// commits that exist nowhere else — and nothing exercised it, so the preview
+// had gone contradictory unnoticed: it claimed the published trunk "already
+// has everything here" while listing the commits it was about to lose.
+func TestJourneyTakingThePublishedVersionOfADivergedTrunk(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+
+	// A colleague rewrites the trunk and force-pushes it.
+	w.git(w.Other, "switch", "-q", "main")
+	w.commit(w.Other, "main", "theirs.txt", "theirs")
+	w.git(w.Other, "push", "-q", "--force", "origin", "main")
+	theirs := w.tip(w.Other, "main")
+
+	// And you have a commit on your trunk that never left this machine, so the
+	// two have genuinely diverged rather than one being behind.
+	w.git(w.Local, "switch", "-q", "main")
+	w.commit(w.Local, "main", "mine.txt", "mine")
+	mine := w.tip(w.Local, "main")
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+
+	// Refused by default: choosing between two versions of the trunk is not
+	// something to do behind somebody's back.
+	refused, _, _ := run(t, "sync")
+	if !strings.Contains(refused, "both sides have moved on main") {
+		t.Errorf("a diverged trunk was not refused:\n%s", refused)
+	}
+	if now := w.tip(w.Local, "main"); now != mine {
+		t.Errorf("the refused sync moved the trunk to %s", now)
+	}
+
+	preview := mustRun(t, "sync", "--take", "published")
+	// Every commit it would lose, by name.
+	if !strings.Contains(preview, "discards") || !strings.Contains(preview, mine[:7]) {
+		t.Errorf("the preview does not name the trunk commit it would lose:\n%s", preview)
+	}
+	// And it must not claim the published trunk already has everything here,
+	// which is the opposite of true when it is about to discard something.
+	if strings.Contains(preview, "already has everything here") {
+		t.Errorf("the preview contradicts itself — it discards and claims to lose nothing:\n%s", preview)
+	}
+
+	mustRun(t, "sync", "--take", "published", "--apply")
+
+	if now := w.tip(w.Local, "main"); now != theirs {
+		t.Errorf("main is at %s, want the published %s", now, theirs)
+	}
+	w.assertHas(w.Local, "main", "theirs.txt")
+	// The stack above it was replayed onto the taken trunk rather than stranded.
+	if !w.contains(w.Local, "main", "synthetic-a") {
+		t.Error("synthetic-a was not replayed onto the taken trunk")
+	}
+	w.assertHas(w.Local, "synthetic-a", "a.txt")
+	w.assertClean(w.Local)
+}
+
 // extra-friendly-fixer, with a branch stacked on top of the one they fixed.
 //
 // collect moves your branch to the published version, and the replay was

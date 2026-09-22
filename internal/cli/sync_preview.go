@@ -91,6 +91,13 @@ func shortObject(object string) string {
 
 func baseNote(plan syncer.Plan) string {
 	switch {
+	case plan.Supersede && len(plan.DiscardsBase) != 0:
+		// The other way a base is superseded: asked for with --take, where the
+		// published trunk does not have this one's content and taking it loses
+		// commits. Saying "already has everything here" of that -- which this
+		// did, while discardNote listed the commits it was about to lose --
+		// describes the opposite of what is happening.
+		return fmt.Sprintf("Replaces %s with %s/%s, which does not have everything here · your stack is replayed onto it.", plan.Base, plan.Remote, plan.Base)
 	case plan.Supersede:
 		// Worth spelling out: this is the one place sync discards commits, and
 		// it only does so because the published trunk already has their content

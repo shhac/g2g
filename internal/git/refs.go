@@ -10,7 +10,7 @@ import (
 //
 // This is a different concept from the two rewrite engines next door, and a
 // different audience: internal/sync declares FastForward and ResetBranch on its
-// Git interface and never touches replay or rebase. followCheckout's own
+// Git interface and never touches replay or rebase. moveBranch's own
 // comment argues the move is one concept — it was found in four places before
 // it lived in one — which is the same argument for it being one file.
 
@@ -59,10 +59,7 @@ func (c Client) FastForward(ctx context.Context, branch, to string) error {
 	if !contains {
 		return fmt.Errorf("%s and %s have each moved where the other has not, so %s cannot be fast-forwarded; reconcile it yourself", branch, to, branch)
 	}
-	if err := c.UpdateBranch(ctx, branch, target); err != nil {
-		return err
-	}
-	return c.followCheckout(ctx, branch, current, target)
+	return c.moveBranch(ctx, branch, current, target)
 }
 
 // ResetBranch points a branch at a commit that does not contain it, bringing
@@ -91,14 +88,11 @@ func (c Client) ResetBranch(ctx context.Context, branch, to string) error {
 	if current == target {
 		return nil
 	}
-	if err := c.UpdateBranch(ctx, branch, target); err != nil {
-		return err
-	}
-	return c.followCheckout(ctx, branch, current, target)
+	return c.moveBranch(ctx, branch, current, target)
 }
 
-// followCheckout brings the index and working tree with a branch whose ref has
-// just moved, when that branch is the one checked out here.
+// moveBranch points a branch at another commit and brings the index and
+// working tree with it when it is the branch checked out here.
 //
 // Moving a ref does not touch the working tree, so advancing the branch you are
 // standing on leaves the tree describing the commit before — reported by git as
@@ -106,14 +100,29 @@ func (c Client) ResetBranch(ctx context.Context, branch, to string) error {
 // found four times in four places now, so it lives with the move rather than
 // with each caller that performs one.
 //
+// The tree moves first. It is what can refuse — a local change the new commit
+// would overwrite — and refusing before the ref has moved means a refusal
+// really is nothing having happened. Moving the ref first left a trunk
+// advanced under a working tree that still described the old one, reported as
+// not applied.
+//
 // A detached HEAD has no branch to follow and CurrentBranch says so by failing,
-// which is not a reason to fail the move that already succeeded.
-func (c Client) followCheckout(ctx context.Context, branch, from, to string) error {
+// which is not a reason to fail the move.
+func (c Client) moveBranch(ctx context.Context, branch, from, to string) error {
 	head, err := c.CurrentBranch(ctx)
-	if err != nil || head != branch || from == to {
-		return nil
+	if err != nil || head != branch {
+		return c.UpdateBranch(ctx, branch, to)
 	}
-	return c.SwitchTree(ctx, from, to)
+	if err := c.SwitchTree(ctx, from, to); err != nil {
+		return err
+	}
+	if err := c.UpdateBranch(ctx, branch, to); err != nil {
+		if restoreErr := c.SwitchTree(ctx, to, from); restoreErr != nil {
+			return fmt.Errorf("%w; the working tree was also left at %s and could not be put back: %v", err, to, restoreErr)
+		}
+		return err
+	}
+	return nil
 }
 
 // SwitchTree updates the index and working tree from one commit to another,

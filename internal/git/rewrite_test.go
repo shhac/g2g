@@ -497,3 +497,33 @@ func TestFastForwardIsANoOpWhenAlreadyLevel(t *testing.T) {
 // under. It lives in testutil because internal/cli needs the identical thing
 // and the two copies were byte-for-byte the same.
 func syntheticEnv() []string { return testutil.SyntheticGitEnv() }
+
+// A local change the new commit would overwrite refuses the move, and the
+// refusal means nothing moved. The ref used to move first, so a refused tree
+// update left the trunk advanced under a working tree still describing the
+// old commit — which sync then reported as not applied.
+func TestFastForwardOfTheCheckedOutBranchRefusesBeforeMovingIt(t *testing.T) {
+	dir, client := fastForwardRepo(t)
+	t.Chdir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "ahead.txt"), []byte("a local edit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := client.Resolve(context.Background(), "synthetic-trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := client.FastForward(context.Background(), "synthetic-trunk", "synthetic-ahead"); err == nil {
+		t.Fatal("FastForward() overwrote a local change")
+	}
+	after, err := client.Resolve(context.Background(), "synthetic-trunk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Errorf("synthetic-trunk moved to %s although the checkout could not follow", after)
+	}
+	if edited, err := os.ReadFile(filepath.Join(dir, "ahead.txt")); err != nil || string(edited) != "a local edit" {
+		t.Errorf("the local change was lost: %q, %v", edited, err)
+	}
+}

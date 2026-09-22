@@ -123,6 +123,33 @@ func TestIsAncestorReportsBothAnswersWithoutError(t *testing.T) {
 	}
 }
 
+// A branch built on a trunk that has since moved on still forked where it
+// forked. That commit, not the trunk's tip, is where its own work begins.
+func TestMergeBaseIsWhereTheBranchLeftItsBase(t *testing.T) {
+	_, client := syntheticRepo(t)
+	ctx := context.Background()
+
+	forked, err := client.MergeBase(ctx, "synthetic-auth", "synthetic-main")
+	if err != nil {
+		t.Fatalf("MergeBase() error = %v", err)
+	}
+	root, err := client.Resolve(ctx, "synthetic-main~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forked != root {
+		t.Errorf("MergeBase(auth, main) = %s, want the commit before the trunk moved (%s)", forked, root)
+	}
+}
+
+func TestMergeBaseFailsForAnUnknownRef(t *testing.T) {
+	_, client := syntheticRepo(t)
+
+	if _, err := client.MergeBase(context.Background(), "synthetic-absent", "synthetic-main"); err == nil {
+		t.Fatal("MergeBase() error = nil for an unknown ref")
+	}
+}
+
 func TestIsAncestorStillFailsOnARealError(t *testing.T) {
 	_, client := syntheticRepo(t)
 

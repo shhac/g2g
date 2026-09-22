@@ -17,22 +17,33 @@ import (
 type Adoption struct {
 	Branch string
 	Parent string
-	// ForkPoint is the parent's tip, resolved now. Graphite has no equivalent
-	// field, so importing does not copy this — it manufactures the one thing
-	// that makes a restack possible, and it cannot be recovered later.
+	// ForkPoint is where the branch's own work begins, resolved now: the
+	// parent's tip for Graphite, the merge base for a pull request. Neither
+	// record has an equivalent field, so importing does not copy this — it
+	// manufactures the one thing that makes a restack possible, and it cannot
+	// be recovered later.
 	ForkPoint string
 }
 
 // Conflict is a branch both graphs describe, differently.
 type Conflict struct {
 	Branch string
-	// Ours is the parent the g2g graph records; Theirs is Graphite's.
+	// Ours is the parent the g2g graph records; Theirs is the other record's.
 	Ours   string
 	Theirs string
 }
 
+// The records an import can read. They are the resolver's own source names, so
+// a flag, a preview and the JSON output all use one word for each.
+const (
+	FromGraphite     = "graphite"
+	FromPullRequests = "pull-request"
+)
+
 // ImportPlan is what an import would adopt.
 type ImportPlan struct {
+	// From names the record the edges were read from.
+	From string
 	// Adopt is ordered roots first, so a parent is recorded before the branches
 	// that name it.
 	Adopt []Adoption
@@ -44,16 +55,21 @@ type ImportPlan struct {
 	Agreed []string
 	// NewTrunks are parents about to become roots of the g2g forest.
 	NewTrunks []string
-	Updated   graph.Graph
-	Blocked   string
+	// Unconfirmed are adopted branches whose parent is not an ancestor, so
+	// they will read as needing a restack. Only an import from pull requests
+	// fills it: its fork point is the merge base, which a restack can replay
+	// from, so saying "needs a restack" is true there.
+	Unconfirmed []string
+	Updated     graph.Graph
+	Blocked     string
 	// Repair is Blocked in the shape a caller can lay out.
 	Repair repair.Note
 }
 
 // Claims returns the branches this import would start answering for. Adoption
 // is the authority claim, so this is the list that matters most in a preview:
-// afterwards g2g decides for every one of them, and --from graphite is the
-// only way to see Graphite's view again.
+// afterwards g2g decides for every one of them, and --from on a read is the
+// only way to see the other record's view again.
 func (p ImportPlan) Claims() []string {
 	names := make([]string, 0, len(p.Adopt))
 	for _, adoption := range p.Adopt {
@@ -77,24 +93,55 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 	if err != nil {
 		return ImportPlan{}, err
 	}
+	return s.planAdoptions(ctx, adopted, declaredEdges(forest), local, s.graphiteRecord())
+}
 
-	plan := classify(adopted, forest, local)
+// record is what differs between the sources an import reads. Everything else
+// — the additive rule, the conflict refusal, parents before children, how Git
+// assesses an edge — is one policy, applied once whichever record declared
+// the edges.
+type record struct {
+	from string
+	// answer is how a conflict's repair names taking this record's side.
+	answer string
+	// forkPoint says where an adopted branch's own work begins.
+	forkPoint func(ctx context.Context, adoption Adoption) (string, error)
+}
+
+func (s Service) graphiteRecord() record {
+	return record{
+		from:   FromGraphite,
+		answer: "take Graphite's answer",
+		forkPoint: func(ctx context.Context, adoption Adoption) (string, error) {
+			return s.Git.Resolve(ctx, adoption.Parent)
+		},
+	}
+}
+
+// planAdoptions classifies declared edges and builds the graph adopting them
+// would leave, refusing the whole plan on any disagreement.
+func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declared []Adoption, local []string, source record) (ImportPlan, error) {
+	plan := classify(adopted, declared, local)
+	plan.From = source.from
 	plan.Updated = adopted
 	if len(plan.Conflicts) != 0 {
 		plan.Repair = repair.Note{
 			Reason: "the g2g graph already records a different parent",
 			Ways: []repair.Step{
-				{Command: "g2g untrack", Effect: "drop the recorded parent and take Graphite's answer"},
+				{Command: "g2g untrack", Effect: "drop the recorded parent and " + source.answer},
 				{Effect: "leave it as it is"},
 			},
 		}
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
-	if plan.Updated, plan.NewTrunks, err = s.adopt(ctx, adopted, plan.Adopt); err != nil {
+	updated, trunks, err := s.adopt(ctx, adopted, plan.Adopt, source.forkPoint)
+	if err != nil {
 		return ImportPlan{}, err
 	}
+	plan.Updated, plan.NewTrunks = updated, trunks
 	diagnostic.Event(ctx, "import.plan",
+		diagnostic.Field{Key: "from", Value: source.from},
 		diagnostic.Field{Key: "adopt", Value: strings.Join(plan.Claims(), ",")},
 		diagnostic.Field{Key: "agreed", Value: strings.Join(plan.Agreed, ",")},
 		diagnostic.Field{Key: "conflicts", Value: strings.Join(conflicting(plan.Conflicts), ",")},
@@ -102,20 +149,33 @@ func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
 	return plan, nil
 }
 
-// classify sorts every edge Graphite declares into adopt, conflict, or agreed.
+// declaredEdges is every edge Graphite declares, parents first.
+func declaredEdges(forest graphite.Forest) []Adoption {
+	edges := make([]Adoption, 0, len(forest.Parents))
+	for _, branch := range declaredOrder(forest) {
+		parent := forest.Parents[branch]
+		if parent == "" {
+			// A Graphite root has no edge to import. It becomes a g2g trunk
+			// only if something is adopted onto it.
+			continue
+		}
+		edges = append(edges, Adoption{Branch: branch, Parent: parent})
+	}
+	return edges
+}
+
+// classify sorts every declared edge into adopt, conflict, or agreed. The
+// edges arrive parents first, and the adoptions keep that order.
 //
 // It is pure, like mirror's writes and strangers, so the decision matrix is
 // testable from plain values with no repository, no fakes, and no Git.
-func classify(adopted graph.Graph, forest graphite.Forest, local []string) ImportPlan {
+func classify(adopted graph.Graph, declared []Adoption, local []string) ImportPlan {
 	plan := ImportPlan{}
-	for _, branch := range declaredOrder(forest) {
-		parent := forest.Parents[branch]
+	for _, edge := range declared {
+		branch, parent := edge.Branch, edge.Parent
 		switch {
-		case parent == "":
-			// A Graphite root has no edge to import. It becomes a g2g trunk
-			// only if something is adopted onto it.
 		case !slices.Contains(local, branch) || !slices.Contains(local, parent):
-			// Graphite can name a branch this checkout does not have.
+			// A record can name a branch this checkout does not have.
 		case adopted.Tracked(branch) && adopted.Edges[branch].Parent == parent:
 			plan.Agreed = append(plan.Agreed, branch)
 		case adopted.Tracked(branch):
@@ -130,19 +190,19 @@ func classify(adopted graph.Graph, forest graphite.Forest, local []string) Impor
 // adopt builds the resulting graph, resolving a fork point per edge as it goes.
 // The adoptions are mutated in place so the plan carries the same fork points
 // the write will use, rather than resolving them twice and hoping they agree.
-func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Adoption) (graph.Graph, []string, error) {
+func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Adoption, forkPointOf func(context.Context, Adoption) (string, error)) (graph.Graph, []string, error) {
 	updated := adopted
 	trunks := make([]string, 0)
 	for index, adoption := range adoptions {
-		forkPoint, err := s.Git.Resolve(ctx, adoption.Parent)
+		forkPoint, err := forkPointOf(ctx, adoption)
 		if err != nil {
 			return graph.Graph{}, nil, err
 		}
 		adoptions[index].ForkPoint = forkPoint
 		// Origin records how far Git agrees with the edge, not which tool
 		// supplied it, so an imported edge is assessed exactly as a tracked one
-		// is. Graphite declaring a relationship does not make the commits line
-		// up, and that difference is worth keeping visible.
+		// is. Another record declaring a relationship does not make the commits
+		// line up, and that difference is worth keeping visible.
 		confirmed, err := s.Git.IsAncestor(ctx, adoption.Parent, adoption.Branch)
 		if err != nil {
 			return graph.Graph{}, nil, err
@@ -204,7 +264,7 @@ func (s Service) RevalidateImport(ctx context.Context, preview ImportPlan) (Impo
 
 // Equal compares everything that changes what the write does.
 func (p ImportPlan) Equal(other ImportPlan) bool {
-	if p.Blocked != other.Blocked || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
+	if p.From != other.From || p.Blocked != other.Blocked || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
 		return false
 	}
 	for index, adoption := range p.Adopt {
@@ -217,7 +277,9 @@ func (p ImportPlan) Equal(other ImportPlan) bool {
 			return false
 		}
 	}
-	return slices.Equal(p.Agreed, other.Agreed) && p.Updated.Equal(other.Updated)
+	return slices.Equal(p.Agreed, other.Agreed) &&
+		slices.Equal(p.Unconfirmed, other.Unconfirmed) &&
+		p.Updated.Equal(other.Updated)
 }
 
 // declaredOrder walks Graphite's forest from its roots down, so a parent is

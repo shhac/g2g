@@ -192,6 +192,9 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "retarget", args: []string{"retarget", "--apply"}, mutation: "gh pr edit"},
 		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "gt track"},
 		{name: "import", args: []string{"import", "--apply"}, store: true},
+		// A second read path through the same command: a guard wired to one
+		// branch of the flow and not the other would pass the row above.
+		{name: "import from pull requests", args: []string{"import", "--from", "pull-request", "--apply"}, store: true},
 		{name: "sync", args: []string{"sync", "--apply"}, mutation: "git fetch"},
 		{name: "submit", args: []string{"submit", "--apply"}, mutation: "git push", spec: true},
 		{name: "prune", args: []string{"prune", "--apply"}, store: true},

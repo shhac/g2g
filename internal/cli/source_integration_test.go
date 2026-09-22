@@ -348,8 +348,12 @@ func TestFromRejectsAnUnknownSource(t *testing.T) {
 // which is the failure mode nobody notices until they press tab.
 // pullRequests is what that command needs to have work to do: unlink is the
 // only one whose subject is a stack that is already projected onto GitHub.
+//
+// args are what the command needs to select a stack at all: import reads
+// Graphite whole unless it is pointed at pull requests.
 var stackCommands = []struct {
 	name         string
+	args         []string
 	pullRequests string
 }{
 	{name: "link", pullRequests: ownedPullRequests},
@@ -363,7 +367,20 @@ var stackCommands = []struct {
 	// graph resolves through a source too now, and reads no pull requests at
 	// all: its whole point is answering without a network.
 	{name: "graph", pullRequests: ownedPullRequests},
+	// import from pull requests over a stack the graph already records the
+	// same way: nothing to adopt, and still no Graphite.
+	{name: "import", args: []string{"--from", "pull-request"}, pullRequests: ownedPullRequestsForEveryBranch},
 }
+
+// ownedPullRequestsForEveryBranch answers for every local branch in the order
+// they are asked about, which is what reading a whole structure from pull
+// request bases asks; ownedPullRequests answers only for the two on the path.
+const ownedPullRequestsForEveryBranch = `{"data":{"repository":{` +
+	`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+	`"pr1":{"nodes":[]},` +
+	`"pr2":{"nodes":[]},` +
+	`"pr3":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]},` +
+	`"pr4":{"nodes":[]}}}}`
 
 // The list above is hand-maintained, because each command needs its own
 // fixture. This is what stops it going stale: a new command that takes these
@@ -444,7 +461,7 @@ func TestEveryStackCommandRunsWithoutGraphite(t *testing.T) {
 		t.Run(command.name, func(t *testing.T) {
 			recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, command.pullRequests)
 
-			stdout, stderr, err := run(t, command.name)
+			stdout, stderr, err := run(t, append([]string{command.name}, command.args...)...)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s%s", command.name, err, stdout, stderr)
 			}

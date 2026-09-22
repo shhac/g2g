@@ -158,9 +158,16 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Restack:     restackService,
 		Sync:        syncService,
 		Prune:       pruneService,
-		Align:       align.Service{Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured},
-		Retarget:    retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
-		Comment:     comment.Service{Selector: selector, GitHub: githubClient},
+		Align: align.Service{
+			Git: gitClient, Store: graphService.Store, Refs: gitClient, Graphite: graphiteClient, Configured: graphiteConfigured,
+			// Not NewPullRequestSelector: its memo would hand revalidation the
+			// preview's reading of the pull requests, and re-reading them is
+			// what revalidating an import from them means.
+			PullRequests: stack.PullRequestSelector{Git: gitClient, GitHub: githubClient},
+			Forks:        gitClient, Trunks: gitClient,
+		},
+		Retarget: retarget.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Comment:  comment.Service{Selector: selector, GitHub: githubClient},
 		Land: land.Service{
 			Git: gitClient, Graph: graphService, Selector: selector, GitHub: githubClient,
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService, Holds: restackService,
@@ -270,7 +277,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Align.Ready() {
 		root.AddCommand(newMirror(options.Align, guard, presentation))
-		root.AddCommand(newImport(options.Align, guard, presentation))
+		root.AddCommand(newImport(options.Align, completions, guard, presentation))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

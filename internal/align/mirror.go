@@ -51,6 +51,18 @@ type Service struct {
 	// case. Refusing first reaches the same answer without the side effect, and
 	// keeps "no g2g command enrols a repository" true without exception.
 	Configured func(ctx context.Context) (bool, error)
+
+	// PullRequests, Forks and Trunks serve only import --from pull-request,
+	// and a service without them still mirrors and imports from Graphite.
+	// PullRequests reads what open pull request bases describe, which invokes
+	// gh; that is why it is asked only when that record is named.
+	PullRequests PullRequestReader
+	// Forks says where a branch left its base, which is the fork point an
+	// import from pull requests records.
+	Forks Forks
+	// Trunks is the evidence that a base the g2g graph does not record is the
+	// repository's trunk, and so may become a root.
+	Trunks graph.TrunkEvidence
 }
 
 // Change is one edge a mirror would write.

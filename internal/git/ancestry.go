@@ -120,6 +120,30 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 	return false, err
 }
 
+// MergeBase reports the commit two revisions last had in common.
+//
+// Histories that share nothing have no answer, and git says so with an empty
+// output and exit status 1. That is reported as an error rather than an empty
+// commit, because every caller wants the commit to replay from and there is
+// no such commit to hand them.
+func (c Client) MergeBase(ctx context.Context, one, other string) (string, error) {
+	if err := safeRef(one); err != nil {
+		return "", err
+	}
+	if err := safeRef(other); err != nil {
+		return "", err
+	}
+	output, err := c.run(ctx, "merge-base", one, other)
+	if err != nil {
+		return "", fmt.Errorf("%s and %s share no history: %w", one, other, err)
+	}
+	base := strings.TrimSpace(string(output))
+	if base == "" {
+		return "", fmt.Errorf("%s and %s share no history", one, other)
+	}
+	return base, nil
+}
+
 // ResolveAll resolves many revisions in one process.
 //
 // Resolving them one at a time cost a process each, and a status on a

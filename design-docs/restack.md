@@ -264,6 +264,11 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
 - **the reparenting the operation intends**, because once the rewrite has moved
   a branch a fresh plan can no longer tell where it was headed: it reports the
   branch as moved off its parent, which is true and useless
+- **every selected branch's recorded edge at operation start**, because a
+  resumed pass records fork points and reparenting as it goes (planning against
+  the old ones would read its own progress as drift), and an `--abort` that put
+  back only the tips left each branch recorded as forking at a parent tip it no
+  longer contained
 
 Restoring a tip is a bare ref move, so `--abort` brings the checkout along with
 the branch it is standing on. A user who finished git's own rebase by hand is

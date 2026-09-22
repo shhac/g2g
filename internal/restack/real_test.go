@@ -251,6 +251,50 @@ func TestAbortAfterAHandFinishedRebaseBringsTheCheckoutBack(t *testing.T) {
 	r.assertClean()
 }
 
+// A resumed pass records fork points as it goes, so it can plan against the
+// work it has already done. Abort put the tips back and left those, so every
+// restored branch was recorded as forking at a parent tip it did not contain,
+// and the next restack refused the whole stack as moved off its parent.
+func TestAbortPutsBackTheStructureAResumeRecorded(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	before, err := r.store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack}
+	r.stopOnConflict(selection)
+	r.Write("a.txt", "resolved")
+	r.Run("add", "a.txt")
+	// synthetic-a is finished and recorded; synthetic-b stops on its own
+	// conflict.
+	if err := r.service.Continue(ctx); err == nil {
+		t.Fatal("Continue() error = nil; synthetic-b was meant to conflict too")
+	}
+
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatalf("Abort() error = %v", err)
+	}
+
+	after, err := r.store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		if got, want := after.Edges[branch], before.Edges[branch]; got != want {
+			t.Errorf("%s is recorded as %+v after abort, want %+v", branch, got, want)
+		}
+		pinned := r.Run("rev-parse", "refs/g2g/forkpoints/"+branch)
+		if pinned != before.Edges[branch].ForkPoint {
+			t.Errorf("%s fork point pinned at %s after abort, want %s", branch, pinned, before.Edges[branch].ForkPoint)
+		}
+	}
+	// The stack is back where it was, so it plans exactly as it did before.
+	if replaying := strings.Join(r.plan(selection).Replaying(), ","); replaying != "synthetic-a,synthetic-b" {
+		t.Errorf("after abort the plan replays %q, want the whole stack again", replaying)
+	}
+}
+
 // The rebase engine checks out what it rewrites, so a restack run from outside
 // the stack ended on whichever branch was rebased last. The journal recorded a
 // branch to return to, and nothing read it -- and what it recorded was the

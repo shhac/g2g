@@ -51,6 +51,18 @@ type Record struct {
 	// the branch no longer sits where the graph says, so a fresh plan reports
 	// it as moved off its parent and can no longer tell where it was headed.
 	Reparent map[string]string `json:"reparent,omitempty"`
+	// Structure is every selected branch's recorded edge when the operation
+	// began. A resumed pass writes fork points and reparenting as it goes --
+	// planning against the old ones would see drift that is only its own
+	// progress -- so --abort has to put those back as well as the tips, or it
+	// leaves every branch recorded as forking where it no longer does.
+	Structure map[string]RecordedEdge `json:"structure,omitempty"`
+}
+
+// RecordedEdge is the part of a branch's edge a restack rewrites.
+type RecordedEdge struct {
+	Parent    string `json:"parent"`
+	ForkPoint string `json:"forkPoint,omitempty"`
 }
 
 // Selection rebuilds the graph selection this record was started with.

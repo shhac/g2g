@@ -36,6 +36,9 @@ func TestJournalRoundTripsTheOriginalTips(t *testing.T) {
 		Scope:    "graph",
 		ReturnTo: "synthetic-b",
 		Original: map[string]string{"synthetic-a": "aaa", "synthetic-b": "bbb"},
+		Structure: map[string]RecordedEdge{
+			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "aaa"},
+		},
 	}
 
 	if err := journal.Save(ctx, record); err != nil {
@@ -47,6 +50,9 @@ func TestJournalRoundTripsTheOriginalTips(t *testing.T) {
 	}
 	if loaded.Original["synthetic-a"] != "aaa" || loaded.Original["synthetic-b"] != "bbb" {
 		t.Errorf("Original = %v; without these --abort cannot restore anything", loaded.Original)
+	}
+	if got := loaded.Structure["synthetic-b"]; got != (RecordedEdge{Parent: "synthetic-a", ForkPoint: "aaa"}) {
+		t.Errorf("Structure = %v; without it --abort leaves the fork points a resume recorded", loaded.Structure)
 	}
 	if loaded.Selection().Branch != "synthetic-b" {
 		t.Errorf("Selection() = %#v", loaded.Selection())

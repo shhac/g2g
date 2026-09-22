@@ -184,10 +184,53 @@ func (s Service) Abort(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := s.restoreStructure(ctx, record.Structure); err != nil {
+		return err
+	}
 	if err := s.resettle(ctx, standing); err != nil {
 		return err
 	}
 	return s.conclude(ctx, record)
+}
+
+// restoreStructure puts back the edges a resumed pass recorded.
+//
+// Restoring the tips alone left each branch's fork point at the parent tip the
+// pass had recorded, which the restored branch no longer contains, so the next
+// plan read every one of them as moved off its parent and refused. A journal
+// written before this was recorded carries no structure and restores only the
+// tips, as it always did.
+func (s Service) restoreStructure(ctx context.Context, structure map[string]RecordedEdge) error {
+	if len(structure) == 0 {
+		return nil
+	}
+	adopted, err := s.Graph.Store.Load(ctx)
+	if err != nil {
+		return err
+	}
+	parents := make(map[string]string, len(structure))
+	for branch, edge := range structure {
+		parents[branch] = edge.Parent
+	}
+	updated, err := reparentStructure(adopted, parents)
+	if err != nil {
+		return err
+	}
+	for _, branch := range slices.Sorted(maps.Keys(structure)) {
+		edge, tracked := updated.Edges[branch]
+		if !tracked {
+			continue
+		}
+		edge.ForkPoint = structure[branch].ForkPoint
+		updated.Edges[branch] = edge
+		if edge.ForkPoint == "" {
+			continue
+		}
+		if err := s.Git.PinForkPoint(ctx, branch, edge.ForkPoint); err != nil {
+			return err
+		}
+	}
+	return s.Graph.Store.Save(ctx, updated)
 }
 
 // Conflicted lists the files an interrupted rewrite left for the user.

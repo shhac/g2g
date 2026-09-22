@@ -103,9 +103,17 @@ func (s Service) record(plan Plan, standing checkout) Record {
 		ReturnTo:   standing.Branch,
 		Original:   map[string]string{},
 		Reparent:   plan.reparenting(),
+		Structure:  map[string]RecordedEdge{},
 	}
 	for _, step := range plan.Steps {
 		record.Original[step.Branch] = step.Tip
+	}
+	// Every selected branch rather than every step: recording walks the whole
+	// selection, so that is what an abort has to be able to put back.
+	for _, branch := range plan.Discovery.Branches {
+		if edge, tracked := plan.Discovery.Graph.Edges[branch]; tracked {
+			record.Structure[branch] = RecordedEdge{Parent: edge.Parent, ForkPoint: edge.ForkPoint}
+		}
 	}
 	return record
 }

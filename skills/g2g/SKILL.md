@@ -187,6 +187,20 @@ description: |
   `mirror` writes Graphite only, `import` writes the g2g graph only, and
   `import` refuses a branch the g2g graph already records under a different
   parent rather than resolving the disagreement.
+- `import --from pull-request` adopts a published stack through the same
+  planning (`planAdoptions`: additive, conflict refusal, parents first); only
+  the record read and the fork point differ. `--from graphite` stays the
+  default and unchanged, `--from g2g` is refused, and `--branch`/`--scope
+  stack|trunk` are refused with Graphite because it is read whole. It selects
+  through the pull request source's own `Select` and is the only import that
+  invokes `gh`. It never creates a branch: anything the pull requests place that
+  is not local (`Snapshot.Absent`, or a base not here) refuses the plan with
+  `git fetch && git switch <branch>` / `git branch <branch> origin/<branch>`.
+  The stack's base must already be recorded or be `DefaultBranch` — evidence
+  permitting a root, as in `create`, never choosing a parent. The fork point is
+  the merge base with the base, never the base's tip, because the base may have
+  moved since the pull request was opened. Its revalidation re-reads GitHub, so
+  it is wired with a selector that has no memo.
 - Mirror ordering is dictated by Graphite's CLI, not by taste: writes go
   parents before children because `gt track --parent` requires a tracked
   parent, and prunes go deepest first — refusing any stranger with a surviving

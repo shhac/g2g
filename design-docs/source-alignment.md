@@ -181,6 +181,67 @@ merely list branches.
 `mirror` has the opposite property and is safe by construction: it never writes
 the g2g store, so it shifts nothing.
 
+### From pull requests
+
+    g2g import --from pull-request [--branch <b>] [--scope stack|trunk]
+
+Picking up a stack a colleague published used to mean fetching it, switching to
+each branch, and `track`-ing them one at a time — while the structure sat,
+complete, in the bases of its pull requests, readable already through
+`status --from pull-request`. This adopts it from there.
+
+It is the Graphite import with a different record behind it, not a second
+import. `planAdoptions` holds the policy both share — additive, a conflicting
+recorded parent refuses the whole plan, parents recorded before children,
+`Origin` assessed against Git — and each record supplies only its edges, how it
+names its side of a conflict, and its fork point. `--from graphite` remains the
+default and behaves exactly as before; `--from g2g` is refused, because the g2g
+graph is what import writes.
+
+Selection is the pull request source's own `Select`, so a stack means here what
+it means to `status --from pull-request`, remote-only branches included. The
+scope is `stack` (the default) or `trunk`: both open with the base the stack
+hangs from, which the root rule below has to see, and `all` would reach trunks
+nobody named. `--branch` and `--scope` are refused with Graphite, which is read
+whole, rather than ignored.
+
+The decisions this mode settled:
+
+- **It needs the network, and says so.** Reading a base invokes `gh`, so this
+  is the only import that does. Graphite's import stays offline.
+- **It never creates a branch.** The graph records local branches, and a branch
+  the pull requests place that is not here (`Snapshot.Absent`, or a base that is
+  not local) refuses the plan by name with `git fetch && git switch <branch>` or
+  `git branch <branch> origin/<branch>`. The Graphite import skips such a branch
+  instead; here that would leave a gap in the middle of a stack, with the
+  branches above it recorded under a parent the graph cannot place.
+- **A trunk is evidenced.** The stack's base becomes a root, and a root is a
+  trunk, so the base must already be recorded or be what
+  `refs/remotes/origin/HEAD` names. The default branch is used as `create` uses
+  it — evidence that permits what would otherwise be refused, never a choice of
+  parent. Anything else refuses with the `g2g track` that establishes it.
+- **The fork point is the merge base.** A pull request records no fork point,
+  and its base may have moved since it was opened: a trunk that advanced, a
+  parent that took more commits. The base's tip would claim work the branch
+  never had, and a restack would replay from a commit the branch does not
+  contain. The merge base is the last commit both agree on and is always an
+  ancestor of the branch. It is derived while the base still exists — the
+  window the section above says closes once a merged parent is deleted — and
+  recorded so it never has to be derived again. A base that is not itself an
+  ancestor is still recorded, and the preview says, in `track`'s words, that
+  the branch will read as needing a restack.
+- **Revalidation re-reads GitHub.** What is written is local, but it is
+  written from what the pull requests said, and a base retargeted between
+  preview and apply is the change revalidation exists to catch. The service is
+  therefore given a selector without the once-per-invocation memo the resolver
+  uses.
+
+What it does not settle is a base someone rewrote under a branch that was not
+replayed after it: the merge base then sits below the base's old commits, and
+a restack would carry them along. That is the state `restack` already reports
+for a hand-rebased parent; import records it rather than guessing a better
+point.
+
 ## `--from` and `--to`
 
 `--to` names the write destination. `--from` pins the read side for a single

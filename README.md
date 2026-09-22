@@ -42,6 +42,10 @@ the checkout is the one exception. The branch names are placeholders.
 g2g track --stack --trunk main --apply
 g2g graph
 
+# Or pick up a stack a colleague published: with its branches fetched and
+# checked out here, adopt the structure their pull requests declare.
+g2g import --from pull-request --apply
+
 # Add a branch on this one, committing what is staged, and move around.
 g2g create synthetic-three -m "Add the third change" --apply
 g2g down 2
@@ -141,7 +145,8 @@ rather than a silent one: it describes **published branches only** — no pull
 request, no edge — and GitHub retargets a child when its base branch is deleted
 on merge, so right after a parent lands its children point at the trunk. It is
 never wrong about what a merge will do, and no longer a record of what the
-stack was.
+stack was. `g2g import --from pull-request` records what it describes; see
+[Adopting a published stack](#adopting-a-published-stack).
 
 **Trunks are never guessed from a name.** On a Graphite-described stack g2g
 infers the only Graphite-declared trunk on the selected ancestry and shows it
@@ -292,8 +297,10 @@ Untracking a branch in the middle leaves its children pointing at it and says
 so. Reparenting them onto the grandparent would invent an edge you never asked
 for.
 
-`g2g import` records what Graphite declares; it is described with
-[Graphite alignment](#graphite-alignment).
+`g2g import` records what Graphite declares, described with
+[Graphite alignment](#graphite-alignment), or with `--from pull-request` what a
+published stack's pull requests declare, described in
+[Adopting a published stack](#adopting-a-published-stack).
 
 ### Move and add
 
@@ -790,6 +797,43 @@ of them again.
 Both refuse outright in a repository that does not already use Graphite. Reading
 Graphite's forest is what enrols you, so even a preview has to stop first.
 
+### Adopting a published stack
+
+A stack someone else published has its structure in one place: the bases of
+its pull requests. Rather than switching to each branch and tracking it by
+hand, import it from there.
+
+```sh
+git fetch
+git switch synthetic-their-lower     # every branch of the stack, here
+git switch synthetic-their-top
+g2g import --from pull-request       # preview the stack of the branch you are on
+g2g import --from pull-request --apply
+```
+
+It reads the stack exactly as `g2g status --from pull-request` does —
+`--branch` picks another branch's, `--scope stack` (the default) or `trunk`
+says how much — and records it, so the branches can be restacked. It is the
+only import that needs the network, because reading a base invokes `gh`. Its
+rules are the Graphite import's: it writes only g2g's graph, adds what is
+missing, and refuses a branch g2g already records under a different parent.
+Nothing is written to GitHub.
+
+Three things it will not do:
+
+- **Create a branch.** The graph records local branches, so a branch the pull
+  requests place that is only on the remote refuses the import by name, with
+  `git fetch && git switch <branch>` or `git branch <branch> origin/<branch>`
+  as the way out.
+- **Make a trunk of a feature branch.** The stack must start from the
+  repository's default branch (what `refs/remotes/origin/HEAD` names) or from a
+  branch g2g already records; otherwise it names the `g2g track` that
+  establishes one.
+- **Take a base's tip as the fork point.** The base may have moved since the
+  pull request was opened, so each fork point is where the branch and its base
+  last agreed. A base that is not an ancestor of its branch is still recorded,
+  and the preview says the branch will read as needing a restack.
+
 ## When a command refuses
 
 A blocked preview names the command that repairs the state rather than leaving
@@ -975,7 +1019,7 @@ neither authentication nor a network connection. Run them with `go test ./...`.
 | `internal/link` | GitHub native-stack projection, and the read `status` renders |
 | `internal/comment` | the stack comment kept on each pull request |
 | `internal/land` | taking a stack down onto its trunk by composing push, sync and prune |
-| `internal/align` | `mirror` and `import`, keeping g2g's graph and Graphite's in step |
+| `internal/align` | `mirror` and `import`, keeping g2g's graph and Graphite's in step, and adopting a stack from its pull requests |
 | `internal/repair` | a refusal's reason and its ways out, shared by every package that refuses |
 | `internal/parallel` | bounded concurrency for independent per-branch reads |
 | `internal/diagnostic` | opt-in, stderr-only `--debug` events and bounded, redacted output |

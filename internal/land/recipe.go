@@ -27,7 +27,7 @@ type Command struct {
 // of one.
 func (p Plan) Commands() []Command {
 	commands := make([]Command, 0, len(p.Steps)*4)
-	for index, step := range p.Steps {
+	for _, step := range p.Steps {
 		if step.Merges() {
 			if step.Push {
 				commands = append(commands, Command{
@@ -46,19 +46,21 @@ func (p Plan) Commands() []Command {
 				Effect:  fmt.Sprintf("land %s", step.Branch),
 			})
 		}
-		commands = append(commands, p.cleanupCommands(step, index)...)
+		commands = append(commands, p.cleanupCommands(step)...)
 	}
 	return commands
 }
 
-func (p Plan) cleanupCommands(step Step, index int) []Command {
+// cleanupCommands is what follows a branch's merge, and the sync is in it for
+// every branch because Apply runs it for every branch: after the last one it
+// still advances the trunk here onto the merge. Leaving it out of the last
+// step described a descent that ended with the trunk behind its remote.
+func (p Plan) cleanupCommands(step Step) []Command {
 	commands := make([]Command, 0, 4)
-	if index != len(p.Steps)-1 {
-		commands = append(commands, Command{
-			Command: "g2g sync --apply",
-			Effect:  "advance the trunk and replay what is left onto it",
-		})
-	}
+	commands = append(commands, Command{
+		Command: "g2g sync --apply",
+		Effect:  "advance the trunk and replay what is left onto it",
+	})
 	if p.Options.Forget {
 		commands = append(commands, Command{
 			Command: fmt.Sprintf("g2g prune --branch %s --scope branch --apply", step.Branch),

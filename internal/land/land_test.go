@@ -373,6 +373,28 @@ func TestCommandsDescribeTheStepsApplyWalks(t *testing.T) {
 	}
 }
 
+// Apply syncs after every branch, the last included, because that is what
+// brings the trunk here onto the final merge. The recipe left the last one out,
+// so following it by hand ended with the trunk behind its remote.
+func TestTheRecipeSyncsAfterEveryBranchAsApplyDoes(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	recipe := 0
+	for _, command := range plan.Commands() {
+		if command.Command == "g2g sync --apply" {
+			recipe++
+		}
+	}
+
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	if applied := len(w.events.only("sync:")); recipe != applied {
+		t.Errorf("the recipe syncs %d times and Apply %d", recipe, applied)
+	}
+}
+
 func TestCommandsFollowTheCleanupFlags(t *testing.T) {
 	w := newWorld(t)
 	plan := w.plan(t, Options{Remote: "origin", Method: githubstack.MethodRebase, Admin: true})

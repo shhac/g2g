@@ -143,7 +143,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		Stderr:      stderr,
 		Link:        link.Service{Git: gitClient, Selector: selector, GitHub: githubClient, Tips: gitClient},
 		Push:        pushService,
-		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient},
+		Submit:      submit.Service{Git: gitClient, Selector: selector, GitHub: githubClient, Pusher: &pushService},
 		Completions: completions,
 		Graph:       graphService,
 		Restack:     restackService,

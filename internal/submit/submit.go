@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -18,9 +19,23 @@ import (
 type Git interface {
 	stack.Git
 	Clean(context.Context) error
+	// Remote is checked before anything is read, so a mistyped remote costs
+	// nothing on GitHub. push checks it again when it plans; that is one
+	// local read.
 	Remote(context.Context, string) error
-	RemoteTips(context.Context, string, []string) (map[string]string, error)
-	PushAtomic(context.Context, string, []localgit.Lease) error
+}
+
+// Pusher publishes the stack, and refuses a remote that holds work the stack
+// does not have.
+//
+// It is push's own planning rather than a copy of its lease. submit used to
+// build its leases from the tips it read and push them itself, and a lease
+// pinned to the tip you just read always matches: a reviewer's commit sitting
+// on the remote was force-pushed over, and then a pull request opened for
+// what was left. push refuses exactly that, and land already went through it.
+type Pusher interface {
+	Plan(ctx context.Context, selection stack.Selection, remote string) (push.Plan, error)
+	Execute(ctx context.Context, plan push.Plan) error
 }
 
 type GitHub interface {
@@ -35,6 +50,7 @@ type Service struct {
 	// branch.
 	Selector stack.PathSelector
 	GitHub   GitHub
+	Pusher   Pusher
 }
 
 type Plan struct {
@@ -46,9 +62,8 @@ type Plan struct {
 	// merged, so a preview can show that a new one will be created rather than
 	// silently reusing a branch name that has history.
 	Superseded map[string]githubstack.PullRequest
-	// RemoteTips is what the remote held when the plan was built; the push
-	// leases assert exactly these.
-	RemoteTips map[string]string
+	// Push is how the stack is published, planned by push with its refusals.
+	Push push.Plan
 }
 
 // Ready reports a service with everything it needs.
@@ -58,16 +73,15 @@ type Plan struct {
 // them had already drifted -- a command could be registered and then refuse on
 // use, or be hidden from a build that could have run it.
 func (s Service) Ready() bool {
-	return s.Git != nil && s.Selector != nil && s.GitHub != nil
+	return s.Git != nil && s.Selector != nil && s.GitHub != nil && s.Pusher != nil
 }
 
-// Leases pairs each selected branch with the tip the plan observed for it.
-func (p Plan) Leases() []localgit.Lease {
-	leases := make([]localgit.Lease, 0, len(p.Snapshot.Branches))
-	for _, branch := range p.Snapshot.Branches {
-		leases = append(leases, localgit.Lease{Branch: branch, Expected: p.RemoteTips[branch]})
+// Blocked is why an apply would refuse, empty when it would proceed.
+func (p Plan) Blocked() string {
+	if len(p.Issues) != 0 {
+		return "existing pull request state: " + issueText(p.Issues)
 	}
-	return leases
+	return p.Push.Blocked
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
@@ -89,13 +103,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
-	tips, err := s.Git.RemoteTips(ctx, remote, snapshot.Branches)
+	published, err := s.Pusher.Plan(ctx, selection, remote)
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, RemoteTips: tips}
+	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published}
 	decision := "ready"
-	if len(plan.Issues) != 0 {
+	if plan.Blocked() != "" {
 		decision = "blocked"
 	}
 	diagnostic.Event(ctx, "submit.plan", diagnostic.Field{Key: "decision", Value: decision}, diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "remote", Value: remote}, diagnostic.Field{Key: "branches", Value: strings.Join(snapshot.Branches, ",")})
@@ -109,7 +123,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&
 		maps.Equal(p.Superseded, other.Superseded) &&
-		maps.Equal(p.RemoteTips, other.RemoteTips)
+		p.Push.Equal(other.Push)
 }
 
 func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
@@ -126,8 +140,8 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remo
 // Apply publishes all refs atomically, creates only branches with no PR, then
 // links the resulting complete stack. Existing PRs are never retargeted.
 func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
-	if len(plan.Issues) != 0 {
-		return fmt.Errorf("submission is blocked by existing pull request state: %s", issueText(plan.Issues))
+	if blocked := plan.Blocked(); blocked != "" {
+		return fmt.Errorf("submission is blocked by %s", blocked)
 	}
 	if err := plan.Snapshot.RequireActionable("g2g submit"); err != nil {
 		return err
@@ -136,7 +150,7 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 	if err := validateSpec(plan, spec); err != nil {
 		return err
 	}
-	if err := s.Git.PushAtomic(ctx, plan.Remote, plan.Leases()); err != nil {
+	if err := s.Pusher.Execute(ctx, plan.Push); err != nil {
 		return err
 	}
 	if err := s.createMissingPulls(ctx, plan, spec); err != nil {

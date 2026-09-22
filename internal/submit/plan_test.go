@@ -22,7 +22,7 @@ func (f fakeGraphite) DiscoverStack(context.Context, string, bool) (graphite.Sta
 
 func planService(github *fakeGitHub) (Service, *fakeGit) {
 	git := &fakeGit{}
-	return Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{}), GitHub: github}, git
+	return Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{}), GitHub: github, Pusher: git}, git
 }
 
 func planFor(t *testing.T, prs []githubstack.PullRequest) Plan {

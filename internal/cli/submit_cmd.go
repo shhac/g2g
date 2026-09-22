@@ -112,7 +112,7 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
 		return err
 	}
-	if len(plan.Issues) != 0 {
+	if plan.Blocked() != "" {
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
 	}
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: "+runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft)))
@@ -124,7 +124,7 @@ func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p P
 	}
 	// A preview that is already blocked must not close by inviting an apply
 	// that will refuse; the rendered view names the reason.
-	if len(plan.Issues) != 0 {
+	if plan.Blocked() != "" {
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
 	}
 	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+" to push, create missing PRs, and link.")
@@ -142,6 +142,9 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			}
 			if len(validated.Issues) != 0 {
 				return submit.Plan{}, fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
+			}
+			if validated.Push.Blocked != "" {
+				return submit.Plan{}, fmt.Errorf("submit cannot publish: %s", validated.Push.Blocked)
 			}
 			return validated, nil
 		},

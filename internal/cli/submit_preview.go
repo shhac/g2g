@@ -43,6 +43,11 @@ func submitView(plan submit.Plan, template string, draft bool) stackView {
 	if len(plan.Issues) != 0 {
 		return view.blockedBy("repair the marked existing pull requests first.")
 	}
+	// Publishing is push's, refusals included, so its reason and ways out are
+	// the ones push itself would show.
+	if plan.Push.Blocked != "" {
+		return view.refusing(plan.Push.Repair.SentenceWith(runnable), plan.Push.Repair)
+	}
 	return view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 }
 

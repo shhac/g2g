@@ -1,7 +1,8 @@
 # g2g agent notes
 
 Start with the repository skill at `skills/g2g/SKILL.md`, then use the
-README and `design-docs/initial-scope.md` for product behavior. This file keeps
+README and the design doc for the area for product behavior;
+`design-docs/initial-scope.md` is the historical starting point. This file keeps
 only process knowledge that is easy to miss.
 
 ## Running the real `gt`
@@ -100,8 +101,8 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   is the ordinary way to get there. A bare `--force-with-lease` takes its
   baseline from the remote-tracking ref, so refreshing it silently disarms the
   check; leases are pinned to the tips the plan observed. The forest model,
-  per-branch authority, derived (never stored) graph identity, and the
-  deliberate absence of restack are decisions, not accidents.
+  per-branch authority, and derived (never stored) graph identity are
+  decisions, not accidents.
 - `graph --from` reads another record and draws it in g2g's own format, which
   is how a divergence between the two becomes visible on a real repository
   rather than only in `internal/stack/parity_test.go`'s fixtures. It offers

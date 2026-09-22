@@ -31,7 +31,9 @@ description: |
 
 ## Work in this repository
 
-- Read `README.md` and `design-docs/initial-scope.md` before changing behavior.
+- Read `README.md` and the design doc for the area before changing behavior;
+  `design-docs/initial-scope.md` is the historical starting point, not the
+  current contract.
   For anything touching the g2g-owned branch forest, read
   `design-docs/g2g-owned-graphs.md` first.
 - **Graphite is not authoritative.** Structure is resolved per invocation, and a
@@ -195,11 +197,13 @@ description: |
   `--json` `schemaVersion`; an unrecognised store version fails closed.
 - `--scope branch|path|subtree|stack|trunk|all` is selection, not projection
   policy. Displaying a subtree does not imply a subtree can be linked on GitHub.
-  The type and the traversal live in `stack` because both records answer them.
+  The type and the traversal live in `internal/shape`, which depends on
+  nothing, because every record answers them and `internal/graph` needs them.
 - **A command must refuse any scope it did not offer, and name its own
   default.** They genuinely differ: `status` and `graph` default to `stack`
   because reading is free, `restack` to `subtree` because rewriting is not, and
-  only a read-only command offers `all`. `ParseScope` takes both the accepted
+  `all` is offered only where nothing is rewritten: the read-only commands, and
+  `prune`, which edits the record and forgets only what has landed. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
 - Projection is a capability, not a scope. `link`, `submit`, `push` and
   `retarget` take `stack|path` and refuse a forked selection through
@@ -207,9 +211,10 @@ description: |
 - Selected from a trunk, `stack` is the whole tree under it — a trunk's path is
   itself. That is how a rewrite asks for an entire shape without being handed a
   scope that could reach another trunk.
-- `trunk` and `all` are deliberately absent from `RewriteScopes`. A wide rewrite
-  is far likelier to reach a branch checked out in another worktree, and Git
-  refuses to check out a branch already checked out elsewhere.
+- `all` is deliberately absent from `RewriteScopes`: it spans trunks, and a
+  rewrite acts on one. `trunk` is offered, and a rewrite that wide is the
+  likeliest to reach a branch checked out in another worktree, which the
+  rewrite then refuses by name.
 
 ## Source resolution
 
@@ -352,5 +357,6 @@ description: |
 - After command discovery, use the resolved command's `--help` or `link --help`
   to inspect the current interface (for example, `g2g link --help` after a
   Homebrew install).
-- Require read-only discovery and dry-run output before `sync --apply` can
-  change GitHub state.
+- Read the preview before any `--apply`. `sync` never changes GitHub; the
+  commands that do are `link`, `unlink`, `submit`, `retarget`, `comment` and
+  `land`.

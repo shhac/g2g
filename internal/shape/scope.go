@@ -39,7 +39,8 @@ const (
 	ScopeTrunk Scope = "trunk"
 	// ScopeAll is every trunk's stacks. It exists so a repository with several
 	// trunks can be seen whole, which is a reading problem: nothing that
-	// mutates offers it.
+	// rewrites offers it. prune does, because it edits only the record and
+	// forgets only what has landed.
 	ScopeAll Scope = "all"
 )
 
@@ -48,7 +49,8 @@ const (
 // absent: it is added per command by the read-only ones.
 var Scopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk}
 
-// ReadScopes is Scopes plus ScopeAll, for commands that only ever display.
+// ReadScopes is Scopes plus ScopeAll, for commands that only ever display, and
+// for prune, whose only write is forgetting what has landed.
 var ReadScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, ScopeTrunk, ScopeAll}
 
 // RewriteScopes is what a command that rewrites history may offer. all is

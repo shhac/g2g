@@ -133,7 +133,7 @@ cookies, or GraphQL query payloads.
 
 A branch is identified by its single open pull request. Closed and merged pull
 requests left on a reused branch name are treated as history: they never block
-`link`, `sync`, or `status`, and `submit` creates a replacement rather than
+`link`, `retarget`, or `status`, and `submit` creates a replacement rather than
 skipping the branch. Two or more open pull requests for one branch is the only
 ambiguity, and it fails closed.
 
@@ -479,7 +479,7 @@ commit it would discard.
 
 ```sh
 g2g sync --take published                          # the whole stack
-g2g sync --take published --through paul/some-fix  # and no further
+g2g sync --take published --through synthetic-fix  # and no further
 ```
 
 It only ever changes the outcome for a branch that has *genuinely diverged*.

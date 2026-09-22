@@ -298,6 +298,13 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot sync: %s", plan.Blocked)
 	}
+	moved := make([]string, 0, len(plan.Collect)+1)
+	stop := func(err error) error {
+		if len(moved) == 0 {
+			return err
+		}
+		return &Stopped{Moved: moved, Err: err}
+	}
 	if plan.Advance || plan.Supersede {
 		diagnostic.Event(ctx, "sync.advance",
 			diagnostic.Field{Key: "base", Value: plan.Base},
@@ -312,6 +319,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		if err := move(ctx, plan.Base, localgit.IsolatedRef(plan.Remote, plan.Base)); err != nil {
 			return err
 		}
+		moved = append(moved, plan.Base)
 	}
 	// Before the replay, because the replay works from the tips these leave
 	// behind: a reviewer's commit has to be on the branch before it is moved.
@@ -327,16 +335,37 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			move = s.Git.ResetBranch
 		}
 		if err := move(ctx, collection.Branch, collection.To); err != nil {
-			return err
+			return stop(err)
 		}
+		moved = append(moved, collection.Branch)
 	}
 	if len(plan.Restack.Steps) != 0 {
 		if err := s.Restack.Apply(ctx, plan.Restack); err != nil {
-			return err
+			return stop(err)
 		}
 	}
 	return nil
 }
+
+// Stopped is a sync that moved some branches and then failed.
+//
+// The trunk it advanced and the branches it brought down stay where they are:
+// they are what the remote holds, and putting them back would only put them
+// behind again. A replay that failed and put its own refs back says "nothing
+// was changed" about the replay, which was true of the replay and not of the
+// run.
+type Stopped struct {
+	// Moved are the branches brought to their published versions, trunk
+	// first, before the step that failed.
+	Moved []string
+	Err   error
+}
+
+func (s *Stopped) Error() string {
+	return fmt.Sprintf("stopped after bringing %s up to date: %v", strings.Join(s.Moved, ", "), s.Err)
+}
+
+func (s *Stopped) Unwrap() error { return s.Err }
 
 // syncScope is the boundary this sync acts on.
 //

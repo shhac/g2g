@@ -49,12 +49,15 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 			// deliberately does not unwind: the fetch and the fast-forward are
 			// wanted regardless, and the replay is resumable through the
 			// command that owns it.
-			interrupted: func(ctx context.Context, _ error) (bool, error) {
-				stopped, err := service.Restack.InProgress(ctx)
-				if err != nil || !stopped {
+			interrupted: func(ctx context.Context, cause error) (bool, error) {
+				if stopped, err := service.Restack.InProgress(ctx); err == nil && stopped {
+					return true, stoppedMidSync(cmd, presentation)
+				}
+				var moved *syncer.Stopped
+				if !errors.As(cause, &moved) {
 					return false, nil
 				}
-				return true, stoppedMidSync(cmd, presentation)
+				return true, stoppedAfterMoving(cmd, moved, presentation)
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to bring the stack up to date.",
@@ -95,6 +98,18 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	// anything here: see shape.SyncScopes.
 	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("sync", shape.SyncScopes))
 	return cmd
+}
+
+// stoppedAfterMoving reports a sync that brought some branches down and then
+// failed without leaving a replay to resume.
+func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentation) error {
+	if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Stopped part-way: "+stopped.Err.Error())); err != nil {
+		return err
+	}
+	if err := prose(cmd.OutOrStdout(), p, p.subdued("Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g sync")+" to see what is left.")); err != nil {
+		return err
+	}
+	return stoppedPartWay(stopped)
 }
 
 // stoppedMidSync reports a sequence that got part-way. It deliberately does

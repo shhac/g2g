@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -549,5 +550,23 @@ func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
 	}
 	if strings.Join(commands, ",") != "g2g sync --branch synthetic-left,g2g sync --branch synthetic-right" || strings.Contains(plan.Blocked, "--scope path") {
 		t.Errorf("Blocked = %q, ways = %v", plan.Blocked, commands)
+	}
+}
+
+// A replay that fails after the trunk advanced leaves the trunk advanced: it
+// is what the remote holds. The replay putting its own refs back said nothing
+// was changed, which was true of the replay and not of the run.
+func TestApplyThatFailsAfterAdvancingSaysWhatMoved(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-a"}}}, applyErr: errors.New("synthetic replay failure")}
+	service, _ := newService(git, restacker)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = service.Apply(context.Background(), plan)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !slices.Equal(stopped.Moved, []string{plan.Base}) {
+		t.Fatalf("Apply() = %v, want it stopped having moved %s", err, plan.Base)
 	}
 }

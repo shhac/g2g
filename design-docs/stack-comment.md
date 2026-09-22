@@ -108,8 +108,11 @@ run from inside each stack.
 | two or more comments | left alone, and said: a person deletes the extra |
 | a branch with two open pull requests | the whole run refuses, as `link` and `retarget` do |
 
-A comment is recognised by its marker, at the start of its body, and never by
-author. A comment that merely quotes the marker — one about this tool, say — is
+A comment is recognised by its marker, at the start of its body. What it
+records is only believed from a comment you can edit: anyone who can comment can
+open one with the marker, and its entries would otherwise put a made-up merged
+pull request into every later run. For the same reason one you cannot edit does
+not stand in the way of one you can. A comment that merely quotes the marker — one about this tool, say — is
 somebody's words. Adding a second
 beside one somebody else wrote would leave two comments saying the same thing
 differently, which is worse than one that is out of date and says who can fix it.

@@ -206,13 +206,30 @@ func (k *kept) trusts(number int, conversation githubstack.Conversation, read ma
 	return below.Merged() && below.Base == k.own[number].on, 0
 }
 
-// recordsOf is every entry a pull request's marked comments record.
+// recordsOf is every entry a pull request's marked comments record, read only
+// from comments the person running this can edit.
+//
+// Anyone who can comment can post a comment opening with the marker, and its
+// entries would otherwise be believed — a made-up merged number would join the
+// history and be recorded by every later run. A comment you can edit is one
+// you, or someone with the same access to the pull request, wrote.
 func recordsOf(conversation githubstack.Conversation) []entry {
 	entries := make([]entry, 0)
-	for _, found := range conversation.Comments {
+	for _, found := range editable(conversation.Comments) {
 		entries = append(entries, recordedIn(found.Body)...)
 	}
 	return entries
+}
+
+// editable is the marked comments the person running this can change.
+func editable(comments []githubstack.Comment) []githubstack.Comment {
+	kept := make([]githubstack.Comment, 0, len(comments))
+	for _, found := range comments {
+		if found.Editable {
+			kept = append(kept, found)
+		}
+	}
+	return kept
 }
 
 // recordedParent is what a pull request's own comment says it sat on.

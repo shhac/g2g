@@ -697,3 +697,26 @@ func TestPlanDrawsAClosedPullRequestsBranchAndRecordsNothingForIt(t *testing.T) 
 		t.Errorf("body:\n%s", body)
 	}
 }
+
+// A marker comment somebody else wrote is neither believed nor in the way. Its
+// entries would put a made-up merged pull request into every later run's
+// history, and counting it would let anyone stop the map being kept.
+func TestPlanIgnoresAMarkedCommentItCannotEdit(t *testing.T) {
+	github := chainGitHub()
+	foreign := githubstack.Comment{ID: "IC_foreign", Body: Marker + "\n" + dataOpen + "90,12" + dataClose, Author: "synthetic-stranger", Editable: false}
+	own := githubstack.Comment{ID: "IC_own", Body: Marker + " stale\n" + dataOpen + "11,12>11,13>12" + dataClose, Author: "synthetic-author", Editable: true}
+	twelve := conversation(12, "synthetic-two", "OPEN")
+	twelve.Comments = []githubstack.Comment{foreign, own}
+	github.conversations[12] = twelve
+	github.conversations[90] = conversation(90, "synthetic-elsewhere", "MERGED")
+
+	got := plan(t, chain(), "synthetic-one", github)
+	if len(got.Merged) != 0 {
+		t.Errorf("Merged = %v, want nothing taken from a comment you cannot edit", got.Merged)
+	}
+	for _, write := range got.Writes {
+		if write.Number == 12 && (write.Action != ActionUpdate || write.Comment != "IC_own") {
+			t.Errorf("#12 = %+v, want your own comment edited", write)
+		}
+	}
+}

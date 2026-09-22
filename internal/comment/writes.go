@@ -63,11 +63,18 @@ func decide(conversation githubstack.Conversation, branch, body string, create b
 	if len(conversation.Comments) == 0 {
 		return decideNew(conversation, write, create)
 	}
-	existing := conversation.Comments[0]
+	// A comment someone else wrote does not stand in the way of one you can
+	// keep: anyone who can comment can open one with the marker, and letting
+	// it count would let them stop the map being kept at all.
+	comments := conversation.Comments
+	if own := editable(comments); len(own) != 0 {
+		comments = own
+	}
+	existing := comments[0]
 	switch {
-	case len(conversation.Comments) > 1:
+	case len(comments) > 1:
 		write.Action = ActionSkip
-		write.Reason = fmt.Sprintf("%d stack comments on #%d · delete all but one, then rerun", len(conversation.Comments), number)
+		write.Reason = fmt.Sprintf("%d stack comments on #%d · delete all but one, then rerun", len(comments), number)
 	case !existing.Editable:
 		write.Action = ActionSkip
 		write.Reason = fmt.Sprintf("the stack comment on #%d was written by %s and you cannot edit it", number, author(existing))

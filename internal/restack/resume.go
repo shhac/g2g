@@ -81,7 +81,9 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
 		return finishComplete, err
 	}
-	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb)
+	// No pending: a resume runs after whatever the caller was going to
+	// move has already moved.
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, nil)
 	if err != nil {
 		return finishComplete, err
 	}

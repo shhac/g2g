@@ -63,7 +63,7 @@ func ontoSelection() graph.Selection {
 func TestOntoMovesABranchWhoseParentIsATrackedBranch(t *testing.T) {
 	service, _, _ := newService(ontoGit(), ontoStack())
 
-	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false)
+	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false, nil)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestOntoMovesABranchWhoseParentIsATrackedBranch(t *testing.T) {
 func TestOntoReparentsOnlyTheSelectionRoot(t *testing.T) {
 	service, store, _ := newService(ontoGit(), ontoStack())
 
-	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false)
+	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false, nil)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestOntoLeavesAChildsForkPointOnItsOwnParent(t *testing.T) {
 	git := ontoGit()
 	service, store, _ := newService(git, ontoStack())
 
-	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false)
+	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false, nil)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestOntoRecordsTheEdgeWhenThereIsNothingToReplay(t *testing.T) {
 	delete(adopted.Edges, "synthetic-c")
 	service, store, _ := newService(git, adopted)
 
-	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false)
+	plan, err := service.Plan(context.Background(), ontoSelection(), ToBranch("synthetic-release"), false, nil)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -171,7 +171,7 @@ func TestOntoRecordsTheEdgeWhenThereIsNothingToReplay(t *testing.T) {
 func TestOntoOnAPathSelectionMovesTheBranchAboveTheTrunk(t *testing.T) {
 	service, _, _ := newService(ontoGit(), ontoStack())
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-c", Scope: graph.ScopePath}, ToBranch("synthetic-release"), false)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-c", Scope: graph.ScopePath}, ToBranch("synthetic-release"), false, nil)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

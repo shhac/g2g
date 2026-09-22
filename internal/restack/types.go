@@ -184,6 +184,27 @@ func (p Plan) chain() bool {
 	return true
 }
 
+// Pending is where refs will be by the time the rewrite runs.
+//
+// A caller that moves refs itself between planning and applying would otherwise
+// have the replay planned against tips that will not exist by then. sync's
+// collect does exactly that -- it takes the published version of a branch --
+// and the branches stacked above it were measured against where their parent
+// used to be, so a child either replayed onto a commit its parent no longer
+// pointed at or was judged to need no replay at all and left stranded there.
+//
+// The base already had this, through Onto.ToLocation naming the ref the trunk
+// is about to be at. This is the same statement for the branches above it.
+type Pending map[string]string
+
+// at answers where a branch will be, given where Git currently says it is.
+func (p Pending) at(branch, resolved string) string {
+	if object, moving := p[branch]; moving {
+		return object
+	}
+	return resolved
+}
+
 // Onto is where a rewrite lands, and separately what the graph should record.
 //
 // The two are not the same question, and conflating them corrupted the store.

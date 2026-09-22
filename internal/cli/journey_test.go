@@ -506,6 +506,44 @@ func TestJourneyTakingThePublishedVersionOfADivergedBranch(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// extra-friendly-fixer, with a branch stacked on top of the one they fixed.
+//
+// collect moves your branch to the published version, and the replay was
+// planned before that happened — against the tip the branch had when the plan
+// was made, which by then is a commit it no longer points at. So the child was
+// measured against where its parent used to be, judged to need no replay, and
+// left dangling there while the run reported "Synced."
+//
+// No --take involved: the published version is content-equal, so it supersedes
+// on its own. Every collect test was one branch deep, which is why this stood.
+func TestJourneyAChildOfASupersededBranchIsReplayedOntoIt(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	mustRun(t, "push", "--apply")
+
+	// They rebase synthetic-a and publish it: same content, new ids.
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.git(w.Other, "commit", "-q", "--amend", "-m", "synthetic a, reworded")
+	w.git(w.Other, "push", "-q", "--force", "origin", "synthetic-a")
+	theirs := w.tip(w.Other, "synthetic-a")
+
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+	mustRun(t, "sync", "--apply")
+
+	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
+		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
+	}
+	if !w.contains(w.Local, "synthetic-a", "synthetic-b") {
+		t.Error("synthetic-b was stranded on the commit synthetic-a no longer points at")
+	}
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	w.assertClean(w.Local)
+}
+
 // An unknown value is refused before anything runs, and the refusal lists what
 // the flag does take.
 func TestJourneyAnUnknownTakeIsRefused(t *testing.T) {

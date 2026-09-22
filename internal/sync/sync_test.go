@@ -148,7 +148,7 @@ type stubRestacker struct {
 	reparented bool
 }
 
-func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto restack.Onto, _ bool) (restack.Plan, error) {
+func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto restack.Onto, _ bool, pending restack.Pending) (restack.Plan, error) {
 	s.onto = append(s.onto, onto.Object)
 	if onto.Reparents() {
 		s.reparented = true

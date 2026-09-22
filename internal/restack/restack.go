@@ -24,11 +24,11 @@ import (
 )
 
 // Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, preview Plan) (Plan, error) {
+func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, pending Pending, preview Plan) (Plan, error) {
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.Plan(ctx, selection, onto, absorb)
+	plan, err := s.Plan(ctx, selection, onto, absorb, pending)
 	if err != nil {
 		return Plan{}, err
 	}

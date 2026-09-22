@@ -41,7 +41,7 @@ type Git interface {
 // itself because sync's own job is ordering, and ordering should be testable
 // without standing up a rewrite engine.
 type Restacker interface {
-	Plan(ctx context.Context, selection graph.Selection, onto restack.Onto, absorb bool) (restack.Plan, error)
+	Plan(ctx context.Context, selection graph.Selection, onto restack.Onto, absorb bool, pending restack.Pending) (restack.Plan, error)
 	Apply(ctx context.Context, plan restack.Plan) error
 	InProgress(ctx context.Context) (bool, error)
 }
@@ -175,6 +175,18 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 			return Plan{}, err
 		}
 	}
+	// A boundary naming something outside the selection resolves nothing and
+	// would look exactly like an ordinary refusal, so it is refused itself.
+	if take.Bounded() && !slices.Contains(discovery.Branches, take.Through) && take.Through != plan.Base {
+		plan.Repair = repair.Note{
+			Reason: fmt.Sprintf("--through %s is not in the stack being synced", take.Through),
+			Ways: []repair.Step{
+				{Effect: "name a branch this sync selects, or drop --through to take the whole stack"},
+			},
+		}
+		plan.Blocked = plan.Repair.Sentence()
+		return plan, nil
+	}
 	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, take)
 	if err != nil {
 		return Plan{}, err
@@ -201,7 +213,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if plan.Blocked = plan.Repair.Sentence(); plan.Blocked != "" {
 		return plan, nil
 	}
-	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false)
+	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
 	if err != nil {
 		return Plan{}, err
 	}
@@ -316,4 +328,18 @@ func syncScope(scope graph.Scope) graph.Scope {
 		return graph.ScopeTrunk
 	}
 	return graph.ScopeStack
+}
+
+// pending is where collect will leave each branch, which is what the replay has
+// to be planned against: collect runs first, so by the time the rewrite happens
+// a collected branch is no longer where Git said it was when this was planned.
+func (p Plan) pending() restack.Pending {
+	if len(p.Collect) == 0 {
+		return nil
+	}
+	moving := make(restack.Pending, len(p.Collect))
+	for _, collection := range p.Collect {
+		moving[collection.Branch] = collection.To
+	}
+	return moving
 }

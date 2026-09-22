@@ -25,7 +25,7 @@ func (s Service) Ready() bool {
 }
 
 // Plan works out what has to be replayed, without changing anything.
-func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, pending Pending) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("restack service is not fully configured")
 	}
@@ -47,7 +47,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Blocked = held.Sentence()
 		return plan, nil
 	}
-	steps, err := s.steps(ctx, discovery, onto.Object)
+	steps, err := s.steps(ctx, discovery, onto.Object, pending)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -134,7 +134,7 @@ func selectionRoot(discovery graph.Discovery) string {
 
 // steps builds the ordered rewrite, parents before children so each child is
 // measured against the base its parent will actually have.
-func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto string) ([]Step, error) {
+func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto string, pending Pending) ([]Step, error) {
 	steps := make([]Step, 0, len(discovery.Branches))
 	// A branch whose parent is being rewritten has to be rewritten too, even
 	// though it still sits exactly where its fork point says. Judging each
@@ -156,7 +156,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 			// keeps the structure that is already recorded.
 			parent = onto
 		}
-		base, resolvedFork, tip, err := s.resolveStep(ctx, branch, parent, edge.ForkPoint)
+		base, resolvedFork, tip, err := s.resolveStep(ctx, branch, parent, edge.ForkPoint, pending)
 		if err != nil {
 			return nil, err
 		}
@@ -194,10 +194,15 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 // resolveStep turns the names in an edge into the three objects a rewrite is
 // decided from. An edge written before fork points were recorded behaves as
 // though it forked at its parent's current tip.
-func (s Service) resolveStep(ctx context.Context, branch, parent, forkPoint string) (base, fork, tip string, err error) {
+func (s Service) resolveStep(ctx context.Context, branch, parent, forkPoint string, pending Pending) (base, fork, tip string, err error) {
 	if base, err = s.Git.Resolve(ctx, parent); err != nil {
 		return "", "", "", err
 	}
+	// Where the parent will be, which is not where Git says it is when the
+	// caller is about to move it. The tip below is deliberately not overlaid:
+	// it is what an abort restores this branch to, so it has to be where the
+	// branch was before any of this ran.
+	base = pending.at(parent, base)
 	if forkPoint == "" {
 		forkPoint = base
 	}

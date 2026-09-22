@@ -67,7 +67,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		return Plan{}, err
 	}
 	if held.Reason != "" {
-		plan.Repair = held
+		plan.Repair, plan.Held = held, true
 		plan.Blocked = held.Sentence()
 		return plan, nil
 	}
@@ -79,13 +79,13 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Blocked = "commits the parent dropped were rewritten rather than removed, so absorbing them would duplicate work the parent still carries"
 		return plan, nil
 	}
-	updates, clean, predicted, err := s.preview(ctx, plan)
+	updates, clean, unpredicted, err := s.preview(ctx, plan)
 	if err != nil {
 		return Plan{}, err
 	}
 	plan.Updates, plan.Clean = updates, clean
-	plan.Predicted = predicted
-	if predicted && !clean && !plan.chain() {
+	plan.Predicted, plan.Unpredicted = unpredicted == "", unpredicted
+	if plan.Predicted && !clean && !plan.chain() {
 		// The resumable engine rewrites one line of descent per invocation, so
 		// a conflicting fork would need several and a journal that tracks
 		// which of them finished. Refusing is honest until it does.
@@ -372,13 +372,13 @@ func (s Service) classifyOrphans(ctx context.Context, step *Step) error {
 // preview asks the replay engine what the rewrite would produce, without
 // producing it. A repository whose Git cannot replay gets no prediction, which
 // costs the conflict warning but nothing else.
-func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.RefUpdate, clean, predicted bool, err error) {
+func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.RefUpdate, clean bool, unpredicted string, err error) {
 	supported, err := s.Git.SupportsReplay(ctx)
 	if err != nil {
-		return nil, false, false, err
+		return nil, false, "", err
 	}
 	if !supported {
-		return nil, false, false, nil
+		return nil, false, "this Git cannot preview the result", nil
 	}
 	// Every step collapsing leaves no group at all: each branch's work is
 	// already in its new base by content, so their refs move and nothing is
@@ -398,18 +398,18 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 		if group[0].Behind {
 			tip, known := replayedTo[group[0].Parent]
 			if !known {
-				return nil, false, false, nil
+				return nil, false, group[0].Branch + " lands on " + group[0].Parent + " as it will be once brought down, which cannot be previewed", nil
 			}
 			onto = tip
 		}
 		grouped, groupClean, err := s.Git.PreviewReplay(ctx, onto, group.previewed())
 		if err != nil {
-			return nil, false, false, err
+			return nil, false, "", err
 		}
 		if !groupClean {
 			// A conflict anywhere sends the whole rewrite to the resumable
 			// engine, so what the groups above it would do is moot.
-			return nil, false, true, nil
+			return nil, false, "", nil
 		}
 		updates = append(updates, grouped...)
 		for _, update := range grouped {
@@ -420,7 +420,7 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 	// already answer for the cases where it did not. Deriving it from the error
 	// being returned alongside read as though a caller might see both, when the
 	// only caller bails on the error first.
-	return updates, clean, true, nil
+	return updates, clean, "", nil
 }
 
 // moving is every branch whose ref will have moved by the time the rewrite is

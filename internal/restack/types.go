@@ -330,6 +330,13 @@ type Plan struct {
 	// replay cannot say anything in advance, and "we could not look" must not
 	// be reported as "we looked and it will conflict".
 	Predicted bool
+	// Unpredicted says why there is no preview, when there is none: Git too
+	// old to replay, or a branch landing on a parent the caller is bringing
+	// down first, whose result only exists once it has been brought.
+	Unpredicted string
+	// Held reports a refusal because a branch that would move is checked out
+	// in another worktree.
+	Held bool
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 	// Repair is Blocked in the shape a caller can lay out. Most of restack's

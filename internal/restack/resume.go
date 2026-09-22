@@ -113,6 +113,11 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err != nil {
 		return finishComplete, err
 	}
+	if plan.Held {
+		// Narrowing the selection is not a way out mid-resume: what is left
+		// to rewrite was decided when the restack started.
+		return finishComplete, fmt.Errorf("the restack cannot carry on: %s · switch that worktree to another branch, or close it, then run g2g restack --continue", plan.Repair.Reason)
+	}
 	if plan.Blocked != "" {
 		// The work is not done, so the journal stays and --abort can still
 		// undo it. Reading a refusal as completion reported "Restack complete"

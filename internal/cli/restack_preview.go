@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"strings"
+
 	"github.com/shhac/g2g/internal/restack"
 )
 
@@ -18,13 +20,46 @@ func restackView(plan restack.Plan) stackView {
 	// A branch that collapses is not replayed, only moved, and saying it was
 	// replayed would misdescribe what happened to its commits.
 	if replaying := plan.Replaying(); len(replaying) != 0 {
-		view = view.note("Replays "+branchList(replaying)+" onto "+plan.Steps[0].Parent+".", severityOK)
+		view = view.note("Replays "+ontoEach(plan, replaying)+".", severityOK)
 	} else {
-		view = view.note("Moves "+branchList(plan.Emptied())+" onto "+plan.Steps[0].Parent+" · nothing needs replaying.", severityOK)
+		view = view.note("Moves "+ontoEach(plan, plan.Emptied())+" · nothing needs replaying.", severityOK)
 	}
 	view = orphanNote(view, plan)
 	view = emptiedNote(view, plan)
 	return engineNote(view, plan)
+}
+
+// ontoEach says where each branch lands, grouped by the root it replays with.
+// A selection can have several roots on different parents, and naming the
+// first one's parent for all of them told the reader the wrong destination.
+func ontoEach(plan restack.Plan, branches []string) string {
+	parent := map[string]string{}
+	for _, step := range plan.Steps {
+		parent[step.Branch] = step.Parent
+	}
+	rootParent := func(branch string) string {
+		for {
+			above, stepped := parent[branch]
+			if _, rewritten := parent[above]; !stepped || !rewritten {
+				return above
+			}
+			branch = above
+		}
+	}
+	order := make([]string, 0)
+	grouped := map[string][]string{}
+	for _, branch := range branches {
+		onto := rootParent(branch)
+		if _, seen := grouped[onto]; !seen {
+			order = append(order, onto)
+		}
+		grouped[onto] = append(grouped[onto], branch)
+	}
+	said := make([]string, 0, len(order))
+	for _, onto := range order {
+		said = append(said, branchList(grouped[onto])+" onto "+onto)
+	}
+	return strings.Join(said, "; ")
 }
 
 // orphanNote names commits a rewritten parent dropped that a child still
@@ -64,9 +99,15 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 		return view
 	}
 	if !plan.Predicted {
-		// Saying it will conflict would be a claim we have not made: this Git
-		// cannot produce the result without performing it.
-		return view.note("This Git cannot preview the result, so applying rebases in your working tree. If it stops on a conflict, resolve it and run "+runnable("g2g restack --continue")+".", severityWarn)
+		// Saying it will conflict would be a claim we have not made, and the
+		// reason there is no preview is worth saying: an old Git and a parent
+		// that only exists once sync has brought it down want different
+		// responses.
+		reason := plan.Unpredicted
+		if reason == "" {
+			reason = "the result cannot be previewed"
+		}
+		return view.note(strings.ToUpper(reason[:1])+reason[1:]+", so applying rebases in your working tree. If it stops on a conflict, resolve it and run "+runnable("g2g restack --continue")+".", severityWarn)
 	}
 	if plan.Clean {
 		return view.note("Applies without touching your working tree or checked-out branch.", severityNeutral)

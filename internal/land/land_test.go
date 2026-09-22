@@ -3,12 +3,14 @@ package land
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -720,4 +722,41 @@ func TestProtectedNamesTheBranchesTheirReplayWillBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Nothing merges while a branch the descent will move is open in another
+// worktree. Each step's own sync refuses the same thing, but only once there
+// is something to move — after the first merge, which does not come back.
+func TestPlanRefusesADescentThatWouldMoveABranchOpenElsewhere(t *testing.T) {
+	w := newWorld(t)
+	holds := &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	w.service.Holds = holds
+
+	plan := w.plan(t, Defaults())
+	if !strings.Contains(plan.Blocked, "synthetic-main") {
+		t.Fatalf("Blocked = %q, want the trunk open elsewhere refused", plan.Blocked)
+	}
+	if !slices.Equal(holds.asked, []string{"synthetic-main", "synthetic-one", "synthetic-two"}) {
+		t.Errorf("asked about %v, want the trunk and the whole stack", holds.asked)
+	}
+	for _, way := range plan.Repair.Ways {
+		if strings.Contains(way.Effect, "--scope") {
+			t.Errorf("way %q suggests narrowing, which a descent cannot use", way.Effect)
+		}
+	}
+}
+
+type fakeHolds struct {
+	held  map[string]bool
+	asked []string
+}
+
+func (f *fakeHolds) HeldElsewhere(_ context.Context, branches []string) (repair.Note, error) {
+	f.asked = branches
+	for _, branch := range branches {
+		if f.held[branch] {
+			return repair.Note{Reason: "checked out in another worktree: " + branch}, nil
+		}
+	}
+	return repair.Note{}, nil
 }

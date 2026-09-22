@@ -64,6 +64,11 @@ type (
 		Plan(ctx context.Context, selection graph.Selection) (prune.Plan, error)
 		Apply(ctx context.Context, plan prune.Plan) error
 	}
+	// Holds says which of these branches another worktree has checked out.
+	// It is restack's own check, asked here of everything a descent will move.
+	Holds interface {
+		HeldElsewhere(ctx context.Context, branches []string) (repair.Note, error)
+	}
 )
 
 // Service takes a stack down onto its trunk.
@@ -75,6 +80,9 @@ type Service struct {
 	Pusher   Pusher
 	Syncer   Syncer
 	Pruner   Pruner
+	// Holds is optional: a build that cannot ask lands exactly as safely as it
+	// did before the check existed.
+	Holds Holds
 
 	// pause is the clock the two waits use. Nil is the real one; a test
 	// supplies its own so the suite does not spend the wall time.
@@ -299,6 +307,9 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 	if err := s.Git.Clean(ctx); err != nil {
 		return err.Error(), repair.Note{}
 	}
+	if held := s.heldElsewhere(ctx, discovery.Target); held.Reason != "" {
+		return held.Sentence(), held
+	}
 	pushed, err := s.Pusher.Plan(ctx, stack.Selection{Branch: discovery.Target, Trunk: discovery.Base, Scope: shape.ScopeStack}, options.Remote)
 	if err == nil && pushed.Blocked != "" {
 		return pushed.Blocked, pushed.Repair
@@ -308,6 +319,39 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 		return synced.Blocked, synced.Repair
 	}
 	return "", repair.Note{}
+}
+
+// heldElsewhere refuses a descent that would move a branch another worktree
+// has checked out: the trunk it advances, the branches it merges and deletes,
+// and those above it that it replays.
+//
+// Each step's own sync refuses the same thing, but only once there is
+// something to move — after the first merge, which does not come back. Asking
+// sync up front found nothing while the trunk was level, so a descent with the
+// trunk open in another worktree merged its bottom branch and then stopped.
+func (s Service) heldElsewhere(ctx context.Context, target string) repair.Note {
+	if s.Holds == nil {
+		return repair.Note{}
+	}
+	recorded, err := s.Graph.Store.Load(ctx)
+	var moving []string
+	if err == nil {
+		moving, err = recorded.Shape().Stack(target)
+	}
+	if err == nil {
+		var held repair.Note
+		held, err = s.Holds.HeldElsewhere(ctx, moving)
+		if err == nil && held.Reason != "" {
+			// Narrowing the selection is no way out here: a descent moves the
+			// whole stack whatever was selected, because the replay after each
+			// merge takes everything above it.
+			return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+		}
+	}
+	if err != nil {
+		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
+	}
+	return repair.Note{}
 }
 
 // protectedAfterRestack names the branches that will read blocked by the time

@@ -22,7 +22,7 @@ func (c Client) CurrentBranch(ctx context.Context) (string, error) {
 	}
 	branch := strings.TrimSpace(string(output))
 	if branch == "" {
-		return "", fmt.Errorf("HEAD is detached; pass --branch to select a local Graphite branch")
+		return "", fmt.Errorf("HEAD is detached; pass --branch to select a local branch")
 	}
 	return branch, nil
 }

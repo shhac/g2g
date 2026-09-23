@@ -168,14 +168,12 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	present := make([]string, 0, len(wanted))
-	for _, branch := range wanted {
-		if published[branch] != "" {
-			present = append(present, branch)
-		}
+	stale, err := s.stale(ctx, remote, wanted, published)
+	if err != nil {
+		return Plan{}, err
 	}
-	if len(present) != 0 {
-		if err := s.Git.FetchIsolated(ctx, remote, present); err != nil {
+	if len(stale) != 0 {
+		if err := s.Git.FetchIsolated(ctx, remote, stale); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -250,6 +248,36 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		diagnostic.Field{Key: "replays", Value: strings.Join(plan.Restack.Replaying(), ",")},
 	)
 	return plan, nil
+}
+
+// Fetched says what g2g's own fetched refs already hold for each branch, from
+// local refs. It is optional: without it every branch the remote has is
+// fetched, which is what happened before it existed.
+type Fetched interface {
+	IsolatedTips(ctx context.Context, remote string) (map[string]string, error)
+}
+
+// stale is the branches the remote has at a tip g2g has not fetched yet.
+//
+// A plan fetched every branch the remote has on every run, and a land runs one
+// after each merge — right after waiting for the merge by fetching the trunk,
+// and again to revalidate — so most of those fetches were of refs already
+// here. A ref already at the remote's tip holds every object that tip needs.
+func (s Service) stale(ctx context.Context, remote string, wanted []string, published map[string]string) ([]string, error) {
+	var fetched map[string]string
+	if reader, ok := s.Git.(Fetched); ok {
+		var err error
+		if fetched, err = reader.IsolatedTips(ctx, remote); err != nil {
+			return nil, err
+		}
+	}
+	stale := make([]string, 0, len(wanted))
+	for _, branch := range wanted {
+		if tip := published[branch]; tip != "" && fetched[branch] != tip {
+			stale = append(stale, branch)
+		}
+	}
+	return stale, nil
 }
 
 // Nothing reports a plan with no step to take: the base is level and there is

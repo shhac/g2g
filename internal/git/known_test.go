@@ -102,3 +102,30 @@ func TestKnownTipsForgetsABranchTheRemoteDeleted(t *testing.T) {
 		t.Errorf("a branch the remote deleted is still known at %s", tip)
 	}
 }
+
+// What sync already has decides what it needs to fetch, so the answer has to
+// name each branch — slashes and all — at exactly the commit fetched.
+func TestIsolatedTipsNamesWhatWasFetched(t *testing.T) {
+	upstream, client := syntheticRemote(t)
+	moved := advanceUpstream(t, upstream, "synthetic-trunk", "remote.txt")
+	for _, args := range [][]string{
+		{"switch", "-q", "-c", "synthetic/topic"},
+		{"commit", "-q", "--allow-empty", "-m", "synthetic topic"},
+		{"push", "-q", "origin", "synthetic/topic"},
+	} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	if err := client.FetchIsolated(context.Background(), "origin", []string{"synthetic-trunk", "synthetic/topic"}); err != nil {
+		t.Fatal(err)
+	}
+
+	tips, err := client.IsolatedTips(context.Background(), "origin")
+	if err != nil {
+		t.Fatalf("IsolatedTips() error = %v", err)
+	}
+	if tips["synthetic-trunk"] != moved || tips["synthetic/topic"] != revision(t, "synthetic/topic") || len(tips) != 2 {
+		t.Errorf("IsolatedTips() = %v, want the trunk at %s and synthetic/topic", tips, moved)
+	}
+}

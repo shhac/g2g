@@ -570,3 +570,41 @@ func TestApplyThatFailsAfterAdvancingSaysWhatMoved(t *testing.T) {
 		t.Fatalf("Apply() = %v, want it stopped having moved %s", err, plan.Base)
 	}
 }
+
+// fetchedGit is a Git that can say what g2g has already fetched.
+type fetchedGit struct {
+	*fakeGit
+	isolated map[string]string
+}
+
+func (f fetchedGit) IsolatedTips(context.Context, string) (map[string]string, error) {
+	return f.isolated, nil
+}
+
+// A ref already at the remote's tip is not fetched again. land plans a sync
+// after every merge, straight after fetching the trunk to see the merge land,
+// and again to revalidate, so most of what it fetched was already here.
+func TestPlanFetchesOnlyWhatHasMoved(t *testing.T) {
+	remote := testutil.RemoteTips([]string{"synthetic-trunk", "synthetic-a", "synthetic-b"})
+	for name, test := range map[string]struct {
+		isolated map[string]string
+		want     string
+	}{
+		"trunk already fetched": {map[string]string{"synthetic-trunk": remote["synthetic-trunk"]}, "synthetic-a,synthetic-b"},
+		"a branch has moved":    {map[string]string{"synthetic-trunk": remote["synthetic-trunk"], "synthetic-a": remote["synthetic-a"], "synthetic-b": "synthetic-older"}, "synthetic-b"},
+		"all already fetched":   {remote, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			git := behindGit()
+			service, _ := newService(git, nil)
+			service.Git = fetchedGit{fakeGit: git, isolated: test.isolated}
+
+			if _, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing); err != nil {
+				t.Fatalf("Plan() error = %v", err)
+			}
+			if got := strings.Join(git.fetched, ","); got != test.want {
+				t.Errorf("fetched %q, want %q", got, test.want)
+			}
+		})
+	}
+}

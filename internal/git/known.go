@@ -102,3 +102,23 @@ func (c Client) later(ctx context.Context, tracking, fetched string) (string, er
 func trackingRef(remote, branch string) string {
 	return "refs/remotes/" + remote + "/" + branch
 }
+
+// IsolatedTips is every branch g2g has fetched from the remote, at the commit
+// it fetched, in one process and without asking the remote anything.
+func (c Client) IsolatedTips(ctx context.Context, remote string) (map[string]string, error) {
+	if err := subprocess.CheckArgument("git", "remote name", remote); err != nil {
+		return nil, err
+	}
+	prefix := IsolatedRef(remote, "")
+	output, err := c.run(ctx, "for-each-ref", "--format=%(objectname) %(refname)", prefix)
+	if err != nil {
+		return nil, err
+	}
+	tips := map[string]string{}
+	for _, line := range outputLines(output) {
+		if object, ref, found := strings.Cut(line, " "); found {
+			tips[strings.TrimPrefix(ref, prefix)] = object
+		}
+	}
+	return tips, nil
+}

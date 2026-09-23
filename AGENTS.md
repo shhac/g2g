@@ -198,6 +198,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   network, both are optional capabilities (`link.Service.Tips`, `push.Git`),
   and in both the zero value must not read as the reassuring answer: an
   uncompared branch says nothing rather than "up to date".
+- Read `design-docs/cost.md` before changing anything that asks git or GitHub
+  a question per branch. Three rules there have each been broken already:
+  bound a content comparison by the branch's own commits (from the trunk's
+  start, every trunk commit reads as the branch's own work); let
+  `git.Client.Untouched` shortcut only a "not landed", never `landed.Missing`;
+  and leave branches merged into the trunk out of an adoption, which
+  `cost_test.go` pins for both kinds of sediment. `graph.Service.Structure` is
+  the selection without the per-branch assessment; a caller that only needs
+  the shape uses it.
 - Batch before parallelising. `Inspect` is one GitHub round trip: the pull
   requests for every selected branch come back from one aliased GraphQL query,
   and the repository is `{owner}`/`{repo}` placeholders that `gh` fills from the

@@ -161,13 +161,24 @@ func (p Plan) Landing() int {
 // over that would refuse at random. Safety comes from re-deciding each branch
 // in its own cycle, immediately before merging it, which is a stronger check
 // than comparing a preview taken before anything moved.
+//
+// A step's Admin is one of them. It is derived from readiness — whether the
+// merge needs protection bypassed, which is exactly what required checks
+// finishing changes — and is decided again at merge time. Comparing it refused
+// an --admin descent whose checks passed between the preview and the apply.
 func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
 		p.Blocked == other.Blocked &&
-		slices.Equal(p.Steps, other.Steps) &&
+		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above)
+}
+
+// sameStep compares everything about a step but how ready it is.
+func sameStep(one, other Step) bool {
+	one.Admin, other.Admin = false, false
+	return one == other
 }
 
 // Ready reports a service with everything it needs.

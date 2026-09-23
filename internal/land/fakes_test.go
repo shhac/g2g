@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -133,6 +134,9 @@ type fakeGitHub struct {
 	// settleOn runs after the first question, standing in for GitHub catching
 	// up with a push it had not yet observed.
 	settleOn func()
+	// afterMerge runs once a merge is accepted, standing in for the world
+	// moving on between one branch's merge and the next branch's turn.
+	afterMerge func(number int)
 }
 
 func (f *fakeGitHub) Inspect(_ context.Context, _ []string) ([]githubstack.PullRequest, error) {
@@ -166,6 +170,9 @@ func (f *fakeGitHub) Merge(_ context.Context, number int, method githubstack.Met
 			f.prs[index].State = "MERGED"
 		}
 	}
+	if f.afterMerge != nil {
+		f.afterMerge(number)
+	}
 	return nil
 }
 
@@ -197,9 +204,14 @@ type fakePusher struct {
 	// level is a remote that already holds every branch exactly, so there is
 	// nothing to publish.
 	level bool
+	// scopes is how much of the stack each publish asked push to select.
+	scopes []shape.Scope
+	// executeErr is a push that fails outright, as a refused lease does.
+	executeErr error
 }
 
 func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string) (push.Plan, error) {
+	f.scopes = append(f.scopes, selection.Scope)
 	if f.planErr != nil {
 		return push.Plan{}, f.planErr
 	}
@@ -218,6 +230,9 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 
 func (f *fakePusher) Execute(_ context.Context, plan push.Plan) error {
 	f.events.record("push:" + strings.Join(plan.Branches, ","))
+	if f.executeErr != nil {
+		return f.executeErr
+	}
 	if f.silent || f.git == nil {
 		return nil
 	}
@@ -247,10 +262,17 @@ func (f *fakeSyncer) Apply(_ context.Context, plan syncer.Plan) error {
 type fakePruner struct {
 	events *events
 	store  *memoryStore
+	// blocked is a prune that refuses; nothing is one that finds the branch
+	// has not landed by content.
+	blocked string
+	nothing bool
 }
 
 func (f *fakePruner) Plan(_ context.Context, selection graph.Selection) (prune.Plan, error) {
-	plan := prune.Plan{Landed: []string{selection.Branch}}
+	plan := prune.Plan{Landed: []string{selection.Branch}, Blocked: f.blocked}
+	if f.nothing {
+		plan.Landed = nil
+	}
 	plan.Discovery = graph.Discovery{Target: selection.Branch}
 	return plan, nil
 }

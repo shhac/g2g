@@ -16,6 +16,9 @@ type Known struct {
 	Git KnownTips
 }
 
+// Ready reports a Known with everything it needs.
+func (k Known) Ready() bool { return k.Git != nil }
+
 // Compare is Compare over the tips this repository already knows.
 func (k Known) Compare(ctx context.Context, remote string, branches []string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
 	tips, err := k.Git.KnownTips(ctx, remote, branches)

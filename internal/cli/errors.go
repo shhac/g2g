@@ -108,3 +108,44 @@ func remediationHint(err error) string {
 	}
 	return ""
 }
+
+// foundError is a doctor that found something. The report is already on
+// stdout, so like a stop part-way it adds nothing on stderr; it has its own
+// exit status because a script asking "is anything wrong" wants the answer and
+// not an error.
+type foundError struct{ count int }
+
+func (e foundError) Error() string {
+	return fmt.Sprintf("found %s", count(e.count, "problem", "problems"))
+}
+
+func foundProblems(count int) error { return foundError{count} }
+
+func foundSomething(err error) bool {
+	var found foundError
+	return errors.As(err, &found)
+}
+
+// foundExitCode is doctor's answer that something needs putting right: 0
+// healthy, 1 found, 2 could not tell — the convention diff and grep use.
+const foundExitCode = 1
+
+// failedExitCode is a command that could not do what it was asked.
+const failedExitCode = 2
+
+// exitCode is the status a command's result exits with. A command that
+// stopped part-way, or a doctor that found something, has already reported it
+// in more detail than a one-line error could, so all that is left of either is
+// the status.
+func exitCode(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case wasStopped(err):
+		return stoppedExitCode
+	case foundSomething(err):
+		return foundExitCode
+	default:
+		return failedExitCode
+	}
+}

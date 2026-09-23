@@ -10,12 +10,6 @@ import (
 	"github.com/shhac/g2g/internal/push"
 )
 
-// Published says how each branch stands against what the remote last held,
-// without a network: push.Known, over the refs a fetch or a push left behind.
-type Published interface {
-	Compare(ctx context.Context, remote string, branches []string, below func(string) (parent, trunk string)) (map[string]push.Publication, error)
-}
-
 // readPublished compares every local branch in the discovery with the remote.
 //
 // A repository with no such remote is ordinary — nothing has been published
@@ -23,8 +17,8 @@ type Published interface {
 // read. One named on purpose is a mistake worth saying, and so is any other
 // failure: drawing no marks for one would read as nothing to report, and let
 // doctor say a repository is healthy when it could not tell.
-func readPublished(ctx context.Context, published Published, remote string, named bool, discovery graph.Discovery) (map[string]push.Publication, error) {
-	if published == nil {
+func readPublished(ctx context.Context, published push.Known, remote string, named bool, discovery graph.Discovery) (map[string]push.Publication, error) {
+	if !published.Ready() {
 		return nil, nil
 	}
 	local := make([]string, 0, len(discovery.Branches))

@@ -386,6 +386,7 @@ type failingPrune struct{}
 func (failingPrune) Cherry(context.Context, string, string, string) ([]string, []string, error) {
 	return nil, nil, errors.New("synthetic cherry failure")
 }
+
 func (failingPrune) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
 
 // The pull happened, so a prune that fails after it is a stop part-way — and

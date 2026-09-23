@@ -13,9 +13,8 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	var prune bool
 	var apply bool
 	cmd := &cobra.Command{
-		Use:     "mirror",
-		GroupID: groupTools,
-		Short:   "Make Graphite agree with the g2g graph (preview by default)",
+		Use:   "mirror",
+		Short: "Make Graphite agree with the g2g graph (preview by default)",
 		Long: "Reconciles Graphite so it records what the g2g graph records.\n\n" +
 			"Nothing is ever removed from the g2g graph: this keeps the two in step, it does not hand ownership over. " +
 			"g2g keeps answering for every branch it already answered for.",

@@ -40,7 +40,7 @@ func pruneView(plan prune.Plan) stackView {
 	return view.note("Forgets "+branchList(plan.Landed)+" from the recorded graph. No branch is deleted.", severityWarn)
 }
 
-// forgetState says why a branch is forgotten in the words graph uses for it. A
+// forgetState says why a branch is forgotten in the words status uses for it. A
 // branch with no commits of its own is not called landed: it may be one nobody
 // has committed to yet, and the two are identical from the recorded state.
 func forgetState(plan prune.Plan, branch string) string {

@@ -3,7 +3,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -86,7 +85,7 @@ type Options struct {
 	Completions stack.Completions
 	// Published says how each branch stands against what the remote last held,
 	// from local refs. It is optional: without it status draws no remote marks.
-	Published Published
+	Published push.Known
 
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
@@ -230,7 +229,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	// under its own condition — and a namespace only when something is in it.
 	var github, graphite []*cobra.Command
 	if options.Graph.Ready() {
-		root.AddCommand(newGraph(options.Graph, options.Link.Selector, options.Published, presentation))
+		root.AddCommand(newStatus(options.Graph, options.Link.Selector, options.Published, presentation))
 		root.AddCommand(newDoctor(options.Graph, options.Restack, options.Published, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newAdopt(options.Graph, guard, presentation))
@@ -249,7 +248,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newRestack(options.Restack, presentation))
 	}
 	if options.Sync.Ready() {
-		root.AddCommand(newSync(options.Sync, options.Prune, guard, presentation))
+		root.AddCommand(newPull(options.Sync, options.Prune, guard, presentation))
 	}
 	if options.Prune.Ready() {
 		root.AddCommand(newPrune(options.Prune, guard, presentation))
@@ -265,7 +264,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Link.Ready() {
 		github = append(github,
-			newStatus(options.Link, completions, presentation),
+			newGitHubStatus(options.Link, completions, presentation),
 			newLink(options.Link, completions, guard, presentation),
 			newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
 	}
@@ -276,9 +275,9 @@ func NewWithOptions(options Options) *cobra.Command {
 		github = append(github, newComment(options.Comment, completions, guard, presentation))
 	}
 	if options.Align.Ready() {
-		github = append(github, newAdoptFrom(options.Align, align.FromGitHub, completions, guard, presentation))
+		github = append(github, newGitHubAdopt(options.Align, completions, guard, presentation))
 		graphite = append(graphite,
-			newAdoptFrom(options.Align, align.FromGraphite, completions, guard, presentation),
+			newGraphiteAdopt(options.Align, guard, presentation),
 			newMirror(options.Align, guard, presentation))
 	}
 	if len(github) > 0 {
@@ -326,33 +325,6 @@ func commandContext(ctx context.Context, cmd *cobra.Command, mode, branch, trunk
 	return ctx
 }
 
-func newCompletion(root *cobra.Command) *cobra.Command {
-	// Hidden, not removed. This is run once by a shell rc or by the Homebrew
-	// formula's generate_completions_from_executable, and never typed while
-	// working on a stack, so it is noise in a help listing whose other entries
-	// are all things a person runs. Hidden affects the listing alone: the
-	// command still executes, which is what the formula depends on.
-	cmd := &cobra.Command{
-		Use:    "completion [bash|zsh|fish]",
-		Short:  "Generate shell completion scripts",
-		Args:   cobra.ExactArgs(1),
-		Hidden: true,
-	}
-	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		switch args[0] {
-		case "bash":
-			return root.GenBashCompletion(cmd.OutOrStdout())
-		case "zsh":
-			return root.GenZshCompletion(cmd.OutOrStdout())
-		case "fish":
-			return root.GenFishCompletion(cmd.OutOrStdout(), true)
-		default:
-			return fmt.Errorf("unsupported shell %q (want bash, zsh, or fish)", args[0])
-		}
-	}
-	return cmd
-}
-
 // Execute runs the root command with the process streams and executable name.
 func Execute(version, commandName string) {
 	root := NewNamed(version, commandName, os.Stdout, os.Stderr)
@@ -366,22 +338,9 @@ func Execute(version, commandName string) {
 	}
 }
 
-// failedExitCode is a command that could not do what it was asked.
-const failedExitCode = 2
-
-// exitCode is the status a command's result exits with. A command that
-// stopped part-way, or a doctor that found something, has already reported it
-// in more detail than a one-line error could, so all that is left of either is
-// the status.
-func exitCode(err error) int {
-	switch {
-	case err == nil:
-		return 0
-	case wasStopped(err):
-		return stoppedExitCode
-	case foundSomething(err):
-		return foundExitCode
-	default:
-		return failedExitCode
+func applyMode(apply bool) string {
+	if apply {
+		return "apply"
 	}
+	return "preview"
 }

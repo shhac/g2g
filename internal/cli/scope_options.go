@@ -2,9 +2,12 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -64,4 +67,23 @@ func staticCompletions(scopes []shape.Scope) func(context.Context, string) ([]st
 		}
 		return values, nil
 	}
+}
+
+// scopeUsage writes the help for a scope flag from the values the command
+// actually accepts, so a command cannot advertise a scope it would refuse or
+// omit one it takes. verb is what the command does with the selection.
+func scopeUsage(verb string, scopes []graph.Scope) string {
+	meaning := map[graph.Scope]string{
+		graph.ScopeBranch:  "just this branch",
+		graph.ScopePath:    "the trunk down to this branch",
+		graph.ScopeSubtree: "this branch and everything above it",
+		graph.ScopeStack:   "this whole stack, trunk to tips",
+		graph.ScopeTrunk:   "every stack on this trunk",
+		graph.ScopeAll:     "every stack in the repository",
+	}
+	parts := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		parts = append(parts, fmt.Sprintf("%s (%s)", scope, meaning[scope]))
+	}
+	return "how much to " + verb + ": " + strings.Join(parts, ", ")
 }

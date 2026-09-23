@@ -41,11 +41,8 @@ func namespace(name, short, long string, children ...*cobra.Command) *cobra.Comm
 		Args:    cobra.NoArgs,
 		RunE:    func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	for _, child := range children {
-		// A group names a heading in the root's help, and a nested command is
-		// listed under its namespace instead.
-		child.GroupID = ""
-		parent.AddCommand(child)
-	}
+	// A nested command carries no group: groups are headings in the root's
+	// help, and it is listed under its namespace instead.
+	parent.AddCommand(children...)
 	return parent
 }

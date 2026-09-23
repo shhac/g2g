@@ -2,496 +2,547 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/testutil"
 )
 
-func TestStatusRendersCompactAlignedAndBlockedPath(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN"}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}, Issues: []link.Issue{{Branch: "synthetic/top", Kind: link.IssueMissing, Reason: "no open PR"}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
+// graphGit answers the ancestry questions without a repository. The forest
+// below is the one every case reasons about:
+//
+//	synthetic-main
+//	├─ synthetic-auth
+//	│  ├─ synthetic-login
+//	│  └─ synthetic-session
+//	└─ synthetic-billing
+//
+// It is a copy of the graph package's own fakeAncestry rather than a shared
+// one, for the reason recorded at internal/stack/g2g_test.go: a fake shared
+// across a package boundary is a second interface nobody declared. Only the
+// answers are shared, through internal/testutil.
+type graphGit struct {
+	current   string
+	local     []string
+	ancestors map[string][]string
+}
+
+func (g graphGit) CurrentBranch(context.Context) (string, error) { return g.current, nil }
+
+func (g graphGit) LocalBranches(context.Context) ([]string, error) { return g.local, nil }
+
+func (g graphGit) AncestorBranches(_ context.Context, target string) ([]string, error) {
+	return g.ancestors[target], nil
+}
+
+// Divergence answers from the same ancestor map: an ancestor has nothing
+// ahead, a descendant has nothing behind.
+func (g graphGit) Divergence(_ context.Context, other, target string) (int, int, error) {
+	ahead, behind := 1, 1
+	if ancestor, _ := g.IsAncestor(context.Background(), other, target); ancestor {
+		ahead = 0
 	}
-	for _, want := range []string{"Target  synthetic/top", "\u25cb main", "#11", "base" + markYes, "pr" + markNo + " none open", "Safe next action", "g2g submit   open a new pull request", "  synthetic/top"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("missing %q in %q", want, out.String())
+	if descendant, _ := g.IsAncestor(context.Background(), target, other); descendant {
+		behind = 0
+	}
+	return ahead, behind, nil
+}
+
+func (g graphGit) Resolve(_ context.Context, revision string) (string, error) {
+	return revision, nil
+}
+
+func (g graphGit) IsAncestor(_ context.Context, ancestor, descendant string) (bool, error) {
+	for _, candidate := range g.ancestors[descendant] {
+		if candidate == ancestor {
+			return true, nil
 		}
 	}
+	return false, nil
 }
 
-func TestStatusRendersOneNativeStackSummaryWithoutRepeatedBadges(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	got := out.String()
-	if !strings.Contains(got, "GitHub stack #17 · selected path 2/2 · aligned") {
-		t.Errorf("missing aligned summary in %q", got)
-	}
-	if strings.Contains(got, "stack #17, position") {
-		t.Errorf("healthy graph repeated native-stack badges: %q", got)
-	}
+// graphStore keeps the graph in memory and reports a fixed path, so golden
+// output does not depend on where the test happened to run.
+type graphStore struct {
+	graph  graph.Graph
+	writes int
 }
 
-func TestStatusMarksOnlyNativeStackExceptions(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}, {Head: "synthetic/top", Number: 12, State: "OPEN"}}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	got := out.String()
-	for _, want := range []string{"#12", "not linked", "GitHub stack #17 \u00b7 partial (1/2 linked)"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in %q", want, got)
-		}
-	}
+func (s *graphStore) Load(context.Context) (graph.Graph, error) { return s.graph.Clone(), nil }
+
+func (s *graphStore) Save(_ context.Context, g graph.Graph) error {
+	s.writes++
+	s.graph = g.Clone()
+	return nil
 }
 
-func TestStatusMarksConflictingNativeStackMembership(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower", "synthetic/top"}}, PullRequests: []githubstack.PullRequest{{Head: "synthetic/lower", Number: 11, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 2}, {Head: "synthetic/top", Number: 12, State: "OPEN", StackNumber: 17, StackSize: 2, StackPosition: 1}}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	got := out.String()
-	for _, want := range []string{"stack #17, position 2", "GitHub stack: conflicting membership"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in %q", want, got)
-		}
-	}
+func (s *graphStore) Path(context.Context) (string, error) {
+	return "/synthetic/repo/.git/g2g/graph.json", nil
 }
 
-// The reproduction: a trunk with several children used to be refused outright,
-// because full-stack resolution walked down a unique child chain and there was
-// no unique child. Rendering it is the whole point of a scope that can fork.
-func TestStatusRendersAForkedSelection(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target:   "synthetic-trunk",
-		Base:     "synthetic-trunk",
-		Scope:    shape.ScopeSubtree,
-		Source:   stack.SourceGraphite,
-		Branches: []string{"synthetic-a", "synthetic-a-one", "synthetic-b"},
-		Parents: map[string]string{
-			"synthetic-a":     "synthetic-trunk",
-			"synthetic-a-one": "synthetic-a",
-			"synthetic-b":     "synthetic-trunk",
+func graphFixture() graph.Graph {
+	return graph.Graph{
+		Edges: map[string]graph.Edge{
+			"synthetic-auth":    {Parent: "synthetic-main", Origin: graph.OriginUser},
+			"synthetic-login":   {Parent: "synthetic-auth", Origin: graph.OriginUser},
+			"synthetic-session": {Parent: "synthetic-auth", Origin: graph.OriginUser},
+			"synthetic-billing": {Parent: "synthetic-main", Origin: graph.OriginUser},
 		},
-	}, PullRequests: []githubstack.PullRequest{
-		{Head: "synthetic-a", Number: 11, State: "OPEN", Base: "synthetic-trunk"},
-		{Head: "synthetic-a-one", Number: 12, State: "OPEN", Base: "synthetic-a"},
-		{Head: "synthetic-b", Number: 13, State: "OPEN", Base: "synthetic-trunk"},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	got := out.String()
-	// Siblings hang off the trunk and the grandchild hangs off its own parent,
-	// which is exactly what a rolling base could not have expressed.
-	for _, want := range []string{"├─", "└─", "#11", "#12", "#13"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in forked status:\n%s", want, got)
-		}
-	}
-	if strings.Contains(got, "blocked") {
-		t.Errorf("a correctly based fork reported a problem:\n%s", got)
+		Trunks: []string{"synthetic-main"},
 	}
 }
 
-// Each branch is assessed against its own parent. Under a rolling base the
-// second sibling would be compared against the first and reported as
-// misbased — the precise bug that made forked assessment meaningless.
-func TestStatusAssessesSiblingsAgainstTheirParentNotEachOther(t *testing.T) {
-	snapshot := stack.Snapshot{
-		Target:   "synthetic-trunk",
-		Base:     "synthetic-trunk",
-		Scope:    shape.ScopeSubtree,
-		Source:   stack.SourceGraphite,
-		Branches: []string{"synthetic-a", "synthetic-b"},
-		Parents:  map[string]string{"synthetic-a": "synthetic-trunk", "synthetic-b": "synthetic-trunk"},
-	}
-	prs := []githubstack.PullRequest{
-		{Head: "synthetic-a", Number: 11, State: "OPEN", Base: "synthetic-trunk"},
-		{Head: "synthetic-b", Number: 12, State: "OPEN", Base: "synthetic-trunk"},
-	}
-	issues := make([]string, 0)
-	for step := range githubstack.Across(snapshot.Parents, snapshot.Branches, prs) {
-		if step.Classify() != githubstack.StepAligned {
-			issues = append(issues, step.Branch)
-		}
-	}
-	if len(issues) != 0 {
-		t.Errorf("siblings reported as misbased: %v", issues)
-	}
-}
-
-// Which record described the stack is a property of the invocation, not of the
-// repository, so the reader has to be told.
-func TestStatusNamesTheRecordThatDescribedTheStack(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "synthetic-trunk", Scope: shape.ScopePath,
-		Source: stack.SourceG2G, Branches: []string{"synthetic-top"},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "Structure from g2g") {
-		t.Errorf("status did not say which record answered:\n%s", out.String())
-	}
-}
-
-// A chain must keep rendering as the flat list every other command shows.
-func TestStatusLeavesALinearSelectionUnindented(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-lower", "synthetic-top"},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(out.String(), "├─") || strings.Contains(out.String(), "└─") {
-		t.Errorf("a linear stack was rendered as a tree:\n%s", out.String())
-	}
-}
-
-// A subtree selection that happens to be a chain must render flat, exactly as
-// the graph views render one. Both commands used to compute depth themselves
-// and only one suppressed the staircase, so the same shape rendered two ways
-// depending on which command was asked.
-func TestStatusRendersAChainFlatEvenWhenTheScopeCouldFork(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-a", Base: "synthetic-a", Scope: shape.ScopeSubtree, Source: stack.SourceGraphite,
-		Branches: []string{"synthetic-b", "synthetic-c"},
-		Parents:  map[string]string{"synthetic-b": "synthetic-a", "synthetic-c": "synthetic-b"},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(out.String(), "├─") || strings.Contains(out.String(), "└─") {
-		t.Errorf("a chain was rendered as a staircase:\n%s", out.String())
-	}
-}
-
-// A GitHub stack is linear and a selection need not be. Where they overlap the
-// members are marked inside the tree, so the reader can see which part of the
-// shape the stack number covers rather than being shown a shape and a number
-// and left to work out the relationship.
-func TestStatusMarksTheNativeStackInsideAForkedTree(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-trunk", Base: "synthetic-trunk", Scope: shape.ScopeStack, Source: stack.SourceGraphite,
-		Branches: []string{"synthetic-a", "synthetic-a-one", "synthetic-b"},
-		Parents: map[string]string{
-			"synthetic-a":     "synthetic-trunk",
-			"synthetic-a-one": "synthetic-a",
-			"synthetic-b":     "synthetic-trunk",
-		},
-	}, PullRequests: []githubstack.PullRequest{
-		{Head: "synthetic-a", Number: 11, State: "OPEN", Base: "synthetic-trunk", StackNumber: 7, StackSize: 2, StackPosition: 1},
-		{Head: "synthetic-a-one", Number: 12, State: "OPEN", Base: "synthetic-a", StackNumber: 7, StackSize: 2, StackPosition: 2},
-		{Head: "synthetic-b", Number: 13, State: "OPEN", Base: "synthetic-trunk"},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	got := out.String()
-	for _, want := range []string{"stack #7 · 1/2", "stack #7 · 2/2", "├─", "└─"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in the forked status:\n%s", want, got)
-		}
-	}
-	// The branch outside the native stack must not claim membership in it.
-	for _, line := range strings.Split(got, "\n") {
-		if strings.Contains(line, "synthetic-b") && strings.Contains(line, "stack #7") {
-			t.Errorf("a branch outside the native stack was marked as in it: %q", line)
-		}
-	}
-}
-
-// A linear selection keeps the compact summary it always had: the whole path is
-// the stack, so marking every node with the same number says nothing.
-func TestStatusLeavesALinearSelectionUnmarked(t *testing.T) {
-	plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-		Target: "synthetic-top", Base: "synthetic-trunk", Scope: shape.ScopePath,
-		Branches: []string{"synthetic-lower", "synthetic-top"},
-	}, PullRequests: []githubstack.PullRequest{
-		{Head: "synthetic-lower", Number: 11, State: "OPEN", StackNumber: 7, StackSize: 2, StackPosition: 1},
-		{Head: "synthetic-top", Number: 12, State: "OPEN", StackNumber: 7, StackSize: 2, StackPosition: 2},
-	}}}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(out.String(), "stack #7 · 1/2") {
-		t.Errorf("a linear selection repeated the stack number per node:\n%s", out.String())
-	}
-}
-
-// The advice used to be one prose sentence naming every branch, which for a
-// real stack wrapped mid-name across two terminal lines and had to be read
-// twice to find out which branches it meant. Each branch gets its own line
-// now, and only the exception carries a note: the headline already says what
-// happens to the ordinary ones.
-func TestStatusAdvicePutsEachBranchOnItsOwnLine(t *testing.T) {
-	plan := link.Plan{
-		Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-			Target:   "synthetic/top",
-			Base:     "main",
-			Branches: []string{"synthetic/lower", "synthetic/middle", "synthetic/top"},
-		}},
-		Issues: []link.Issue{
-			{Branch: "synthetic/lower", Kind: link.IssueMissing, Reason: "no open PR"},
-			{Branch: "synthetic/middle", Kind: link.IssueMissing, Reason: "no open PR"},
-			{Branch: "synthetic/top", Kind: link.IssueClosed, Number: 19891, Reason: "PR closed"},
+func graphGitFixture() graphGit {
+	return graphGit{
+		current: "synthetic-login",
+		local:   []string{"synthetic-auth", "synthetic-billing", "synthetic-login", "synthetic-main", "synthetic-session"},
+		ancestors: map[string][]string{
+			"synthetic-auth":    {"synthetic-main"},
+			"synthetic-login":   {"synthetic-auth", "synthetic-main"},
+			"synthetic-session": {"synthetic-auth", "synthetic-main"},
+			"synthetic-billing": {"synthetic-main"},
 		},
 	}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	lines := strings.Split(out.String(), "\n")
-	index := func(want string) int {
-		for at, line := range lines {
-			if strings.TrimSpace(line) == want {
-				return at
+func runGraph(t *testing.T, adopted graph.Graph, color bool, args ...string) (string, *graphStore, error) {
+	t.Helper()
+	store := &graphStore{graph: adopted}
+	var stdout, stderr bytes.Buffer
+	command := NewWithOptions(Options{
+		Version:      "v0.1.0",
+		Stdout:       &stdout,
+		Stderr:       &stderr,
+		Graph:        graph.Service{Git: graphGitFixture(), Store: store},
+		Presentation: &Presentation{Color: color},
+	})
+	command.SetArgs(args)
+	err := command.Execute()
+	return stdout.String(), store, err
+}
+
+func TestGraphRendersAForkedTreeWithConnectors(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		color bool
+	}{{name: "graph-tree-plain"}, {name: "graph-tree-color", color: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			out, _, err := runGraph(t, graphFixture(), test.color, "status", "--branch", "synthetic-login", "--scope", "trunk")
+			if err != nil {
+				t.Fatalf("graph: %v\n%s", err, out)
 			}
-		}
-		t.Fatalf("no line %q in:\n%s", want, out.String())
-		return -1
-	}
-	headline := index("g2g submit   open a new pull request for each of these 3 branches")
-	// Every branch on its own line, in selection order, under the headline.
-	for offset, want := range []string{"synthetic/lower", "synthetic/middle", "synthetic/top  · #19891 was closed"} {
-		if at := index(want); at != headline+1+offset {
-			t.Errorf("line %q is at %d, want %d (one per branch, in order)", want, at, headline+1+offset)
-		}
-	}
-	// The ordinary case carries no note; repeating "no open PR" on every line
-	// is what the headline exists to avoid.
-	if strings.Contains(out.String(), "synthetic/lower  ·") {
-		t.Errorf("the ordinary case was annotated anyway:\n%s", out.String())
+			assertGolden(t, test.name, out)
+		})
 	}
 }
 
-// A machine reads one field, and a porcelain record is one tab-separated row,
-// so the sentence must stay a sentence however the human form is laid out.
-func TestStatusAdviceStaysOneLineForMachines(t *testing.T) {
-	plan := link.Plan{
-		Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/top"}}},
-		Issues:    []link.Issue{{Branch: "synthetic/top", Kind: link.IssueMissing, Reason: "no open PR"}},
+// A chain has no fork to draw, so it keeps the flat list every other command
+// renders rather than becoming a staircase that says nothing extra.
+func TestGraphRendersAChainFlat(t *testing.T) {
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login")
+	if err != nil {
+		t.Fatalf("graph: %v\n%s", err, out)
 	}
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{Format: formatPorcelain}); err != nil {
+	assertGolden(t, "graph-path-plain", out)
+	if strings.Contains(out, forkGlyph) {
+		t.Error("a linear selection should not draw fork connectors")
+	}
+}
+
+func TestGraphSubtreeStartsFromTheSelection(t *testing.T) {
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-auth", "--scope", "subtree")
+	if err != nil {
+		t.Fatalf("graph: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "synthetic-billing") {
+		t.Errorf("subtree scope included a sibling branch:\n%s", out)
+	}
+	for _, branch := range []string{"synthetic-auth", "synthetic-login", "synthetic-session"} {
+		if !strings.Contains(out, branch) {
+			t.Errorf("subtree scope omitted %s:\n%s", branch, out)
+		}
+	}
+}
+
+func TestGraphRejectsAnUnknownScope(t *testing.T) {
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--scope", "everything")
+	if err == nil {
+		t.Fatalf("graph --scope everything: error = nil\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "subtree") {
+		t.Errorf("error = %v, want it to list the valid scopes", err)
+	}
+}
+
+func TestGraphIsReadOnly(t *testing.T) {
+	_, store, err := runGraph(t, graphFixture(), false, "status", "--scope", "trunk")
+	if err != nil {
 		t.Fatal(err)
 	}
+	if store.writes != 0 {
+		t.Errorf("graph wrote to the store %d time(s)", store.writes)
+	}
+}
 
-	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
-		if !strings.HasPrefix(line, "blocked\t") {
+func TestGraphNamesTheStoreItReadsFrom(t *testing.T) {
+	out, _, err := runGraph(t, graphFixture(), false, "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "/synthetic/repo/.git/g2g/graph.json") {
+		t.Errorf("output does not name the store:\n%s", out)
+	}
+}
+
+func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
+	jsonOut, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login", "--scope", "trunk", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(jsonOut, `"parent": "synthetic-auth"`) {
+		t.Errorf("JSON does not carry the parent edge:\n%s", jsonOut)
+	}
+
+	porcelain, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login", "--scope", "trunk", "--porcelain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(porcelain), "\n") {
+		fields := strings.Split(line, "\t")
+		if fields[0] != "branch" || fields[1] != "synthetic-login" {
 			continue
 		}
-		if strings.Count(line, "\t") != 1 {
-			t.Errorf("the blocked record is not one field: %q", line)
+		// parent is appended after the fields that shipped before it, so an
+		// existing reader keeps working.
+		if fields[len(fields)-1] != "synthetic-auth" {
+			t.Errorf("porcelain branch record = %q, want the parent last", line)
 		}
 		return
 	}
-	t.Errorf("no blocked record in:\n%s", out.String())
+	t.Errorf("no porcelain branch record for the target:\n%s", porcelain)
 }
 
-// A branch whose pull request is missing its latest work read as plain
-// "aligned", because alignment is about the base. Base and head are separate
-// marks for that reason, and the head one appears only where there is
-// something to say — a current pull request stays unannotated so the stale
-// ones stand out.
-func TestStatusSaysWhenAPullRequestIsMissingTheBranchesWork(t *testing.T) {
+func TestBranchCompletionListsLocalBranches(t *testing.T) {
+	service := graph.Service{Git: graphGitFixture(), Store: &graphStore{graph: graphFixture()}}
+
+	completed, err := localBranchCompletions(service)(context.Background(), "")
+	if err != nil {
+		t.Fatalf("localBranchCompletions() error = %v", err)
+	}
+	if len(completed) != len(graphGitFixture().local) {
+		t.Errorf("completion = %v, want every local branch", completed)
+	}
+}
+
+// Completion must not fail a shell when the service is absent.
+func TestBranchCompletionIsEmptyWithoutAGit(t *testing.T) {
+	completed, err := localBranchCompletions(graph.Service{})(context.Background(), "")
+	if err != nil || len(completed) != 0 {
+		t.Errorf("localBranchCompletions() = %v, %v; want empty and no error", completed, err)
+	}
+}
+
+func TestScopeCompletionOffersEveryAcceptedValue(t *testing.T) {
+	completed, err := staticCompletions(shape.Scopes)(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(completed, ",") != "branch,path,subtree,stack,trunk" {
+		t.Errorf("scope completion = %v", completed)
+	}
+	for _, value := range completed {
+		if _, err := shape.ParseScope(value, shape.Scopes, graph.ScopeStack); err != nil {
+			t.Errorf("completion offered %q, which ParseScope rejects", value)
+		}
+	}
+}
+
+// The three things g2g can see and deliberately will not repair each need to
+// reach the reader, because nothing else is going to tell them.
+func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
+	git := graphGitFixture()
+	// session was rewritten off its recorded base, and auth's parent was
+	// merged and deleted, so it is no longer a local branch.
+	git.ancestors["synthetic-session"] = nil
+	git.local = []string{"synthetic-auth", "synthetic-billing", "synthetic-login", "synthetic-session"}
+
+	store := &graphStore{graph: graphFixture()}
+	var stdout, stderr bytes.Buffer
+	command := NewWithOptions(Options{
+		Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr,
+		Graph:        graph.Service{Git: git, Store: store},
+		Presentation: &Presentation{},
+	})
+	command.SetArgs([]string{"status", "--branch", "synthetic-auth", "--scope", "subtree"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("graph: %v\n%s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"synthetic-session",
+		"no longer a local branch for synthetic-auth",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// An untracked middle branch leaves its children with a parent the graph does
+// not know, and saying so is the whole point of not reparenting them.
+func TestGraphReportsBranchesWithNoTrackedParent(t *testing.T) {
+	orphaned := graphFixture().Untrack("synthetic-auth")
+	store := &graphStore{graph: orphaned}
+	var stdout, stderr bytes.Buffer
+	command := NewWithOptions(Options{
+		Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr,
+		Graph:        graph.Service{Git: graphGitFixture(), Store: store},
+		Presentation: &Presentation{},
+	})
+	command.SetArgs([]string{"status", "--branch", "synthetic-login", "--scope", "trunk"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("graph: %v\n%s", err, stdout.String())
+	}
+
+	if out := stdout.String(); !strings.Contains(out, "No tracked parent for") {
+		t.Errorf("output does not report the orphan:\n%s", out)
+	}
+}
+
+// A command that rewrites history or projects onto GitHub must refuse a scope
+// it never offered. The services deliberately parse the wider read set, so this
+// gate is the only thing standing between "restack this stack" and "restack
+// every root in the repository".
+func TestAScopeGateRefusesWhatItsCommandDoesNotOffer(t *testing.T) {
 	for _, test := range []struct {
 		name     string
-		currency link.Currency
-		want     string
+		accepted []graph.Scope
+		scope    string
+		wantErr  bool
 	}{
-		{name: "current", currency: link.Currency{}, want: "base" + markYes},
-		{name: "unpushed", currency: link.Currency{Unpushed: 2}, want: "head" + markNo + " 2 commits not pushed"},
-		{name: "one unpushed reads singular", currency: link.Currency{Unpushed: 1}, want: "head" + markNo + " 1 commit not pushed"},
-		{name: "diverged", currency: link.Currency{Diverged: true}, want: "head" + markNo + " PR is on a commit this branch does not have"},
-		{name: "diverged with local work", currency: link.Currency{Diverged: true, Unpushed: 3}, want: "3 commits here are not on it"},
-		{name: "one diverged commit agrees with its verb", currency: link.Currency{Diverged: true, Unpushed: 1}, want: "1 commit here is not on it"},
-		// A restacked stack is in this state, and nothing is missing from its
-		// pull requests. It used to report as a divergence, with every commit
-		// the trunk had gained counted as work of the reader's own.
-		{name: "replayed since it was pushed", currency: link.Currency{Rewritten: true}, want: "head" + markNo + " PR is on an older version of this branch"},
+		{"replay refuses forest", shape.Scopes, string(graph.ScopeAll), true},
+		{"replay allows graph", shape.Scopes, string(graph.ScopeTrunk), false},
+		{"display allows forest", shape.ReadScopes, string(graph.ScopeAll), false},
+		{"removal refuses graph", []graph.Scope{graph.ScopeBranch, graph.ScopeSubtree}, string(graph.ScopeTrunk), true},
+		{"an empty scope is the default", shape.Scopes, "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{
-				Discovery: stack.Discovery{
-					Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
-					PullRequests: []githubstack.PullRequest{{Head: "synthetic-top", Number: 12, State: "OPEN"}},
-				},
-				Currency: map[string]link.Currency{"synthetic-top": test.currency},
+			options := graphOptions{scopeOptions: scopeOptions{scope: test.scope, accepted: test.accepted}}
+			err := options.validateScope()
+			if test.wantErr && err == nil {
+				t.Errorf("validateScope() error = nil for scope %q", test.scope)
 			}
-			var out bytes.Buffer
-			if err := writeStatus(&out, plan, Presentation{}); err != nil {
-				t.Fatal(err)
-			}
-
-			if !strings.Contains(out.String(), test.want) {
-				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
-			}
-			if test.name == "current" && strings.Contains(out.String(), "head") {
-				t.Errorf("a current pull request was annotated anyway:\n%s", out.String())
+			if !test.wantErr && err != nil {
+				t.Errorf("validateScope() error = %v for scope %q", err, test.scope)
 			}
 		})
 	}
 }
 
-// The complaint this answers: one line said "aligned" and then described a
-// divergence, and a single colour had to choose between them — so the good
-// news and the bad news were the same colour, and the first word was the good
-// one. Two marks, two colours, and the reader can scan the column for ✗.
-func TestBaseAndHeadAreSaidSeparatelyAndColouredSeparately(t *testing.T) {
-	plan := link.Plan{
-		Discovery: stack.Discovery{
-			Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
-			PullRequests: []githubstack.PullRequest{{Head: "synthetic-top", Number: 12, State: "OPEN"}},
-		},
-		Currency: map[string]link.Currency{"synthetic-top": {Diverged: true}},
+// Every mutating command registers the narrow set. A future command that wires
+// ReadScopes into something that writes should fail here rather than in a
+// repository.
+func TestOnlyReadOnlyCommandsOfferForest(t *testing.T) {
+	for _, scope := range shape.Scopes {
+		if scope == graph.ScopeAll {
+			t.Fatal("shape.Scopes contains forest; it is the set handed to commands that mutate")
+		}
 	}
-
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{Color: true}); err != nil {
-		t.Fatal(err)
-	}
-
-	if want := ansiAligned + "base" + markYes + ansiReset; !strings.Contains(out.String(), want) {
-		t.Errorf("the base mark is not drawn as good news:\n%q", out.String())
-	}
-	if want := ansiProblem + "head" + markNo; !strings.Contains(out.String(), want) {
-		t.Errorf("the head mark is not drawn as bad news:\n%q", out.String())
+	if len(shape.ReadScopes) != len(shape.Scopes)+1 {
+		t.Errorf("ReadScopes = %v, want exactly Scopes plus forest", shape.ReadScopes)
 	}
 }
 
-// Which native stack a branch belongs to used to replace the annotation rather
-// than join it, so a diverged head went unsaid on exactly the branches
-// something else was also wrong with.
-func TestAMembershipMarkerDoesNotSwallowTheHeadMark(t *testing.T) {
-	plan := link.Plan{
-		Discovery: stack.Discovery{
-			Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-lower", "synthetic-top"}},
-			PullRequests: []githubstack.PullRequest{
-				{Head: "synthetic-lower", Number: 11, State: "OPEN", StackNumber: 3, StackPosition: 1},
-				{Head: "synthetic-top", Number: 12, State: "OPEN"},
-			},
-		},
-		Currency: map[string]link.Currency{"synthetic-lower": {Diverged: true}},
+// A hint that names a flag value is a command the reader will type, so the
+// value has to be one the command accepts.
+//
+// The scope vocabulary was renamed (forest became all) and this hint kept the
+// old word, so following the tool's own advice produced "unsupported scope".
+// Scanning the advice for scope words and checking each against the parser
+// catches the next rename too, which naming one value in one assertion would
+// not.
+func TestSuggestedScopesAreOnesTheCommandAccepts(t *testing.T) {
+	discovery := graph.Discovery{
+		Target:   "synthetic-trunk",
+		Branches: []string{"synthetic-trunk"},
+		Scope:    graph.ScopePath,
+		Graph:    forkedGraph(t),
 	}
 
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{}); err != nil {
-		t.Fatal(err)
+	suggested := regexp.MustCompile(`--scope ([a-z]+)`)
+	found := 0
+	for _, note := range statusView(discovery).Notes {
+		for _, match := range suggested.FindAllStringSubmatch(note.Text, -1) {
+			found++
+			// Checked against the set the graph command registers, not a
+			// fixed one: the whole failure mode is advice drifting from what
+			// the command actually takes.
+			if _, err := shape.ParseScope(match[1], shape.ReadScopes, graph.ScopeStack); err != nil {
+				t.Errorf("advice names --scope %s, which the command rejects: %v", match[1], err)
+			}
+		}
 	}
-
-	if !strings.Contains(out.String(), "head"+markNo) {
-		t.Errorf("the head mark was swallowed by the membership marker:\n%s", out.String())
+	if found == 0 {
+		t.Fatal("no scope advice found to check; the hint this guards has moved")
 	}
 }
 
-// A merged pull request did what it was for. It used to be grouped with a
-// missing or closed one, which put a red ✗ on the successful outcome and told
-// the reader something had gone wrong with it. What is left over is a branch
-// that no longer belongs in the stack, which the advice block says.
-func TestAMergedPullRequestIsNotMarkedAsAFault(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		issue link.Issue
-		want  string
-	}{
-		{name: "merged", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMerged, Number: 7, Reason: "PR merged"}, want: "pr" + markYes + " merged as #7"},
-		{name: "closed", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueClosed, Number: 7, Reason: "PR closed"}, want: "pr" + markNo + " closed without merging"},
-		{name: "missing", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMissing, Reason: "no open PR"}, want: "pr" + markNo + " none open"},
-		{name: "ambiguous", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueAmbiguous, Reason: "2 open PRs"}, want: "pr" + markNo + " 2 open PRs"},
+// forkedGraph is a trunk with branches under it, so the hidden-descendants
+// hint that carries the scope advice actually fires.
+func forkedGraph(t *testing.T) graph.Graph {
+	t.Helper()
+
+	recorded := graph.New()
+	for _, edge := range []struct{ branch, parent string }{
+		{"synthetic-a", "synthetic-trunk"},
+		{"synthetic-b", "synthetic-trunk"},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{
-				Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}}},
-				Issues:    []link.Issue{test.issue},
+		updated, err := recorded.Track(edge.branch, graph.Edge{Parent: edge.parent})
+		if err != nil {
+			t.Fatalf("Track(%q) error = %v", edge.branch, err)
+		}
+		recorded = updated
+	}
+	return recorded
+}
+
+// The parity table compares the two records on synthetic fixtures. Rendering
+// both in one format compares them on the repository in front of you, which is
+// the check no fixture can stand in for.
+func TestGraphReadsAnotherRecordInItsOwnFormat(t *testing.T) {
+	snapshot := stack.Snapshot{
+		Target:       "synthetic-b",
+		TargetSource: "current Git branch",
+		Base:         "synthetic-trunk",
+		Branches:     []string{"synthetic-a", "synthetic-b", "synthetic-cousin"},
+		Parents: map[string]string{
+			"synthetic-a":      "synthetic-trunk",
+			"synthetic-b":      "synthetic-a",
+			"synthetic-cousin": "synthetic-trunk",
+		},
+		Scope:  shape.ScopeTrunk,
+		Source: stack.SourceGraphite,
+	}
+
+	var out bytes.Buffer
+	if err := writeStackView(&out, structureNote(sourceGraphView(snapshot), snapshot), Presentation{}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, want := range []string{"synthetic-trunk", "synthetic-a", "synthetic-cousin", "Structure from graphite"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("output does not contain %q:\n%s", want, rendered)
+		}
+	}
+	// The fork is drawn, which is the shape a comparison is actually about.
+	if !strings.Contains(rendered, "├─") {
+		t.Errorf("the fork was flattened:\n%s", rendered)
+	}
+	// State comes from recorded fork points, which only g2g's store has.
+	// Inventing one for another record would be the drift this view exists to
+	// find, reported as a fact.
+	for _, absent := range []string{"needs restack", "moved off parent", "fork point lost", "untracked"} {
+		if strings.Contains(rendered, absent) {
+			t.Errorf("annotated %q for a record with no fork points:\n%s", absent, rendered)
+		}
+	}
+}
+
+// status answers without a network, which is the whole reason it exists apart
+// from github status. A pull request base is read by invoking gh, so it is refused
+// before any discovery runs and the refusal names the command that does read it.
+func TestStatusRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
+	for _, test := range []struct {
+		from string
+		want string
+	}{
+		{from: "", want: ""},
+		{from: "g2g", want: ""},
+		{from: "graphite", want: ""},
+		{from: "github", want: "g2g github status --from github does read it"},
+		{from: "synthetic-nonsense", want: "unknown source"},
+	} {
+		t.Run(test.from, func(t *testing.T) {
+			err := validateOfflineSource(test.from)
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("validateOfflineSource(%q) = %v, want accepted", test.from, err)
+				}
+				return
 			}
-			var out bytes.Buffer
-			if err := writeStatus(&out, plan, Presentation{}); err != nil {
-				t.Fatal(err)
+			if err == nil {
+				t.Fatalf("validateOfflineSource(%q) = nil", test.from)
 			}
-			if !strings.Contains(out.String(), test.want) {
-				t.Errorf("output does not contain %q:\n%s", test.want, out.String())
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("refusal %q does not contain %q", err, test.want)
 			}
 		})
 	}
 }
 
-// The colour is the half a reader takes in without reading. A landed pull
-// request drawn in the same red as a missing one says the opposite of what
-// happened, and graph has always called an already-landed branch neutral.
-func TestALandedPullRequestIsNotDrawnAsAlarming(t *testing.T) {
-	plan := link.Plan{
-		Discovery: stack.Discovery{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}}},
-		Issues:    []link.Issue{{Branch: "synthetic-top", Kind: link.IssueMerged, Number: 7, Reason: "PR merged"}},
-	}
-
-	var out bytes.Buffer
-	if err := writeStatus(&out, plan, Presentation{Color: true}); err != nil {
-		t.Fatal(err)
-	}
-
-	if strings.Contains(out.String(), ansiProblem+"pr") {
-		t.Errorf("a merged pull request was drawn as a problem:\n%q", out.String())
-	}
-	if want := ansiSubdued + "pr" + markYes; !strings.Contains(out.String(), want) {
-		t.Errorf("a merged pull request is not drawn as the ordinary outcome it is:\n%q", out.String())
-	}
+// Cherry reports every commit as absent from the trunk unless a case says
+// otherwise, so a branch reads as landed only where that is the subject.
+func (g graphGit) Cherry(_ context.Context, _, head, _ string) (absent, present []string, err error) {
+	return testutil.OwnCommits(head), nil, nil
 }
 
-// A branch whose work is already below it used to read as one with no pull
-// request, and the advice for that is to open one — for a change that is
-// already in the trunk. What it needs is forgetting, and which command does
-// that depends on which record answered.
-func TestALandedBranchIsNotOfferedSubmit(t *testing.T) {
+// Absorbed answers of a whole branch what Cherry answers per commit, which is
+// what a squash merge needs. Nothing here is absorbed unless a case says so.
+func (g graphGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// A branch the graph does not record gets one note, and which one depends on
+// what is around it. Three states used to be two, and both mistakes were
+// visible on an ordinary read: a trunk with a forest on it was told to record a
+// parent for itself, and a target absent from the drawing was named in the
+// header and explained by a note about parents.
+func TestAnUntrackedTargetIsExplainedByWhatIsAroundIt(t *testing.T) {
+	stacked := graph.Graph{
+		Edges:  map[string]graph.Edge{"synthetic-auth": {Parent: "synthetic-main"}},
+		Trunks: []string{"synthetic-main"},
+	}
 	for _, test := range []struct {
-		name   string
-		source stack.Source
-		want   string
+		name      string
+		discovery graph.Discovery
+		want      string
 	}{
-		{name: "g2g's own graph is prunable", source: stack.SourceG2G, want: "g2g prune"},
-		{name: "graphite restacks around it", source: stack.SourceGraphite, want: "gt sync"},
+		{
+			name:      "a trunk with a forest on it needs no advice",
+			discovery: graph.Discovery{Graph: stacked, Target: "synthetic-main", Branches: []string{"synthetic-main", "synthetic-auth"}, DefaultTrunk: "synthetic-main"},
+			want:      "",
+		},
+		{
+			name:      "a trunk with nothing on it is where a stack starts",
+			discovery: graph.Discovery{Graph: graph.New(), Target: "synthetic-main", Branches: []string{"synthetic-main"}, DefaultTrunk: "synthetic-main"},
+			want:      "default branch",
+		},
+		{
+			name:      "a target the drawing omits says so",
+			discovery: graph.Discovery{Graph: stacked, Target: "synthetic-elsewhere", Branches: []string{"synthetic-main", "synthetic-auth"}},
+			want:      "not drawn above",
+		},
+		{
+			name:      "an ordinary branch is missing a parent",
+			discovery: graph.Discovery{Graph: graph.New(), Target: "synthetic-feature", Branches: []string{"synthetic-feature"}},
+			want:      "no recorded parent",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan := link.Plan{
-				Discovery: stack.Discovery{Snapshot: stack.Snapshot{
-					Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}, Source: test.source,
-				}},
-				Issues: []link.Issue{{Branch: "synthetic-top", Kind: link.IssueLanded, Reason: "landed in main"}},
+			note := untrackedNote(test.discovery)
+			if test.want == "" {
+				if note != "" {
+					t.Errorf("untrackedNote() = %q, want nothing", note)
+				}
+				return
 			}
-
-			var out bytes.Buffer
-			if err := writeStatus(&out, plan, Presentation{}); err != nil {
-				t.Fatal(err)
-			}
-
-			if !strings.Contains(out.String(), "landed in main") {
-				t.Errorf("the branch is not reported as landed:\n%s", out.String())
-			}
-			if !strings.Contains(out.String(), test.want) {
-				t.Errorf("output does not offer %q:\n%s", test.want, out.String())
-			}
-			if strings.Contains(out.String(), "g2g submit") {
-				t.Errorf("submit was offered for work already in the trunk:\n%s", out.String())
-			}
-			if strings.Contains(out.String(), "pr"+markNo) {
-				t.Errorf("a landed branch was marked as a pull request fault:\n%s", out.String())
+			if !strings.Contains(note, test.want) {
+				t.Errorf("untrackedNote() = %q, want it to contain %q", note, test.want)
 			}
 		})
 	}

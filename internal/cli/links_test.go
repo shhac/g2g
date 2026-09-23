@@ -115,7 +115,7 @@ func linkedStatusPlan() link.Plan {
 // The number a person reads is unchanged; it merely becomes clickable.
 func TestRenderedPullRequestNumberCarriesItsLink(t *testing.T) {
 	var out bytes.Buffer
-	if err := writeStatus(&out, linkedStatusPlan(), Presentation{Links: true}); err != nil {
+	if err := writeGitHubStatus(&out, linkedStatusPlan(), Presentation{Links: true}); err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
@@ -140,7 +140,7 @@ func TestMachineFormatsAndPlainOutputCarryNoEscapes(t *testing.T) {
 		"json with links set": {Format: formatJSON, Links: true},
 	} {
 		var out bytes.Buffer
-		if err := writeStatus(&out, linkedStatusPlan(), p); err != nil {
+		if err := writeGitHubStatus(&out, linkedStatusPlan(), p); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if strings.Contains(out.String(), "\x1b") {
@@ -155,10 +155,10 @@ func TestOutputIsUnchangedWhenNothingCanBeLinked(t *testing.T) {
 	plan.PullRequests[0].URL = ""
 
 	var linked, plain bytes.Buffer
-	if err := writeStatus(&linked, plan, Presentation{Links: true}); err != nil {
+	if err := writeGitHubStatus(&linked, plan, Presentation{Links: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeStatus(&plain, plan, Presentation{}); err != nil {
+	if err := writeGitHubStatus(&plain, plan, Presentation{}); err != nil {
 		t.Fatal(err)
 	}
 	if linked.String() != plain.String() {

@@ -16,9 +16,8 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
-		Use:     "comment",
-		GroupID: groupTools,
-		Short:   "Keep a comment on each pull request listing its stack (preview by default)",
+		Use:   "comment",
+		Short: "Keep a comment on each pull request listing its stack (preview by default)",
 		Long: "Keeps one comment on every pull request in the stack, listing the stack from where that pull request " +
 			"stands: the trunk, the branches below it, the pull request itself in bold, and everything built on it.\n\n" +
 			"A later run edits the comment it finds rather than adding another, so the list follows the stack. Pull " +

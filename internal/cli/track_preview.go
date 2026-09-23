@@ -45,6 +45,7 @@ func confirmation(plan graph.TrackPlan) string {
 	}
 	return plan.Parent + " is not an ancestor of " + plan.Target + " · the edge is recorded as asserted, and " + plan.Target + " will read as needing a restack."
 }
+
 func severityFor(plan graph.TrackPlan) severity {
 	if plan.Updated.Edges[plan.Target].Origin == graph.OriginAncestry {
 		return severityNeutral
@@ -114,28 +115,6 @@ func describeOthers(others []graph.Candidate) string {
 	return listed
 }
 
-// gitAdoptView renders a whole-stack adoption. It is the same graph view every
-// other structure command uses; only the notes differ.
-func gitAdoptView(plan graph.StackPlan) stackView {
-	view := driftNotes(graphView(plan.Discovery, "adopt"), plan.Discovery)
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
-	}
-	if len(plan.Record) == 0 {
-		return view.note("The graph already records this whole ancestry.", severityNeutral)
-	}
-	view = view.note(fmt.Sprintf("Records %s, from %s upwards.", branchList(plan.Branches()), plan.Trunk), severityOK)
-	for _, adoption := range plan.Record {
-		view = view.note(fmt.Sprintf("  %s under %s", adoption.Branch, adoption.Parent), severityNeutral)
-	}
-	if plan.NewTrunk != "" {
-		view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
-	}
-	if len(plan.Already) != 0 {
-		view = view.note("Already recorded: "+branchList(plan.Already)+".", severityNeutral)
-	}
-	return view
-}
 func describeCandidate(candidate graph.Candidate) string {
 	described := count(candidate.Distance, "commit", "commits") + " behind"
 	// Two branches at one commit are each other's ancestor, so "0 commits

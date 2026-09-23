@@ -2,259 +2,112 @@ package cli
 
 import (
 	"fmt"
-	"io"
+	"slices"
 
-	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
-// How a stack, its pull requests and its GitHub-native membership are drawn.
+func statusView(discovery graph.Discovery) stackView {
+	view := graphView(discovery, "status")
+	// A trunk has no recorded parent because it is a root, which the node above
+	// already says. Telling someone standing on it to adopt one contradicts the
+	// line they just read and names a command that would refuse.
+	//
+	// The graph's own trunks are branches nothing sits under, so an empty store
+	// has none — which is exactly the repository where somebody standing on
+	// main was told to give it a parent. What the remote calls its default
+	// closes that gap without the store having to know anything yet.
+	untracked := !discovery.Graph.Tracked(discovery.Target)
+	// Only when nothing is stacked on it. This told anybody standing on main to
+	// start a stack there, on every read, including ones showing the forest
+	// already on it — advice for an empty trunk, given to a full one.
+	if untracked {
+		if note := untrackedNote(discovery); note != "" {
+			view = view.note(note, severityNeutral)
+		}
+	}
+	if hidden := hiddenDescendants(discovery); hidden != 0 {
+		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", count(hidden, "branch", "branches")), severityNeutral)
+	}
+	return driftNotes(view, discovery)
+}
+
+// hiddenDescendants counts what the selected scope left out below the target.
+// Standing on a trunk with the default scope shows one node and no hint that
+// nine stacks hang off it, which reads as an empty graph rather than a narrow
+// question.
+func hiddenDescendants(discovery graph.Discovery) int {
+	selected := make(map[string]bool, len(discovery.Branches))
+	for _, branch := range discovery.Branches {
+		selected[branch] = true
+	}
+	hidden := 0
+	for _, branch := range discovery.Graph.Subtree(discovery.Target) {
+		// Subtree includes the target, which is never "below" itself. Counting
+		// it made an unrecorded branch claim one hidden descendant.
+		if branch != discovery.Target && !selected[branch] {
+			hidden++
+		}
+	}
+	return hidden
+}
+
+// isTrunk reports a target nothing should be asked to hang under: the graph
+// already treats it as a root, or the remote calls it the default branch.
+func isTrunk(discovery graph.Discovery) bool {
+	return discovery.Graph.IsTrunk(discovery.Target) || discovery.Target == discovery.DefaultTrunk
+}
+
+// untrackedNote says the one true thing about a target the graph does not
+// record, which differs by what is around it.
 //
-// Separate from status_cmd.go for the reason every other command here is:
-// wiring in _cmd.go, projection in _preview.go. It matters more here than
-// elsewhere because membershipView is shared -- unlink composes it too -- so a
-// view two commands render was living in a file named for one of them.
-
-// membershipView is the graph both status and unlink render: the selected path
-// with each branch's pull request and native-stack membership. They differ only
-// in the notes below it, so unlink composes this rather than building status's
-// whole projection and discarding half of it.
-func membershipView(plan link.Plan, operation string) (stackView, githubstack.Membership) {
-	issues := map[string]link.Issue{}
-	for _, issue := range plan.Issues {
-		issues[issue.Branch] = issue
-	}
-	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
-
-	// The base is a node too, and it is the parent of every top-level branch, so
-	// it has to be in the ordered selection for depth to come out right.
-	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
-	view := stackView{
-		Operation:    operation,
-		Target:       plan.Target,
-		TargetSource: plan.TargetSource,
-		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
-	}
-	absent := map[string]bool{}
-	for _, branch := range plan.Snapshot.Absent {
-		absent[branch] = true
-	}
-	for _, branch := range plan.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
-		// A branch this checkout does not have is structure and not a place to
-		// act, so it is marked as what it is rather than as a blocked branch:
-		// nothing here is wrong with it, and no command will touch it.
-		if absent[branch] {
-			view.Nodes = append(view.Nodes, node.marked(stackMark{Detail: "on remote only", Severity: severityNeutral}))
-			continue
+// Three states used to be two. A trunk with a forest already on it was told to
+// start a stack there, which is advice for an empty one; and a target absent
+// from the drawing was named in the header, omitted from the tree, and
+// explained by a note about parents — which reads as a rendering fault rather
+// than as the branch simply not being recorded.
+func untrackedNote(discovery graph.Discovery) string {
+	switch {
+	case isTrunk(discovery):
+		if len(discovery.Graph.Children(discovery.Target)) != 0 {
+			// Nothing sits under a trunk, and this one plainly is one: there is
+			// a forest drawn on it. Telling its owner to record a parent for it
+			// contradicts the picture they are looking at.
+			return ""
 		}
-		if issue, blocked := issues[branch]; blocked {
-			view.Nodes = append(view.Nodes, node.marked(issueMark(issue)))
-			continue
-		}
-		pr := native.Branches[branch]
-		node.PRNumber, node.PRURL = pr.Number, pr.URL
-		// Two axes, said separately. A base is where it belongs or it is not,
-		// and that is silent about whether the pull request has the work
-		// sitting in the branch: one line used to say "aligned" and then
-		// describe a divergence, in whichever colour the worse of them won.
-		marks := []stackMark{{Subject: "base", OK: true, Severity: severityOK}}
-		if note, level := currencyNote(plan.Currency, branch); note != "" {
-			marks = append(marks, stackMark{Subject: "head", Detail: note, Severity: level})
-		}
-		// Which native stack a branch is in is a third thing, and it used to
-		// replace both of the above rather than join them — so a diverged head
-		// went unsaid on exactly the branches something else was also wrong
-		// with.
-		if marker, markerSeverity := membershipStyle(native, branch, plan.Forks()); marker != "" {
-			marks = append(marks, stackMark{Detail: marker, Severity: markerSeverity})
-		}
-		view.Nodes = append(view.Nodes, node.marked(marks...))
-	}
-	return view, native
-}
-
-func statusView(plan link.Plan) stackView {
-	view, native := membershipView(plan, "github status")
-	if len(plan.Issues) != 0 {
-		// The same reason every mutating command refuses on, under the heading
-		// a read-only report gives it. The heading used to be concatenated in
-		// here and string-replaced back out elsewhere, which is why it is a
-		// field: only its wording differs from a refusal's.
-		blocked := view.block(blockedReason(plan))
-		blocked.BlockedHeading = "Safe next action"
-		laid := repairAdvice(plan)
-		blocked.Advice = &laid
-		blocked.Repair, _ = plan.Repair()
-		return structureNote(blocked, plan.Snapshot)
-	}
-	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)
-}
-
-// structureNote says which record described this stack, and how much of it is
-// on screen.
-//
-// Structure is resolved per branch and never stored, so which record answered
-// is a property of this invocation rather than of the repository. Leaving it
-// unsaid was tolerable while Graphite was the only possible answer; it stops
-// being tolerable the moment two records can disagree and the reader cannot
-// tell which one they are looking at.
-func structureNote(view stackView, snapshot stack.Snapshot) stackView {
-	source := string(snapshot.Source)
-	if source == "" {
-		source = "unresolved"
-	}
-	shown := len(snapshot.Branches) + 1
-	return view.note(fmt.Sprintf("Structure from %s · scope %s · %s", source, snapshot.Scope, count(shown, "branch", "branches")), severityNeutral)
-}
-
-func writeStatus(writer io.Writer, plan link.Plan, p Presentation) error {
-	return writeStackView(writer, statusView(plan), p)
-}
-
-// membershipStyle answers everything a renderer needs about one branch's
-// native-stack membership in a single place. Three functions switching on the
-// same state meant its presentation was spread across three switches that had
-// to agree.
-func membershipStyle(membership githubstack.Membership, branch string, forked bool) (marker string, nodeSeverity severity) {
-	pr := membership.Branches[branch]
-	switch membership.State {
-	case githubstack.Partial:
-		if pr.StackNumber == 0 {
-			return "not linked", severityWarn
-		}
-	case githubstack.Conflicting:
-		if pr.StackNumber == 0 {
-			return "not linked", severityBad
-		}
-		return fmt.Sprintf("stack #%d, position %d", pr.StackNumber, pr.StackPosition), severityBad
-	}
-	// A GitHub stack is linear and a selection need not be, so where the two
-	// overlap the members are marked inside the tree. Without it the reader is
-	// shown a shape and told a stack number, and has to work out for themselves
-	// which branches the number covers.
-	if forked && pr.StackNumber != 0 {
-		return fmt.Sprintf("stack #%d · %d/%d", pr.StackNumber, pr.StackPosition, membership.StackSize), severityOK
-	}
-	return "", severityNeutral
-}
-
-// issueMark says which axis a refusal is about, and whether that axis failed.
-//
-// A pull request based on the wrong branch is the inverse of base✓ and says so.
-// The rest are not statements about a base at all — a branch with no pull
-// request has no base to be wrong about — and marking them as one would answer
-// a question nobody asked.
-//
-// Merged is the one that is not a fault. The pull request did exactly what it
-// was for, and grouping it with a missing or closed one put a red ✗ on the
-// successful outcome. What is left is a branch that no longer belongs in the
-// stack, which the advice block says and `graph` has always called neutral
-// rather than bad.
-func issueMark(issue link.Issue) stackMark {
-	switch issue.Kind {
-	case link.IssueBase:
-		return stackMark{Subject: "base", Detail: issue.Reason, Severity: severityBad}
-	case link.IssueMerged:
-		return stackMark{Subject: "pr", OK: true, Detail: mergedDetail(issue), Severity: severityNeutral}
-	case link.IssueLanded:
-		// Not about a pull request. There may not be one — a squash merge
-		// lands the work under a different head, and a cherry-picked series
-		// under none — and the branch being finished is the whole statement.
-		return stackMark{Detail: issue.Reason, Severity: severityNeutral}
-	case link.IssueClosed:
-		return stackMark{Subject: "pr", Detail: "closed without merging", Severity: severityBad}
-	case link.IssueMissing:
-		return stackMark{Subject: "pr", Detail: "none open", Severity: severityBad}
-	}
-	return stackMark{Subject: "pr", Detail: issue.Reason, Severity: severityBad}
-}
-
-// mergedDetail names the pull request that landed. It is the one number a
-// reader is likely to want to go and look at, and the issue is already
-// carrying it.
-func mergedDetail(issue link.Issue) string {
-	if issue.Number == 0 {
-		return "merged"
-	}
-	return fmt.Sprintf("merged as #%d", issue.Number)
-}
-
-func membershipNoteSeverity(state githubstack.MembershipState) severity {
-	if state == githubstack.Conflicting {
-		return severityBad
-	}
-	return severityNeutral
-}
-
-func nativeMessage(s githubstack.Membership) string {
-	switch s.State {
-	case githubstack.Aligned:
-		return fmt.Sprintf("GitHub stack #%d · selected path %d/%d · aligned", s.StackNumber, s.Selected, s.StackSize)
-	case githubstack.Partial:
-		return fmt.Sprintf("GitHub stack #%d · partial (%d/%d linked) · run %s to add the marked PRs.", s.StackNumber, s.Linked, s.Selected, runnable("g2g github link"))
-	case githubstack.Conflicting:
-		return "GitHub stack: conflicting membership · review the marked PRs before changing anything."
+		return fmt.Sprintf("%s is this repository's default branch · stack on it with %s.", discovery.Target, runnable("g2g track --branch <child> --parent "+discovery.Target))
+	case !slices.Contains(discovery.Branches, discovery.Target):
+		// Not in the drawing at all. A trunk is untracked and still drawn, so
+		// the question is what the selection contains rather than whether the
+		// graph records an edge. The widest scopes are where this shows: all
+		// promises every stack, so a reader has no reason to suspect the one
+		// they are standing on is missing.
+		return fmt.Sprintf("%s is not in the graph, so it is not drawn above · run %s to record it.", discovery.Target, runnable("g2g track"))
 	default:
-		return "GitHub stack: not linked · run " + runnable("g2g github link") + " to preview a link."
+		return "This branch has no recorded parent · run " + runnable("g2g track") + " to adopt one."
 	}
 }
 
-// writeUnstacked reports a branch no source places, as a state rather than a
-// refusal.
+// sourceGraphView draws the shape and nothing else.
 //
-// It goes through the same view every other status output does, so --json and
-// --porcelain keep describing the world in one shape: a target, no branches,
-// and a note saying why. A consumer that switched on the exit code to mean
-// "there is a stack" was reading the wrong thing; the branch list says it.
-func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentation) error {
-	view := stackView{
-		Operation:    "github status",
-		Target:       undescribed.Branch,
-		TargetSource: "current Git branch",
-		Nodes:        []stackNode{{Branch: undescribed.Branch, Trunk: undescribed.Trunk, Target: true, State: unstackedState(undescribed), Severity: severityNeutral}},
+// The state g2g's own view annotates — needs restack, moved off parent, fork
+// point lost — is computed from recorded fork points, which only g2g's store
+// has. Another record describes where branches sit and cannot describe whether
+// their contents have drifted, so this says the first and stays silent on the
+// second rather than inventing an answer.
+func sourceGraphView(snapshot stack.Snapshot) stackView {
+	ordered := append([]string{snapshot.Base}, snapshot.Branches...)
+	depths := shape.Depths(ordered, snapshot.ParentOf)
+	nodes := []stackNode{{Branch: snapshot.Base, Trunk: true}}
+	for _, branch := range snapshot.Branches {
+		nodes = append(nodes, stackNode{
+			Branch: branch,
+			Target: branch == snapshot.Target,
+			Parent: snapshot.Parents[branch],
+			Depth:  depths[branch],
+		})
 	}
-	// The remedy goes out as structure as well as prose: this is the commonest
-	// moment someone asks what to run, and a consumer had to parse the note to
-	// find out.
-	view = view.advising(undescribed.Remedy()).note(unstackedNote(undescribed), severityNeutral)
-	return writeStackView(writer, view, p)
-}
-
-func unstackedState(undescribed stack.Undescribed) string {
-	if undescribed.Trunk {
-		return "trunk · nothing stacked on it"
-	}
-	return "untracked"
-}
-
-func unstackedNote(undescribed stack.Undescribed) string {
-	if undescribed.Trunk {
-		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+undescribed.Branch))
-	}
-	return undescribed.Sentence(runnable)
-}
-
-// currencyNote says how a branch stands against the commit its pull request is
-// on. A current one gets no note: it is the ordinary case, and annotating it
-// would bury the two that are not.
-func currencyNote(currency map[string]link.Currency, branch string) (string, severity) {
-	state, compared := currency[branch]
-	if !compared || state.Current() {
-		return "", severityOK
-	}
-	if state.Diverged {
-		if state.Unpushed > 0 {
-			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here %s not on it", count(state.Unpushed, "commit", "commits"), pick(state.Unpushed, "is", "are")), severityBad
-		}
-		return "PR is on a commit this branch does not have", severityBad
-	}
-	if state.Unpushed > 0 {
-		return fmt.Sprintf("%s not pushed", count(state.Unpushed, "commit", "commits")), severityWarn
-	}
-	// Nothing is missing from it. The branch was replayed or amended since it
-	// was pushed, so the pull request renders the same work as older commits.
-	return "PR is on an older version of this branch", severityWarn
+	return stackView{Operation: "status", Target: snapshot.Target, TargetSource: snapshot.TargetSource, Nodes: nodes}
 }

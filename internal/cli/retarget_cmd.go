@@ -15,9 +15,8 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
-		Use:     "retarget",
-		GroupID: groupTools,
-		Short:   "Point each pull request's base at the branch below it (preview by default)",
+		Use:   "retarget",
+		Short: "Point each pull request's base at the branch below it (preview by default)",
 		Long: "Reconciles the base branch GitHub records for each pull request with the structure g2g resolved.\n\n" +
 			"After a restack the local stack is correct and the remote bases may not be. This is the one command " +
 			"that changes what a merge will do, which is why it is separate from submit and previews first.",

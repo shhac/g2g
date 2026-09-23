@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -21,7 +20,7 @@ import (
 // somewhere else — which is why it is a command of its own rather than a mode:
 // it is what to run when something feels off, and its exit status answers
 // whether anything is.
-func newDoctor(service graph.Service, restacker restack.Service, published Published, presentation Presentation) *cobra.Command {
+func newDoctor(service graph.Service, restacker restack.Service, published push.Known, presentation Presentation) *cobra.Command {
 	var remote string
 	cmd := &cobra.Command{
 		Use:     "doctor",
@@ -85,106 +84,3 @@ func doctorStart(ctx context.Context, service graph.Service) (string, error) {
 	}
 	return roots[0], nil
 }
-
-// finding is one thing that is not as it should be, and the way to put it
-// right. Branch is empty for one that is about the repository as a whole.
-type finding struct {
-	Branch   string
-	Problem  string
-	Command  string
-	Severity severity
-}
-
-// diagnose names every finding, in the order the stacks are drawn.
-//
-// A branch with no commits of its own is not one: it is as likely to be a
-// branch nobody has started as one that is finished, and saying either would
-// be a guess.
-func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string]push.Publication, remote string) []finding {
-	findings := make([]finding, 0)
-	if interrupted {
-		findings = append(findings, finding{
-			Problem:  "a restack stopped part-way",
-			Command:  "g2g restack --continue",
-			Severity: severityBad,
-		})
-	}
-	orphans := make(map[string]bool)
-	for _, branch := range discovery.Orphans() {
-		orphans[branch] = true
-	}
-	for _, branch := range discovery.Branches {
-		if found, problem := branchFinding(discovery, branch); problem {
-			findings = append(findings, found)
-			continue
-		}
-		if orphans[branch] {
-			findings = append(findings, finding{Branch: branch, Problem: "no tracked parent", Command: orphanRepair(branch), Severity: severityWarn})
-			continue
-		}
-		publication := publishing[branch]
-		if publication.Standing == push.Diverged && !discovery.Graph.IsTrunk(branch) {
-			findings = append(findings, finding{
-				Branch:   branch,
-				Problem:  "diverged from " + remote + " · " + eachSide(publication),
-				Command:  "g2g pull --branch " + branch,
-				Severity: severityBad,
-			})
-		}
-	}
-	return findings
-}
-
-// branchFinding is what the graph's own state says is wrong with a branch, in
-// the words status uses for the same state.
-func branchFinding(discovery graph.Discovery, branch string) (finding, bool) {
-	advice, known := recordedStates[discovery.States[branch]]
-	if !known {
-		return finding{}, false
-	}
-	parent, _ := discovery.Graph.Parent(branch)
-	return finding{Branch: branch, Problem: advice.problem(parent), Command: advice.repair(branch, parent), Severity: advice.severity}, true
-}
-
-// doctorView lists the findings and nothing else: the branches they are about,
-// each with what is wrong, and the command for each beneath.
-func doctorView(discovery graph.Discovery, findings []finding) stackView {
-	view := stackView{Operation: "doctor", Target: "every recorded stack", TargetSource: "repository"}
-	for _, found := range findings {
-		if found.Branch != "" {
-			view.Nodes = append(view.Nodes, stackNode{Branch: found.Branch, State: found.Problem, Severity: found.Severity})
-		}
-	}
-	for _, found := range findings {
-		subject := found.Problem
-		if found.Branch != "" {
-			subject = found.Branch + ": " + found.Problem
-		}
-		view = view.note(subject+" · run "+runnable(found.Command)+".", found.Severity)
-	}
-	if len(findings) == 0 {
-		return view.note(fmt.Sprintf("Nothing needs putting right across %s.", count(len(discovery.Graph.Edges), "recorded branch", "recorded branches")), severityOK)
-	}
-	return view
-}
-
-// foundError is a doctor that found something. The report is already on
-// stdout, so like a stop part-way it adds nothing on stderr; it has its own
-// exit status because a script asking "is anything wrong" wants the answer and
-// not an error.
-type foundError struct{ count int }
-
-func (e foundError) Error() string {
-	return fmt.Sprintf("found %s", count(e.count, "problem", "problems"))
-}
-
-func foundProblems(count int) error { return foundError{count} }
-
-func foundSomething(err error) bool {
-	var found foundError
-	return errors.As(err, &found)
-}
-
-// foundExitCode is doctor's answer that something needs putting right: 0
-// healthy, 1 found, 2 could not tell — the convention diff and grep use.
-const foundExitCode = 1

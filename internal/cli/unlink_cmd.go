@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
-	"github.com/spf13/cobra"
 )
 
 // Unstacker is the explicit GitHub mutation dependency for unlink.
@@ -21,7 +22,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	var selection stackOptions
 	var apply bool
 	var number int
-	cmd := &cobra.Command{Use: "unlink", GroupID: groupTools, Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "unlink", Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		if err := selection.validate(); err != nil {

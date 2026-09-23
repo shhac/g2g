@@ -7,9 +7,9 @@ import (
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
-// syncView shows the sequence in the order it runs, so a reader can see where
+// pullView shows the sequence in the order it runs, so a reader can see where
 // it would stop as easily as what it would do.
-func syncView(plan syncer.Plan) stackView {
+func pullView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "pull")
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)

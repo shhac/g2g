@@ -19,10 +19,9 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{
-		Use:     "link",
-		GroupID: groupTools,
-		Short:   "Link a stack to GitHub's native stacks (preview by default)",
-		Args:    cobra.NoArgs,
+		Use:   "link",
+		Short: "Link a stack to GitHub's native stacks (preview by default)",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presentation := presentation.resolve(cmd)
 			if err := selection.validate(); err != nil {

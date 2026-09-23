@@ -6,110 +6,67 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shhac/g2g/internal/align"
-	"github.com/shhac/g2g/internal/shape"
-	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/graph"
 )
 
-// adoptOptions is which record an adoption reads and, for pull requests, how
-// much of the stack. Graphite is read whole, so it takes no selection at all.
-type adoptOptions struct {
-	scopeOptions
-	from string
-}
-
-func (o adoptOptions) validate() error {
-	if o.from == align.FromGitHub {
-		return o.validateScope()
-	}
-	return nil
-}
-
-// source completes the flow with the half that depends on the record read.
-func (o adoptOptions) source(service align.Service, flow applyFlow[align.AdoptPlan]) applyFlow[align.AdoptPlan] {
-	if o.from != align.FromGitHub {
-		flow.plan = service.PlanAdopt
-		flow.revalidate = service.RevalidateAdopt
-		flow.notices = flowNotices{
-			preview:       "Rerun with --apply to adopt them.",
-			noOp:          "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
-			applied:       "Adopted.",
-			changed:       "Graphite still tracks these branches; g2g is what answers for them now.",
-			recovery:      "The graph store may or may not have been written · rerun g2g graphite adopt to see what is left.",
-			suggestedNext: "g2g status",
-		}
-		return flow
-	}
-	selection := stack.Selection{Branch: o.branch, Scope: o.effectiveScope(), From: stack.SourceGitHub}
-	flow.plan = func(ctx context.Context) (align.AdoptPlan, error) {
-		return service.PlanAdoptFromGitHub(ctx, selection)
-	}
-	flow.revalidate = func(ctx context.Context, preview align.AdoptPlan) (align.AdoptPlan, error) {
-		return service.RevalidateAdoptFromGitHub(ctx, selection, preview)
-	}
-	flow.notices = flowNotices{
-		preview:       "Rerun with --apply to adopt them.",
-		noOp:          "The pull requests declare nothing the g2g graph does not already record. Nothing to do.",
-		applied:       "Adopted.",
-		changed:       "The pull requests are unchanged; g2g is what answers for these branches now.",
-		recovery:      "The graph store may or may not have been written · rerun g2g github adopt to see what is left.",
-		suggestedNext: "g2g status",
-	}
-	return flow
-}
-
-// adoptIsNoOp reports only whether there is no adoption work. The shared
-// lifecycle separately gives blocked plans their canonical refusal path.
-func adoptIsNoOp(plan align.AdoptPlan) bool { return len(plan.Adopt) == 0 }
-
-// newAdoptFrom adopts what another record declares into the g2g graph. Its source
-// is fixed by the namespace it sits in — `g2g graphite
-// adopt`, `g2g github adopt` — so the command names the tool it reads rather
-// than taking it as a flag.
-func newAdoptFrom(service align.Service, from string, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+// newAdopt records a stack that already exists, from git alone: the user names
+// the trunk, or it is the one recorded root on the ancestry, and commit
+// ancestry supplies the rest. It refuses rather than guessing wherever
+// ancestry cannot order two branches. Graphite's and GitHub's records have
+// their own adopt, under their own names.
+func newAdopt(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+	var selection graphOptions
+	var trunk string
 	var apply bool
-	options := adoptOptions{from: from}
 	cmd := &cobra.Command{
-		Use:   "adopt",
-		Short: "Record the stack Graphite declares in the g2g graph (preview by default)",
-		Long: "Records what Graphite declares, so g2g can answer for those branches and restack them. " +
-			"Adoption is the authority claim: g2g answers for every branch this adopts from then on, and " +
-			"--from graphite on a read is how to see Graphite's view of them again. " +
-			"Nothing is written to Graphite, no branch is created, and nothing is removed from either record.",
+		Use:     "adopt",
+		GroupID: groupShape,
+		Short:   "Record the stack you are on, from git's own history (preview by default)",
+		Long: "Records a stack that already exists in one step: the order comes from commit ancestry, from the " +
+			"trunk up to the selected branch and everything built on it. It records a forest, not a chain — a " +
+			"branch that merely shares the trunk is a separate stack and is left alone — and it refuses rather " +
+			"than guessing wherever ancestry cannot order two branches.\n\n" +
+			"The first time, name the trunk with --trunk; after that the recorded root is used. To adopt what " +
+			"another tool declares instead, see g2g graphite adopt and g2g github adopt.",
 		Args: cobra.NoArgs,
-	}
-	if from == align.FromGitHub {
-		cmd.Short = "Record the stack its open pull requests describe in the g2g graph (preview by default)"
-		cmd.Long = "Records the stack the current branch's open pull requests describe, or --branch's — a stack " +
-			"someone else published, once its branches are here. Reading a pull request's base invokes gh, so " +
-			"this needs the network. Branches this checkout does not have are refused rather than created.\n\n" +
-			"Adoption is the authority claim: g2g answers for every branch this adopts from then on. " +
-			"Nothing is written to GitHub, no branch is created, and nothing is removed from the g2g graph."
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		if err := options.validate(); err != nil {
-			return err
-		}
-		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), options.branch, "")
-		flow := applyFlow[align.AdoptPlan]{
-			render: func(writer io.Writer, plan align.AdoptPlan, p Presentation) error {
-				return writeStackView(writer, adoptView(plan), p)
-			},
-			guard:    guard,
-			execute:  service.ApplyAdopt,
-			branches: func(plan align.AdoptPlan) int { return len(plan.Adopt) },
-			noOp:     adoptIsNoOp,
-			blocked:  func(plan align.AdoptPlan) string { return plan.Blocked },
-		}
-		flow = options.source(service, flow)
-		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, trunk)
+		return adoptFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
-	cmd.Flags().BoolVar(&apply, "apply", false, "record the adoptions instead of previewing them")
-	if from == align.FromGitHub {
-		cmd.Flags().StringVar(&options.branch, "branch", "", "the local branch whose stack to adopt (defaults to current branch)")
-		_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(completions.Branches))
-		options.registerScope(cmd, align.GitHubAdoptScopes, shape.ScopeStack, scopeUsage("adopt", align.GitHubAdoptScopes))
-	}
+	cmd.Flags().StringVar(&trunk, "trunk", "", "where the stack starts (defaults to the only recorded root on the ancestry)")
+	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(localBranchCompletions(service)))
+	cmd.Flags().BoolVar(&apply, "apply", false, "record the stack instead of previewing it")
+	selection.registerBranch(cmd, service)
 	return cmd
+}
+
+// adoptFlow is the same safety sequence as every other mutating command,
+// over the whole-ancestry plan rather than a single edge.
+func adoptFlow(service graph.Service, selection graphOptions, trunk string, guard func(context.Context) error) applyFlow[graph.StackPlan] {
+	return applyFlow[graph.StackPlan]{
+		plan: func(ctx context.Context) (graph.StackPlan, error) {
+			return service.PlanStack(ctx, selection.Selection(), trunk)
+		},
+		revalidate: func(ctx context.Context, preview graph.StackPlan) (graph.StackPlan, error) {
+			return service.RevalidateStack(ctx, selection.Selection(), trunk, preview)
+		},
+		render: func(writer io.Writer, plan graph.StackPlan, p Presentation) error {
+			return writeGraphView(writer, gitAdoptView(plan), plan.Discovery, p)
+		},
+		guard:    guard,
+		execute:  service.ApplyStack,
+		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
+		noOp:     func(plan graph.StackPlan) bool { return len(plan.Record) == 0 },
+		blocked:  func(plan graph.StackPlan) string { return plan.Blocked },
+		notices: flowNotices{
+			preview:       "Rerun with --apply to record this stack.",
+			noOp:          "The graph already records this whole ancestry. Nothing to do.",
+			applied:       "Recorded.",
+			changed:       "The g2g-owned graph now records this stack.",
+			recovery:      "The graph store may or may not have been written.",
+			suggestedNext: "g2g status",
+		},
+	}
 }

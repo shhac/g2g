@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/parallel"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -230,58 +231,70 @@ type Comparer interface {
 // A remote tip this repository does not have is not an error: it is what being
 // behind looks like before a fetch, and refusing to plan would be a worse
 // answer than saying so.
+//
+// Each branch is its own few process spawns and none depends on another, so
+// they are asked at once, as status's other per-branch reads are: doctor asks
+// this of every recorded branch.
 func Compare(ctx context.Context, git Comparer, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
-	publishing := make(map[string]Publication, len(branches))
-	for _, branch := range branches {
+	// Sized before the reads start, so each owns one element and needs no lock.
+	results := make([]Publication, len(branches))
+	err := parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		parent, trunk := below(branch)
-		tip, published := tips[branch]
-		if !published || tip == "" {
-			// Absent from the remote has two meanings, and they want opposite
-			// answers: work nobody has seen, or work that merged and took the
-			// branch with it. Asking per commit alone got the second one
-			// wrong on the commonest way a branch lands -- a squash leaves no
-			// commit with an equivalent, so a branch that merged and was
-			// deleted read as new and was offered for republication.
-			upstream, err := landed.Into(ctx, git, trunk, branch, "")
-			if err != nil {
-				return nil, err
-			}
-			publishing[branch] = Publication{Standing: New}
-			if upstream {
-				publishing[branch] = Publication{Standing: Landed}
-			}
-			continue
-		}
-		local, err := git.Resolve(ctx, branch)
-		if err != nil {
-			return nil, err
-		}
-		if local == tip {
-			publishing[branch] = Publication{Standing: Current}
-			continue
-		}
-		if _, err := git.Resolve(ctx, tip); err != nil {
-			publishing[branch] = Publication{Standing: Unknown}
-			continue
-		}
-		behind, ours, err := git.Divergence(ctx, tip, branch)
-		if err != nil {
-			return nil, err
-		}
-		if behind == 0 {
-			publishing[branch] = Publication{Standing: Ahead, Ours: ours}
-			continue
-		}
-		// The remote tip is not an ancestor. Whether that loses anything is a
-		// question of content, and it is the same one status asks of a pull
-		// request's head, asked the same way.
-		theirs, err := landed.Missing(ctx, git, branch, tip, parent)
-		if err != nil {
-			return nil, err
-		}
-		publishing[branch] = Publication{Standing: standingApart(ours, theirs), Ours: ours, Theirs: theirs}
+		publication, err := compareOne(ctx, git, branch, tips[branch], parent, trunk)
+		results[index] = publication
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	publishing := make(map[string]Publication, len(branches))
+	for index, branch := range branches {
+		publishing[branch] = results[index]
 	}
 	return publishing, nil
+}
+
+// compareOne is where one branch stands against the tip the remote holds for
+// it, which is empty when the remote has no such branch.
+func compareOne(ctx context.Context, git Comparer, branch, tip, parent, trunk string) (Publication, error) {
+	if tip == "" {
+		// Absent from the remote has two meanings, and they want opposite
+		// answers: work nobody has seen, or work that merged and took the
+		// branch with it. Asking per commit alone got the second one wrong on
+		// the commonest way a branch lands -- a squash leaves no commit with an
+		// equivalent, so a branch that merged and was deleted read as new and
+		// was offered for republication.
+		upstream, err := landed.Into(ctx, git, trunk, branch, "")
+		if err != nil || !upstream {
+			return Publication{Standing: New}, err
+		}
+		return Publication{Standing: Landed}, nil
+	}
+	local, err := git.Resolve(ctx, branch)
+	if err != nil {
+		return Publication{}, err
+	}
+	if local == tip {
+		return Publication{Standing: Current}, nil
+	}
+	if _, err := git.Resolve(ctx, tip); err != nil {
+		return Publication{Standing: Unknown}, nil
+	}
+	behind, ours, err := git.Divergence(ctx, tip, branch)
+	if err != nil {
+		return Publication{}, err
+	}
+	if behind == 0 {
+		return Publication{Standing: Ahead, Ours: ours}, nil
+	}
+	// The remote tip is not an ancestor. Whether that loses anything is a
+	// question of content, and it is the same one status asks of a pull
+	// request's head, asked the same way.
+	theirs, err := landed.Missing(ctx, git, branch, tip, parent)
+	if err != nil {
+		return Publication{}, err
+	}
+	return Publication{Standing: standingApart(ours, theirs), Ours: ours, Theirs: theirs}, nil
 }
 
 // standingApart names a branch and a remote tip that are not in order, from

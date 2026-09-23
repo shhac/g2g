@@ -86,8 +86,16 @@ func (w Writer) Event(name string, fields ...Field) {
 		fmt.Fprintf(&line, " %s=%q", field.Key, strings.ReplaceAll(field.Value, "\n", "\\n"))
 	}
 	line.WriteString("\n")
+	writing.Lock()
+	defer writing.Unlock()
 	_, _ = io.WriteString(w.Out, line.String())
 }
+
+// writing takes the events one at a time. One write per line is enough for a
+// terminal, which does not interleave a single write; a buffer — which is what
+// a test, or anything capturing the output, hands this — is not safe for two
+// writes at once at all, and the per-branch reads run concurrently.
+var writing sync.Mutex
 
 // BoundedOutput returns a compact, redacted process diagnostic. It is only
 // used by an explicit local --debug invocation; it never reads environment.

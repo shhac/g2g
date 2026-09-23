@@ -44,6 +44,9 @@ type Probe interface {
 // declining to report one is not -- so the choice stays at the call site where
 // it is visible, and only the sequence is shared.
 func Into(ctx context.Context, probe Probe, base, branch, limit string) (bool, error) {
+	if untouchedBy(ctx, probe, base, branch, limit) {
+		return false, nil
+	}
 	absent, _, err := probe.Cherry(ctx, base, branch, limit)
 	if err != nil {
 		return false, err
@@ -52,6 +55,30 @@ func Into(ctx context.Context, probe Probe, base, branch, limit string) (bool, e
 		return true, nil
 	}
 	return probe.Absorbed(ctx, base, branch)
+}
+
+// Untouched is the cheap question a Probe may also answer: whether base has
+// touched nothing the branch touches since the branch left it, which settles
+// "not landed" without comparing content.
+//
+// Both halves of Into compare content against every commit the base gained
+// since the branch left it, which on a long-lived trunk is most of what a
+// status costs. This is optional because it only ever shortcuts a "no": a
+// Probe that cannot answer it is exactly as correct, and slower.
+type Untouched interface {
+	Untouched(ctx context.Context, base, branch, limit string) (bool, error)
+}
+
+// untouchedBy asks, where the Probe can answer. A failure to answer is
+// "could not tell", never an error: the question only ever saves the full
+// comparison, which is still there to ask and reports its own failures.
+func untouchedBy(ctx context.Context, probe Probe, base, branch, limit string) bool {
+	asker, ok := probe.(Untouched)
+	if !ok {
+		return false
+	}
+	untouched, err := asker.Untouched(ctx, base, branch, limit)
+	return err == nil && untouched
 }
 
 // Lineage is Probe with the ancestry question Missing needs.

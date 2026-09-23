@@ -83,6 +83,9 @@ type Options struct {
 
 	// Completions supplies branch and trunk candidates for shell completion.
 	Completions stack.Completions
+	// Published says how each branch stands against what the remote last held,
+	// from local refs. It is optional: without it status draws no remote marks.
+	Published Published
 
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
@@ -167,6 +170,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 			Git: gitClient, Graph: graphService, Selector: selector, GitHub: githubClient,
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService, Holds: restackService,
 		},
+		Published:          push.Known{Git: gitClient},
 		Create:             create.Service{Git: gitClient, Graph: graphService},
 		Reshape:            reshape.Service{Git: gitClient, Graph: graphService},
 		Navigate:           navigate.Service{Selector: selector, Git: gitClient, Trunks: recordedChildren{service: graphService}},
@@ -225,7 +229,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	// under its own condition — and a namespace only when something is in it.
 	var github, graphite []*cobra.Command
 	if options.Graph.Ready() {
-		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
+		root.AddCommand(newGraph(options.Graph, options.Link.Selector, options.Published, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newAdopt(options.Graph, guard, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))

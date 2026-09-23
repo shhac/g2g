@@ -30,9 +30,9 @@ func (o *graphOptions) registerBranch(cmd *cobra.Command, service graph.Service)
 	_ = cmd.RegisterFlagCompletionFunc("branch", completionCallback(localBranchCompletions(service)))
 }
 
-func newGraph(service graph.Service, selector stack.PathSelector, completions stack.Completions, presentation Presentation) *cobra.Command {
+func newGraph(service graph.Service, selector stack.PathSelector, published Published, presentation Presentation) *cobra.Command {
 	var selection graphOptions
-	var from string
+	var from, remote string
 	cmd := &cobra.Command{Use: "status", GroupID: groupLook, Short: "Show the stack you are on and where each branch stands (read-only, offline)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
@@ -51,8 +51,13 @@ func newGraph(service graph.Service, selector stack.PathSelector, completions st
 		if err != nil {
 			return err
 		}
-		return writeGraphView(cmd.OutOrStdout(), graphStatusView(discovery), discovery, presentation)
+		publishing, err := readPublished(ctx, published, remote, cmd.Flags().Changed("remote"), discovery)
+		if err != nil {
+			return err
+		}
+		return writeGraphView(cmd.OutOrStdout(), markPublished(graphStatusView(discovery), remote, publishing), discovery, presentation)
 	}
+	cmd.Flags().StringVar(&remote, "remote", "origin", "the remote whose last-known branches each one is compared with")
 	// Only the records that need no network. Reading a pull request base means
 	// invoking gh, and this command answering without one is the whole reason
 	// it exists separately from status.

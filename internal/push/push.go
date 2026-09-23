@@ -173,7 +173,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	publishing, err := s.publications(ctx, snapshot.Base, snapshot.Branches, tips)
+	// A push is of one linear path, so the branch below each is the one before
+	// it and every one stands on the same base.
+	publishing, err := Compare(ctx, s.Git, snapshot.Branches, tips, func(branch string) (string, string) {
+		return parentOf(snapshot.Base, snapshot.Branches, branch), snapshot.Base
+	})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -192,14 +196,26 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	return plan, nil
 }
 
-// publications compares each selected branch with the tip the remote holds.
+// Comparer is the part of Git a comparison reads, all of it local: the tips
+// are already in hand, so saying what they mean costs nothing over the network.
+type Comparer interface {
+	landed.Lineage
+	Resolve(context.Context, string) (string, error)
+	Divergence(ctx context.Context, other, target string) (ahead, behind int, err error)
+}
+
+// Compare says what publishing each branch over the given remote tips would
+// do. below names the branch each one sits on and the trunk its stack stands
+// on: the first is what a squashed parent's commits would have landed in, the
+// second what a branch missing from the remote may have landed in.
 //
 // A remote tip this repository does not have is not an error: it is what being
 // behind looks like before a fetch, and refusing to plan would be a worse
 // answer than saying so.
-func (s Service) publications(ctx context.Context, base string, branches []string, tips map[string]string) (map[string]Publication, error) {
+func Compare(ctx context.Context, git Comparer, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
 	publishing := make(map[string]Publication, len(branches))
 	for _, branch := range branches {
+		parent, trunk := below(branch)
 		tip, published := tips[branch]
 		if !published || tip == "" {
 			// Absent from the remote has two meanings, and they want opposite
@@ -208,14 +224,14 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 			// wrong on the commonest way a branch lands -- a squash leaves no
 			// commit with an equivalent, so a branch that merged and was
 			// deleted read as new and was offered for republication.
-			upstream, err := landed.Into(ctx, s.Git, base, branch, "")
+			upstream, err := landed.Into(ctx, git, trunk, branch, "")
 			if err != nil {
 				return nil, err
 			}
 			publishing[branch] = Publication{New: !upstream, Landed: upstream}
 			continue
 		}
-		local, err := s.Git.Resolve(ctx, branch)
+		local, err := git.Resolve(ctx, branch)
 		if err != nil {
 			return nil, err
 		}
@@ -223,11 +239,11 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 			publishing[branch] = Publication{}
 			continue
 		}
-		if _, err := s.Git.Resolve(ctx, tip); err != nil {
+		if _, err := git.Resolve(ctx, tip); err != nil {
 			publishing[branch] = Publication{Unknown: true}
 			continue
 		}
-		behind, ours, err := s.Git.Divergence(ctx, tip, branch)
+		behind, ours, err := git.Divergence(ctx, tip, branch)
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +254,7 @@ func (s Service) publications(ctx context.Context, base string, branches []strin
 		// The remote tip is not an ancestor. Whether that loses anything is a
 		// question of content, and it is the same one status asks of a pull
 		// request's head, asked the same way.
-		theirs, err := landed.Missing(ctx, s.Git, branch, tip, parentOf(base, branches, branch))
+		theirs, err := landed.Missing(ctx, git, branch, tip, parent)
 		if err != nil {
 			return nil, err
 		}

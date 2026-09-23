@@ -166,6 +166,10 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	// branches.
 	roots := s.knownRoots(adopted)
 	candidatesFor := make(map[string][]Candidate, len(local))
+	below, err := s.mergedBelow(ctx, trunk, selected)
+	if err != nil {
+		return nil, err
+	}
 
 	// Every branch the loop will consult, asked together. It consults all of
 	// them on its first pass anyway, so this is the same work; asking for it
@@ -180,10 +184,10 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	// every other one and discarded all of it.
 	warmed := make([][]Candidate, len(local))
 	if err := parallel.Each(ctx, local, func(ctx context.Context, index int, branch string) error {
-		if chosen[branch] {
+		if chosen[branch] || below[branch] {
 			return nil
 		}
-		candidates, err := relatedWithin(ctx, s.Git, branch, roots, local)
+		candidates, err := relatedWithin(ctx, s.Git, branch, roots, local, below)
 		if err != nil {
 			return err
 		}
@@ -220,6 +224,32 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	}
 	sort.Slice(edges, func(left, right int) bool { return edges[left].Branch < edges[right].Branch })
 	return edges, nil
+}
+
+// mergedBelow names the branches already merged into the trunk, which a
+// whole-stack adoption need neither measure nor offer.
+//
+// Every one of them is an ancestor of the trunk, so of every branch on it: a
+// repository's old merged branches are in every branch's ancestor list, and
+// measuring each against each was quadratic in them — on one of a few hundred
+// branches, long enough that the preview ran out of time and refused. None can
+// be chosen: a parent has to be a selected branch, and anything selected is
+// above the trunk, so nearer than all of them. None can attach either, because
+// nothing selected is below the trunk. That holds only while no selected branch
+// has itself been merged in, so then nothing is left out.
+func (s Service) mergedBelow(ctx context.Context, trunk string, selected []string) (map[string]bool, error) {
+	merged, err := s.Git.AncestorBranches(ctx, trunk)
+	if err != nil {
+		return nil, err
+	}
+	below := make(map[string]bool, len(merged))
+	for _, branch := range merged {
+		if slices.Contains(selected, branch) {
+			return nil, nil
+		}
+		below[branch] = branch != trunk
+	}
+	return below, nil
 }
 
 // compare splits the derived structure into what has to be recorded, what

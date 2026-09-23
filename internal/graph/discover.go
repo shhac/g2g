@@ -57,7 +57,7 @@ func related(ctx context.Context, git Ancestry, target string, roots []string) (
 	if err != nil {
 		return nil, err
 	}
-	return relatedWithin(ctx, git, target, roots, local)
+	return relatedWithin(ctx, git, target, roots, local, nil)
 }
 
 // relatedWithin is related for a caller that already knows the local branches.
@@ -65,7 +65,10 @@ func related(ctx context.Context, git Ancestry, target string, roots []string) (
 // They cannot change while one command runs, and a whole-stack adoption asks
 // about every branch in the repository, so re-reading them per branch was one
 // process spawn per branch for an answer already in hand.
-func relatedWithin(ctx context.Context, git Ancestry, target string, roots, local []string) ([]Candidate, error) {
+//
+// below names branches already merged into the trunk that the caller knows
+// cannot be the answer, so they are not measured: see Service.branches.
+func relatedWithin(ctx context.Context, git Ancestry, target string, roots, local []string, below map[string]bool) ([]Candidate, error) {
 	if git == nil {
 		return nil, fmt.Errorf("graph discovery is not configured")
 	}
@@ -78,7 +81,12 @@ func relatedWithin(ctx context.Context, git Ancestry, target string, roots, loca
 	}
 	// A recorded root that no longer exists locally is not a candidate: it
 	// would be offered as a parent that could never be validated.
-	preferred := slices.Clone(ancestors)
+	preferred := make([]string, 0, len(ancestors))
+	for _, ancestor := range ancestors {
+		if !below[ancestor] {
+			preferred = append(preferred, ancestor)
+		}
+	}
 	for _, root := range roots {
 		if slices.Contains(local, root) && !slices.Contains(preferred, root) {
 			preferred = append(preferred, root)

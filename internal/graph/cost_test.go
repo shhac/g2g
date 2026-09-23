@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -191,3 +192,53 @@ func (s *countingStore) Save(_ context.Context, g Graph) error {
 	return nil
 }
 func (s *countingStore) Path(context.Context) (string, error) { return "/synthetic/graph.json", nil }
+
+// sedimentRepository is the same stack on a trunk whose history holds many
+// branches merged in one after another, fast-forward or by merge commit: each
+// is an ancestor of the next, of the trunk, and of every branch on it. That is
+// what git reports for them, and it is the shape the squash-merged sediment
+// above does not model — each old branch is in every other one's ancestors.
+func sedimentRepository(merged int) fakeAncestry {
+	git := wideRepository(0)
+	spine := []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d"}
+	old := make([]string, 0, merged)
+	for index := range merged {
+		branch := fmt.Sprintf("synthetic-merged-%03d", index)
+		git.local = append(git.local, branch)
+		git.ancestors[branch] = slices.Clone(old)
+		old = append(old, branch)
+		// Far below everything on the trunk, as merged history is.
+		for place, above := range spine {
+			git.behind[branch+".."+above] = 1000 - index + place
+		}
+	}
+	for _, branch := range spine {
+		git.ancestors[branch] = append(slices.Clone(old), git.ancestors[branch]...)
+	}
+	return git
+}
+
+// Branches merged into the trunk are below it, so they can be neither a parent
+// nor a child of anything in the stack, and measuring each of them against each
+// other was quadratic in them: a preview on a few hundred branches ran out of
+// time and refused. Their number may cost a call each and no more.
+func TestAdoptingAStackDoesNotMeasureMergedBranchesAgainstEachOther(t *testing.T) {
+	measured := map[int]int{}
+	for _, merged := range []int{10, 40} {
+		counter := &countingAncestry{Ancestry: sedimentRepository(merged)}
+		service := Service{Git: counter, Store: &countingStore{graph: trackedTrunk()}}
+
+		plan, err := service.PlanStack(context.Background(), Selection{Branch: "synthetic-d"}, "synthetic-trunk")
+		if err != nil {
+			t.Fatalf("PlanStack() error = %v", err)
+		}
+		if got := strings.Join(plan.Branches(), ","); plan.Blocked != "" || got != "synthetic-a,synthetic-b,synthetic-c,synthetic-d" {
+			t.Fatalf("Branches() = %s, blocked %q; want the stack alone", got, plan.Blocked)
+		}
+		measured[merged] = counter.divergence
+	}
+	if perBranch := float64(measured[40]-measured[10]) / 30; perBranch > 2 {
+		t.Errorf("each merged branch costs %.1f divergence calls (%d → %d for 10 → 40), which is not linear",
+			perBranch, measured[10], measured[40])
+	}
+}

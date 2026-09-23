@@ -77,8 +77,8 @@ Known, measured, and left for a change of its own:
   the current trunk after every step, which is what makes a descent that stops
   part-way safe to leave. What reaches the remote stays linear: each merge
   pushes exactly the next branch (`publish` refuses a plan holding any other),
-  retargets its one pull request, and reads the remote in one `ls-remote` and
-  one fetch; the stack comments are kept once, at the end. Keep it that way — a
+  retargets its one pull request, and reads the remote a fixed handful of
+  times — land's own tip check, push's, and the pull's `ls-remote` and fetch; the stack comments are kept once, at the end. Keep it that way — a
   change that pushed the replayed branches above as it went would make the
   remote quadratic too. A pull fetches only refs that have moved since g2g last
   fetched them, so the trunk fetched to see a merge arrive is not fetched again

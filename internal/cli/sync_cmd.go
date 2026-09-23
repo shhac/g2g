@@ -89,10 +89,8 @@ func newSync(service syncer.Service, pruner prune.Service, guard func(context.Co
 		if err := prose(cmd.OutOrStdout(), presentation, ""); err != nil {
 			return err
 		}
-		// The pull happened and stays happened, so a prune that refuses or
-		// fails after it is a stop part-way rather than a failure to retry.
 		if err := pruneFlow(pruner, selection.Selection(), guard).run(cmd, ctx, newBudgets(cmd), presentation, true); err != nil {
-			return stoppedPartWay(err)
+			return stoppedAfterPull(cmd, err, presentation)
 		}
 		return nil
 	}
@@ -121,8 +119,25 @@ func newSync(service syncer.Service, pruner prune.Service, guard func(context.Co
 	// sync was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
-	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("sync", shape.SyncScopes))
+	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("pull", shape.SyncScopes))
 	return cmd
+}
+
+// stoppedAfterPull reports a prune that did not happen after a pull that did.
+// The pull stays happened, so it is a stop part-way rather than a failure to
+// retry — and the exit status says only that, so the reason has to be on the
+// page, once: a refusal the prune's own flow has already printed is not said
+// again, and a failure before it could print anything is.
+func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
+	if !toldNotApplied(cause) {
+		if err := prose(cmd.OutOrStdout(), p, p.problem("The prune could not run: "+cause.Error())); err != nil {
+			return err
+		}
+	}
+	if err := prose(cmd.OutOrStdout(), p, p.subdued("The pull stands and nothing was forgotten · run "+runnable("g2g prune")+" once that is resolved.")); err != nil {
+		return err
+	}
+	return stoppedPartWay(cause)
 }
 
 // validatePullPrune refuses --prune where it cannot keep its promises: a build

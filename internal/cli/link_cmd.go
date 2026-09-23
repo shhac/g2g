@@ -102,14 +102,26 @@ func writeNotApplied(writer io.Writer, presentation Presentation, err error) err
 
 	diagnostic := commandDiagnostic(err)
 	if diagnostic == "" {
-		return err
+		return notAppliedError{err}
 	}
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, presentation.subdued("Diagnostic:"))
 	for _, line := range strings.Split(diagnostic, "\n") {
 		fmt.Fprintln(writer, presentation.subdued("  "+line))
 	}
-	return presentedError{err: err}
+	return presentedError{err: notAppliedError{err}}
+}
+
+// notAppliedError is a failure writeNotApplied has already told a person
+// about, so a caller composing commands knows not to say it again.
+type notAppliedError struct{ err error }
+
+func (e notAppliedError) Error() string { return e.err.Error() }
+func (e notAppliedError) Unwrap() error { return e.err }
+
+func toldNotApplied(err error) bool {
+	var told notAppliedError
+	return errors.As(err, &told)
 }
 
 type outputFlusher interface{ Flush() error }

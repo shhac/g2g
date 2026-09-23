@@ -10,6 +10,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/restack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -103,6 +104,13 @@ func (r *syncCLIRestack) InProgress(context.Context) (bool, error) { return r.st
 
 func runSync(t *testing.T, git *syncCLIGit, replay *syncCLIRestack, args ...string) (string, error) {
 	t.Helper()
+	return runPull(t, git, replay, nil, args...)
+}
+
+// runPull is runSync with a prune service, for pull --prune; a nil one leaves
+// prune unconfigured.
+func runPull(t *testing.T, git *syncCLIGit, replay *syncCLIRestack, pruning prune.Git, args ...string) (string, error) {
+	t.Helper()
 
 	recorded := graph.New()
 	for _, edge := range []struct{ branch, parent string }{
@@ -118,14 +126,18 @@ func runSync(t *testing.T, git *syncCLIGit, replay *syncCLIRestack, args ...stri
 
 	graphService := graph.Service{Git: graphGitFixture(), Store: &graphStore{graph: recorded}}
 	var stdout, stderr bytes.Buffer
-	command := NewWithOptions(Options{
+	options := Options{
 		Version:      "v0.1.0",
 		Stdout:       &stdout,
 		Stderr:       &stderr,
 		Graph:        graphService,
 		Sync:         syncer.Service{Git: git, Graph: graphService, Restack: replay},
 		Presentation: &Presentation{},
-	})
+	}
+	if pruning != nil {
+		options.Prune = prune.Service{Git: pruning, Graph: graphService}
+	}
+	command := NewWithOptions(options)
 	command.SetArgs(args)
 	err := command.Execute()
 	return stdout.String(), err
@@ -366,4 +378,34 @@ func (g *syncCLIGit) RemoteTips(_ context.Context, _ string, branches []string) 
 		}
 	}
 	return tips, nil
+}
+
+// failingPrune cannot answer whether anything has landed.
+type failingPrune struct{}
+
+func (failingPrune) Cherry(context.Context, string, string, string) ([]string, []string, error) {
+	return nil, nil, errors.New("synthetic cherry failure")
+}
+func (failingPrune) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// The pull happened, so a prune that fails after it is a stop part-way — and
+// the exit status says only that, so the reason has to be on the page. It was
+// not: a failure before the prune's own flow printed anything was carried by
+// the error alone, which a stop part-way does not print.
+func TestPullPruneThatCannotRunSaysWhyAndStopsPartWay(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
+
+	out, err := runPull(t, git, replay, failingPrune{}, "pull", "--prune", "--branch", "synthetic-login", "--apply")
+	if !wasStopped(err) || exitCode(err) != stoppedExitCode {
+		t.Fatalf("error = %v, want a stop part-way", err)
+	}
+	for _, want := range []string{"Pulled.", "synthetic cherry failure", "The pull stands and nothing was forgotten"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not say %q:\n%s", want, out)
+		}
+	}
+	if replay.applies != 1 {
+		t.Errorf("replayed %d times, want the pull to have happened", replay.applies)
+	}
 }

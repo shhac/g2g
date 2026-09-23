@@ -80,8 +80,9 @@ Known, measured, and left for a change of its own:
   retargets its one pull request, and reads the remote in one `ls-remote` and
   one fetch; the stack comments are kept once, at the end. Keep it that way — a
   change that pushed the replayed branches above as it went would make the
-  remote quadratic too. The one waste worth removing is the trunk fetch just
-  after a merge settles, which the advance repeats.
+  remote quadratic too. A pull fetches only refs that have moved since g2g last
+  fetched them, so the trunk fetched to see a merge arrive is not fetched again
+  by the advance after it.
 - **restack resolves and re-records serially.** Each step resolves its tips one
   at a time, and fork points are re-recorded for every branch after a rewrite,
   including ones that did not move. One batched resolve and one `update-ref

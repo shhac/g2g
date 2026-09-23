@@ -287,6 +287,13 @@ func compareOne(ctx context.Context, git Comparer, branch, tip, parent, trunk st
 	if behind == 0 {
 		return Publication{Standing: Ahead, Ours: ours}, nil
 	}
+	if ours == 0 {
+		// Only behind: the branch has nothing the remote lacks, so every one of
+		// the remote's commits is missing here by definition. Comparing their
+		// content said the same thing at the cost of all of them — a trunk not
+		// updated for a while is thousands.
+		return Publication{Standing: Behind, Theirs: behind}, nil
+	}
 	// The remote tip is not an ancestor. Whether that loses anything is a
 	// question of content, and it is the same one status asks of a pull
 	// request's head, asked the same way.

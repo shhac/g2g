@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shhac/g2g/internal/parallel"
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
@@ -57,18 +58,26 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 			tracking = tracking || strings.HasPrefix(ref, trackingRef(remote, ""))
 		}
 	}
-	tips := make(map[string]string, len(branches))
-	for _, branch := range branches {
+	// After every push and pull the two refs of each branch differ, so which
+	// is later is a question per branch; they are asked at once, into a slice
+	// sized first so each owns its element.
+	answers := make([]string, len(branches))
+	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		tracked, fetched := resolved[trackingRef(remote, branch)], resolved[IsolatedRef(remote, branch)]
 		if tracked == "" && tracking {
-			continue
+			return nil
 		}
 		tip, err := c.later(ctx, tracked, fetched)
-		if err != nil {
-			return nil, err
-		}
-		if tip != "" {
-			tips[branch] = tip
+		answers[index] = tip
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	tips := make(map[string]string, len(branches))
+	for index, branch := range branches {
+		if answers[index] != "" {
+			tips[branch] = answers[index]
 		}
 	}
 	return tips, nil

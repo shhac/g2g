@@ -230,6 +230,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	var github, graphite []*cobra.Command
 	if options.Graph.Ready() {
 		root.AddCommand(newGraph(options.Graph, options.Link.Selector, options.Published, presentation))
+		root.AddCommand(newDoctor(options.Graph, options.Restack, options.Published, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newAdopt(options.Graph, guard, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
@@ -347,14 +348,32 @@ func newCompletion(root *cobra.Command) *cobra.Command {
 // Execute runs the root command with the process streams and executable name.
 func Execute(version, commandName string) {
 	root := NewNamed(version, commandName, os.Stdout, os.Stderr)
-	if err := root.Execute(); err != nil {
-		// A command that stopped part-way has already reported it, in more
-		// detail than a one-line error could, so all that is left is the
-		// status.
-		if wasStopped(err) {
-			os.Exit(stoppedExitCode)
-		}
+	err := root.Execute()
+	code := exitCode(err)
+	if code == failedExitCode {
 		writeError(os.Stderr, err)
-		os.Exit(2)
+	}
+	if code != 0 {
+		os.Exit(code)
+	}
+}
+
+// failedExitCode is a command that could not do what it was asked.
+const failedExitCode = 2
+
+// exitCode is the status a command's result exits with. A command that
+// stopped part-way, or a doctor that found something, has already reported it
+// in more detail than a one-line error could, so all that is left of either is
+// the status.
+func exitCode(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case wasStopped(err):
+		return stoppedExitCode
+	case foundSomething(err):
+		return foundExitCode
+	default:
+		return failedExitCode
 	}
 }

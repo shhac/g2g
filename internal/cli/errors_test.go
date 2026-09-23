@@ -119,3 +119,23 @@ func TestWriteErrorRecognisesAFakeRunnersAuthStatus(t *testing.T) {
 		t.Errorf("writeError() = %q, want the authentication remediation", out.String())
 	}
 }
+
+// Each outcome a script can act on has its own status: success, something
+// found, a failure to retry, and a stop part-way that must not be retried.
+func TestEachOutcomeExitsWithItsOwnStatus(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"success", nil, 0},
+		{"found", foundProblems(2), 1},
+		{"failed", errors.New("synthetic failure"), 2},
+		{"stopped", stoppedPartWay(errors.New("synthetic stop")), 3},
+		{"found, wrapped", fmt.Errorf("synthetic: %w", foundProblems(1)), 1},
+	} {
+		if got := exitCode(test.err); got != test.want {
+			t.Errorf("%s: exitCode = %d, want %d", test.name, got, test.want)
+		}
+	}
+}

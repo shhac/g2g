@@ -147,7 +147,9 @@ func TestTrackApplyWritesAStoreThatReadsBack(t *testing.T) {
 	if written.StoreSchemaVersion != 1 {
 		t.Errorf("storeSchemaVersion = %d", written.StoreSchemaVersion)
 	}
-	if edge := written.Branches["synthetic-login"]; edge.Parent != "synthetic-auth" || edge.Origin != "user" {
+	// The fake answers every ancestry question yes, so the edge is confirmed
+	// by it; what this asserts is that the write reads back.
+	if edge := written.Branches["synthetic-login"]; edge.Parent != "synthetic-auth" || edge.Origin != "git-ancestry" {
 		t.Errorf("written edge = %#v", edge)
 	}
 	if len(written.Trunks) != 1 || written.Trunks[0] != "synthetic-auth" {

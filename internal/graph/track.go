@@ -54,18 +54,22 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	candidates, err := Candidates(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
-	if err != nil {
-		return TrackPlan{}, err
+	plan := TrackPlan{Discovery: discovery, Parent: parent, Updated: discovery.Graph}
+	// The candidates are what a preview offers in place of a parent, so they
+	// are measured only when there is no usable one: measuring every possible
+	// parent to record one the user named was a process per local branch that
+	// create paid on every branch it made.
+	blocked := "no parent chosen"
+	if parent != "" {
+		blocked = ""
+		if err := s.validateParent(ctx, discovery.Target, parent); err != nil {
+			blocked = err.Error()
+		}
 	}
-	plan := TrackPlan{Discovery: discovery, Parent: parent, Candidates: candidates, Updated: discovery.Graph}
-	if parent == "" {
-		plan.Blocked = "no parent chosen"
-		return plan, nil
-	}
-	if err := s.validateParent(ctx, discovery.Target, parent); err != nil {
-		plan.Blocked = err.Error()
-		return plan, nil
+	if blocked != "" {
+		plan.Blocked = blocked
+		plan.Candidates, err = Candidates(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
+		return plan, err
 	}
 	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked && recorded.Parent == parent {
 		return s.refresh(ctx, plan, recorded)
@@ -74,9 +78,13 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	if err != nil {
 		return TrackPlan{}, err
 	}
+	origin, err := s.ancestryOf(ctx, parent, discovery.Target)
+	if err != nil {
+		return TrackPlan{}, err
+	}
 	updated, newTrunk, err := discovery.Graph.Adopt(discovery.Target, Edge{
 		Parent: parent,
-		Origin: originOf(parent, candidates),
+		Origin: origin,
 		// Recorded now, because after the parent is merged and deleted there
 		// is nothing left to derive it from.
 		ForkPoint: forkPoint,
@@ -140,6 +148,16 @@ func originOf(parent string, candidates []Candidate) Origin {
 		}
 	}
 	return OriginUser
+}
+
+// ancestryOf is originOf for one named parent, asked of Git directly rather
+// than read from a list of every candidate measured to find it.
+func (s Service) ancestryOf(ctx context.Context, parent, target string) (Origin, error) {
+	ancestor, err := s.Git.IsAncestor(ctx, parent, target)
+	if err != nil || !ancestor {
+		return OriginUser, err
+	}
+	return OriginAncestry, nil
 }
 
 // knownRoots is where trunk candidates come from: whatever the graph already

@@ -376,6 +376,10 @@ g2g track --branch synthetic-login --parent synthetic-auth --apply
 # Remove edges. --scope subtree removes descendants too.
 g2g untrack --branch synthetic-auth --apply
 g2g untrack --branch synthetic-auth --scope subtree --apply
+
+# Say a branch is a trunk: a second one, or one that lands somewhere later.
+g2g track --branch synthetic-staging --as-trunk --apply
+g2g track --branch synthetic-feature --as-trunk --into main --by rebase --apply
 ```
 
 `g2g adopt` records a whole existing stack at once, which is almost always what
@@ -405,7 +409,37 @@ nothing.
 
 Untracking a branch in the middle leaves its children pointing at it and says
 so. Reparenting them onto the grandparent would invent an edge you never asked
-for.
+for. `doctor` then names `track` for each of them, and naming the branch they
+are already recorded on makes it a trunk, rooting the stack where it stands.
+
+#### Trunks
+
+A trunk is a branch nothing is recorded under. g2g makes one on its own when
+you stack something on a branch it does not know, and `create` refuses to do
+that from anything but the default branch, so a second trunk — `staging`
+beside `main` — is said out loud first, with `track --as-trunk`. After that
+`create`, `pull`, `restack` and `land` treat it exactly as they treat `main`.
+
+A trunk can also say where it goes when it is finished. Small branches are
+reviewed and squash-merged into `synthetic-feature` one at a time, and
+`synthetic-feature` later reaches `main` whole, by a merge that keeps those
+commits:
+
+```sh
+g2g track --branch synthetic-feature --as-trunk --into main --by rebase --apply
+g2g land                                # from the top: lands the stack into synthetic-feature
+g2g land --branch synthetic-feature     # later: lands synthetic-feature into main, by rebase
+```
+
+That is not an edge. `synthetic-feature` has no parent, so every walk from
+above stops at it, it is never replayed — other people land into it — and a
+colleague rebasing it cannot make it read as moved off anything. Keeping it
+current with `main` is a merge of `main` into it, which g2g does not make.
+`track --parent` on it puts it back in the stack below and ends the
+declaration, and `untrack` ends it too, stranding what sits on it. `adopt`,
+`graphite adopt` and `github adopt` treat a declared trunk as a disagreement
+rather than recording the parent they see under it. See
+[design-docs/declared-trunks.md](design-docs/declared-trunks.md).
 
 `g2g graphite adopt` records what Graphite declares, described with
 [Graphite alignment](#graphite-alignment), and `g2g github adopt` what a
@@ -962,6 +996,13 @@ It is the last line of the recipe, and `--no-comment` skips it.
 the repository does not allow it. Squash is the case a stack needs help with:
 the other two leave each parent's commits in its child under the same identity,
 so nothing needs replaying between merges.
+
+`land --branch <trunk>` lands a [trunk declared with `--into`](#trunks) into
+the branch it lands into, as a stack of one, by the method it was declared
+with unless `--method` says otherwise. Afterwards only that base is advanced —
+its other stacks are not replayed mid-descent — and the declaration is
+forgotten. It refuses while anything is still recorded on the trunk, or
+another trunk lands into it: land those first.
 
 See [design-docs/land.md](design-docs/land.md) for why each of those is the way
 it is, including the three publishing decisions that were wrong first.

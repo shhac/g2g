@@ -31,6 +31,10 @@ type Conflict struct {
 	// Ours is the parent the g2g graph records; Theirs is the other record's.
 	Ours   string
 	Theirs string
+	// Declared means g2g records no parent because somebody named the branch a
+	// trunk, and Ours is empty. Adopting the other record's edge would end the
+	// declaration without a word, which only track --parent may do.
+	Declared bool
 }
 
 // The records an adoption can read. They are the resolver's own source names, so
@@ -124,6 +128,11 @@ func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declare
 	plan := classify(adopted, declared, local)
 	plan.From = source.from
 	plan.Updated = adopted
+	if declared := declaredConflicts(plan.Conflicts); len(declared) != 0 {
+		plan.Repair = graph.DeclaredConflict(declared)
+		plan.Blocked = plan.Repair.Sentence()
+		return plan, nil
+	}
 	if len(plan.Conflicts) != 0 {
 		plan.Repair = repair.Note{
 			Reason: "the g2g graph already records a different parent",
@@ -176,15 +185,33 @@ func classify(adopted graph.Graph, declared []Adoption, local []string) AdoptPla
 		switch {
 		case !slices.Contains(local, branch) || !slices.Contains(local, parent):
 			// A record can name a branch this checkout does not have.
-		case adopted.Tracked(branch) && adopted.Edges[branch].Parent == parent:
-			plan.Agreed = append(plan.Agreed, branch)
-		case adopted.Tracked(branch):
-			plan.Conflicts = append(plan.Conflicts, Conflict{Branch: branch, Ours: adopted.Edges[branch].Parent, Theirs: parent})
 		default:
-			plan.Adopt = append(plan.Adopt, Adoption{Branch: branch, Parent: parent})
+			switch adopted.Judge(branch, parent) {
+			case graph.VerdictDeclared:
+				plan.Conflicts = append(plan.Conflicts, Conflict{Branch: branch, Theirs: parent, Declared: true})
+			case graph.VerdictAgreed:
+				plan.Agreed = append(plan.Agreed, branch)
+			case graph.VerdictDiffers:
+				plan.Conflicts = append(plan.Conflicts, Conflict{Branch: branch, Ours: adopted.Edges[branch].Parent, Theirs: parent})
+			default:
+				plan.Adopt = append(plan.Adopt, Adoption{Branch: branch, Parent: parent})
+			}
 		}
 	}
 	return plan
+}
+
+// declaredConflicts names the conflicts that are declared trunks. Their way
+// out is not untrack, which would strand what sits on them, so they get the
+// refusal every adoption gives a declared trunk.
+func declaredConflicts(conflicts []Conflict) []string {
+	declared := make([]string, 0)
+	for _, conflict := range conflicts {
+		if conflict.Declared {
+			declared = append(declared, conflict.Branch)
+		}
+	}
+	return declared
 }
 
 // adopt builds the resulting graph, resolving a fork point per edge as it goes.

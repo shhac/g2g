@@ -39,7 +39,8 @@ func (g Graph) Remove(branch string) (Graph, []string, error) {
 }
 
 // Rename moves every record that names from to to: its own edge, the edges of
-// the branches recorded under it, and its place among the trunks.
+// the branches recorded under it, its place among the trunks, its declaration,
+// and every declaration that lands into it.
 //
 // Graph identity is derived rather than stored, so this is a key rewrite and
 // nothing more; there is no index elsewhere to keep in step.
@@ -50,7 +51,7 @@ func (g Graph) Rename(from, to string) (Graph, error) {
 	if from == to {
 		return Graph{}, fmt.Errorf("%s already has that name", from)
 	}
-	if g.Tracked(to) || g.IsTrunk(to) || len(g.Children(to)) != 0 {
+	if g.Records(to) {
 		return Graph{}, fmt.Errorf("the graph already records %s", to)
 	}
 	updated := g.Clone()
@@ -67,6 +68,16 @@ func (g Graph) Rename(from, to string) (Graph, error) {
 	if g.IsTrunk(from) {
 		trunks := slices.DeleteFunc(slices.Clone(updated.Trunks), func(trunk string) bool { return trunk == from })
 		updated = updated.withTrunks(append(trunks, to)...)
+	}
+	if declaration, declared := updated.Declared[from]; declared {
+		delete(updated.Declared, from)
+		updated.Declared[to] = declaration
+	}
+	for trunk, declaration := range updated.Declared {
+		if declaration.Into == from {
+			declaration.Into = to
+			updated.Declared[trunk] = declaration
+		}
 	}
 	if err := updated.Validate(); err != nil {
 		return Graph{}, err

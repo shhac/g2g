@@ -5,6 +5,8 @@ package cli
 import (
 	"fmt"
 	"strings"
+
+	"github.com/shhac/g2g/internal/graph"
 )
 
 func count(total int, singular, plural string) string {
@@ -62,4 +64,12 @@ func shellSafe(r rune) bool {
 	default:
 		return strings.ContainsRune("_+-./:=@", r)
 	}
+}
+
+// landingPhrase is where a declared trunk goes, as the tail of a sentence.
+func landingPhrase(declaration graph.Declaration) string {
+	if !declaration.Lands() {
+		return ""
+	}
+	return fmt.Sprintf(" that lands into %s by %s", declaration.Into, declaration.By)
 }

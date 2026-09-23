@@ -14,7 +14,6 @@ import (
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -93,7 +92,10 @@ type Service struct {
 type Options struct {
 	Remote string
 	Method githubstack.Method
-	Admin  bool
+	// MethodChosen means the run named the method. Without it, a declared trunk
+	// lands the way its declaration says.
+	MethodChosen bool
+	Admin        bool
 	// The three cleanups, all on unless asked otherwise.
 	DeleteRemote bool
 	DeleteLocal  bool
@@ -114,7 +116,10 @@ type Plan struct {
 	stack.Discovery
 	Options Options
 	Trunk   string
-	Steps   []Step
+	// Declaration is set when the branch landed is a declared trunk going into
+	// Trunk. See declared.go.
+	Declaration graph.Declaration
+	Steps       []Step
 	// Above are the branches recorded on the last one landed, which are what
 	// remains of the stack afterwards: each is the bottom of a stack on the
 	// trunk once the descent is done.
@@ -170,6 +175,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
+		p.Declaration == other.Declaration &&
 		p.Blocked == other.Blocked &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above)
@@ -200,7 +206,21 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		return Plan{}, err
 	}
 	plan := Plan{Discovery: discovery, Options: options, Trunk: discovery.Base}
-	if sentence, note := s.blockedBefore(ctx, discovery, options); sentence != "" {
+	recorded, err := s.Graph.Store.Load(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan.Declaration = declared(recorded, discovery)
+	if plan.declared() && !options.MethodChosen {
+		method, refused := declaredMethod(plan.Declaration)
+		if refused.Reason != "" {
+			plan.Blocked, plan.Repair = refused.Sentence(), refused
+			return plan, nil
+		}
+		options.Method = method
+		plan.Options = options
+	}
+	if sentence, note := s.blockedBefore(ctx, plan, recorded); sentence != "" {
 		plan.Blocked, plan.Repair = sentence, note
 		return plan, nil
 	}
@@ -265,10 +285,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		plan.Steps = append(plan.Steps, decided)
 	}
 	if len(plan.Steps) != 0 {
-		recorded, err := s.Graph.Store.Load(ctx)
-		if err != nil {
-			return Plan{}, err
-		}
 		plan.Above = recorded.Children(plan.Steps[len(plan.Steps)-1].Branch)
 	}
 	blocking := protectedAfterRestack(plan.Steps, mergeability)
@@ -304,7 +320,8 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 // refusal that reaches a plan from another one may carry only the sentence:
 // sync sets Blocked straight from the restack it delegates to, with no Repair
 // beside it. Reading the structure alone let exactly that refusal through.
-func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, options Options) (string, repair.Note) {
+func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Graph) (string, repair.Note) {
+	discovery, options := plan.Discovery, plan.Options
 	if err := discovery.RequireLinear("land"); err != nil {
 		return err.Error(), repair.Note{}
 	}
@@ -335,17 +352,27 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 		}
 		return note.Sentence(), note
 	}
+	if plan.declared() {
+		if note := declaredRefusal(recorded, discovery.Target); note.Reason != "" {
+			return note.Sentence(), note
+		}
+	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return err.Error(), repair.Note{}
 	}
-	if held := s.heldElsewhere(ctx, discovery.Target); held.Reason != "" {
+	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
 		return held.Sentence(), held
 	}
-	pushed, err := s.Pusher.Plan(ctx, stack.Selection{Branch: discovery.Target, Trunk: discovery.Base, Scope: shape.ScopeStack}, options.Remote)
+	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote)
 	if err == nil && pushed.Blocked != "" {
 		return pushed.Blocked, pushed.Repair
 	}
-	synced, err := s.Syncer.Plan(ctx, graph.Selection{Branch: discovery.Target, Scope: graph.ScopeStack}, options.Remote, syncer.TakeNothing)
+	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, discovery.Target), options.Remote, syncer.TakeNothing)
+	if err != nil && plan.declared() {
+		// Nothing about a base alone makes sync unable to answer, so a failure
+		// here is one the advance after the merge would meet too.
+		return err.Error(), repair.Note{}
+	}
 	if err == nil && synced.Blocked != "" {
 		return synced.Blocked, synced.Repair
 	}
@@ -360,29 +387,43 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 // something to move — after the first merge, which does not come back. Asking
 // sync up front found nothing while the trunk was level, so a descent with the
 // trunk open in another worktree merged its bottom branch and then stopped.
-func (s Service) heldElsewhere(ctx context.Context, target string) repair.Note {
+func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, target, base string) repair.Note {
 	if s.Holds == nil {
 		return repair.Note{}
 	}
-	recorded, err := s.Graph.Store.Load(ctx)
-	var moving []string
-	if err == nil {
-		moving, err = recorded.Shape().Stack(target)
-	}
-	if err == nil {
-		var held repair.Note
-		held, err = s.Holds.HeldElsewhere(ctx, moving)
-		if err == nil && held.Reason != "" {
-			// Narrowing the selection is no way out here: a descent moves the
-			// whole stack whatever was selected, because the replay after each
-			// merge takes everything above it.
-			return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
-		}
-	}
-	if err != nil {
+	cannotTell := func(err error) repair.Note {
 		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
 	}
-	return repair.Note{}
+	branches, err := moving(recorded, target, base)
+	if err != nil {
+		return cannotTell(err)
+	}
+	held, err := s.Holds.HeldElsewhere(ctx, branches)
+	if err != nil {
+		return cannotTell(err)
+	}
+	if held.Reason == "" {
+		return repair.Note{}
+	}
+	// Narrowing the selection is no way out here: a descent moves the whole
+	// stack whatever was selected, because the replay after each merge takes
+	// everything above it.
+	return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+}
+
+// moving is every branch a descent can move: the target's whole stack, and the
+// base it advances. A declared trunk is a root of its own, so its stack does
+// not reach the base it lands into, which is why the base is added rather than
+// assumed.
+func moving(recorded graph.Graph, target, base string) ([]string, error) {
+	branches, err := recorded.Shape().Stack(target)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(branches, base) {
+		branches = append(branches, base)
+	}
+	return branches, nil
 }
 
 // protectedAfterRestack names the branches that will read blocked by the time

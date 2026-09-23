@@ -76,9 +76,18 @@ func (s FileStore) Path(ctx context.Context) (string, error) {
 // document is the on-disk shape. Branch edges are a map rather than a list so
 // a branch cannot appear twice with different parents.
 type document struct {
-	StoreSchemaVersion int                   `json:"storeSchemaVersion"`
-	Trunks             []string              `json:"trunks,omitempty"`
-	Branches           map[string]storedEdge `json:"branches"`
+	StoreSchemaVersion int      `json:"storeSchemaVersion"`
+	Trunks             []string `json:"trunks,omitempty"`
+	// Declared is additive. An older g2g ignores it and drops it on its next
+	// write, which leaves each declared branch a plain trunk: land then refuses
+	// to land it anywhere, which is the direction that is safe to degrade in.
+	Declared map[string]storedDeclaration `json:"declared,omitempty"`
+	Branches map[string]storedEdge        `json:"branches"`
+}
+
+type storedDeclaration struct {
+	Into string `json:"into,omitempty"`
+	By   string `json:"by,omitempty"`
 }
 
 type storedEdge struct {
@@ -116,6 +125,12 @@ func decode(contents []byte, path string) (Graph, error) {
 		return Graph{}, fmt.Errorf("graph store %s has schema version %d, which this g2g does not support (expected %d)", path, doc.StoreSchemaVersion, StoreSchemaVersion)
 	}
 	loaded := Graph{Edges: make(map[string]Edge, len(doc.Branches)), Trunks: doc.Trunks}
+	for branch, stored := range doc.Declared {
+		if loaded.Declared == nil {
+			loaded.Declared = make(map[string]Declaration, len(doc.Declared))
+		}
+		loaded.Declared[branch] = Declaration{Into: stored.Into, By: stored.By}
+	}
 	for branch, stored := range doc.Branches {
 		loaded.Edges[branch] = Edge{
 			Parent: stored.Parent,
@@ -194,6 +209,12 @@ func encode(g Graph) ([]byte, error) {
 		StoreSchemaVersion: StoreSchemaVersion,
 		Trunks:             g.Trunks,
 		Branches:           make(map[string]storedEdge, len(g.Edges)),
+	}
+	for branch, declaration := range g.Declared {
+		if doc.Declared == nil {
+			doc.Declared = make(map[string]storedDeclaration, len(g.Declared))
+		}
+		doc.Declared[branch] = storedDeclaration{Into: declaration.Into, By: declaration.By}
 	}
 	for branch, edge := range g.Edges {
 		doc.Branches[branch] = storedEdge{

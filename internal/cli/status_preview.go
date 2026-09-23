@@ -23,10 +23,11 @@ func statusView(discovery graph.Discovery) stackView {
 	// Only when nothing is stacked on it. This told anybody standing on main to
 	// start a stack there, on every read, including ones showing the forest
 	// already on it — advice for an empty trunk, given to a full one.
-	if untracked {
-		if note := untrackedNote(discovery); note != "" {
-			view = view.note(note, severityNeutral)
-		}
+	if note := untrackedNote(discovery); untracked && note != "" {
+		view = view.note(note, severityNeutral)
+	}
+	for _, note := range landingNotes(discovery) {
+		view = view.note(note, severityNeutral)
 	}
 	if hidden := hiddenDescendants(discovery); hidden != 0 {
 		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", count(hidden, "branch", "branches")), severityNeutral)
@@ -77,6 +78,11 @@ func untrackedNote(discovery graph.Discovery) string {
 			// contradicts the picture they are looking at.
 			return ""
 		}
+		if discovery.Target != discovery.DefaultTrunk {
+			// Declared, or a root whose stacks have all gone. Calling it the
+			// default branch was true only of the case this was written for.
+			return fmt.Sprintf("%s is a trunk · start a stack on it with %s.", discovery.Target, runnable("g2g create <name> --parent "+discovery.Target))
+		}
 		return fmt.Sprintf("%s is this repository's default branch · stack on it with %s.", discovery.Target, runnable("g2g track --branch <child> --parent "+discovery.Target))
 	case !slices.Contains(discovery.Branches, discovery.Target):
 		// Not in the drawing at all. A trunk is untracked and still drawn, so
@@ -88,6 +94,18 @@ func untrackedNote(discovery graph.Discovery) string {
 	default:
 		return "This branch has no recorded parent · run " + runnable("g2g track") + " to adopt one."
 	}
+}
+
+// landingNotes say where each drawn trunk goes when it is finished: the one
+// thing about it the drawing cannot show, because it is not an edge.
+func landingNotes(discovery graph.Discovery) []string {
+	notes := make([]string, 0)
+	for _, branch := range discovery.Branches {
+		if declaration, lands := discovery.Graph.Landing(branch); lands {
+			notes = append(notes, fmt.Sprintf("%s is a trunk%s when it is finished.", branch, landingPhrase(declaration)))
+		}
+	}
+	return notes
 }
 
 // sourceGraphView draws the shape and nothing else.

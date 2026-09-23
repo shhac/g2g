@@ -345,7 +345,7 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]stri
 		return err
 	}
 	if plan.Options.Forget {
-		if err := s.forget(ctx, step.Branch); err != nil {
+		if err := s.forget(ctx, plan, step.Branch); err != nil {
 			return err
 		}
 	}
@@ -359,7 +359,7 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	// the last step and was not one: where it held, index was already the last
 	// index, so both branches named the same branch.
 	target := plan.Steps[len(plan.Steps)-1].Branch
-	synced, err := s.Syncer.Plan(ctx, graph.Selection{Branch: target, Scope: graph.ScopeStack}, plan.Options.Remote, syncer.TakeNothing)
+	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, target), plan.Options.Remote, syncer.TakeNothing)
 	if err != nil {
 		return false, err
 	}
@@ -384,12 +384,16 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 // refuses to do; reparenting first leaves the landed branch with none, so the
 // refusal never applies. The children keep their own fork points, which is
 // what keeps their replay ranges to their own commits.
-func (s Service) forget(ctx context.Context, landed string) error {
+func (s Service) forget(ctx context.Context, plan Plan, landed string) error {
 	adopted, err := s.Graph.Store.Load(ctx)
 	if err != nil {
 		return err
 	}
 	edge, tracked := adopted.Edges[landed]
+	if !tracked && plan.declared() {
+		// No edge to drop and nothing sat on it: the plan refused otherwise.
+		return s.undeclare(ctx, landed, plan.Trunk)
+	}
 	if !tracked {
 		return nil
 	}

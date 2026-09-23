@@ -23,6 +23,9 @@ func landView(plan land.Plan) stackView {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	view.Sequence = landSequence(plan)
+	if note := declaredMethodNote(plan); note != "" {
+		view = view.note(note, severityNeutral)
+	}
 	if len(plan.Protected) != 0 {
 		// Said before the first merge rather than discovered at the second.
 		// Every branch above the bottom is force-pushed by its own replay,
@@ -98,4 +101,18 @@ func landSequence(plan land.Plan) []stackStep {
 
 func writeLandPlan(writer io.Writer, plan land.Plan, p Presentation) error {
 	return writeStackView(writer, landView(plan), p)
+}
+
+// declaredMethodNote says where the merge method came from when a declared
+// trunk is landing, because it is the one descent whose method was not typed.
+func declaredMethodNote(plan land.Plan) string {
+	declaration := plan.Declaration
+	switch {
+	case !declaration.Lands():
+		return ""
+	case string(plan.Options.Method) == declaration.By:
+		return fmt.Sprintf("%s is a trunk%s, as declared.", plan.Target, landingPhrase(declaration))
+	default:
+		return fmt.Sprintf("%s lands into %s by %s for this descent, not the declared %s.", plan.Target, declaration.Into, plan.Options.Method, declaration.By)
+	}
 }

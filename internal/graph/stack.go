@@ -119,13 +119,7 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	}
 	plan.Record, plan.Already, plan.Conflicts = compare(discovery.Graph, spine, edges)
 	if len(plan.Conflicts) != 0 {
-		plan.Repair = repair.Note{
-			Reason: fmt.Sprintf("the graph already records a different parent for %s", strings.Join(plan.Conflicts, ", ")),
-			Ways: []repair.Step{
-				{Command: "g2g untrack", Effect: "forget the recorded parent so it can be recorded again"},
-				{Command: "g2g track --parent", Effect: "record one branch's parent deliberately"},
-			},
-		}
+		plan.Repair = conflictRepair(discovery.Graph, plan.Conflicts)
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
@@ -137,6 +131,29 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 		return StackPlan{}, err
 	}
 	return plan, nil
+}
+
+// conflictRepair says what the graph holds instead of the ancestry, and the
+// ways out. A declared trunk is named as one, because "a different parent" is
+// not what it has — and the likeliest meaning is the stack above it, which
+// adopting down to it records without touching it.
+func conflictRepair(adopted Graph, conflicts []string) repair.Note {
+	declared := make([]string, 0)
+	for _, branch := range conflicts {
+		if adopted.IsDeclared(branch) {
+			declared = append(declared, branch)
+		}
+	}
+	if len(declared) != 0 {
+		return DeclaredConflict(declared)
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("the graph already records a different parent for %s", strings.Join(conflicts, ", ")),
+		Ways: []repair.Step{
+			{Command: "g2g untrack", Effect: "forget the recorded parent so it can be recorded again"},
+			{Command: "g2g track --parent", Effect: "record one branch's parent deliberately"},
+		},
+	}
 }
 
 // branches grows the spine into the tree the user is working in: every local
@@ -270,11 +287,10 @@ func compare(adopted Graph, spine []string, attached []Adoption) (record []Adopt
 
 	record, already, conflicts = []Adoption{}, []string{}, []string{}
 	for _, edge := range derived {
-		recorded, tracked := adopted.Parent(edge.Branch)
-		switch {
-		case tracked && recorded == edge.Parent:
+		switch adopted.Judge(edge.Branch, edge.Parent) {
+		case VerdictAgreed:
 			already = append(already, edge.Branch)
-		case tracked:
+		case VerdictDiffers, VerdictDeclared:
 			conflicts = append(conflicts, edge.Branch)
 		default:
 			record = append(record, edge)

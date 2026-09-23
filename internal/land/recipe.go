@@ -74,6 +74,10 @@ func (p Plan) commentCommands() []Command {
 // step described a descent that ended with the trunk behind its remote.
 func (p Plan) cleanupCommands(step Step) []Command {
 	commands := make([]Command, 0, 4)
+	if p.declared() {
+		commands = append(commands, p.declaredCleanup(step)...)
+		return append(commands, p.deletions(step)...)
+	}
 	commands = append(commands, Command{
 		Command: "g2g pull --apply",
 		Effect:  "advance the trunk and replay what is left onto it",
@@ -84,6 +88,12 @@ func (p Plan) cleanupCommands(step Step) []Command {
 			Effect:  "forget it, once what sat on it has been reparented",
 		})
 	}
+	return append(commands, p.deletions(step)...)
+}
+
+// deletions remove the landed branch, here and on the remote.
+func (p Plan) deletions(step Step) []Command {
+	commands := make([]Command, 0, 2)
 	if p.Options.DeleteRemote {
 		commands = append(commands, Command{
 			Command: fmt.Sprintf("git push %s --delete %s", p.Options.Remote, step.Branch),

@@ -155,10 +155,13 @@ type stubRestacker struct {
 	// reparented records sync asking for a structural change, which it must
 	// never do: it moves contents, not structure.
 	reparented bool
+	// selections is what each replay was asked to cover.
+	selections []graph.Selection
 }
 
-func (s *stubRestacker) Plan(_ context.Context, _ graph.Selection, onto restack.Onto, _ bool, pending restack.Pending) (restack.Plan, error) {
+func (s *stubRestacker) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool, pending restack.Pending) (restack.Plan, error) {
 	s.onto = append(s.onto, onto.Object)
+	s.selections = append(s.selections, selection)
 	if onto.Reparents() {
 		s.reparented = true
 	}
@@ -350,6 +353,46 @@ func TestPlanRequiresSomethingToSync(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "g2g track") {
 		t.Errorf("error = %v, want it to name the remedy", err)
+	}
+}
+
+// A base alone is what land asks for after merging a declared trunk: that base
+// advances, and the replay is asked about it alone, so no stack on it moves.
+func TestPlanBranchScopeAdvancesTheBaseAlone(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{}
+	service, _ := newService(git, restacker)
+	selection := graph.Selection{Branch: "synthetic-trunk", Scope: graph.ScopeBranch}
+
+	plan, err := service.Plan(context.Background(), selection, "origin", TakeNothing)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Base != "synthetic-trunk" || !plan.Advance {
+		t.Fatalf("Base = %q, Advance = %v; want the trunk advanced", plan.Base, plan.Advance)
+	}
+	if len(plan.Collect) != 0 {
+		t.Errorf("Collect = %v, want nothing but the base touched", plan.Collect)
+	}
+	if len(restacker.selections) != 1 || restacker.selections[0] != selection {
+		t.Errorf("the replay was asked about %v, want the base alone", restacker.selections)
+	}
+	if err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if strings.Join(git.fastForwards, ",") != "synthetic-trunk" || restacker.applied != 0 {
+		t.Errorf("fast-forwarded %v and replayed %d times, want the trunk alone and no replay", git.fastForwards, restacker.applied)
+	}
+}
+
+// Only a base is brought up to date alone. A branch stacked on something moved
+// by itself would leave everything it sits on behind.
+func TestPlanBranchScopeRefusesAStackedBranch(t *testing.T) {
+	service, _ := newService(behindGit(), nil)
+
+	_, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch}, "origin", TakeNothing)
+	if err == nil || !strings.Contains(err.Error(), "only a base") {
+		t.Fatalf("Plan() error = %v, want the stacked branch refused", err)
 	}
 }
 

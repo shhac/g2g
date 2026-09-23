@@ -124,6 +124,13 @@ description: |
   a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
+- A trunk can be declared: `track --as-trunk` names a second one (`staging`
+  beside `main`), and `--into <branch> --by squash|merge|rebase` says where it
+  lands when finished. It has no parent edge — so it is never replayed and
+  every stack above it stops there — and `land --branch <trunk>` lands it into
+  that branch by the declared method. `track --parent` or `untrack` ends a
+  declaration; `adopt`, `graphite adopt` and `github adopt` refuse to overwrite
+  one. See `design-docs/declared-trunks.md`.
 - `land` takes a finished stack down onto its trunk, bottom branch first. Read
   `design-docs/land.md` before changing it. It refuses a stack g2g has not
   adopted: it resolves through whichever source describes the branch but

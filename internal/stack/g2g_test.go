@@ -2,6 +2,7 @@ package stack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -285,3 +286,87 @@ func (f g2gAncestry) Cherry(_ context.Context, _, head, _ string) (absent, prese
 // Absorbed answers of a whole branch what Cherry answers per commit, which is
 // what a squash merge needs. Nothing here is absorbed unless a case says so.
 func (f g2gAncestry) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
+// declaredChain declares synthetic-a a trunk that lands into synthetic-trunk,
+// with synthetic-b stacked on it.
+func declaredChain(t *testing.T, declaration graph.Declaration) graph.Graph {
+	t.Helper()
+	declared, err := chain().Untrack("synthetic-a").Declare("synthetic-a", declaration)
+	if err != nil {
+		t.Fatalf("Declare() error = %v", err)
+	}
+	return declared
+}
+
+// A declared trunk is claimed whether or not it lands anywhere: otherwise
+// another source answers for it, and Graphite would place it back on the
+// parent it was declared away from.
+func TestSelectorDescribesEveryDeclaredTrunk(t *testing.T) {
+	for name, declaration := range map[string]graph.Declaration{
+		"landing nowhere":   {},
+		"landing somewhere": {Into: "synthetic-trunk", By: "merge"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			describes, err := selectorService(declaredChain(t, declaration)).Describes(context.Background(), "synthetic-a")
+			if err != nil || !describes {
+				t.Errorf("Describes() = %t, %v", describes, err)
+			}
+		})
+	}
+}
+
+// To a path it is a stack of one on where it lands; to every wider scope it is
+// a trunk, which nothing describes from below. A trunk that lands nowhere is a
+// trunk to every scope.
+func TestSelectorAnswersADeclaredTrunkByScope(t *testing.T) {
+	landing := declaredChain(t, graph.Declaration{Into: "synthetic-trunk", By: "merge"})
+	for _, scope := range []Scope{ScopeBranch, ScopePath} {
+		snapshot, err := selectorService(landing).Select(context.Background(), Selection{Branch: "synthetic-a", Scope: scope}, "g2g test")
+		if err != nil {
+			t.Fatalf("Select(%s) error = %v", scope, err)
+		}
+		if snapshot.Base != "synthetic-trunk" || !slices.Equal(snapshot.Branches, []string{"synthetic-a"}) || snapshot.Parents["synthetic-a"] != "synthetic-trunk" {
+			t.Errorf("Select(%s) = base %q, branches %v, parents %v; want one branch on synthetic-trunk", scope, snapshot.Base, snapshot.Branches, snapshot.Parents)
+		}
+	}
+	for _, scope := range []Scope{ScopeStack, ScopeSubtree, ScopeTrunk} {
+		_, err := selectorService(landing).Select(context.Background(), Selection{Branch: "synthetic-a", Scope: scope}, "g2g test")
+		var undescribed Undescribed
+		if !errors.As(err, &undescribed) || !undescribed.Trunk || !strings.Contains(err.Error(), "g2g test --branch synthetic-a --scope path") {
+			t.Errorf("Select(%s) error = %v, want a trunk that names the path", scope, err)
+		}
+	}
+	_, err := selectorService(declaredChain(t, graph.Declaration{})).Select(context.Background(), Selection{Branch: "synthetic-a", Scope: ScopePath}, "g2g test")
+	var undescribed Undescribed
+	if !errors.As(err, &undescribed) || !undescribed.Trunk || !strings.Contains(err.Error(), "g2g create") {
+		t.Errorf("Select() error = %v for a trunk landing nowhere, want a trunk to start a stack on", err)
+	}
+}
+
+func TestSelectorRefusesTheWrongBaseForADeclaredTrunk(t *testing.T) {
+	landing := declaredChain(t, graph.Declaration{Into: "synthetic-trunk", By: "merge"})
+	if _, err := selectorService(landing).Select(context.Background(), Selection{Branch: "synthetic-a", Scope: ScopePath, Trunk: "synthetic-b"}, "g2g test"); err == nil {
+		t.Error("Select() error = nil for a --trunk that is not where it lands")
+	}
+
+	gone, err := chain().Untrack("synthetic-a").Declare("synthetic-a", graph.Declaration{Into: "synthetic-gone", By: "merge"})
+	if err != nil {
+		t.Fatalf("Declare() error = %v", err)
+	}
+	if _, err := selectorService(gone).Select(context.Background(), Selection{Branch: "synthetic-a", Scope: ScopePath}, "g2g test"); err == nil {
+		t.Error("Select() error = nil for somewhere to land that is not a local branch")
+	}
+}
+
+// Completion offers a trunk that lands somewhere as a branch to act on, and
+// where it lands as its trunk.
+func TestCandidatesOfferADeclaredTrunkThatLandsSomewhere(t *testing.T) {
+	candidates := G2GCandidates{Service: selectorService(declaredChain(t, graph.Declaration{Into: "synthetic-trunk", By: "merge"})).Service}
+	branches, err := candidates.Branches(context.Background())
+	if err != nil || !slices.Contains(branches, "synthetic-a") {
+		t.Errorf("Branches() = %v, %v", branches, err)
+	}
+	if trunks, _ := candidates.Trunks(context.Background(), "synthetic-a"); !slices.Equal(trunks, []string{"synthetic-trunk"}) {
+		t.Errorf("Trunks(synthetic-a) = %v", trunks)
+	}
+}

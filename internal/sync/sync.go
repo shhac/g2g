@@ -154,10 +154,8 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	// A selection of one is the branch itself with nothing recorded under it,
-	// so there is no base to bring up to date.
-	if len(discovery.Branches) < 2 {
-		return Plan{}, fmt.Errorf("%q has no recorded parent to sync against · run g2g track to record one", discovery.Target)
+	if err := requireBase(selection, discovery); err != nil {
+		return Plan{}, err
 	}
 	plan := Plan{Remote: remote, Base: discovery.Branches[0]}
 
@@ -395,6 +393,22 @@ func (s *Stopped) Error() string {
 
 func (s *Stopped) Unwrap() error { return s.Err }
 
+// requireBase refuses a selection with no base to bring up to date. A selection
+// of one is the branch itself with nothing recorded under it — unless the base
+// alone is what was asked for, and then it must be one.
+func requireBase(selection graph.Selection, discovery graph.Discovery) error {
+	if selection.Scope == graph.ScopeBranch {
+		if discovery.Graph.Tracked(discovery.Target) {
+			return fmt.Errorf("%q is stacked on something, and only a base is brought up to date alone", discovery.Target)
+		}
+		return nil
+	}
+	if len(discovery.Branches) < 2 {
+		return fmt.Errorf("%q has no recorded parent to sync against · run g2g track to record one", discovery.Target)
+	}
+	return nil
+}
+
 // syncScope is the boundary this sync acts on.
 //
 // The default is the stack: the trunk moved, so everything above it is stale.
@@ -402,9 +416,15 @@ func (s *Stopped) Unwrap() error { return s.Err }
 // what a person means by "the trunk moved, bring everything up to date". The
 // value is validated at the flag, so anything else here is a caller that did
 // not go through it, and the default is the safe reading.
+//
+// branch is not offered at the flag. It is land's, after merging a declared
+// trunk into what it lands into: that base is advanced and nothing replayed,
+// because its stacks are other people's and a descent is not the moment to
+// replay them.
 func syncScope(scope graph.Scope) graph.Scope {
-	if scope == graph.ScopeTrunk {
-		return graph.ScopeTrunk
+	switch scope {
+	case graph.ScopeTrunk, graph.ScopeBranch:
+		return scope
 	}
 	return graph.ScopeStack
 }

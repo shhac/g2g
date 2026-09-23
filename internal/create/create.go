@@ -165,7 +165,7 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	if blocked, refused := refuseRecord(plan, discovery); refused {
 		return blocked, nil
 	}
-	if !recorded(discovery.Graph, plan.Parent) {
+	if !discovery.Graph.Records(plan.Parent) {
 		plan.NewTrunk = plan.Parent
 	}
 	if !plan.Commit {
@@ -209,7 +209,7 @@ func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 			Ways:   []repair.Step{{Effect: "choose another name, or forget that record first"}},
 		}), true
 	}
-	if recorded(adopted, plan.Parent) || plan.Parent == discovery.DefaultTrunk {
+	if adopted.Records(plan.Parent) || plan.Parent == discovery.DefaultTrunk {
 		return plan, false
 	}
 	return plan.refuse(repair.Note{
@@ -223,12 +223,6 @@ func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 			{Effect: "if " + plan.Parent + " is a trunk, start its first branch with git switch -c and record it with g2g track --parent " + plan.Parent},
 		},
 	}), true
-}
-
-// recorded reports a branch the graph places: tracked under something, or a
-// root something is tracked under.
-func recorded(adopted graph.Graph, branch string) bool {
-	return adopted.Tracked(branch) || adopted.IsTrunk(branch) || len(adopted.Children(branch)) != 0
 }
 
 func refuseCommit(plan Plan) Plan {

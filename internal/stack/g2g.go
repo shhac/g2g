@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -21,8 +22,12 @@ type G2GSelector struct {
 
 func (s G2GSelector) Source() Source { return SourceG2G }
 
-// Describes reports whether the store holds an edge for the branch. It reads
-// one small file and never runs anything.
+// Describes reports whether the store holds an edge for the branch, or names
+// it a trunk. It reads one small file and never runs anything.
+//
+// A declared trunk is claimed even though nothing is stacked below it: the
+// declaration is this record's own, and letting another source answer would
+// let Graphite describe it as stacked on the parent it was declared away from.
 func (s G2GSelector) Describes(ctx context.Context, branch string) (bool, error) {
 	if s.Service.Store == nil {
 		return false, nil
@@ -31,7 +36,7 @@ func (s G2GSelector) Describes(ctx context.Context, branch string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return adopted.Tracked(branch), nil
+	return adopted.Tracked(branch) || adopted.IsDeclared(branch), nil
 }
 
 // Select returns the selected branches as the ordered stack a command acts on:
@@ -47,6 +52,9 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 	discovery, err := s.Service.Structure(ctx, graph.Selection{Branch: selection.Branch, Scope: scope})
 	if err != nil {
 		return Snapshot{}, err
+	}
+	if discovery.Graph.IsDeclared(discovery.Target) {
+		return s.declaredTrunk(ctx, discovery, selection, scope, command)
 	}
 	forest := discovery.Graph.Shape()
 	// A branch the store places nowhere has no base to sit on. It is asked of
@@ -94,6 +102,56 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 		Scope:        scope,
 		Parents:      selectionParents(forest, discovery.Branches, base),
 	}, nil
+}
+
+// declaredTrunk selects a trunk somebody named.
+//
+// One declared to land somewhere is, to the branch it lands into, one branch on
+// that base — which is how land, push and a pull request see it. Only a path or
+// the branch alone asks that. Every wider scope asks about what sits on it, and
+// there it is a trunk like any other, so it answers the way a trunk always has:
+// nothing describes it from below, and navigation from it still steps up onto
+// its own stacks rather than finding itself at the top of a stack of one.
+func (s G2GSelector) declaredTrunk(ctx context.Context, discovery graph.Discovery, selection Selection, scope Scope, command string) (Snapshot, error) {
+	target := discovery.Target
+	declaration, lands := discovery.Graph.Landing(target)
+	if !lands || (scope != shape.ScopePath && scope != shape.ScopeBranch) {
+		return Snapshot{}, trunkUndescribed(target, declaration, command)
+	}
+	if err := s.requireLocal(ctx, discovery.Graph, []string{target, declaration.Into}); err != nil {
+		return Snapshot{}, err
+	}
+	base, baseSource, err := selectBase(declaration.Into, target, selection.Trunk)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return Snapshot{
+		Target:       target,
+		TargetSource: discovery.TargetSource,
+		Ancestry:     []string{declaration.Into, target},
+		Base:         base,
+		BaseSource:   baseSource,
+		Branches:     []string{target},
+		Scope:        scope,
+		Parents:      map[string]string{target: declaration.Into},
+	}, nil
+}
+
+// trunkUndescribed is the answer for a declared trunk asked about what sits
+// below it: nothing does. The way out is the one question it can answer — a
+// stack of one on where it lands — or, landing nowhere, a stack started on it.
+func trunkUndescribed(branch string, declaration graph.Declaration, command string) Undescribed {
+	note := repair.Note{
+		Reason: "it is a trunk, so its stacks sit above it and nothing below",
+		Ways:   []repair.Step{{Command: "g2g create <name> --parent " + branch, Effect: "start a stack on it"}},
+	}
+	if declaration.Lands() {
+		note = repair.Note{
+			Reason: fmt.Sprintf("it is a trunk that lands into %s, so its stacks sit above it and nothing below", declaration.Into),
+			Ways:   []repair.Step{{Command: command + " --branch " + branch + " --scope path", Effect: fmt.Sprintf("act on it alone, as one branch on %s", declaration.Into)}},
+		}
+	}
+	return Undescribed{Branch: branch, Trunk: true, remedy: note}
 }
 
 // requireLocal refuses a selection naming a branch this checkout no longer has.
@@ -146,14 +204,22 @@ type G2GCandidates struct {
 	Service graph.Service
 }
 
-// Branches names every adopted branch. Roots are deliberately absent: nothing
-// is recorded above them, so a command asked to act on one has no base.
+// Branches names every adopted branch, and every trunk declared to land
+// somewhere. Other roots are deliberately absent: nothing is recorded above
+// them, so a command asked to act on one has no base.
 func (c G2GCandidates) Branches(ctx context.Context) ([]string, error) {
 	adopted, err := c.load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return adopted.Branches(), nil
+	branches := adopted.Branches()
+	for trunk := range adopted.Declared {
+		if _, lands := adopted.Landing(trunk); lands {
+			branches = append(branches, trunk)
+		}
+	}
+	slices.Sort(branches)
+	return branches, nil
 }
 
 // Trunks names the base of the target's recorded path, which is the only base
@@ -162,6 +228,9 @@ func (c G2GCandidates) Trunks(ctx context.Context, target string) ([]string, err
 	adopted, err := c.load(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if declaration, lands := adopted.Landing(target); lands {
+		return []string{declaration.Into}, nil
 	}
 	path, err := adopted.Path(target)
 	if err != nil || len(path) < 2 {

@@ -246,9 +246,12 @@ type fakeSyncer struct {
 	events  *events
 	blocked string
 	nothing bool
+	// selections is what each sync was asked to bring up to date.
+	selections []graph.Selection
 }
 
 func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string, _ syncer.Take) (syncer.Plan, error) {
+	f.selections = append(f.selections, selection)
 	plan := syncer.Plan{Blocked: f.blocked, Base: "synthetic-main", Advance: !f.nothing}
 	plan.Restack.Discovery = graph.Discovery{Target: selection.Branch}
 	return plan, nil

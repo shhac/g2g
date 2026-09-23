@@ -228,6 +228,45 @@ question is asked of Git, never of the pull request: a squash merge lands the
 work under a head the branch never had, so merged, closed and missing can all
 describe a branch that is plainly finished.
 
+## More than one trunk
+
+**two-trunks.** A repository has `main` and `staging`, and work is stacked on
+each independently. The forest already allows several roots, and every command
+acts relative to the base of the stack it selected, so a stack on `staging`
+pulls, restacks and lands onto `staging` without seeing `main`. *Starting the
+first stack there is the gap: `create` refuses a parent that is neither a
+recorded trunk nor the default branch, so the first branch has to be made with
+`git switch -c` and recorded with `track --parent staging`. Declaring a trunk
+is the missing primitive.*
+
+**landing-branch.** `main ← feature ← a1 ← a2 ← a3`. The three small branches
+are reviewed and squash-merged into `feature` one at a time, and `feature`
+reaches `main` later, as a whole, by a merge that keeps those three commits.
+Today `feature` is an ordinary branch on `main`, so the stack's base is `main`
+and `land` from `a3` would merge `feature` into `main` first — the one thing
+this shape exists to avoid. *The wanted answer is a trunk that still records
+where it goes: `feature` is declared a trunk, so it bounds the stack above it,
+is fast-forwarded and merged into but never replayed, and lands onto `main`
+with a merge method that is not a squash. See
+[declared trunks](declared-trunks.md).*
+
+**stranded stack.** A middle branch is untracked, so what sits on it has a
+recorded parent that nothing records. `doctor` names `track` for the stranded
+branch, and naming the parent it already has roots the stack there: that parent
+becomes a trunk. `adopt --trunk` with the same branch does the same. Both used
+to find the edge already written and report nothing to do, so no command led
+back out.
+
+**someone rewrote the trunk to remove something.** A colleague drops a commit
+from the published trunk — a secret, say — and force-pushes. The local trunk
+has content the published one does not, so `pull` refuses, and
+`pull --take published` replaces it and names what it drops. Only each
+branch's own commits are replayed, so the removed commit does not come back
+with the stack. Afterwards g2g's own refs hold it only where the remote still
+does: a stack branch published before the removal carries it until the replayed
+stack is pushed. Your `origin/<trunk>` still reaches it, because g2g never moves
+a remote-tracking ref; `git fetch` does.
+
 ## Timing
 
 **the world moves between preview and apply.** A colleague publishes between

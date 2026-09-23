@@ -151,7 +151,16 @@ func (s Service) Plan(ctx context.Context, operation Operation, requested string
 // removed. A trunk is the case worth naming: its stacks would have nothing to
 // be recorded on.
 func untrackedRemoval(operation Operation, adopted graph.Graph, branch string) repair.Note {
-	if recorded(adopted, branch) {
+	if adopted.IsDeclared(branch) {
+		return repair.Note{
+			Reason: fmt.Sprintf("%s is a declared trunk: nothing records what it sits on, so the branches on it would have nowhere to go", branch),
+			Ways: []repair.Step{
+				{Command: "g2g untrack --branch " + branch, Effect: "stop it being a trunk, stranding what sits on it"},
+				{Effect: "then delete it with git branch -D"},
+			},
+		}
+	}
+	if adopted.Records(branch) {
 		return repair.Note{
 			Reason: fmt.Sprintf("%s is a trunk: nothing records what it sits on, so the branches on it would have nowhere to go", branch),
 			Ways:   []repair.Step{{Effect: "record the branches on it somewhere else first, with g2g track --parent"}},

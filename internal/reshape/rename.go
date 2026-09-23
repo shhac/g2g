@@ -85,7 +85,7 @@ func (s Service) PlanRename(ctx context.Context, from, name string) (RenamePlan,
 	if plan.From == plan.To {
 		return plan.refuse(repair.Note{Reason: fmt.Sprintf("%s already has that name", plan.From)}), nil
 	}
-	if !recorded(adopted, plan.From) {
+	if !adopted.Records(plan.From) {
 		return plan.refuse(unrecorded(plan.From, repair.Step{Effect: "or rename it with git branch -m, which is all renaming it here would do"})), nil
 	}
 	local, err := s.Git.LocalBranches(ctx)
@@ -98,7 +98,7 @@ func (s Service) PlanRename(ctx context.Context, from, name string) (RenamePlan,
 	if slices.Contains(local, plan.To) {
 		return plan.refuse(repair.Note{Reason: fmt.Sprintf("a branch named %s already exists", plan.To), Ways: []repair.Step{{Effect: "choose another name"}}}), nil
 	}
-	if recorded(adopted, plan.To) {
+	if adopted.Records(plan.To) {
 		// A record for a branch that is not here is left over from one that
 		// was deleted, and it may have children. Renaming onto it would hand
 		// them to a branch that has nothing to do with them.

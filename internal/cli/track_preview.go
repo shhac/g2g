@@ -19,6 +19,9 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	}
 	if plan.Blocked == "" {
 		view = view.note(fmt.Sprintf("Records %s under %s.", plan.Target, plan.Parent), severityOK)
+		if plan.Graph.IsDeclared(plan.Target) {
+			view = view.note(fmt.Sprintf("%s stops being a trunk%s, and is replayed with its stack from now on.", plan.Target, landingPhrase(plan.Graph.Declared[plan.Target])), severityWarn)
+		}
 		if plan.NewTrunk != "" {
 			view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
 		}
@@ -131,4 +134,23 @@ func describeCandidate(candidate graph.Candidate) string {
 		described = "root, " + described
 	}
 	return " (" + described + ")"
+}
+
+// declareView renders naming a branch a trunk.
+func declareView(plan graph.DeclarePlan) stackView {
+	view := graphView(plan.Discovery, "track")
+	if plan.Blocked != "" {
+		return view.blockedBy(plan.Blocked)
+	}
+	if plan.NoOp() {
+		return view.note(fmt.Sprintf("%s is already recorded as a trunk%s.", plan.Target, landingPhrase(plan.Declaration)), severityNeutral)
+	}
+	view = view.note(fmt.Sprintf("Records %s as a trunk%s.", plan.Target, landingPhrase(plan.Declaration)), severityOK)
+	if previous, replaced := plan.Replaces(); replaced {
+		view = view.note(fmt.Sprintf("It was declared as a trunk%s · that goes, so pass --into and --by to keep it.", landingPhrase(previous)), severityWarn)
+	}
+	if plan.Removed != "" {
+		view = view.note(fmt.Sprintf("Removes its recorded parent, %s · it is never replayed from now on, and g2g track --parent %s puts it back in that stack.", plan.Removed, plan.Removed), severityNeutral)
+	}
+	return view
 }

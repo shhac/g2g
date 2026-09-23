@@ -95,7 +95,11 @@ func unconfirmedNotes(plan align.AdoptPlan) []string {
 func conflictNote(plan align.AdoptPlan, source adoptSource) string {
 	note := "The two records disagree about " + branchList(conflictedBranches(plan)) + ":"
 	for _, conflict := range plan.Conflicts {
-		note += fmt.Sprintf("\n  %s · g2g says %s, %s %s", conflict.Branch, conflict.Ours, source.says, conflict.Theirs)
+		ours := conflict.Ours
+		if conflict.Declared {
+			ours = "it is a trunk"
+		}
+		note += fmt.Sprintf("\n  %s · g2g says %s, %s %s", conflict.Branch, ours, source.says, conflict.Theirs)
 	}
 	return note
 }

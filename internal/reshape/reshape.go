@@ -57,12 +57,6 @@ func (s Service) Ready() bool {
 	return s.Git != nil && s.Graph.Ready()
 }
 
-// recorded reports a branch the graph places: tracked under something, or a
-// root something is tracked under.
-func recorded(adopted graph.Graph, branch string) bool {
-	return adopted.Tracked(branch) || adopted.IsTrunk(branch) || len(adopted.Children(branch)) != 0
-}
-
 // unrecorded is the refusal every reshape shares: the g2g graph is what says
 // where a branch sits, and it says nothing of this one.
 func unrecorded(branch string, ways ...repair.Step) repair.Note {

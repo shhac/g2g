@@ -23,7 +23,10 @@ A g2g-owned graph is a **forest of trees over branch names**:
 
 - every branch has at most one parent;
 - a parent may have many children;
-- there may be several roots, because a repository may have several trunks;
+- there may be several roots, because a repository may have several trunks —
+  some recorded because something was stacked on them, some declared, which
+  is how a trunk can also say where it lands (see
+  [declared trunks](declared-trunks.md));
 - the model is never constrained by what `gh stack link` can currently express.
 
 ```text

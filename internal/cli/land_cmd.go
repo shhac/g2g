@@ -40,7 +40,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 		if err != nil {
 			return err
 		}
-		options.Method = chosen
+		options.Method, options.MethodChosen = chosen, cmd.Flags().Changed("method")
 		options.DeleteRemote, options.DeleteLocal, options.Forget = !noDeleteRemote, !noDeleteLocal, !noForget
 		options.Comment = !noComment && comments.Ready()
 		if !options.Forget {

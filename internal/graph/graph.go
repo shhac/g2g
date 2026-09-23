@@ -17,6 +17,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/shhac/g2g/internal/shape"
 )
@@ -54,7 +55,8 @@ type Edge struct {
 	ForkPoint string
 }
 
-// Graph is a forest of branches plus the trunks its roots sit on.
+// Graph is a forest of branches plus the trunks its roots sit on, and which of
+// those trunks somebody named.
 //
 // Graph identity is deliberately absent. A graph is a connected component of
 // the edge relation, which is a computation rather than a record — so there is
@@ -63,6 +65,9 @@ type Edge struct {
 type Graph struct {
 	Edges  map[string]Edge
 	Trunks []string
+	// Declared is the trunks somebody named, a subset of Trunks. See
+	// declared.go.
+	Declared map[string]Declaration
 }
 
 // New returns an empty graph that is safe to mutate through its methods.
@@ -71,7 +76,7 @@ func New() Graph { return Graph{Edges: map[string]Edge{}} }
 // Clone returns a deep copy. Every method that changes the graph returns a new
 // one, so a preview can never be aliased by the plan that follows it.
 func (g Graph) Clone() Graph {
-	return Graph{Edges: maps.Clone(defaulted(g.Edges)), Trunks: slices.Clone(g.Trunks)}
+	return Graph{Edges: maps.Clone(defaulted(g.Edges)), Trunks: slices.Clone(g.Trunks), Declared: maps.Clone(g.Declared)}
 }
 
 func defaulted(edges map[string]Edge) map[string]Edge {
@@ -105,6 +110,14 @@ func (g Graph) Branches() []string {
 
 // IsTrunk reports whether branch is a recorded trunk.
 func (g Graph) IsTrunk(branch string) bool { return slices.Contains(g.Trunks, branch) }
+
+// Records reports whether the graph names branch anywhere: an edge, a trunk,
+// a parent, or somewhere a trunk lands. It is the question every command asks
+// before building on a branch or giving its name to another one, and it was
+// written out in four places, none of which knew about landing.
+func (g Graph) Records(branch string) bool {
+	return g.Tracked(branch) || g.IsTrunk(branch) || len(g.Children(branch)) != 0 || len(g.Dependents(branch)) != 0
+}
 
 // shape is this graph with the edge payload removed.
 //
@@ -149,6 +162,12 @@ func (g Graph) Track(branch string, edge Edge) (Graph, error) {
 	}
 	if branch == edge.Parent {
 		return Graph{}, fmt.Errorf("branch %q cannot be its own parent", branch)
+	}
+	if g.IsDeclared(branch) {
+		return Graph{}, fmt.Errorf("%s is a declared trunk, and only g2g track --parent naming it gives it a parent", branch)
+	}
+	if dependents := g.Dependents(branch); len(dependents) != 0 {
+		return Graph{}, fmt.Errorf("%s is where %s lands, and a branch something lands into is not stacked: a stack is replayed, and what others land into must not move under them", branch, strings.Join(dependents, ", "))
 	}
 	updated := g.Clone()
 	updated.Edges[branch] = edge
@@ -265,11 +284,11 @@ func (g Graph) Validate() error {
 			return err
 		}
 	}
-	return nil
+	return g.validateDeclared()
 }
 
 // Equal reports whether two graphs record the same structure. Revalidation
 // compares this immediately before a write.
 func (g Graph) Equal(other Graph) bool {
-	return maps.Equal(defaulted(g.Edges), defaulted(other.Edges)) && slices.Equal(g.Trunks, other.Trunks)
+	return maps.Equal(defaulted(g.Edges), defaulted(other.Edges)) && slices.Equal(g.Trunks, other.Trunks) && maps.Equal(g.Declared, other.Declared)
 }

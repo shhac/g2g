@@ -234,6 +234,15 @@ that invalidates it; a replayed branch is indistinguishable from a reviewed one
 by tips alone; and `FetchIsolated` could not follow a rewritten branch at all,
 which was a bug in `sync` that had nothing to do with landing.
 
+## Landing a declared trunk
+
+A trunk declared to land into another branch is landed the same way, as a
+stack of one on that branch, by the method it was declared with. Two things
+differ and both are the record's, not rules of land's: only the base is
+advanced afterwards, and forgetting it ends a declaration rather than dropping
+an edge. It refuses while anything is still recorded on it. See
+[declared-trunks.md](declared-trunks.md).
+
 ## Out of scope
 
 Waiting for CI — that is what `--admin` is instead of. Merge queues, which

@@ -156,7 +156,7 @@ func pullRequestEdges(snapshot stack.Snapshot) ([]Adoption, error) {
 // the way create uses it: as evidence that may only permit what would
 // otherwise be refused, never to choose a parent.
 func (s Service) rootable(ctx context.Context, adopted graph.Graph, base string) bool {
-	if adopted.Tracked(base) || adopted.IsTrunk(base) || len(adopted.Children(base)) != 0 {
+	if adopted.Records(base) {
 		return true
 	}
 	return base != "" && base == s.defaultBranch(ctx)

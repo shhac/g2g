@@ -31,8 +31,8 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 			},
 			guard:    guard,
 			execute:  service.ApplyUntrack,
-			branches: func(plan graph.UntrackPlan) int { return len(plan.Removed) },
-			noOp:     func(plan graph.UntrackPlan) bool { return len(plan.Removed) == 0 },
+			branches: func(plan graph.UntrackPlan) int { return len(plan.Removed) + len(plan.Undeclared) },
+			noOp:     func(plan graph.UntrackPlan) bool { return plan.NoOp() },
 			notices: flowNotices{
 				preview:  "Rerun with --apply to remove these edges.",
 				noOp:     "No selected branch is tracked. Nothing to do.",

@@ -171,6 +171,39 @@ func TestAdoptBlocksOnADisagreement(t *testing.T) {
 	}
 }
 
+// A branch somebody declared a trunk has no parent in g2g, and Graphite giving
+// it one is not an edge to fill in: adopting it would end the declaration
+// without a word and put the trunk back in the stack below it.
+func TestAdoptTreatsADeclaredTrunkAsADisagreement(t *testing.T) {
+	ours, err := graph.New().Declare("synthetic-lower", graph.Declaration{Into: "synthetic-trunk", By: "rebase"})
+	if err != nil {
+		t.Fatalf("Declare() error = %v", err)
+	}
+	svc, store := adoptService(ours, declaredChain(), everyBranchLocal())
+
+	plan, err := svc.PlanAdopt(context.Background())
+	if err != nil {
+		t.Fatalf("PlanAdopt() error = %v", err)
+	}
+	if len(plan.Conflicts) != 1 || !plan.Conflicts[0].Declared || plan.Conflicts[0].Branch != "synthetic-lower" {
+		t.Fatalf("Conflicts = %+v, want the declared trunk reported", plan.Conflicts)
+	}
+	if !strings.Contains(plan.Blocked, "trunk") || !strings.Contains(plan.Blocked, "g2g adopt --trunk synthetic-lower") {
+		t.Errorf("Blocked = %q, want it to say the branch is a trunk and how to adopt above it", plan.Blocked)
+	}
+	// untrack would end the declaration and strand what sits on it, which is
+	// not a way out of a disagreement about a parent.
+	if strings.Contains(plan.Blocked, "g2g untrack") {
+		t.Errorf("Blocked = %q offers untrack for a declared trunk", plan.Blocked)
+	}
+	if err := svc.ApplyAdopt(context.Background(), plan); err == nil {
+		t.Error("ApplyAdopt() error = nil for a blocked plan")
+	}
+	if !store.graph.IsDeclared("synthetic-lower") {
+		t.Error("a blocked adoption changed the g2g graph")
+	}
+}
+
 // Re-running over branches both records already agree about does nothing, which
 // is what makes adopting safe to repeat when someone tracks a new branch in gt.
 func TestAdoptIsRepeatable(t *testing.T) {

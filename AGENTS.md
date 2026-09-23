@@ -181,6 +181,29 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   are branches nothing sits under, so an empty store has none at all, which is
   exactly the repository where someone standing on `main` was told to give it a
   parent.
+- A declared trunk (`track --as-trunk`, `Graph.Declared`) is a trunk somebody
+  named, and one declared `--into` another branch says where it lands, by which
+  method. That is **not an edge**, and must not become one: an edge carries a
+  fork point, a fork point is a replay range, and a trunk other people land
+  into must never be replayed — with no edge, `restack` has nothing to replay
+  and every walk treats it as a root without being taught to. The branch it
+  lands into must have no edge either (`Validate` and `Track` both hold it),
+  which is what makes following `Into` alone a complete cycle check.
+  `Graph.Track` refuses a declared branch outright, so no path that records
+  edges can end a declaration by forgetting to check; `PlanTrack` — `track
+  --parent` naming it — undeclares first and is the only way one ends. The
+  bulk paths — `adopt`, `graphite adopt`, `github adopt` — ask one question,
+  `Graph.Judge`, and refuse a declared trunk with `graph.DeclaredConflict`, never
+  with `untrack`, which would strand what sits on it. The g2g selector claims
+  every declared trunk, so another source cannot describe it as stacked on the
+  parent it was declared away from. To a path or branch scope one that lands
+  somewhere is a stack of one on where it lands, which is what `land`, `push`
+  and a pull request need; every other question answers
+  `Undescribed{Trunk: true}` as any trunk does, which is what keeps `up` from it
+  stepping onto its stacks. `land` of
+  one advances that base alone through `pull`'s `ScopeBranch`, which the flag
+  does not offer, and ends the declaration through `untrack`. Read
+  `design-docs/declared-trunks.md` first.
 - A branch's annotation is a list of `stackMark`, one per axis, each with its
   own severity: `base✓`/`base✗` is about a pull request's base and never its
   contents, `head✗` is about currency, and a subject-less mark carries what is
@@ -431,10 +454,14 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Five things exist once and must not be reimplemented locally. Each was found as
+Six things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
+- `graph.Graph.Records` — whether the graph names a branch anywhere: an edge,
+  a trunk, a parent, or somewhere a declared trunk lands. It was written out in
+  four places, and none of them knew about landing, so renaming onto the branch
+  a trunk lands into would quietly have changed where it goes.
 - `subprocess.CheckArgument` / `OptionLike` — refusing a value a process would
   read as an option. Callers keep their own wording, because which tool refused
   is what a reader acts on; only the rule is shared.

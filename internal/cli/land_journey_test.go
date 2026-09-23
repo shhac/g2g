@@ -43,16 +43,27 @@ func landingGitHub(t *testing.T, remote string) string {
 // which is where a stack's pull requests sit before any of it lands.
 func landingGitHubStack(t *testing.T, remote string, branches ...string) string {
 	t.Helper()
-	state := t.TempDir()
+	pulls := make([][2]string, 0, len(branches))
 	base := "main"
-	for index, branch := range branches {
+	for _, branch := range branches {
+		pulls = append(pulls, [2]string{branch, base})
+		base = branch
+	}
+	return landingGitHubPulls(t, remote, pulls...)
+}
+
+// landingGitHubPulls opens one pull request per head and base pair, numbered
+// from #41, for shapes that are not one straight stack on main.
+func landingGitHubPulls(t *testing.T, remote string, pulls ...[2]string) string {
+	t.Helper()
+	state := t.TempDir()
+	for index, pull := range pulls {
 		number := fmt.Sprint(41 + index)
-		for name, value := range map[string]string{"head": branch, "base": base} {
+		for name, value := range map[string]string{"head": pull[0], "base": pull[1]} {
 			if err := os.WriteFile(filepath.Join(state, "pr-"+number+"."+name), []byte(value+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
-		base = branch
 	}
 	t.Setenv("GH_STATE", state)
 	t.Setenv("GH_REMOTE", remote)
@@ -95,7 +106,7 @@ case "$1 $2" in
 "api graphql")
   case "$query" in
   *"query Mergeability"*)
-    printf '{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":false,"rebaseMergeAllowed":false'
+    printf '{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":true,"rebaseMergeAllowed":true'
     index=0
     for number in $(printf '%s' "$query" | grep -o 'pullRequest(number: [0-9][0-9]*)' | grep -o '[0-9][0-9]*'); do
       branch=$(branch_for "$number")
@@ -182,10 +193,29 @@ case "$1 $2" in
   git -C "$work" config user.name synthetic
   git -C "$work" config user.email synthetic@example.test
   git -C "$work" switch -q "$base"
-  # A real squash: the branch's commits become one commit that is equivalent to
-  # none of them, which is exactly what makes the replay above it interesting.
-  git -C "$work" merge -q --squash "origin/$branch"
-  git -C "$work" commit -qm "squash $branch (#$number)"
+  method=squash
+  for arg in "$@"; do
+    case "$arg" in --rebase) method=rebase ;; --merge) method=merge ;; esac
+  done
+  case "$method" in
+  squash)
+    # A real squash: the branch's commits become one commit that is
+    # equivalent to none of them, which is exactly what makes the replay
+    # above it interesting.
+    git -C "$work" merge -q --squash "origin/$branch"
+    git -C "$work" commit -qm "squash $branch (#$number)"
+    ;;
+  rebase)
+    # GitHub's rebase merge: each commit replayed onto the base under a new
+    # id, and no merge commit.
+    for commit in $(git -C "$work" rev-list --reverse "$base..origin/$branch"); do
+      git -C "$work" cherry-pick "$commit" >/dev/null
+    done
+    ;;
+  merge)
+    git -C "$work" merge -q --no-ff -m "merge $branch (#$number)" "origin/$branch"
+    ;;
+  esac
   git -C "$work" push -q origin "$base"
   git -C "$work" rev-parse HEAD > "$state_dir/pr-$number.merge"
   printf 'MERGED\n' > "$state_dir/pr-$number.state"
@@ -410,4 +440,80 @@ func readState(t *testing.T, dir, name string) string {
 func remoteHasFile(t *testing.T, w *world, file string) bool {
 	t.Helper()
 	return strings.Contains(w.git(w.Local, "ls-tree", "-r", "--name-only", "origin/main"), file)
+}
+
+// landing-branch, all the way down: the small branches squash into the
+// declared trunk one at a time, and the trunk then reaches main by the method
+// it was declared with, keeping those squashes as separate commits.
+func TestJourneyLandingBranchReachesMainByItsDeclaredMethod(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-feature", "feature.txt")
+	w.branchOff("synthetic-feature", "synthetic-a1", "a1.txt")
+	w.branchOff("synthetic-a1", "synthetic-a2", "a2.txt")
+	mustRun(t, "adopt", "--trunk", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-feature", "--as-trunk", "--into", "main", "--by", "rebase", "--apply")
+	// Somebody else's stack on main, which landing the trunk must not replay.
+	w.branchOff("main", "synthetic-other", "other.txt")
+	mustRun(t, "track", "--branch", "synthetic-other", "--parent", "main", "--apply")
+	other := w.tip(w.Local, "synthetic-other")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-feature", "synthetic-a1", "synthetic-a2")
+	w.git(w.Local, "switch", "-q", "synthetic-a2")
+	state := landingGitHubPulls(t, w.Remote,
+		[2]string{"synthetic-a1", "synthetic-feature"},
+		[2]string{"synthetic-a2", "synthetic-a1"},
+		[2]string{"synthetic-feature", "main"},
+	)
+
+	// The stack above the trunk lands into it, and main is not touched.
+	mainBefore := w.tip(w.Remote, "main")
+	mustRun(t, "land", "--apply")
+	for _, number := range []string{"41", "42"} {
+		if got := readState(t, state, "pr-"+number+".state"); got != "MERGED" {
+			t.Errorf("pull request #%s state = %q, want MERGED", number, got)
+		}
+	}
+	if w.tip(w.Remote, "main") != mainBefore {
+		t.Fatal("landing the stack above the declared trunk moved main")
+	}
+	if got := readState(t, state, "pr-43.state"); got == "MERGED" {
+		t.Fatal("landing the stack above the declared trunk merged the trunk itself")
+	}
+
+	preview := mustRun(t, "land", "--branch", "synthetic-feature")
+	for _, want := range []string{"lands into main by rebase, as declared", "gh pr merge 43 --rebase", "git fetch origin main:main", "g2g untrack --branch synthetic-feature --apply"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("the preview does not say %q:\n%s", want, preview)
+		}
+	}
+	mustRun(t, "land", "--branch", "synthetic-feature", "--apply")
+
+	if got := readState(t, state, "pr-43.state"); got != "MERGED" {
+		t.Fatalf("pull request #43 state = %q, want MERGED", got)
+	}
+	w.git(w.Local, "fetch", "-q", "origin")
+	for _, file := range []string{"feature.txt", "a1.txt", "a2.txt"} {
+		if !remoteHasFile(t, w, file) {
+			t.Errorf("main does not carry %s after the trunk landed", file)
+		}
+	}
+	// Rebased, not squashed: each small merge is still its own commit on main.
+	subjects := w.git(w.Local, "log", "--format=%s", "origin/main")
+	for _, want := range []string{"squash synthetic-a1 (#41)", "squash synthetic-a2 (#42)", "synthetic feature.txt"} {
+		if !strings.Contains(subjects, want) {
+			t.Errorf("main does not keep %q as its own commit:\n%s", want, subjects)
+		}
+	}
+	if w.tip(w.Local, "main") != w.tip(w.Local, "origin/main") {
+		t.Error("main here was not advanced to the merge")
+	}
+	if strings.Contains(w.readStore(), "synthetic-feature") {
+		t.Errorf("the landed trunk is still recorded:\n%s", w.readStore())
+	}
+	if w.hasRef("refs/heads/synthetic-feature") {
+		t.Error("the landed trunk was not deleted here")
+	}
+	if w.tip(w.Local, "synthetic-other") != other {
+		t.Error("landing the trunk replayed another stack on main")
+	}
+	w.assertClean(w.Local)
 }

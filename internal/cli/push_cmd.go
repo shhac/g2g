@@ -24,7 +24,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 			if err := selection.validate(); err != nil {
 				return err
 			}
-			root := commandContext(cmd.Context(), cmd, "push", applyMode(apply), selection.branch, selection.trunk)
+			root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[push.Plan]{
 				plan: func(ctx context.Context) (push.Plan, error) { return service.Plan(ctx, selection.Selection(), remote) },
 				revalidate: func(ctx context.Context, preview push.Plan) (push.Plan, error) {

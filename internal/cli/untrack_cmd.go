@@ -18,7 +18,7 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 		if err := selection.validateScope(); err != nil {
 			return err
 		}
-		ctx := commandContext(cmd.Context(), cmd, "untrack", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
 		flow := applyFlow[graph.UntrackPlan]{
 			plan: func(ctx context.Context) (graph.UntrackPlan, error) {
 				return service.PlanUntrack(ctx, selection.Selection())

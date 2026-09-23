@@ -89,7 +89,7 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		if dryRun {
 			mode = "dry_run"
 		}
-		root := commandContext(cmd.Context(), cmd, string(each.direction), mode, "", selection.trunk)
+		root := commandContext(cmd.Context(), cmd, mode, "", selection.trunk)
 		budgets := newBudgets(cmd)
 		ctx, cancel := budgets.discovery(root)
 		defer cancel()

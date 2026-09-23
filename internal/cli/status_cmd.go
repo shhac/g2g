@@ -17,7 +17,7 @@ func newStatus(service link.Service, completions stack.Completions, presentation
 		if err := selection.validate(); err != nil {
 			return err
 		}
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "github status", "read_only", selection.branch, selection.trunk))
+		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", selection.branch, selection.trunk))
 		defer cancel()
 		plan, err := service.Plan(ctx, selection.Selection())
 		if err != nil {

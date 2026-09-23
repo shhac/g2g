@@ -34,7 +34,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 		if err := selection.validate(); err != nil {
 			return err
 		}
-		root := commandContext(cmd.Context(), cmd, "github comment", applyMode(apply), selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 		flow := applyFlow[comment.Plan]{
 			plan: func(ctx context.Context) (comment.Plan, error) {
 				return service.Plan(ctx, selection.Selection())

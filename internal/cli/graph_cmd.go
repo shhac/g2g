@@ -42,7 +42,7 @@ func newGraph(service graph.Service, selector stack.PathSelector, published Publ
 		if err := validateOfflineSource(from); err != nil {
 			return err
 		}
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, ""))
+		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", selection.branch, ""))
 		defer cancel()
 		if source := stack.Source(from); source != "" && source != stack.SourceG2G {
 			return writeSourceGraph(ctx, cmd, selector, selection, source, presentation)

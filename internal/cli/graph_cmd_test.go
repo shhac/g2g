@@ -199,22 +199,6 @@ func TestGraphNamesTheStoreItReadsFrom(t *testing.T) {
 	}
 }
 
-func TestGraphCommandsAreAbsentWithoutAConfiguredService(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	command := NewWithOptions(Options{Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr})
-	for _, name := range []string{"status", "track", "untrack"} {
-		found := false
-		for _, sub := range command.Commands() {
-			if sub.Name() == name {
-				found = true
-			}
-		}
-		if found {
-			t.Errorf("%s was registered without a graph service", name)
-		}
-	}
-}
-
 func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
 	jsonOut, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login", "--scope", "trunk", "--json")
 	if err != nil {

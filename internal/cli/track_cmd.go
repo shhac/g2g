@@ -32,7 +32,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
 		// Whether another record already describes this repository. A failure to
 		// answer is not worth reporting: the consequence is one missing
 		// suggestion on a preview that already says what to do.
@@ -98,7 +98,7 @@ func newAdopt(service graph.Service, guard func(context.Context) error, presenta
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "adopt", applyMode(apply), selection.branch, trunk)
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, trunk)
 		return adoptFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().StringVar(&trunk, "trunk", "", "where the stack starts (defaults to the only recorded root on the ancestry)")

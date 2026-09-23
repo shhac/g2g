@@ -31,7 +31,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		presentation := presentation.resolve(cmd)
 		request := create.Request{Name: args[0], Parent: parent, Commit: cmd.Flags().Changed("message"), Message: message}
-		root := commandContext(cmd.Context(), cmd, "create", applyMode(apply), "", "")
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), "", "")
 		flow := applyFlow[create.Plan]{
 			plan: func(ctx context.Context) (create.Plan, error) {
 				return service.Plan(ctx, request)

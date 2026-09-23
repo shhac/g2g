@@ -19,9 +19,9 @@ func commandsOffering(t *testing.T, flag string) []string {
 	var offering []string
 	var discard bytes.Buffer
 	root := cli.New("v0.0.0-test", &discard, &discard)
-	for _, cmd := range allCommands(root) {
+	for _, cmd := range cli.EveryCommandForTest(root) {
 		if cmd.Flags().Lookup(flag) != nil {
-			offering = append(offering, strings.TrimPrefix(cmd.CommandPath(), root.Name()+" "))
+			offering = append(offering, cli.CommandPathForTest(cmd))
 		}
 	}
 	if len(offering) == 0 {

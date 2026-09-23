@@ -39,7 +39,7 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 		if err := options.validate(); err != nil {
 			return err
 		}
-		ctx := commandContext(cmd.Context(), cmd, "restack", applyMode(options.apply), options.selector.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(options.apply), options.selector.branch, "")
 		if options.resuming() {
 			return runResume(cmd, ctx, service, options, presentation)
 		}

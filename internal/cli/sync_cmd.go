@@ -37,7 +37,7 @@ func newSync(service syncer.Service, pruner prune.Service, guard func(context.Co
 				return err
 			}
 		}
-		ctx := commandContext(cmd.Context(), cmd, "pull", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
 		flow := applyFlow[syncer.Plan]{
 			guard: guard,
 			plan: func(ctx context.Context) (syncer.Plan, error) {

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-
 	"github.com/shhac/g2g/internal/cli"
 	"github.com/shhac/g2g/internal/testutil"
 )
@@ -399,7 +397,7 @@ func TestEveryCommandTakingTheStackFlagsIsCovered(t *testing.T) {
 	}
 
 	root := cli.New("v0.0.0-test", &stdout, &stderr)
-	for _, command := range allCommands(root) {
+	for _, command := range cli.EveryCommandForTest(root) {
 		// --from is what stackOptions registers and nothing else does, so it is
 		// the marker for "this command resolves a stack through a source".
 		// --trunk alone is not: adopt has one too, meaning where an adoption
@@ -407,7 +405,7 @@ func TestEveryCommandTakingTheStackFlagsIsCovered(t *testing.T) {
 		if command.Flags().Lookup("branch") == nil || command.Flags().Lookup("from") == nil {
 			continue
 		}
-		name := strings.TrimPrefix(command.CommandPath(), root.Name()+" ")
+		name := cli.CommandPathForTest(command)
 		if !covered[name] {
 			t.Errorf("%s takes --branch and --trunk but is not in stackCommands, so nothing checks that it selects or completes without Graphite", name)
 		}
@@ -760,14 +758,4 @@ func offersFlag(t *testing.T, command, flag string) bool {
 		t.Fatalf("no command named %q: %v", command, err)
 	}
 	return found.Flags().Lookup(flag) != nil
-}
-
-// allCommands is every command below root, namespaces included.
-func allCommands(root *cobra.Command) []*cobra.Command {
-	var all []*cobra.Command
-	for _, command := range root.Commands() {
-		all = append(all, command)
-		all = append(all, allCommands(command)...)
-	}
-	return all
 }

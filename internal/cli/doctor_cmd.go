@@ -36,7 +36,7 @@ func newDoctor(service graph.Service, restacker restack.Service, published Publi
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "doctor", "read_only", "", ""))
+		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", "", ""))
 		defer cancel()
 		from, err := doctorStart(ctx, service)
 		if err != nil {

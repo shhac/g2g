@@ -30,7 +30,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		if cmd.Flags().Changed("stack-number") && number <= 0 {
 			return fmt.Errorf("--stack-number must be a positive GitHub stack number")
 		}
-		root := commandContext(cmd.Context(), cmd, "github unlink", applyMode(apply), selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 
 		flow := applyFlow[unlinkPlan]{
 			plan: func(ctx context.Context) (unlinkPlan, error) {

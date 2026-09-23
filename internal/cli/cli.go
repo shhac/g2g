@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -295,7 +296,14 @@ func NewWithOptions(options Options) *cobra.Command {
 	return root
 }
 
-func commandContext(ctx context.Context, cmd *cobra.Command, operation, mode, branch, trunk string) context.Context {
+// commandPath is how a command names itself: its path below the root, so a
+// namespaced command is "github link". It is read from cobra rather than typed
+// at each call, which is how the rename left some of them saying "import".
+func commandPath(cmd *cobra.Command) string {
+	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+}
+
+func commandContext(ctx context.Context, cmd *cobra.Command, mode, branch, trunk string) context.Context {
 	ctx = diagnostic.WithWarningWriter(ctx, cmd.ErrOrStderr())
 	debug, _ := cmd.Flags().GetBool("debug")
 	if !debug {
@@ -307,7 +315,7 @@ func commandContext(ctx context.Context, cmd *cobra.Command, operation, mode, br
 		targetSource = "--branch"
 	}
 	fields := []diagnostic.Field{
-		{Key: "operation", Value: operation},
+		{Key: "operation", Value: commandPath(cmd)},
 		{Key: "mode", Value: mode},
 		{Key: "target_source", Value: targetSource},
 	}

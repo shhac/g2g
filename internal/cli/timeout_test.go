@@ -42,7 +42,7 @@ func TestCommandContextPreservesCallerDeadline(t *testing.T) {
 	ctx, cancel := newBudgets(cmd).discovery(cmd.Context())
 	defer cancel()
 
-	decorated := commandContext(ctx, cmd, "link", "preview", "", "")
+	decorated := commandContext(ctx, cmd, "preview", "", "")
 	if _, ok := decorated.Deadline(); !ok {
 		t.Fatal("commandContext dropped the caller's deadline")
 	}
@@ -59,7 +59,7 @@ func TestMutationBudgetIsNotShortenedByDiscovery(t *testing.T) {
 	cmd.SetContext(context.Background())
 	budgets := newBudgets(cmd)
 
-	root := commandContext(cmd.Context(), cmd, "submit", "apply", "", "")
+	root := commandContext(cmd.Context(), cmd, "apply", "", "")
 	discovery, cancelDiscovery := budgets.discovery(root)
 	defer cancelDiscovery()
 	if _, ok := discovery.Deadline(); !ok {

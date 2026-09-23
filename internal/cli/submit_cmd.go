@@ -95,7 +95,7 @@ func (o submitOptions) keepsComments() bool { return !o.noComment && o.comments.
 
 func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {
 	o.budgets = newBudgets(cmd)
-	o.root = commandContext(cmd.Context(), cmd, "submit", applyMode(o.apply), o.selection.branch, o.selection.trunk)
+	o.root = commandContext(cmd.Context(), cmd, applyMode(o.apply), o.selection.branch, o.selection.trunk)
 	ctx, cancel := o.budgets.discovery(o.root)
 	defer cancel()
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote)

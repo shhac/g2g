@@ -23,3 +23,11 @@ const SchemaVersion = schemaVersion
 // StoppedPartWayForTest reports an error Execute would exit 3 on, so the
 // external tests can assert the status a script reads rather than the prose.
 func StoppedPartWayForTest(err error) bool { return wasStopped(err) }
+
+// EveryCommandForTest and CommandPathForTest let the external tests walk the
+// command tree and name what they find the way the commands name themselves,
+// rather than keeping a second copy of each.
+var (
+	EveryCommandForTest = everyCommand
+	CommandPathForTest  = commandPath
+)

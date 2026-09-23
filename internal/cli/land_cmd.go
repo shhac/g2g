@@ -49,7 +49,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 			// against a structure that is not there.
 			return fmt.Errorf("--no-forget would leave the branches above each landed one recorded under a branch that no longer exists · drop the flag, or land them one at a time")
 		}
-		root := commandContext(cmd.Context(), cmd, "land", applyMode(apply), selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 		flow := applyFlow[land.Plan]{
 			plan: func(ctx context.Context) (land.Plan, error) {
 				return service.Plan(ctx, selection.Selection(), options)

@@ -23,7 +23,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "graphite mirror", applyMode(apply), "", "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), "", "")
 		flow := applyFlow[align.MirrorPlan]{
 			plan: func(ctx context.Context) (align.MirrorPlan, error) {
 				return service.PlanMirror(ctx, prune)

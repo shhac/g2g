@@ -91,7 +91,7 @@ func newAdoptFrom(service align.Service, from string, completions stack.Completi
 		if err := options.validate(); err != nil {
 			return err
 		}
-		ctx := commandContext(cmd.Context(), cmd, from+" adopt", applyMode(apply), options.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), options.branch, "")
 		flow := applyFlow[align.AdoptPlan]{
 			render: func(writer io.Writer, plan align.AdoptPlan, p Presentation) error {
 				return writeStackView(writer, adoptView(plan), p)

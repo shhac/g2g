@@ -28,7 +28,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 			if err := selection.validate(); err != nil {
 				return err
 			}
-			root := commandContext(cmd.Context(), cmd, "github link", applyMode(apply), selection.branch, selection.trunk)
+			root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[link.Plan]{
 				plan: func(ctx context.Context) (link.Plan, error) {
 					return linkable(service.Plan(ctx, selection.Selection()))

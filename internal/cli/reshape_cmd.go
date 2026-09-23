@@ -72,7 +72,7 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		root := commandContext(cmd.Context(), cmd, string(operation), applyMode(apply), branch, "")
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), branch, "")
 		flow := applyFlow[reshape.Plan]{
 			plan: func(ctx context.Context) (reshape.Plan, error) {
 				return service.Plan(ctx, operation, branch)
@@ -112,7 +112,7 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		presentation := presentation.resolve(cmd)
 		name := args[0]
-		root := commandContext(cmd.Context(), cmd, "rename", applyMode(apply), branch, "")
+		root := commandContext(cmd.Context(), cmd, applyMode(apply), branch, "")
 		flow := applyFlow[reshape.RenamePlan]{
 			plan: func(ctx context.Context) (reshape.RenamePlan, error) {
 				return service.PlanRename(ctx, branch, name)

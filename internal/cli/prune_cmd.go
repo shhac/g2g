@@ -25,7 +25,7 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 		if err := selection.validateScope(); err != nil {
 			return err
 		}
-		ctx := commandContext(cmd.Context(), cmd, "prune", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
 		return pruneFlow(service, selection.Selection(), guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "edit the graph instead of previewing the change")

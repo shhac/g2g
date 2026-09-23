@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,8 +96,29 @@ func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Ro
 			{Prefix: "--version", Output: "1.8.6"},
 			{Prefix: "log", File: logPath},
 		},
-		"gh": gh,
+		// Ahead of the caller's own: the stack comment's read begins with the
+		// same words as the head-ref lookup every caller answers, and its
+		// writes are submit's and land's tail.
+		"gh": append(commentRoutes(), gh...),
 	}, common
+}
+
+// commentRoutes answer the stack comment's read for the two pull requests the
+// Graphite fixtures carry, with no comments yet, and accept its writes. The
+// query names the numbers it asks about, so each answer is keyed on the first
+// one: an answer whose alias carries a different number is refused.
+func commentRoutes() []testutil.Route {
+	conversation := func(alias string, number int, head string) string {
+		return fmt.Sprintf(`"%s":{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"headRefName":%q,"baseRefName":"synthetic-main","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}`, alias, number, number, head)
+	}
+	asking := func(number int) string {
+		return stackCommentsPrefix + "$owner: String!, $name: String!) { repository(owner: $owner, name: $name) { c0: issueOrPullRequest(number: " + fmt.Sprint(number) + ")"
+	}
+	return []testutil.Route{
+		{Prefix: asking(101), Output: `{"data":{"repository":{` + conversation("c0", 101, "synthetic-lower") + `,` + conversation("c1", 102, "synthetic-top") + `}}}`},
+		{Prefix: asking(102), Output: `{"data":{"repository":{` + conversation("c0", 102, "synthetic-top") + `}}}`},
+		{Prefix: commentMutationPrefix, Output: `{"data":{}}`},
+	}
 }
 
 func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
@@ -235,6 +257,47 @@ func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing
 	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create", "gh stack link")
 	if !strings.Contains(stdout, "Applied") {
 		t.Errorf("submit did not confirm success:\n%s", stdout)
+	}
+}
+
+// Once the stack is published and linked, submit keeps the stack comment on
+// each pull request, after everything else, and --no-comment leaves them.
+func TestSubmitKeepsTheStackCommentsUnlessToldNotTo(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		extra []string
+		want  int
+	}{
+		{name: "by default", want: 2},
+		{name: "with --no-comment", extra: []string{"--no-comment"}, want: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := fakeRepository(t, openTopPullRequest)
+			specDir := t.TempDir()
+			if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+				t.Fatal(err)
+			}
+			specPath := filepath.Join(specDir, "submission.json")
+			fillSpecTitles(t, specPath)
+
+			preview, _, err := run(t, append([]string{"submit", "--spec", specPath}, test.extra...)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if said := strings.Contains(preview, "keeps the stack comment"); said != (test.want != 0) {
+				t.Errorf("preview mentions the comments = %t, want %t:\n%s", said, test.want != 0, preview)
+			}
+			stdout, _, err := run(t, append([]string{"submit", "--spec", specPath, "--apply"}, test.extra...)...)
+			if err != nil {
+				t.Fatalf("submit --apply: %v\n%s", err, stdout)
+			}
+			if got := recorder.Count("gh " + commentMutationPrefix); got != test.want {
+				t.Errorf("comment writes = %d, want %d:\n%s", got, test.want, strings.Join(recorder.Calls(), "\n"))
+			}
+			if test.want != 0 {
+				recorder.AssertOrder("gh stack link", "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)
+			}
+		})
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 // command in this package follows, and which submit was already close to with
 // submit_spec.go and submit_templates.go beside it.
 
-func submitView(plan submit.Plan, template string, draft bool) stackView {
+func submitView(plan submit.Plan, template string, draft, comments bool) stackView {
 	view := stackView{
 		Operation:    "submit",
 		Target:       plan.Snapshot.Target,
@@ -48,7 +48,11 @@ func submitView(plan submit.Plan, template string, draft bool) stackView {
 	if plan.Push.Blocked != "" {
 		return view.refusing(plan.Push.Repair.SentenceWith(runnable), plan.Push.Repair)
 	}
-	return view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
+	view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
+	if comments {
+		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)
+	}
+	return view
 }
 
 // openAs names what a missing pull request will be opened as. The preview is
@@ -78,8 +82,8 @@ func readyFlag(draft bool) string {
 	return " --ready"
 }
 
-func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string, draft bool) error {
-	return writeStackView(w, submitView(plan, template, draft), p)
+func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string, draft, comments bool) error {
+	return writeStackView(w, submitView(plan, template, draft, comments), p)
 }
 
 // existingNumber routes through the shared resolution rather than scanning for

@@ -48,6 +48,23 @@ func (p Plan) Commands() []Command {
 		}
 		commands = append(commands, p.cleanupCommands(step)...)
 	}
+	return append(commands, p.commentCommands()...)
+}
+
+// commentCommands keep the stack comments on what is left, once. Doing it
+// after every merge would edit every comment once per branch for a map that
+// is only true at the end.
+func (p Plan) commentCommands() []Command {
+	if !p.Options.Comment || p.Landing() == 0 {
+		return nil
+	}
+	commands := make([]Command, 0, len(p.Above))
+	for _, above := range p.Above {
+		commands = append(commands, Command{
+			Command: fmt.Sprintf("g2g comment --branch %s --apply", above),
+			Effect:  "keep the stack comments, with what landed listed as merged",
+		})
+	}
 	return commands
 }
 

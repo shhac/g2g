@@ -55,7 +55,7 @@ func submitPreview(t *testing.T, draft bool) string {
 		Branches: []string{"synthetic-lower", "synthetic-top"},
 	}}
 	var out bytes.Buffer
-	if err := writeSubmitPreview(&out, plan, Presentation{}, "", draft); err != nil {
+	if err := writeSubmitPreview(&out, plan, Presentation{}, "", draft, false); err != nil {
 		t.Fatal(err)
 	}
 	return out.String()

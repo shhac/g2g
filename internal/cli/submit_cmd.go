@@ -9,13 +9,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
 )
 
-func newSubmit(service submit.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
-	options := submitOptions{guard: guard}
+func newSubmit(service submit.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+	options := submitOptions{guard: guard, comments: comments}
 	cmd := &cobra.Command{Use: "submit", GroupID: groupPublish, Short: "Publish a stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if err := options.selection.validate(); err != nil {
@@ -47,11 +48,16 @@ func newSubmit(service submit.Service, completions stack.Completions, guard func
 	cmd.MarkFlagsMutuallyExclusive("edit", "spec")
 	cmd.MarkFlagsMutuallyExclusive("edit", "write-spec")
 	cmd.Flags().BoolVar(&options.apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
+	cmd.Flags().BoolVar(&options.noComment, "no-comment", false, "do not keep the stack comment on each pull request afterwards")
 	return cmd
 }
 
 type submitOptions struct {
 	budgets budgets
+	// comments keeps the stack comment on each pull request once the stack
+	// is published, unless noComment.
+	comments  comment.Service
+	noComment bool
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
 	guard      func(context.Context) error
@@ -83,6 +89,9 @@ func (o submitOptions) validate() error {
 	}
 	return nil
 }
+
+// keepsComments reports whether this run keeps the stack comments afterwards.
+func (o submitOptions) keepsComments() bool { return !o.noComment && o.comments.Ready() }
 
 func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {
 	o.budgets = newBudgets(cmd)
@@ -127,7 +136,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 }
 
 func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.keepsComments()); err != nil {
 		return err
 	}
 	if plan.Blocked() != "" {
@@ -137,7 +146,7 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 }
 
 func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft); err != nil {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.keepsComments()); err != nil {
 		return err
 	}
 	// A preview that is already blocked must not close by inviting an apply
@@ -167,7 +176,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return validated, nil
 		},
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
-			return writeSubmitPreview(w, plan, presentation, template, spec.Draft)
+			return writeSubmitPreview(w, plan, presentation, template, spec.Draft, o.keepsComments())
 		},
 		guard: o.guard,
 		execute: func(ctx context.Context, plan submit.Plan) error {
@@ -177,7 +186,14 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			if o.edit && !o.keepSpec {
 				_ = os.RemoveAll(filepath.Dir(o.specPath))
 			}
-			return nil
+			selection := o.selection.Selection()
+			selection.Branch = plan.Snapshot.Target
+			return keepComments(ctx, o.comments, o.keepsComments(), selection)
+		},
+		// The pull requests exist and are linked whatever happens to their
+		// comments, so a failure there is not the submission failing.
+		interrupted: func(_ context.Context, err error) (bool, error) {
+			return commentsNotKept(cmd, err, p)
 		},
 		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },
 		wrapMutationError: func(err error) error {

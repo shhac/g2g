@@ -8,13 +8,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/land"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
-func newLand(service land.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newLand(service land.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var options = land.Defaults()
 	var method string
@@ -22,7 +23,7 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 	// The three cleanups are on, and each is declared as its own negative flag
 	// rather than a default-true boolean with a second --no- spelling beside
 	// it. One flag, one spelling, and the help line says what passing it does.
-	var noDeleteRemote, noDeleteLocal, noForget bool
+	var noDeleteRemote, noDeleteLocal, noForget, noComment bool
 
 	cmd := &cobra.Command{
 		Use:     "land",
@@ -41,6 +42,7 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 		}
 		options.Method = chosen
 		options.DeleteRemote, options.DeleteLocal, options.Forget = !noDeleteRemote, !noDeleteLocal, !noForget
+		options.Comment = !noComment && comments.Ready()
 		if !options.Forget {
 			// A branch left recorded under one that has merged and been
 			// deleted makes every later status and every later replay measure
@@ -55,9 +57,18 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 			revalidate: func(ctx context.Context, preview land.Plan) (land.Plan, error) {
 				return service.Revalidate(ctx, selection.Selection(), options, preview)
 			},
-			render:   writeLandPlan,
-			guard:    guard,
-			execute:  service.Apply,
+			render: writeLandPlan,
+			guard:  guard,
+			execute: func(ctx context.Context, plan land.Plan) error {
+				if err := service.Apply(ctx, plan); err != nil {
+					return err
+				}
+				selections := make([]stack.Selection, 0, len(plan.Above))
+				for _, above := range plan.Above {
+					selections = append(selections, stack.Selection{Branch: above})
+				}
+				return keepComments(ctx, comments, plan.Options.Comment, selections...)
+			},
 			branches: func(plan land.Plan) int { return plan.Landing() },
 			// Landing waits on GitHub between its calls, so the ordinary
 			// per-branch ceiling would cut a merge off mid-flight.
@@ -100,6 +111,7 @@ func newLand(service land.Service, completions stack.Completions, guard func(con
 	// replay. It is hidden because a help line offering it would be offering
 	// something that always refuses.
 	cmd.Flags().BoolVar(&noForget, "no-forget", false, "refused: the branches above a landed one must be reparented")
+	cmd.Flags().BoolVar(&noComment, "no-comment", false, "do not keep the stack comments on what remains afterwards")
 	_ = cmd.Flags().MarkHidden("no-forget")
 	cmd.Flags().BoolVar(&apply, "apply", false, "merge the stack instead of previewing the descent")
 	return cmd
@@ -128,6 +140,9 @@ func methodNames() string {
 // landInterrupted claims a descent that stopped having changed something, and
 // leaves one that changed nothing to the ordinary failure path.
 func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error) {
+	if handled, report := commentsNotKept(cmd, err, p); handled {
+		return true, report
+	}
 	var stopped *land.Stopped
 	if !errors.As(err, &stopped) || !stopped.PartWay() {
 		return false, nil

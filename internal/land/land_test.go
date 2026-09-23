@@ -780,3 +780,28 @@ func TestAPublishBeforeARefusedMergeIsPartWay(t *testing.T) {
 		t.Errorf("stopped = %+v, want the publish counted", stopped)
 	}
 }
+
+// What sits on the last branch landed is what remains of the stack, and the
+// recipe ends by keeping the comments there, so what landed reads as merged
+// history. --no-comment leaves them; a descent with nothing above has none.
+func TestTheRecipeKeepsTheStackCommentsOnWhatRemains(t *testing.T) {
+	w := newWorld(t)
+	w.store.graph.Edges["synthetic-three"] = graph.Edge{Parent: "synthetic-two", ForkPoint: "two-tip"}
+
+	plan := w.plan(t, Defaults())
+	if !slices.Equal(plan.Above, []string{"synthetic-three"}) {
+		t.Fatalf("Above = %v, want what sits on the last branch landed", plan.Above)
+	}
+	commands := plan.Commands()
+	if last := commands[len(commands)-1].Command; last != "g2g comment --branch synthetic-three --apply" {
+		t.Errorf("last step = %q, want the comments kept on what remains", last)
+	}
+
+	options := Defaults()
+	options.Comment = false
+	for _, command := range w.plan(t, options).Commands() {
+		if strings.HasPrefix(command.Command, "g2g comment") {
+			t.Errorf("--no-comment still keeps comments: %q", command.Command)
+		}
+	}
+}

@@ -98,11 +98,15 @@ type Options struct {
 	DeleteRemote bool
 	DeleteLocal  bool
 	Forget       bool
+	// Comment keeps the stack comments on what remains above the landed
+	// branches once the descent is done, so the pull requests that merged
+	// read as merged history there. On unless asked otherwise.
+	Comment bool
 }
 
 // Defaults are the options a bare invocation means.
 func Defaults() Options {
-	return Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Forget: true}
+	return Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Forget: true, Comment: true}
 }
 
 // Plan is the whole descent, decided before any of it runs.
@@ -111,6 +115,10 @@ type Plan struct {
 	Options Options
 	Trunk   string
 	Steps   []Step
+	// Above are the branches recorded on the last one landed, which are what
+	// remains of the stack afterwards: each is the bottom of a stack on the
+	// trunk once the descent is done.
+	Above []string
 	// Protected names the branches whose merge will need --admin once their
 	// own restack has force-pushed them and restarted the required checks
 	// that were green when this was planned. It is said in the preview
@@ -158,7 +166,8 @@ func (p Plan) Equal(other Plan) bool {
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
 		p.Blocked == other.Blocked &&
-		slices.Equal(p.Steps, other.Steps)
+		slices.Equal(p.Steps, other.Steps) &&
+		slices.Equal(p.Above, other.Above)
 }
 
 // Ready reports a service with everything it needs.
@@ -239,6 +248,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			decided.Push = true
 		}
 		plan.Steps = append(plan.Steps, decided)
+	}
+	if len(plan.Steps) != 0 {
+		recorded, err := s.Graph.Store.Load(ctx)
+		if err != nil {
+			return Plan{}, err
+		}
+		plan.Above = recorded.Children(plan.Steps[len(plan.Steps)-1].Branch)
 	}
 	blocking := protectedAfterRestack(plan.Steps, mergeability)
 	if !options.Admin {

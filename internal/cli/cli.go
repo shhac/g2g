@@ -245,7 +245,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}
 	if options.Submit.Ready() {
-		root.AddCommand(newSubmit(options.Submit, completions, guard, presentation))
+		root.AddCommand(newSubmit(options.Submit, options.Comment, completions, guard, presentation))
 	}
 	if options.Graph.Ready() {
 		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
@@ -281,7 +281,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newComment(options.Comment, completions, guard, presentation))
 	}
 	if options.Land.Ready() {
-		root.AddCommand(newLand(options.Land, completions, guard, presentation))
+		root.AddCommand(newLand(options.Land, options.Comment, completions, guard, presentation))
 	}
 	if options.Align.Ready() {
 		root.AddCommand(newMirror(options.Align, guard, presentation))

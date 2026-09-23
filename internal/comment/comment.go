@@ -290,3 +290,33 @@ func (s Service) send(ctx context.Context, write Write) error {
 	}
 	return s.GitHub.UpdateComment(ctx, write.Comment, write.Body)
 }
+
+// Keep plans the stack's comments and writes them in one step, for a command
+// that has just changed what the stack's pull requests are — submit opening
+// them, land merging some — and keeps the map in step unless told not to.
+//
+// There is no separate preview: the enclosing command said it would do this
+// in its own preview, and every write is an edit of a comment this tool owns
+// or a new one on an open pull request, so nothing here is worth a second
+// confirmation. A plan that is blocked is not written, and says why.
+func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, error) {
+	plan, err := s.Plan(ctx, selection)
+	if err != nil {
+		return Plan{}, &NotKept{Err: err}
+	}
+	if plan.Blocked != "" {
+		return plan, &NotKept{Err: fmt.Errorf("%s", plan.Blocked)}
+	}
+	if err := s.Execute(ctx, plan); err != nil {
+		return plan, &NotKept{Err: err}
+	}
+	return plan, nil
+}
+
+// NotKept is a command that did its own work and then could not keep the
+// stack comments. What it did stands; the comments can be kept later with
+// g2g comment --apply, which is what a caller says.
+type NotKept struct{ Err error }
+
+func (e *NotKept) Error() string { return "the stack comments were not kept: " + e.Err.Error() }
+func (e *NotKept) Unwrap() error { return e.Err }

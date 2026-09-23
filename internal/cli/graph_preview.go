@@ -36,21 +36,58 @@ func graphNodes(discovery graph.Discovery) []stackNode {
 	return nodes
 }
 
+// stateAdvice is one recorded state that wants something done: the word a
+// branch's line shows, what doctor calls the problem, and the command that
+// puts it right.
+type stateAdvice struct {
+	label    string
+	severity severity
+	problem  func(parent string) string
+	repair   func(branch, parent string) string
+}
+
+// recordedStates holds each of them once. status's notes and doctor's findings
+// were written separately and had already drifted: status said "retrack" where
+// doctor named a command, and a landed branch was a different colour in each.
+var recordedStates = map[graph.NodeState]stateAdvice{
+	graph.StateNeedsRestack: {"needs restack", severityWarn,
+		said("its parent moved underneath it"),
+		func(branch, _ string) string { return "g2g restack --branch " + branch }},
+	graph.StateMovedOffParent: {"moved off parent", severityWarn,
+		func(parent string) string { return "no longer built on " + parent },
+		retrack},
+	graph.StateForkUnresolvable: {"fork point lost", severityBad,
+		said("its recorded fork point is gone"),
+		retrack},
+	graph.StateParentMissing: {"parent missing", severityWarn,
+		func(parent string) string { return parent + " is no longer a local branch" },
+		func(branch, _ string) string { return "g2g track --branch " + branch }},
+	graph.StateBranchMissing: {"branch missing", severityWarn,
+		said("recorded, and no longer a local branch"),
+		func(branch, _ string) string { return "g2g untrack --branch " + branch }},
+	graph.StateLanded: {"landed", severityOK,
+		func(parent string) string { return "already landed in " + parent },
+		func(branch, _ string) string { return "g2g prune --branch " + branch }},
+}
+
+// retrack records the fork point again on the parent already recorded, which
+// track does only where that parent's tip is in the branch.
+func retrack(branch, parent string) string {
+	return "g2g track --branch " + branch + " --parent " + parent
+}
+
+func said(problem string) func(string) string { return func(string) string { return problem } }
+
+// orphanRepair is a branch whose recorded parent is recorded nowhere.
+func orphanRepair(branch string) string { return "g2g track --branch " + branch }
+
 // nodeState says what the graph knows about one branch without a network call.
 func nodeState(discovery graph.Discovery, branch string) (string, severity) {
-	switch discovery.States[branch] {
-	case graph.StateNeedsRestack:
-		return "needs restack", severityWarn
-	case graph.StateMovedOffParent:
-		return "moved off parent", severityWarn
-	case graph.StateForkUnresolvable:
-		return "fork point lost", severityBad
-	case graph.StateParentMissing:
-		return "parent missing", severityWarn
-	case graph.StateBranchMissing:
-		return "branch missing", severityWarn
-	case graph.StateLanded:
-		return "landed", severityOK
+	state := discovery.States[branch]
+	if advice, known := recordedStates[state]; known {
+		return advice.label, advice.severity
+	}
+	switch state {
 	case graph.StateEmpty:
 		return "no commits of its own", severityNeutral
 	case graph.StateUntracked:
@@ -101,20 +138,23 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if stale := discovery.NeedsRestack(); len(stale) != 0 {
 		view = view.note("Parent moved under "+branchList(stale)+" · run "+runnable("g2g restack")+".", severityWarn)
 	}
-	if moved := discovery.InState(graph.StateMovedOffParent); len(moved) != 0 {
-		view = view.note("No longer built on the recorded parent: "+branchList(moved)+" · retrack before restacking, the replay range would be wrong.", severityWarn)
-	}
-	if lost := discovery.InState(graph.StateForkUnresolvable); len(lost) != 0 {
-		view = view.note("Recorded fork point is gone for "+branchList(lost)+" · retrack to record it again.", severityBad)
-	}
-	// A branch deleted or renamed with plain Git leaves its edge behind, and the
-	// edge is all there is left to forget. One line each, because the command
-	// that forgets it names the branch.
-	for _, gone := range discovery.InState(graph.StateBranchMissing) {
-		view = view.note("Recorded but no longer a local branch: "+gone+" · run "+runnable("g2g untrack --branch "+gone)+" to forget it.", severityWarn)
-	}
-	if missing := discovery.MissingParents(); len(missing) != 0 {
-		view = view.note("Recorded parent is no longer a local branch for "+branchList(missing)+" · retrack onto its new parent.", severityWarn)
+	// What is wrong with one branch's edge is put right one branch at a time,
+	// so these are a line each, naming the command doctor names.
+	for _, each := range []struct {
+		state  graph.NodeState
+		prefix string
+		then   string
+	}{
+		{graph.StateMovedOffParent, "No longer built on the recorded parent: ", "to record where it sits now, before restacking"},
+		{graph.StateForkUnresolvable, "Recorded fork point is gone for ", "to record it again"},
+		{graph.StateBranchMissing, "Recorded but no longer a local branch: ", "to forget it"},
+		{graph.StateParentMissing, "Recorded parent is no longer a local branch for ", "to choose where it sits now"},
+	} {
+		advice := recordedStates[each.state]
+		for _, branch := range discovery.InState(each.state) {
+			parent, _ := discovery.Graph.Parent(branch)
+			view = view.note(each.prefix+branch+" · run "+runnable(advice.repair(branch, parent))+" "+each.then+".", advice.severity)
+		}
 	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
 		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable("g2g prune")+" to forget them.", severityNeutral)
@@ -122,8 +162,8 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if empty := discovery.InState(graph.StateEmpty); len(empty) != 0 {
 		view = view.note("Nothing of their own on "+branchList(empty)+" · either finished, or not started yet.", severityNeutral)
 	}
-	if orphans := discovery.Orphans(); len(orphans) != 0 {
-		view = view.note("No tracked parent for "+branchList(orphans)+".", severityWarn)
+	for _, orphan := range discovery.Orphans() {
+		view = view.note("No tracked parent for "+orphan+" · run "+runnable(orphanRepair(orphan))+" to choose one.", severityWarn)
 	}
 	return view
 }

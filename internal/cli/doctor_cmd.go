@@ -119,7 +119,7 @@ func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string
 			continue
 		}
 		if orphans[branch] {
-			findings = append(findings, finding{Branch: branch, Problem: "no tracked parent", Command: "g2g track --branch " + branch, Severity: severityWarn})
+			findings = append(findings, finding{Branch: branch, Problem: "no tracked parent", Command: orphanRepair(branch), Severity: severityWarn})
 			continue
 		}
 		publication := publishing[branch]
@@ -135,25 +135,15 @@ func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string
 	return findings
 }
 
-// branchFinding is what the graph's own state says is wrong with a branch.
+// branchFinding is what the graph's own state says is wrong with a branch, in
+// the words status uses for the same state.
 func branchFinding(discovery graph.Discovery, branch string) (finding, bool) {
-	parent, _ := discovery.Graph.Parent(branch)
-	switch discovery.States[branch] {
-	case graph.StateNeedsRestack:
-		return finding{Branch: branch, Problem: "its parent moved underneath it", Command: "g2g restack --branch " + branch, Severity: severityWarn}, true
-	case graph.StateMovedOffParent:
-		return finding{Branch: branch, Problem: "no longer built on " + parent, Command: "g2g track --branch " + branch + " --parent " + parent, Severity: severityWarn}, true
-	case graph.StateForkUnresolvable:
-		return finding{Branch: branch, Problem: "its recorded fork point is gone", Command: "g2g track --branch " + branch + " --parent " + parent, Severity: severityBad}, true
-	case graph.StateParentMissing:
-		return finding{Branch: branch, Problem: parent + " is no longer a local branch", Command: "g2g track --branch " + branch, Severity: severityWarn}, true
-	case graph.StateBranchMissing:
-		return finding{Branch: branch, Problem: "recorded, and no longer a local branch", Command: "g2g untrack --branch " + branch, Severity: severityWarn}, true
-	case graph.StateLanded:
-		return finding{Branch: branch, Problem: "already landed in " + parent, Command: "g2g prune --branch " + branch, Severity: severityNeutral}, true
-	default:
+	advice, known := recordedStates[discovery.States[branch]]
+	if !known {
 		return finding{}, false
 	}
+	parent, _ := discovery.Graph.Parent(branch)
+	return finding{Branch: branch, Problem: advice.problem(parent), Command: advice.repair(branch, parent), Severity: advice.severity}, true
 }
 
 // doctorView lists the findings and nothing else: the branches they are about,

@@ -193,3 +193,31 @@ func TestRevalidateStackRefusesAChangedGraph(t *testing.T) {
 		t.Error("RevalidateStack() error = nil after the graph moved")
 	}
 }
+
+// Naming a stranded branch as the trunk records nothing new about the edges,
+// and must still record the trunk: otherwise adopt reports the ancestry as
+// already recorded and leaves the stack stranded.
+func TestPlanStackNamingAStrandedTrunkRecordsIt(t *testing.T) {
+	adopted := New().withTrunks("synthetic-trunk")
+	for branch, parent := range map[string]string{"synthetic-a": "synthetic-trunk", "synthetic-b": "synthetic-a"} {
+		adopted, _, _ = adopted.Adopt(branch, Edge{Parent: parent, Origin: OriginAncestry})
+	}
+	service, store := adoptionService(t, adopted.Untrack("synthetic-a"))
+
+	plan, err := service.PlanStack(context.Background(), Selection{}, "synthetic-a")
+	if err != nil {
+		t.Fatalf("PlanStack() error = %v", err)
+	}
+	if plan.Blocked != "" || len(plan.Record) != 0 {
+		t.Fatalf("Blocked = %q, Record = %v; want nothing blocked and no edge to add", plan.Blocked, plan.Record)
+	}
+	if plan.NewTrunk != "synthetic-a" || plan.NoOp() {
+		t.Fatalf("NewTrunk = %q, NoOp = %v; want synthetic-a recorded as a trunk", plan.NewTrunk, plan.NoOp())
+	}
+	if err := service.ApplyStack(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyStack() error = %v", err)
+	}
+	if !store.graph.IsTrunk("synthetic-a") {
+		t.Error("apply did not write the trunk")
+	}
+}

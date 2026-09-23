@@ -13,6 +13,9 @@ func gitAdoptView(plan graph.StackPlan) stackView {
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}
+	if len(plan.Record) == 0 && plan.NewTrunk != "" {
+		return view.note(fmt.Sprintf("The graph already records this whole ancestry · %s becomes a root of the graph.", plan.NewTrunk), severityOK)
+	}
 	if len(plan.Record) == 0 {
 		return view.note("The graph already records this whole ancestry.", severityNeutral)
 	}

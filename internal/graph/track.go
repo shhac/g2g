@@ -72,7 +72,12 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		return plan, err
 	}
 	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked && recorded.Parent == parent {
-		return s.refresh(ctx, plan, recorded)
+		plan, err := s.refresh(ctx, plan, recorded)
+		if err != nil || plan.Blocked != "" {
+			return plan, err
+		}
+		plan.Updated, plan.NewTrunk = plan.Updated.Rooted(parent)
+		return plan, nil
 	}
 	forkPoint, err := s.Git.Resolve(ctx, parent)
 	if err != nil {

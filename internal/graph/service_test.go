@@ -412,3 +412,26 @@ func TestPlanTrackRecordsWhetherGitConfirmsTheEdge(t *testing.T) {
 		t.Errorf("origin = %q, want %q for a parent that is not an ancestor", got, OriginUser)
 	}
 }
+
+// A branch left recorded on an untracked parent is rooted there by naming the
+// parent it already has. The edge is unchanged; the parent becomes a trunk.
+func TestPlanTrackNamingAStrandedParentMakesItATrunk(t *testing.T) {
+	service, _ := newService(t, stackGit(), forest().Untrack("synthetic-auth"))
+
+	plan, err := service.PlanTrack(context.Background(), Selection{Branch: "synthetic-login"}, "synthetic-auth")
+	if err != nil {
+		t.Fatalf("PlanTrack() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Blocked = %q", plan.Blocked)
+	}
+	if plan.NewTrunk != "synthetic-auth" {
+		t.Errorf("NewTrunk = %q, want synthetic-auth", plan.NewTrunk)
+	}
+	if orphans := plan.Updated.Orphans(); len(orphans) != 0 {
+		t.Errorf("Orphans() = %v after rooting, want none", orphans)
+	}
+	if plan.Updated.Equal(plan.Graph) {
+		t.Error("the plan changes nothing, so track reports it as already done")
+	}
+}

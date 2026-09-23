@@ -71,6 +71,11 @@ func (p StackPlan) Equal(other StackPlan) bool {
 		p.Updated.Equal(other.Updated)
 }
 
+// NoOp reports whether applying the plan would change nothing. Recording no
+// edge is not enough to say so: naming a stranded branch as the trunk records
+// only that it is one.
+func (p StackPlan) NoOp() bool { return p.Updated.Equal(p.Graph) }
+
 // PlanStack works out how to record the whole ancestry between a trunk and the
 // selected branch.
 //
@@ -125,6 +130,7 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 		return plan, nil
 	}
 	if len(plan.Record) == 0 {
+		plan.Updated, plan.NewTrunk = discovery.Graph.Rooted(plan.Trunk)
 		return plan, nil
 	}
 	if plan.Updated, plan.NewTrunk, err = s.record(ctx, discovery.Graph, plan.Record, candidates); err != nil {
@@ -315,7 +321,7 @@ func (s Service) ApplyStack(ctx context.Context, plan StackPlan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot record this stack: %s", plan.Blocked)
 	}
-	if len(plan.Record) == 0 {
+	if plan.NoOp() {
 		return nil
 	}
 	if err := s.Store.Save(ctx, plan.Updated); err != nil {

@@ -3,6 +3,7 @@ package cli_test
 import (
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -161,6 +162,37 @@ func TestJourneyDoctorsRepairsRepair(t *testing.T) {
 			mustRun(t, append(doctorNames(t, "synthetic-c"), "--apply")...)
 			if out, _, err := run(t, "doctor"); err != nil {
 				t.Errorf("doctor after its own repair: %v\n%s", err, out)
+			}
+			w.assertClean(w.Local)
+		})
+	}
+}
+
+// Untracking a middle branch strands what sits on it, and doctor names track
+// for the stranded branch. Naming the parent it is already recorded under has
+// to make that parent a trunk: it used to find the edge written and do nothing,
+// and adopt --trunk did the same, so no command led back out.
+func TestJourneyAStrandedStackCanBeRootedWhereItStands(t *testing.T) {
+	for name, repairIt := range map[string][]string{
+		"track": {"track", "--branch", "synthetic-c", "--parent", "synthetic-p", "--apply"},
+		"adopt": {"adopt", "--branch", "synthetic-c", "--trunk", "synthetic-p", "--apply"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			w.branchOff("main", "synthetic-p", "p.txt")
+			w.branchOff("synthetic-p", "synthetic-c", "c.txt")
+			mustRun(t, "adopt", "--trunk", "main", "--apply")
+			mustRun(t, "untrack", "--branch", "synthetic-p", "--apply")
+			if got := doctorNames(t, "synthetic-c"); !slices.Equal(got, []string{"track", "--branch", "synthetic-c"}) {
+				t.Fatalf("doctor names %v for the stranded branch", got)
+			}
+
+			out := mustRun(t, repairIt...)
+			if !strings.Contains(out, "synthetic-p becomes a root of the graph") {
+				t.Errorf("the repair did not say it records a trunk:\n%s", out)
+			}
+			if out, _, err := run(t, "doctor"); err != nil {
+				t.Errorf("doctor after rooting the stranded stack: %v\n%s", err, out)
 			}
 			w.assertClean(w.Local)
 		})

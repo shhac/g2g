@@ -176,10 +176,23 @@ func (g Graph) Adopt(branch string, edge Edge) (Graph, string, error) {
 	if err != nil {
 		return Graph{}, "", err
 	}
-	if g.Tracked(edge.Parent) || updated.IsTrunk(edge.Parent) {
-		return updated, "", nil
+	rooted, newTrunk := updated.Rooted(edge.Parent)
+	return rooted, newTrunk, nil
+}
+
+// Rooted makes parent a trunk when nothing records it: a branch something sits
+// on and nothing sits under is what a trunk is. It names parent when that
+// promoted it.
+//
+// Adopt is one way to arrive there and untracking a middle branch is the other.
+// That second way used to have no way back: every command that could name the
+// stranded branch found the edge already written and did nothing, so the repair
+// doctor offered changed nothing and doctor offered it again.
+func (g Graph) Rooted(parent string) (Graph, string) {
+	if g.Tracked(parent) || g.IsTrunk(parent) {
+		return g, ""
 	}
-	return updated.withTrunks(append(slices.Clone(updated.Trunks), edge.Parent)...), edge.Parent, nil
+	return g.withTrunks(append(slices.Clone(g.Trunks), parent)...), parent
 }
 
 // withoutTrunk drops branch from the trunk set, leaving the rest as they were.

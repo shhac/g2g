@@ -82,6 +82,11 @@ number_for() {
   echo 0
 }
 head_oid() { git --git-dir="$remote" rev-parse "refs/heads/$1" 2>/dev/null || printf ''; }
+json_string() {
+  awk 'BEGIN { ORS = ""; printf "\"" }
+    { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t"); gsub(/\r/, "\\r"); if (NR > 1) printf "\\n"; print }
+    END { printf "\"" }' "$1"
+}
 
 query="$*"
 printf '%s\n' "$*" >> "$state_dir/calls.log"
@@ -103,6 +108,39 @@ case "$1 $2" in
       index=$((index + 1))
     done
     printf '}}}\n'
+    ;;
+  *"query StackComments"*)
+    # The comments are kept, not merely acknowledged: a comment names the pull
+    # requests that merged out of the stack, and only a comment read back can
+    # tell a later run that history exists.
+    printf '{"data":{"repository":{'
+    index=0
+    for number in $(printf '%s' "$query" | grep -o 'issueOrPullRequest(number: [0-9][0-9]*)' | grep -o '[0-9][0-9]*'); do
+      if [ "$index" -gt 0 ]; then printf ','; fi
+      nodes=""
+      if [ -f "$state_dir/comment-$number" ]; then
+        nodes=$(printf '{"id":"IC_%s","body":%s,"viewerCanUpdate":true,"author":{"login":"synthetic"}}' "$number" "$(json_string "$state_dir/comment-$number")")
+      fi
+      printf '"c%s":{"__typename":"PullRequest","id":"PR_%s","number":%s,"headRefName":"%s","baseRefName":"%s","state":"%s","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}' \
+        "$index" "$number" "$number" "$(branch_for "$number")" "$(read_state "pr-$number.base" main)" "$(read_state "pr-$number.state" OPEN)" "$nodes"
+      index=$((index + 1))
+    done
+    printf '}}}\n'
+    ;;
+  *"addComment("*|*"updateIssueComment("*)
+    # One comment per pull request, which is all this tool keeps: the subject
+    # is PR_<number> and the comment is IC_<number>, so either names the file.
+    target=""
+    for arg in "$@"; do
+      case "$arg" in
+      subject=PR_*) target="${arg#subject=PR_}" ;;
+      id=IC_*) target="${arg#id=IC_}" ;;
+      esac
+    done
+    for arg in "$@"; do
+      case "$arg" in body=*) printf '%s' "${arg#body=}" > "$state_dir/comment-$target" ;; esac
+    done
+    printf '{"data":{}}\n'
     ;;
   *)
     printf '{"data":{"repository":{"nameWithOwner":"example/synthetic"'
@@ -129,6 +167,13 @@ case "$1 $2" in
   ;;
 "pr merge")
   number="$3"
+  # GitHub declining a merge -- a check that failed at the last moment -- is
+  # arranged by a flag file, and happens once: the next attempt is accepted.
+  if [ -f "$state_dir/refuse-merge-$number" ]; then
+    rm -f "$state_dir/refuse-merge-$number"
+    printf 'synthetic refusal: #%s is not mergeable right now\n' "$number" >&2
+    exit 1
+  fi
   branch=$(branch_for "$number")
   base=$(read_state "pr-$number.base" main)
   work="$state_dir/work-$number"
@@ -144,6 +189,22 @@ case "$1 $2" in
   git -C "$work" push -q origin "$base"
   git -C "$work" rev-parse HEAD > "$state_dir/pr-$number.merge"
   printf 'MERGED\n' > "$state_dir/pr-$number.state"
+  # A reviewer pushing a fix onto another branch of the stack while this merge
+  # happens, from a clone of their own, arranged by a flag file naming it.
+  if [ -f "$state_dir/review-on-merge-$number" ]; then
+    reviewed=$(cat "$state_dir/review-on-merge-$number")
+    review="$state_dir/review-$number"
+    rm -rf "$review"
+    git clone -q "$remote" "$review"
+    git -C "$review" config user.name synthetic-reviewer
+    git -C "$review" config user.email reviewer@example.test
+    git -C "$review" switch -q "$reviewed"
+    printf 'reviewed\n' > "$review/review.txt"
+    git -C "$review" add review.txt
+    git -C "$review" commit -qm "synthetic review fix on $reviewed"
+    git -C "$review" push -q origin "$reviewed"
+    git -C "$review" rev-parse HEAD > "$state_dir/review-$number.commit"
+  fi
   ;;
 esac
 `

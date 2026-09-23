@@ -69,7 +69,7 @@ func TestAReplayedBranchIsPublishedRatherThanRefused(t *testing.T) {
 		t.Fatalf("a restacked stack is refused: %s", plan.Blocked)
 	}
 	top := plan.Publishing["synthetic-top"]
-	if !top.Rewritten || top.Theirs != 0 || top.Rejected() {
+	if top.Standing != Rewritten || top.Theirs != 0 || top.Rejected() {
 		t.Errorf("synthetic-top = %+v, want rewritten and nothing the remote would lose", top)
 	}
 }
@@ -92,7 +92,7 @@ func TestAColleaguesCommitOnTheRemoteIsStillRefused(t *testing.T) {
 	if plan.Blocked == "" || !strings.Contains(plan.Blocked, "synthetic-top") {
 		t.Fatalf("Blocked = %q, want the remote's new commit protected", plan.Blocked)
 	}
-	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Rewritten {
+	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Standing == Rewritten {
 		t.Errorf("synthetic-top = %+v, want one commit only on the remote", top)
 	}
 }
@@ -121,13 +121,13 @@ func TestAReviewersDeletionOnTheRemoteIsNotPublishedOver(t *testing.T) {
 	repo.Run("rebase", "-q", "--onto", "synthetic-lower", "synthetic-lower@{1}", "synthetic-top")
 
 	plan := planPush(t, repo)
-	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Rewritten {
+	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Standing == Rewritten {
 		t.Fatalf("synthetic-top = %+v, want the reviewer's commit counted as theirs", top)
 	}
 	if !strings.Contains(plan.Blocked, "synthetic-top") {
 		t.Errorf("Blocked = %q, want the push refused", plan.Blocked)
 	}
-	if lower := plan.Publishing["synthetic-lower"]; !lower.Rewritten || lower.Theirs != 0 {
+	if lower := plan.Publishing["synthetic-lower"]; lower.Standing != Rewritten || lower.Theirs != 0 {
 		t.Errorf("synthetic-lower = %+v, want the plain replay still publishable", lower)
 	}
 }

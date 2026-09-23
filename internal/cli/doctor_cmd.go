@@ -122,11 +122,11 @@ func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string
 			findings = append(findings, finding{Branch: branch, Problem: "no tracked parent", Command: "g2g track --branch " + branch, Severity: severityWarn})
 			continue
 		}
-		publication, compared := publishing[branch]
-		if compared && !discovery.Graph.IsTrunk(branch) && publication.Theirs > 0 && publication.Ours > 0 {
+		publication := publishing[branch]
+		if publication.Standing == push.Diverged && !discovery.Graph.IsTrunk(branch) {
 			findings = append(findings, finding{
 				Branch:   branch,
-				Problem:  fmt.Sprintf("diverged from %s · %d here, %d there", remote, publication.Ours, publication.Theirs),
+				Problem:  "diverged from " + remote + " · " + eachSide(publication),
 				Command:  "g2g pull --branch " + branch,
 				Severity: severityBad,
 			})

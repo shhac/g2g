@@ -372,7 +372,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 				known:   map[string]bool{"remote-tip": true},
 				ours:    map[string]int{"synthetic-top": 2},
 			},
-			want: Publication{Ours: 2},
+			want: Publication{Standing: Ahead, Ours: 2},
 		},
 		{
 			name: "already published",
@@ -381,7 +381,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 				local:   map[string]string{"synthetic-top": "same-tip"},
 				known:   map[string]bool{"same-tip": true},
 			},
-			want: Publication{},
+			want: Publication{Standing: Current},
 		},
 		{
 			name: "the remote has moved on",
@@ -391,7 +391,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 				known:   map[string]bool{"remote-tip": true},
 				theirs:  map[string]int{"synthetic-top": 1},
 			},
-			want:     Publication{Theirs: 1},
+			want:     Publication{Standing: Behind, Theirs: 1},
 			rejected: true,
 		},
 		{
@@ -400,7 +400,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{"synthetic-top": "unfetched"}},
 				local:   map[string]string{"synthetic-top": "local-tip"},
 			},
-			want:     Publication{Unknown: true},
+			want:     Publication{Standing: Unknown},
 			rejected: true,
 		},
 		{
@@ -409,7 +409,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 				fakeGit: fakeGit{current: "synthetic-top", tips: map[string]string{}},
 				local:   map[string]string{"synthetic-top": "local-tip"},
 			},
-			want: Publication{New: true},
+			want: Publication{Standing: New},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -485,15 +485,15 @@ func TestABranchThatSquashMergedIsNotOfferedForRepublication(t *testing.T) {
 	}
 
 	got := plan.Publishing["top"]
-	if got.New {
+	if got.Standing == New {
 		t.Errorf("Publishing[top] = %+v, want it read as landed rather than new", got)
 	}
-	if !got.Landed {
+	if got.Standing != Landed {
 		t.Errorf("Publishing[top] = %+v, want Landed", got)
 	}
 	// The branches below it still have work, so this is not a whole-plan no-op
 	// — the point is that the landed one is not among what would be published.
-	if !plan.Publishing["lower"].New {
+	if plan.Publishing["lower"].Standing != New {
 		t.Errorf("Publishing[lower] = %+v, want the unlanded branches unaffected", plan.Publishing["lower"])
 	}
 }

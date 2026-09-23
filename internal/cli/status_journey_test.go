@@ -81,3 +81,37 @@ func TestJourneyStatusRefusesARemoteNamedOnPurposeOnly(t *testing.T) {
 		t.Errorf("a repository with no remote was compared with one:\n%s", out)
 	}
 }
+
+// A colleague's commit on the branch, once fetched, is work the branch does not
+// have; one of ours on top of that makes it a divergence, which is the one
+// remote finding doctor reports, since it is what a push would refuse.
+func TestJourneyStatusSaysBehindThenDiverged(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "review.txt", "review")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+	w.git(w.Local, "fetch", "-q", "origin")
+
+	out := mustRun(t, "status")
+	if line := statusLine(t, out, "synthetic-a"); !strings.Contains(line, "origin✗ 1 behind") {
+		t.Errorf("a branch behind its remote reads %q", line)
+	}
+	if !strings.Contains(out, "g2g pull") {
+		t.Errorf("status does not say how to catch up:\n%s", out)
+	}
+
+	w.commit(w.Local, "synthetic-a", "mine.txt", "mine")
+	if line := statusLine(t, mustRun(t, "status"), "synthetic-a"); !strings.Contains(line, "diverged · 1 here, 1 there") {
+		t.Errorf("a diverged branch reads %q", line)
+	}
+	out, _, err := run(t, "doctor", "--no-links")
+	if err == nil || !strings.Contains(out, "synthetic-a: diverged from origin · 1 here, 1 there · run g2g pull --branch synthetic-a.") {
+		t.Errorf("doctor on a divergence: %v\n%s", err, out)
+	}
+	w.assertClean(w.Local)
+}

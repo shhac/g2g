@@ -16,12 +16,9 @@ func pushView(plan push.Plan) stackView {
 		Action:       append([]string{"git", "push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...),
 	}
 	for _, branch := range plan.Branches {
-		// Whether this branch was compared, not whether the map exists. The
-		// domain package asks it this way for a reason — push.NothingToPublish
-		// does the same — and the weaker proxy was the one path where a branch
-		// missing from a populated map rendered as the reassuring answer.
-		publication, compared := plan.Publishing[branch]
-		state, level := publicationState(publication, compared)
+		// A branch missing from the map reads as Uncompared, never as the
+		// reassuring answer.
+		state, level := publicationState(plan.Publishing[branch])
 		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target, State: state, Severity: level})
 	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
@@ -34,30 +31,28 @@ func pushView(plan push.Plan) stackView {
 // publicationState says what pushing one branch would do. Saying nothing was
 // the previous answer, and it read identically whether the branch was ahead,
 // already published, or about to overwrite somebody else's commit.
-func publicationState(publication push.Publication, compared bool) (string, severity) {
-	switch {
-	case !compared:
-		// Never compared, so there is nothing to say. The zero Publication
-		// otherwise reads as "up to date", which is the one claim a plan that
-		// skipped the comparison must not make.
-		return "", severityNeutral
-	case publication.Unknown:
+func publicationState(publication push.Publication) (string, severity) {
+	switch publication.Standing {
+	case push.Unknown:
 		return "remote is on a commit you do not have · fetch before publishing", severityBad
-	case publication.Theirs > 0 && publication.Ours > 0:
+	case push.Diverged:
 		return fmt.Sprintf("diverged · %s here, %s only on the remote · publishing would drop %s",
 			count(publication.Ours, "commit", "commits"), count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
-	case publication.Theirs > 0:
+	case push.Behind:
 		return fmt.Sprintf("remote has %s this does not · publishing would drop %s", count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
-	case publication.Rewritten:
+	case push.Rewritten:
 		return "rewritten since it was published · replaces it, and the remote holds nothing it lacks", severityOK
-	case publication.Landed:
+	case push.Landed:
 		return "already in the trunk · nothing to publish", severityNeutral
-	case publication.New:
+	case push.New:
 		return "new branch on the remote", severityOK
-	case publication.UpToDate():
+	case push.Current:
 		return "up to date", severityNeutral
-	default:
+	case push.Ahead:
 		return fmt.Sprintf("%s to publish", count(publication.Ours, "commit", "commits")), severityOK
+	default:
+		// Never compared, so there is nothing to say.
+		return "", severityNeutral
 	}
 }
 

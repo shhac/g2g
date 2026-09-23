@@ -63,44 +63,63 @@ type Plan struct {
 	Repair repair.Note
 }
 
-// Publication is what pushing one branch would do.
+// Publication is where one branch stands against the remote's tip, and so what
+// pushing it would do.
 type Publication struct {
+	Standing Standing
 	// Ours is how many commits the local branch has that the remote's tip does
 	// not, which is what the push sends. Theirs is how many of the remote's
 	// commits have no equivalent in the branch, by content: the work a push
 	// would drop. Counting those by commit id called every replayed commit
 	// somebody else's, so a restacked stack could never be published.
 	Ours, Theirs int
+}
+
+// Standing is one of the ways a branch and the remote's tip can differ. They
+// are exclusive, which is why this is one value rather than a flag each: every
+// reader of the flags had to work the exclusivity out again, in its own order,
+// and got the same answer only because of how Compare happened to set them.
+type Standing int
+
+const (
+	// Uncompared is the zero value, so a branch nobody compared reads as
+	// exactly that. Reading as "up to date" was the one wrong answer the zero
+	// value used to give, and every reader carried a flag to avoid it.
+	Uncompared Standing = iota
+	// Current means the remote holds this branch exactly.
+	Current
 	// New means the remote has no such branch yet, so there is nothing to
 	// compare and nothing to overwrite.
-	New bool
+	New
 	// Landed means the branch has no work the base does not already have. A
 	// branch that merged and was deleted looks exactly like a new one from the
 	// remote's side, and offering to put it back is the wrong reading: it is
 	// gone because it is finished.
-	Landed bool
+	Landed
 	// Unknown means the remote is on a commit this repository does not have,
 	// so the two cannot be compared without fetching. It is treated exactly
 	// like being behind, because that is what it most likely is.
-	Unknown bool
+	Unknown
+	// Ahead means the branch has Ours commits on top of what the remote holds.
+	Ahead
+	// Behind means the remote has Theirs commits the branch does not.
+	Behind
+	// Diverged means both: Ours here, and Theirs a push would drop.
+	Diverged
 	// Rewritten means the published version is not an ancestor of the branch
 	// and yet holds nothing the branch lacks, by content: the branch was
 	// replayed since it was pushed. Publishing replaces the old version and
 	// loses nothing, which is the ordinary state after a restack.
-	Rewritten bool
-}
+	Rewritten
+)
 
 // NothingToPublish reports a plan where the remote already holds every selected
 // branch exactly. Pushing would be a no-op, and saying so beats reporting a
-// successful push that moved nothing.
+// successful push that moved nothing. A branch with no entry was never
+// compared, and reads as Uncompared rather than as up to date.
 func (p Plan) NothingToPublish() bool {
 	for _, branch := range p.Branches {
-		// A branch with no entry was never compared, and the zero Publication
-		// reads as "up to date" — the most reassuring thing it could possibly
-		// mean. Requiring the entry is what stops a plan that skipped the
-		// comparison from claiming the remote already has everything.
-		publication, compared := p.Publishing[branch]
-		if !compared || !publication.UpToDate() {
+		if !p.Publishing[branch].UpToDate() {
 			return false
 		}
 	}
@@ -109,15 +128,14 @@ func (p Plan) NothingToPublish() bool {
 
 // Rejected reports a branch the lease would refuse: the remote holds something
 // this push would overwrite.
-func (p Publication) Rejected() bool { return p.Theirs > 0 || p.Unknown }
+func (p Publication) Rejected() bool {
+	return p.Standing == Unknown || p.Standing == Behind || p.Standing == Diverged
+}
 
 // UpToDate reports a branch the remote needs nothing from: either it already
 // has it exactly, or the branch has nothing left to give.
 func (p Publication) UpToDate() bool {
-	if p.Landed {
-		return true
-	}
-	return !p.New && !p.Unknown && p.Ours == 0 && p.Theirs == 0
+	return p.Standing == Current || p.Standing == Landed
 }
 
 // pushArgs is the exact invocation Execute makes, so a diagnostic never
@@ -228,7 +246,10 @@ func Compare(ctx context.Context, git Comparer, branches []string, tips map[stri
 			if err != nil {
 				return nil, err
 			}
-			publishing[branch] = Publication{New: !upstream, Landed: upstream}
+			publishing[branch] = Publication{Standing: New}
+			if upstream {
+				publishing[branch] = Publication{Standing: Landed}
+			}
 			continue
 		}
 		local, err := git.Resolve(ctx, branch)
@@ -236,11 +257,11 @@ func Compare(ctx context.Context, git Comparer, branches []string, tips map[stri
 			return nil, err
 		}
 		if local == tip {
-			publishing[branch] = Publication{}
+			publishing[branch] = Publication{Standing: Current}
 			continue
 		}
 		if _, err := git.Resolve(ctx, tip); err != nil {
-			publishing[branch] = Publication{Unknown: true}
+			publishing[branch] = Publication{Standing: Unknown}
 			continue
 		}
 		behind, ours, err := git.Divergence(ctx, tip, branch)
@@ -248,7 +269,7 @@ func Compare(ctx context.Context, git Comparer, branches []string, tips map[stri
 			return nil, err
 		}
 		if behind == 0 {
-			publishing[branch] = Publication{Ours: ours}
+			publishing[branch] = Publication{Standing: Ahead, Ours: ours}
 			continue
 		}
 		// The remote tip is not an ancestor. Whether that loses anything is a
@@ -258,9 +279,22 @@ func Compare(ctx context.Context, git Comparer, branches []string, tips map[stri
 		if err != nil {
 			return nil, err
 		}
-		publishing[branch] = Publication{Ours: ours, Theirs: theirs, Rewritten: theirs == 0}
+		publishing[branch] = Publication{Standing: standingApart(ours, theirs), Ours: ours, Theirs: theirs}
 	}
 	return publishing, nil
+}
+
+// standingApart names a branch and a remote tip that are not in order, from
+// what each holds that the other does not.
+func standingApart(ours, theirs int) Standing {
+	switch {
+	case theirs == 0:
+		return Rewritten
+	case ours == 0:
+		return Behind
+	default:
+		return Diverged
+	}
 }
 
 // parentOf is the branch below this one on the path, which is what a squashed

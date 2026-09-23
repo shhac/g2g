@@ -64,8 +64,8 @@ func TestPushPlanSnapshotsRemainSpacedAndCopyable(t *testing.T) {
 		// The two states the ordinary preview shows: one branch the remote has
 		// never seen, and one with work to publish.
 		Publishing: map[string]push.Publication{
-			"synthetic-lower": {Ours: 2},
-			"synthetic-top":   {New: true},
+			"synthetic-lower": {Standing: push.Ahead, Ours: 2},
+			"synthetic-top":   {Standing: push.New},
 		},
 	}
 	for _, test := range []struct {

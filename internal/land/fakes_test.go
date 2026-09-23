@@ -209,9 +209,9 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	}
 	plan := push.Plan{Blocked: f.blocked}
 	plan.Snapshot = stack.Snapshot{Branches: branches, Base: selection.Trunk}
-	plan.Publishing = map[string]push.Publication{selection.Branch: {Ours: 1}}
+	plan.Publishing = map[string]push.Publication{selection.Branch: {Standing: push.Ahead, Ours: 1}}
 	if f.level {
-		plan.Publishing[selection.Branch] = push.Publication{}
+		plan.Publishing[selection.Branch] = push.Publication{Standing: push.Current}
 	}
 	return plan, nil
 }

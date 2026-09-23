@@ -53,24 +53,30 @@ func readPublished(ctx context.Context, published Published, remote string, name
 // A branch that landed and left the remote says nothing: its state already
 // says what happened to it.
 func publishedMark(remote string, publication push.Publication) stackMark {
-	switch {
-	case publication.Landed:
-		return stackMark{}
-	case publication.New:
+	switch publication.Standing {
+	case push.New:
 		return stackMark{Detail: "not on " + remote, Severity: severityNeutral}
-	case publication.Unknown:
+	case push.Unknown:
 		return stackMark{Subject: remote, Detail: "on a commit not here", Severity: severityWarn}
-	case publication.Theirs > 0 && publication.Ours > 0:
-		return stackMark{Subject: remote, Detail: fmt.Sprintf("diverged · %d here, %d there", publication.Ours, publication.Theirs), Severity: severityBad}
-	case publication.Theirs > 0:
+	case push.Diverged:
+		return stackMark{Subject: remote, Detail: "diverged · " + eachSide(publication), Severity: severityBad}
+	case push.Behind:
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d behind", publication.Theirs), Severity: severityWarn}
-	case publication.Rewritten:
+	case push.Rewritten:
 		return stackMark{Subject: remote, Detail: "replayed since pushed", Severity: severityWarn}
-	case publication.Ours > 0:
+	case push.Ahead:
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d ahead", publication.Ours), Severity: severityWarn}
-	default:
+	case push.Current:
 		return stackMark{Subject: remote, OK: true, Severity: severityOK}
+	default:
+		return stackMark{}
 	}
+}
+
+// eachSide is how many commits each side of a divergence has, which is what
+// deciding between them needs.
+func eachSide(publication push.Publication) string {
+	return fmt.Sprintf("%d here, %d there", publication.Ours, publication.Theirs)
 }
 
 // markPublished adds each compared branch's remote mark beside what the graph
@@ -81,8 +87,8 @@ func markPublished(view stackView, remote string, publishing map[string]push.Pub
 		return view
 	}
 	for index, node := range view.Nodes {
-		publication, compared := publishing[node.Branch]
-		if !compared {
+		publication := publishing[node.Branch]
+		if publication.Standing == push.Uncompared {
 			continue
 		}
 		// Being a trunk is said by the line itself, so a trunk's own mark is
@@ -101,19 +107,18 @@ func markPublished(view stackView, remote string, publishing map[string]push.Pub
 func publishedNotes(view stackView, remote string, publishing map[string]push.Publication) stackView {
 	var ahead, behind, diverged, unknown []string
 	for _, node := range view.Nodes {
-		publication, compared := publishing[node.Branch]
-		switch {
-		case !compared || publication.Landed:
-		case publication.Unknown:
+		switch publishing[node.Branch].Standing {
+		case push.Unknown:
 			unknown = append(unknown, node.Branch)
-		case publication.Theirs > 0 && publication.Ours > 0:
+		case push.Diverged:
 			diverged = append(diverged, node.Branch)
-		case publication.Theirs > 0:
+		case push.Behind:
 			behind = append(behind, node.Branch)
-		case node.Trunk:
+		case push.New, push.Rewritten, push.Ahead:
 			// A trunk is published by landing on it, never by pushing it.
-		case publication.New || publication.Rewritten || publication.Ours > 0:
-			ahead = append(ahead, node.Branch)
+			if !node.Trunk {
+				ahead = append(ahead, node.Branch)
+			}
 		}
 	}
 	if len(ahead) != 0 {

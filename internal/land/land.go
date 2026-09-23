@@ -223,6 +223,10 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 	if err != nil {
 		return Plan{}, err
 	}
+	trunks, err := s.trunksToAsk(ctx, discovery, plan.Trunk, options.Remote)
+	if err != nil {
+		return Plan{}, err
+	}
 	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
 		// Landing merges every branch into the trunk, in turn, so that is what
 		// each pull request's base has to be by the time its turn comes -- not
@@ -230,7 +234,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		// will not exist by then. Along answers the stacked question, which is
 		// the right one for status and the wrong one for this.
 		step.ExpectedBase = plan.Trunk
-		landed := s.landed(ctx, step.Branch, plan.Trunk)
+		landed := s.landedIn(ctx, step.Branch, trunks)
 		state := stateFor(mergeability, step)
 		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
@@ -419,6 +423,40 @@ func protectedAfterRestack(steps []Step, mergeability githubstack.Mergeability) 
 func (s Service) landed(ctx context.Context, branch, base string) bool {
 	upstream, err := landed.Into(ctx, s.Git, base, branch, "")
 	return err == nil && upstream
+}
+
+// landedIn is landed against any of the trunk's versions.
+func (s Service) landedIn(ctx context.Context, branch string, trunks []string) bool {
+	for _, trunk := range trunks {
+		if s.landed(ctx, branch, trunk) {
+			return true
+		}
+	}
+	return false
+}
+
+// trunksToAsk is where a branch's work may already be: the trunk here, and —
+// once any pull request in the stack has merged — the trunk as the remote has
+// it, fetched into g2g's own refs.
+//
+// A colleague merging the bottom pull request in the browser is the ordinary
+// way a descent starts with something already landed, and the trunk here does
+// not have that merge until somebody pulls. Asked only of it, the branch read
+// as merged on GitHub and not in the trunk, and land told the user to submit
+// work that was already there. With nothing merged there is nothing the
+// remote's trunk could add, so it is not fetched.
+func (s Service) trunksToAsk(ctx context.Context, discovery stack.Discovery, trunk, remote string) ([]string, error) {
+	merged := false
+	for _, pr := range discovery.PullRequests {
+		merged = merged || pr.State == "MERGED"
+	}
+	if !merged {
+		return []string{trunk}, nil
+	}
+	if err := s.Git.FetchIsolated(ctx, remote, []string{trunk}); err != nil {
+		return nil, err
+	}
+	return []string{trunk, localgit.IsolatedRef(remote, trunk)}, nil
 }
 
 func openNumbers(discovery stack.Discovery) []int {

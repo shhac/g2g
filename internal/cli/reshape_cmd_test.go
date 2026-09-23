@@ -169,7 +169,7 @@ func TestFoldFastForwardsTheParentAndTheCheckoutFollows(t *testing.T) {
 		t.Error("synthetic-b survived the fold")
 	}
 	w.assertStructure(map[string]string{"synthetic-c": "synthetic-a", "synthetic-side": "synthetic-a", "synthetic-a": "main"})
-	graph := mustRun(t, "graph", "--branch", "synthetic-side")
+	graph := mustRun(t, "status", "--branch", "synthetic-side")
 	if !strings.Contains(graph, "needs restack") {
 		t.Errorf("the sibling left behind does not read as needing a restack:\n%s", graph)
 	}
@@ -260,7 +260,7 @@ func TestRenameMovesTheBranchItsRecordsAndItsPin(t *testing.T) {
 	if !w.hasRef("refs/remotes/origin/synthetic-b") {
 		t.Error("the remote-tracking ref was touched")
 	}
-	graph := mustRun(t, "graph")
+	graph := mustRun(t, "status")
 	if !strings.Contains(graph, "synthetic-renamed") || strings.Contains(graph, "needs restack") {
 		t.Errorf("the renamed stack does not read as it did before:\n%s", graph)
 	}

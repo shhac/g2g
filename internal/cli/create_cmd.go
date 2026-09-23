@@ -18,7 +18,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "create <branch>",
-		GroupID: groupStructure,
+		GroupID: groupShape,
 		Short:   "Start a branch on top of this one and record it (preview by default)",
 		Long: "Creates a branch at the tip of its parent, switches to it, and records it under that parent, " +
 			"in one step. The parent is the branch you are on unless --parent names another; either way it is " +
@@ -58,8 +58,8 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 				preview:       "Rerun with --apply to create it.",
 				applied:       "Created.",
 				changed:       "The new branch is checked out and recorded in the g2g-owned graph.",
-				recovery:      "The branch may already exist and be checked out · run g2g graph to see whether it was recorded.",
-				suggestedNext: "g2g graph",
+				recovery:      "The branch may already exist and be checked out · run g2g status to see whether it was recorded.",
+				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

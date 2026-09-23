@@ -15,7 +15,7 @@ func linkView(plan link.Plan) stackView {
 	prs := githubstack.ByHead(plan.PullRequests)
 
 	view := stackView{
-		Operation:    "link",
+		Operation:    "github link",
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},

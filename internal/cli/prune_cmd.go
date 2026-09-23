@@ -16,7 +16,7 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "prune",
-		GroupID: groupMaintain,
+		GroupID: groupUpdate,
 		Short:   "Forget branches whose work has landed, in the g2g graph only (preview by default)",
 		Args:    cobra.NoArgs,
 	}
@@ -45,7 +45,7 @@ func newPrune(service prune.Service, guard func(context.Context) error, presenta
 				noOp:          "Nothing has landed.",
 				applied:       "Forgotten.",
 				changed:       "The graph no longer records them. No branch was deleted.",
-				suggestedNext: "g2g graph",
+				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

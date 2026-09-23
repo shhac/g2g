@@ -46,7 +46,7 @@ func TestCreateStartsARecordedBranchAndTheCheckoutFollows(t *testing.T) {
 		t.Error("synthetic-a moved: the commit landed on the parent")
 	}
 
-	graph := mustRun(t, "graph")
+	graph := mustRun(t, "status")
 	for _, branch := range []string{"main", "synthetic-a", "synthetic-b"} {
 		if !strings.Contains(graph, branch) {
 			t.Errorf("graph does not show %s:\n%s", branch, graph)
@@ -81,7 +81,7 @@ func TestCreateRefusesAParentTheGraphDoesNotKnow(t *testing.T) {
 	w.branchOff("main", "synthetic-stray", "stray.txt")
 
 	preview := mustRun(t, "create", "synthetic-a")
-	if !strings.Contains(preview, "would make synthetic-stray a trunk") || !strings.Contains(preview, "g2g track --stack --branch synthetic-stray") {
+	if !strings.Contains(preview, "would make synthetic-stray a trunk") || !strings.Contains(preview, "g2g adopt --branch synthetic-stray") {
 		t.Errorf("preview does not explain the refusal and its way out:\n%s", preview)
 	}
 

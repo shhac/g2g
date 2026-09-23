@@ -52,7 +52,7 @@ func TestTrackApplyWritesOnceAndRecordsTheNewRoot(t *testing.T) {
 	if !strings.Contains(out, "becomes a root") {
 		t.Errorf("output does not say a root was recorded:\n%s", out)
 	}
-	if !strings.Contains(out, "Suggested next step: g2g graph") {
+	if !strings.Contains(out, "Suggested next step: g2g status") {
 		t.Errorf("successful tracking does not suggest inspecting the graph:\n%s", out)
 	}
 }
@@ -140,7 +140,7 @@ func TestTrackConfirmsAnEdgeGitAlreadyAgreesWith(t *testing.T) {
 // names the command that can read it. track cannot: reading Git alone is what
 // lets it work with no Graphite, no GitHub, and no network. Saying so costs
 // nothing and is usually the shorter road.
-func TestTrackNamesImportWhenGraphiteDescribesTheRepository(t *testing.T) {
+func TestTrackNamesGraphiteAdoptWhenGraphiteDescribesTheRepository(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		uses    bool
@@ -160,7 +160,7 @@ func TestTrackNamesImportWhenGraphiteDescribesTheRepository(t *testing.T) {
 
 			var mentioned bool
 			for _, note := range view.Notes {
-				if strings.Contains(note.Text, "g2g import") {
+				if strings.Contains(note.Text, "g2g graphite adopt") {
 					mentioned = true
 				}
 			}
@@ -174,14 +174,14 @@ func TestTrackNamesImportWhenGraphiteDescribesTheRepository(t *testing.T) {
 // The suggestion belongs to a blocked adoption. Once a parent is chosen there
 // is nothing to defer to, and offering another command would read as doubt
 // about the one the user just gave.
-func TestTrackDoesNotSuggestImportOnceAParentIsChosen(t *testing.T) {
+func TestTrackDoesNotSuggestGraphiteAdoptOnceAParentIsChosen(t *testing.T) {
 	view := trackView(graph.TrackPlan{
 		Discovery: graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
 		Parent:    "synthetic-auth",
 	}, true)
 
 	for _, note := range view.Notes {
-		if strings.Contains(note.Text, "g2g import") {
+		if strings.Contains(note.Text, "g2g graphite adopt") {
 			t.Errorf("suggested import for an adoption that already has a parent: %q", note.Text)
 		}
 	}

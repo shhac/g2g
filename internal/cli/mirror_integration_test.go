@@ -74,7 +74,7 @@ var strangerGraphiteLog = []string{
 func TestMirrorPreviewWritesNothing(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, invertedGraphiteLog)
 
-	stdout, _, err := run(t, "mirror")
+	stdout, _, err := run(t, "graphite", "mirror")
 	if err != nil {
 		t.Fatalf("mirror: %v\n%s", err, stdout)
 	}
@@ -90,7 +90,7 @@ func TestMirrorPreviewWritesNothing(t *testing.T) {
 func TestMirrorApplyMovesTheDisagreeingBranch(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, invertedGraphiteLog)
 
-	stdout, stderr, err := run(t, "mirror", "--apply")
+	stdout, stderr, err := run(t, "graphite", "mirror", "--apply")
 	if err != nil {
 		t.Fatalf("mirror --apply: %v\n%s%s", err, stdout, stderr)
 	}
@@ -109,7 +109,7 @@ func TestMirrorApplyMovesTheDisagreeingBranch(t *testing.T) {
 func TestMirrorLeavesStrangersAloneWithoutPrune(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, strangerGraphiteLog)
 
-	stdout, _, err := run(t, "mirror")
+	stdout, _, err := run(t, "graphite", "mirror")
 	if err != nil {
 		t.Fatalf("mirror: %v\n%s", err, stdout)
 	}
@@ -125,7 +125,7 @@ func TestMirrorLeavesStrangersAloneWithoutPrune(t *testing.T) {
 func TestMirrorPruneUntracksOnlyInGraphite(t *testing.T) {
 	recorder := mirrorRepository(t, mirrorGraph, strangerGraphiteLog)
 
-	stdout, stderr, err := run(t, "mirror", "--prune", "--apply")
+	stdout, stderr, err := run(t, "graphite", "mirror", "--prune", "--apply")
 	if err != nil {
 		t.Fatalf("mirror --prune --apply: %v\n%s%s", err, stdout, stderr)
 	}
@@ -143,7 +143,7 @@ func TestMirrorPruneUntracksOnlyInGraphite(t *testing.T) {
 func TestMirrorRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	recorder, common := g2gOwnedRepository(t, ownedGraph)
 
-	_, _, err := run(t, "mirror")
+	_, _, err := run(t, "graphite", "mirror")
 	if err == nil {
 		t.Fatal("mirror: error = nil in a repository that does not use Graphite")
 	}
@@ -164,10 +164,10 @@ func TestMirrorRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 }
 
 // import is the other direction: it writes the g2g graph and never Graphite.
-func TestImportAdoptsIntoTheG2GGraphOnly(t *testing.T) {
+func TestAdoptAdoptsIntoTheG2GGraphOnly(t *testing.T) {
 	recorder := mirrorRepository(t, "", strangerGraphiteLog)
 
-	stdout, stderr, err := run(t, "import", "--apply")
+	stdout, stderr, err := run(t, "graphite", "adopt", "--apply")
 	if err != nil {
 		t.Fatalf("import --apply: %v\n%s%s", err, stdout, stderr)
 	}
@@ -183,10 +183,10 @@ func TestImportAdoptsIntoTheG2GGraphOnly(t *testing.T) {
 
 // Adoption is the authority claim, so the preview has to say so rather than
 // only listing branches.
-func TestImportPreviewNamesTheAuthorityShift(t *testing.T) {
+func TestAdoptPreviewNamesTheAuthorityShift(t *testing.T) {
 	mirrorRepository(t, "", strangerGraphiteLog)
 
-	stdout, _, err := run(t, "import")
+	stdout, _, err := run(t, "graphite", "adopt")
 	if err != nil {
 		t.Fatalf("import: %v\n%s", err, stdout)
 	}
@@ -199,10 +199,10 @@ func TestImportPreviewNamesTheAuthorityShift(t *testing.T) {
 }
 
 // A disagreement is refused rather than resolved, and both answers are named.
-func TestImportBlocksAndNamesBothRecords(t *testing.T) {
+func TestAdoptBlocksAndNamesBothRecords(t *testing.T) {
 	mirrorRepository(t, mirrorGraph, invertedGraphiteLog)
 
-	stdout, _, err := run(t, "import")
+	stdout, _, err := run(t, "graphite", "adopt")
 	if err != nil {
 		t.Fatalf("import: %v\n%s", err, stdout)
 	}
@@ -213,7 +213,7 @@ func TestImportBlocksAndNamesBothRecords(t *testing.T) {
 		t.Errorf("preview does not name both records:\n%s", stdout)
 	}
 
-	_, _, applyErr := run(t, "import", "--apply")
+	_, _, applyErr := run(t, "graphite", "adopt", "--apply")
 	if applyErr == nil {
 		t.Error("import --apply: error = nil for a blocked plan")
 	}
@@ -243,7 +243,7 @@ func TestMirrorReportsAFailedGraphiteWrite(t *testing.T) {
 		},
 	})
 
-	stdout, _, err := run(t, "mirror", "--apply")
+	stdout, _, err := run(t, "graphite", "mirror", "--apply")
 	if err == nil {
 		t.Fatalf("mirror --apply: error = nil when gt track failed\n%s", stdout)
 	}
@@ -254,10 +254,10 @@ func TestMirrorReportsAFailedGraphiteWrite(t *testing.T) {
 
 // import must refuse a Graphite-free repository for the same reason mirror
 // does: reading the forest is what enrols it.
-func TestImportRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
+func TestAdoptRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	recorder, common := g2gOwnedRepository(t, ownedGraph)
 
-	_, _, err := run(t, "import")
+	_, _, err := run(t, "graphite", "adopt")
 	if err == nil {
 		t.Fatal("import: error = nil in a repository that does not use Graphite")
 	}
@@ -283,7 +283,7 @@ func TestImportRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 func TestAlignedMirrorReportsNothingToDo(t *testing.T) {
 	mirrorRepository(t, mirrorGraph, []string{"◯  synthetic-trunk", "◯  synthetic-lower", "◉  synthetic-top"})
 
-	for _, arguments := range [][]string{{"mirror"}, {"mirror", "--apply"}} {
+	for _, arguments := range [][]string{{"graphite", "mirror"}, {"graphite", "mirror", "--apply"}} {
 		stdout, _, err := run(t, arguments...)
 		if err != nil {
 			t.Fatalf("%v: %v\n%s", arguments, err, stdout)
@@ -308,7 +308,7 @@ func TestBlockedMirrorIsNotReportedAsNothingToDo(t *testing.T) {
 	// about it without being given a parent.
 	mirrorRepository(t, mirrorGraph, []string{"◯  synthetic-other", "◉  synthetic-elsewhere"})
 
-	stdout, _, err := run(t, "mirror")
+	stdout, _, err := run(t, "graphite", "mirror")
 	if err != nil {
 		t.Fatalf("mirror: %v\n%s", err, stdout)
 	}
@@ -322,7 +322,7 @@ func TestBlockedMirrorIsNotReportedAsNothingToDo(t *testing.T) {
 		t.Errorf("the refusal does not name the root Graphite lacks:\n%s", stdout)
 	}
 
-	if _, _, applyErr := run(t, "mirror", "--apply"); applyErr == nil {
+	if _, _, applyErr := run(t, "graphite", "mirror", "--apply"); applyErr == nil {
 		t.Error("mirror --apply: error = nil for a blocked plan")
 	}
 }
@@ -337,7 +337,7 @@ func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
 		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, stale)
 
-	stdout, _, err := run(t, "retarget")
+	stdout, _, err := run(t, "github", "retarget")
 	if err != nil {
 		t.Fatalf("retarget: %v\n%s", err, stdout)
 	}
@@ -346,7 +346,7 @@ func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
 	}
 	recorder.AssertNone("gh pr edit")
 
-	if _, _, err := run(t, "retarget", "--apply"); err != nil {
+	if _, _, err := run(t, "github", "retarget", "--apply"); err != nil {
 		t.Fatalf("retarget --apply: %v", err)
 	}
 	edited := recorder.Find("gh pr edit")
@@ -367,7 +367,7 @@ func TestRetargetIsANoOpWhenBasesAlreadyMatch(t *testing.T) {
 		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]}}}}`
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, aligned)
 
-	stdout, _, err := run(t, "retarget", "--apply")
+	stdout, _, err := run(t, "github", "retarget", "--apply")
 	if err != nil {
 		t.Fatalf("retarget --apply: %v\n%s", err, stdout)
 	}

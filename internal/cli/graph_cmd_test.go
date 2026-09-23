@@ -132,7 +132,7 @@ func TestGraphRendersAForkedTreeWithConnectors(t *testing.T) {
 		color bool
 	}{{name: "graph-tree-plain"}, {name: "graph-tree-color", color: true}} {
 		t.Run(test.name, func(t *testing.T) {
-			out, _, err := runGraph(t, graphFixture(), test.color, "graph", "--branch", "synthetic-login", "--scope", "trunk")
+			out, _, err := runGraph(t, graphFixture(), test.color, "status", "--branch", "synthetic-login", "--scope", "trunk")
 			if err != nil {
 				t.Fatalf("graph: %v\n%s", err, out)
 			}
@@ -144,7 +144,7 @@ func TestGraphRendersAForkedTreeWithConnectors(t *testing.T) {
 // A chain has no fork to draw, so it keeps the flat list every other command
 // renders rather than becoming a staircase that says nothing extra.
 func TestGraphRendersAChainFlat(t *testing.T) {
-	out, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login")
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login")
 	if err != nil {
 		t.Fatalf("graph: %v\n%s", err, out)
 	}
@@ -155,7 +155,7 @@ func TestGraphRendersAChainFlat(t *testing.T) {
 }
 
 func TestGraphSubtreeStartsFromTheSelection(t *testing.T) {
-	out, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-auth", "--scope", "subtree")
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-auth", "--scope", "subtree")
 	if err != nil {
 		t.Fatalf("graph: %v\n%s", err, out)
 	}
@@ -170,7 +170,7 @@ func TestGraphSubtreeStartsFromTheSelection(t *testing.T) {
 }
 
 func TestGraphRejectsAnUnknownScope(t *testing.T) {
-	out, _, err := runGraph(t, graphFixture(), false, "graph", "--scope", "everything")
+	out, _, err := runGraph(t, graphFixture(), false, "status", "--scope", "everything")
 	if err == nil {
 		t.Fatalf("graph --scope everything: error = nil\n%s", out)
 	}
@@ -180,7 +180,7 @@ func TestGraphRejectsAnUnknownScope(t *testing.T) {
 }
 
 func TestGraphIsReadOnly(t *testing.T) {
-	_, store, err := runGraph(t, graphFixture(), false, "graph", "--scope", "trunk")
+	_, store, err := runGraph(t, graphFixture(), false, "status", "--scope", "trunk")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestGraphIsReadOnly(t *testing.T) {
 }
 
 func TestGraphNamesTheStoreItReadsFrom(t *testing.T) {
-	out, _, err := runGraph(t, graphFixture(), false, "graph")
+	out, _, err := runGraph(t, graphFixture(), false, "status")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestGraphNamesTheStoreItReadsFrom(t *testing.T) {
 func TestGraphCommandsAreAbsentWithoutAConfiguredService(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	command := NewWithOptions(Options{Version: "v0.1.0", Stdout: &stdout, Stderr: &stderr})
-	for _, name := range []string{"graph", "track", "untrack"} {
+	for _, name := range []string{"status", "track", "untrack"} {
 		found := false
 		for _, sub := range command.Commands() {
 			if sub.Name() == name {
@@ -216,7 +216,7 @@ func TestGraphCommandsAreAbsentWithoutAConfiguredService(t *testing.T) {
 }
 
 func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
-	jsonOut, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "trunk", "--json")
+	jsonOut, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login", "--scope", "trunk", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestGraphMachineFormatsCarryTheParentEdge(t *testing.T) {
 		t.Errorf("JSON does not carry the parent edge:\n%s", jsonOut)
 	}
 
-	porcelain, _, err := runGraph(t, graphFixture(), false, "graph", "--branch", "synthetic-login", "--scope", "trunk", "--porcelain")
+	porcelain, _, err := runGraph(t, graphFixture(), false, "status", "--branch", "synthetic-login", "--scope", "trunk", "--porcelain")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestGraphReportsEveryKindOfStalenessItRefusesToRepair(t *testing.T) {
 		Graph:        graph.Service{Git: git, Store: store},
 		Presentation: &Presentation{},
 	})
-	command.SetArgs([]string{"graph", "--branch", "synthetic-auth", "--scope", "subtree"})
+	command.SetArgs([]string{"status", "--branch", "synthetic-auth", "--scope", "subtree"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout.String())
 	}
@@ -321,7 +321,7 @@ func TestGraphReportsBranchesWithNoTrackedParent(t *testing.T) {
 		Graph:        graph.Service{Git: graphGitFixture(), Store: store},
 		Presentation: &Presentation{},
 	})
-	command.SetArgs([]string{"graph", "--branch", "synthetic-login", "--scope", "trunk"})
+	command.SetArgs([]string{"status", "--branch", "synthetic-login", "--scope", "trunk"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout.String())
 	}
@@ -471,10 +471,10 @@ func TestGraphReadsAnotherRecordInItsOwnFormat(t *testing.T) {
 	}
 }
 
-// graph answers without a network, which is the whole reason it exists apart
-// from status. A pull request base is read by invoking gh, so it is refused
+// status answers without a network, which is the whole reason it exists apart
+// from github status. A pull request base is read by invoking gh, so it is refused
 // before any discovery runs and the refusal names the command that does read it.
-func TestGraphRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
+func TestStatusRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
 	for _, test := range []struct {
 		from string
 		want string
@@ -482,7 +482,7 @@ func TestGraphRefusesASourceItWouldNeedTheNetworkFor(t *testing.T) {
 		{from: "", want: ""},
 		{from: "g2g", want: ""},
 		{from: "graphite", want: ""},
-		{from: "pull-request", want: "g2g status --from pull-request does read it"},
+		{from: "github", want: "g2g github status --from github does read it"},
 		{from: "synthetic-nonsense", want: "unknown source"},
 	} {
 		t.Run(test.from, func(t *testing.T) {

@@ -59,7 +59,7 @@ const adoptedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-main"],"branc
 func TestGraphReadsTheStoreThroughRealAdapters(t *testing.T) {
 	recorder, _ := graphRepository(t, adoptedGraph)
 
-	stdout, _, err := run(t, "graph", "--scope", "trunk")
+	stdout, _, err := run(t, "status", "--scope", "trunk")
 	if err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout)
 	}
@@ -79,7 +79,7 @@ func TestGraphReadsTheStoreThroughRealAdapters(t *testing.T) {
 func TestGraphTargetsTheCurrentBranchWithoutCheckingItOut(t *testing.T) {
 	recorder, _ := graphRepository(t, adoptedGraph)
 
-	stdout, _, err := run(t, "graph")
+	stdout, _, err := run(t, "status")
 	if err != nil {
 		t.Fatalf("graph: %v\n%s", err, stdout)
 	}
@@ -207,7 +207,7 @@ func TestUntrackApplyRewritesTheStore(t *testing.T) {
 func TestGraphFailsClosedOnAnUnsupportedStoreVersion(t *testing.T) {
 	graphRepository(t, `{"storeSchemaVersion":99,"branches":{}}`)
 
-	_, _, err := run(t, "graph")
+	_, _, err := run(t, "status")
 	if err == nil {
 		t.Fatal("graph: error = nil for a future store schema")
 	}

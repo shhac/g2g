@@ -20,22 +20,19 @@ import (
 func newTrack(service graph.Service, guard func(context.Context) error, describesElsewhere func(context.Context) (bool, error), presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var parent string
-	var trunk string
-	var wholeStack bool
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "track",
-		GroupID: groupStructure,
-		Short:   "Record a branch's parent in the g2g-owned graph (preview by default)",
-		Long: "Records where a branch sits, so every other command knows the structure.\n\n" +
-			"--parent records one branch. --stack records the whole ancestry between a trunk and the " +
-			"selected branch in one go, which is usually what a stack that already exists needs: " +
-			"the order comes from commit ancestry, and it refuses rather than guessing where that is ambiguous.",
+		GroupID: groupShape,
+		Short:   "Record which branch this one is stacked on (preview by default)",
+		Long: "Records which branch a branch is stacked on — its parent — so every other command knows the " +
+			"structure. It never chooses: without --parent it previews the candidates, nearest first, and stops.\n\n" +
+			"This is not git's upstream tracking. To record a whole stack that already exists, use g2g adopt.",
 		Args: cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, trunk)
+		ctx := commandContext(cmd.Context(), cmd, "track", applyMode(apply), selection.branch, "")
 		// Whether another record already describes this repository. A failure to
 		// answer is not worth reporting: the consequence is one missing
 		// suggestion on a preview that already says what to do.
@@ -44,9 +41,6 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			if described, err := describesElsewhere(ctx); err == nil {
 				elsewhere = described
 			}
-		}
-		if wholeStack {
-			return trackStackFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 		}
 		flow := applyFlow[graph.TrackPlan]{
 			plan: func(ctx context.Context) (graph.TrackPlan, error) {
@@ -69,25 +63,54 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 				applied:       "Recorded.",
 				changed:       "The g2g-owned graph now records this parent.",
 				recovery:      "The graph store may or may not have been written.",
-				suggestedNext: "g2g graph",
+				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().StringVar(&parent, "parent", "", "branch to record as the parent (previewing the candidates when absent)")
 	_ = cmd.RegisterFlagCompletionFunc("parent", completionCallback(parentCompletions(service, &selection)))
-	cmd.Flags().BoolVar(&wholeStack, "stack", false, "record the whole ancestry between the trunk and the selected branch, not just one edge")
-	cmd.Flags().StringVar(&trunk, "trunk", "", "where --stack stops (defaults to the only recorded root on the ancestry)")
-	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(localBranchCompletions(service)))
-	cmd.MarkFlagsMutuallyExclusive("parent", "stack")
 	cmd.Flags().BoolVar(&apply, "apply", false, "write the recorded parent instead of previewing it")
 	selection.registerBranch(cmd, service)
 	return cmd
 }
 
-// trackStackFlow is the same safety sequence as every other mutating command,
+// newAdopt records a stack that already exists, from git alone: the user names
+// the trunk, or it is the one recorded root on the ancestry, and commit
+// ancestry supplies the rest. It refuses rather than guessing wherever
+// ancestry cannot order two branches. Graphite's and GitHub's records have
+// their own adopt, under their own names.
+func newAdopt(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+	var selection graphOptions
+	var trunk string
+	var apply bool
+	cmd := &cobra.Command{
+		Use:     "adopt",
+		GroupID: groupShape,
+		Short:   "Record the stack you are on, from git's own history (preview by default)",
+		Long: "Records a stack that already exists in one step: the order comes from commit ancestry, from the " +
+			"trunk up to the selected branch and everything built on it. It records a forest, not a chain — a " +
+			"branch that merely shares the trunk is a separate stack and is left alone — and it refuses rather " +
+			"than guessing wherever ancestry cannot order two branches.\n\n" +
+			"The first time, name the trunk with --trunk; after that the recorded root is used. To adopt what " +
+			"another tool declares instead, see g2g graphite adopt and g2g github adopt.",
+		Args: cobra.NoArgs,
+	}
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		presentation := presentation.resolve(cmd)
+		ctx := commandContext(cmd.Context(), cmd, "adopt", applyMode(apply), selection.branch, trunk)
+		return adoptFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
+	}
+	cmd.Flags().StringVar(&trunk, "trunk", "", "where the stack starts (defaults to the only recorded root on the ancestry)")
+	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(localBranchCompletions(service)))
+	cmd.Flags().BoolVar(&apply, "apply", false, "record the stack instead of previewing it")
+	selection.registerBranch(cmd, service)
+	return cmd
+}
+
+// adoptFlow is the same safety sequence as every other mutating command,
 // over the whole-ancestry plan rather than a single edge.
-func trackStackFlow(service graph.Service, selection graphOptions, trunk string, guard func(context.Context) error) applyFlow[graph.StackPlan] {
+func adoptFlow(service graph.Service, selection graphOptions, trunk string, guard func(context.Context) error) applyFlow[graph.StackPlan] {
 	return applyFlow[graph.StackPlan]{
 		plan: func(ctx context.Context) (graph.StackPlan, error) {
 			return service.PlanStack(ctx, selection.Selection(), trunk)
@@ -96,7 +119,7 @@ func trackStackFlow(service graph.Service, selection graphOptions, trunk string,
 			return service.RevalidateStack(ctx, selection.Selection(), trunk, preview)
 		},
 		render: func(writer io.Writer, plan graph.StackPlan, p Presentation) error {
-			return writeGraphView(writer, trackStackView(plan), plan.Discovery, p)
+			return writeGraphView(writer, gitAdoptView(plan), plan.Discovery, p)
 		},
 		guard:    guard,
 		execute:  service.ApplyStack,
@@ -109,7 +132,7 @@ func trackStackFlow(service graph.Service, selection graphOptions, trunk string,
 			applied:       "Recorded.",
 			changed:       "The g2g-owned graph now records this stack.",
 			recovery:      "The graph store may or may not have been written.",
-			suggestedNext: "g2g graph",
+			suggestedNext: "g2g status",
 		},
 	}
 }

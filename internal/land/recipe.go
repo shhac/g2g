@@ -61,7 +61,7 @@ func (p Plan) commentCommands() []Command {
 	commands := make([]Command, 0, len(p.Above))
 	for _, above := range p.Above {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g comment --branch %s --apply", above),
+			Command: fmt.Sprintf("g2g github comment --branch %s --apply", above),
 			Effect:  "keep the stack comments, with what landed listed as merged",
 		})
 	}
@@ -75,7 +75,7 @@ func (p Plan) commentCommands() []Command {
 func (p Plan) cleanupCommands(step Step) []Command {
 	commands := make([]Command, 0, 4)
 	commands = append(commands, Command{
-		Command: "g2g sync --apply",
+		Command: "g2g pull --apply",
 		Effect:  "advance the trunk and replay what is left onto it",
 	})
 	if p.Options.Forget {

@@ -20,7 +20,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "link",
-		GroupID: groupPublish,
+		GroupID: groupTools,
 		Short:   "Link a stack to GitHub's native stacks (preview by default)",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -28,7 +28,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 			if err := selection.validate(); err != nil {
 				return err
 			}
-			root := commandContext(cmd.Context(), cmd, "link", applyMode(apply), selection.branch, selection.trunk)
+			root := commandContext(cmd.Context(), cmd, "github link", applyMode(apply), selection.branch, selection.trunk)
 			flow := applyFlow[link.Plan]{
 				plan: func(ctx context.Context) (link.Plan, error) {
 					return linkable(service.Plan(ctx, selection.Selection()))
@@ -52,8 +52,8 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 					noOp:          "No changes were needed or made.",
 					applied:       "Applied — GitHub stack updated",
 					changed:       "Changes were made.",
-					recovery:      "Run g2g status to see whether GitHub recorded the link.",
-					suggestedNext: "g2g status",
+					recovery:      "Run g2g github status to see whether GitHub recorded the link.",
+					suggestedNext: "g2g github status",
 				},
 			}
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

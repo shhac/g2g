@@ -15,7 +15,7 @@ import (
 
 func TestLinkPreviewPrintsResolvedTargetWithoutMutation(t *testing.T) {
 	github := &cliGitHub{}
-	output, err := executeWithService(t, cliService(github), "link", "--branch", "beta")
+	output, err := executeWithService(t, cliService(github), "github", "link", "--branch", "beta")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -121,8 +121,8 @@ func TestLinkPreviewReportsNothingToLinkForOnePullRequest(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "current branch", args: []string{"link"}, want: "Target  alpha"},
-		{name: "explicit branch", args: []string{"link", "--branch", "alpha"}, want: "Target  alpha"},
+		{name: "current branch", args: []string{"github", "link"}, want: "Target  alpha"},
+		{name: "explicit branch", args: []string{"github", "link", "--branch", "alpha"}, want: "Target  alpha"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHub{}
@@ -144,7 +144,7 @@ func TestLinkPreviewReportsNothingToLinkForOnePullRequest(t *testing.T) {
 
 func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 	github := &cliGitHub{}
-	output, err := executeWithService(t, cliService(github), "link")
+	output, err := executeWithService(t, cliService(github), "github", "link")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -158,14 +158,14 @@ func TestBareLinkPreviewPrintsCurrentTargetWithoutMutation(t *testing.T) {
 
 func TestLinkPreviewShowsUnresolvedNodeAndBlocksApply(t *testing.T) {
 	github := &cliGitHubMissing{}
-	output, err := executeWithService(t, cliServiceWithGitHub(github), "link")
+	output, err := executeWithService(t, cliServiceWithGitHub(github), "github", "link")
 	if err != nil {
 		t.Fatalf("preview error = %v", err)
 	}
 	if !strings.Contains(output, "unresolved: no open PR") || !strings.Contains(output, "Apply blocked") || github.links != 0 {
 		t.Errorf("preview = %q links=%d", output, github.links)
 	}
-	_, err = executeWithService(t, cliServiceWithGitHub(github), "link", "--apply")
+	_, err = executeWithService(t, cliServiceWithGitHub(github), "github", "link", "--apply")
 	if err == nil || github.links != 0 {
 		t.Errorf("apply error=%v links=%d", err, github.links)
 	}
@@ -183,14 +183,14 @@ func TestLinkOneBranchUnresolvedStateIsNotNothingToLink(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHubPRs{prs: test.prs}
 			service := cliSingleBranchService(github)
-			output, err := executeWithService(t, service, "link")
+			output, err := executeWithService(t, service, "github", "link")
 			if err != nil {
 				t.Fatalf("preview error = %v", err)
 			}
 			if !strings.Contains(output, test.want) || !strings.Contains(output, "Apply blocked") || strings.Contains(output, "Nothing to link") {
 				t.Errorf("preview = %q", output)
 			}
-			if _, err := executeWithService(t, service, "link", "--apply"); err == nil || github.links != 0 {
+			if _, err := executeWithService(t, service, "github", "link", "--apply"); err == nil || github.links != 0 {
 				t.Errorf("apply error=%v links=%d", err, github.links)
 			}
 		})
@@ -213,7 +213,7 @@ func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
 
 func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 	github := &cliGitHub{}
-	output, err := executeWithService(t, cliService(github), "link", "--apply")
+	output, err := executeWithService(t, cliService(github), "github", "link", "--apply")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -230,7 +230,7 @@ func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 
 func TestLinkApplyRevalidatesOnePullRequestWithoutGitHubMutation(t *testing.T) {
 	github := &cliGitHub{}
-	output, err := executeWithService(t, cliSingleBranchService(github), "link", "--apply")
+	output, err := executeWithService(t, cliSingleBranchService(github), "github", "link", "--apply")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -247,7 +247,7 @@ func TestLinkApplyRendersAndFlushesValidatedPlanBeforeMutation(t *testing.T) {
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events}
 	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
-	command.SetArgs([]string{"link", "--apply"})
+	command.SetArgs([]string{"github", "link", "--apply"})
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -268,7 +268,7 @@ func TestLinkApplyDoesNotRenderReadyPlanWhenRevalidationIsCanceled(t *testing.T)
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, inspectErrAt: 2, inspectErr: context.Canceled}
 	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
-	command.SetArgs([]string{"link", "--apply"})
+	command.SetArgs([]string{"github", "link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
 	}
@@ -283,7 +283,7 @@ func TestLinkApplyReportsCancellationWithoutSuccess(t *testing.T) {
 	writer := &recordingWriter{events: &events}
 	github := &cliGitHub{events: &events, linkErr: context.Canceled}
 	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
-	command.SetArgs([]string{"link", "--apply"})
+	command.SetArgs([]string{"github", "link", "--apply"})
 	err := command.Execute()
 	if err == nil {
 		t.Fatal("Execute() error = nil")
@@ -307,7 +307,7 @@ func TestLinkApplyFailureOutputUsesOneBoundedDiagnosticBlock(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			github := &cliGitHub{linkErr: &githubstack.CommandError{Command: "gh stack link --base main alpha beta", Cause: errors.New("exit status 1"), Output: test.diagnostic}}
-			output, err := executeWithService(t, cliService(github), "link", "--apply")
+			output, err := executeWithService(t, cliService(github), "github", "link", "--apply")
 			if err == nil {
 				t.Fatal("Execute() error = nil")
 			}
@@ -328,7 +328,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotFlush(t *testing.T) {
 	writer := &recordingWriter{events: &events, flushErr: context.Canceled}
 	github := &cliGitHub{events: &events}
 	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
-	command.SetArgs([]string{"link", "--apply"})
+	command.SetArgs([]string{"github", "link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
 	}
@@ -342,7 +342,7 @@ func TestLinkApplyDoesNotMutateWhenReadyOutputCannotWrite(t *testing.T) {
 	writer := &recordingWriter{events: &events, writeErr: context.Canceled}
 	github := &cliGitHub{events: &events}
 	command := newWithPresentation("v0.2.4", "g2g", writer, writer, cliService(github), push.Service{}, Presentation{})
-	command.SetArgs([]string{"link", "--apply"})
+	command.SetArgs([]string{"github", "link", "--apply"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
 	}

@@ -7,15 +7,15 @@ import (
 	"github.com/shhac/g2g/internal/align"
 )
 
-// importView leads with the authority claim rather than the branch count.
+// adoptView leads with the authority claim rather than the branch count.
 //
 // Listing what would be adopted understates what happens: afterwards g2g
 // decides for every one of those branches, and --from on a read is the only
 // way to see the other record's answer again. That is the part worth reading
 // before typing --apply.
-func importView(plan align.ImportPlan) stackView {
+func adoptView(plan align.AdoptPlan) stackView {
 	source := importedFrom(plan.From)
-	view := stackView{Operation: "import", Target: source.name, TargetSource: "source"}
+	view := stackView{Operation: plan.From + " adopt", Target: source.name, TargetSource: "source"}
 	if plan.Blocked != "" {
 		if len(plan.Conflicts) != 0 {
 			view = view.note(conflictNote(plan, source), severityBad)
@@ -37,8 +37,8 @@ func importView(plan align.ImportPlan) stackView {
 	return agreementNote(view, plan)
 }
 
-// importSource is how a preview speaks about the record an import read.
-type importSource struct {
+// adoptSource is how a preview speaks about the record an import read.
+type adoptSource struct {
 	name string
 	// says is how a conflict names this record's side of it.
 	says string
@@ -46,19 +46,19 @@ type importSource struct {
 	authority func(count int) string
 }
 
-func importedFrom(from string) importSource {
-	if from == align.FromPullRequests {
-		return importSource{
-			name: align.FromPullRequests,
+func importedFrom(from string) adoptSource {
+	if from == align.FromGitHub {
+		return adoptSource{
+			name: align.FromGitHub,
 			says: "the pull request says",
 			authority: func(count int) string {
 				them := pick(count, "it", "them")
 				return fmt.Sprintf("g2g answers for %s from now on · the pull requests are unchanged, and %s still shows what GitHub will merge.",
-					them, runnable("g2g status --from pull-request"))
+					them, runnable("g2g github status --from github"))
 			},
 		}
 	}
-	return importSource{
+	return adoptSource{
 		name: align.FromGraphite,
 		says: "Graphite says",
 		authority: func(count int) string {
@@ -69,7 +69,7 @@ func importedFrom(from string) importSource {
 	}
 }
 
-func agreementNote(view stackView, plan align.ImportPlan) stackView {
+func agreementNote(view stackView, plan align.AdoptPlan) stackView {
 	if len(plan.Agreed) == 0 {
 		return view
 	}
@@ -79,7 +79,7 @@ func agreementNote(view stackView, plan align.ImportPlan) stackView {
 // unconfirmedNotes says which adopted edges Git does not yet show, in track's
 // words: it is the same state, reached the same way, and a stack that reads as
 // needing a restack straight after an import should not be a surprise.
-func unconfirmedNotes(plan align.ImportPlan) []string {
+func unconfirmedNotes(plan align.AdoptPlan) []string {
 	notes := make([]string, 0, len(plan.Unconfirmed))
 	for _, adoption := range plan.Adopt {
 		if !slices.Contains(plan.Unconfirmed, adoption.Branch) {
@@ -92,7 +92,7 @@ func unconfirmedNotes(plan align.ImportPlan) []string {
 
 // conflictNote names each disagreement in full. "Blocked on a conflict" is not
 // actionable; which parent each record holds is.
-func conflictNote(plan align.ImportPlan, source importSource) string {
+func conflictNote(plan align.AdoptPlan, source adoptSource) string {
 	note := "The two records disagree about " + branchList(conflictedBranches(plan)) + ":"
 	for _, conflict := range plan.Conflicts {
 		note += fmt.Sprintf("\n  %s · g2g says %s, %s %s", conflict.Branch, conflict.Ours, source.says, conflict.Theirs)
@@ -100,7 +100,7 @@ func conflictNote(plan align.ImportPlan, source importSource) string {
 	return note
 }
 
-func conflictedBranches(plan align.ImportPlan) []string {
+func conflictedBranches(plan align.AdoptPlan) []string {
 	names := make([]string, 0, len(plan.Conflicts))
 	for _, conflict := range plan.Conflicts {
 		names = append(names, conflict.Branch)

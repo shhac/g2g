@@ -68,7 +68,7 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 	var dryRun bool
 	cmd := &cobra.Command{
 		Use:     each.use,
-		GroupID: groupStructure,
+		GroupID: groupMove,
 		Short:   each.short,
 		Long:    each.long + "\n\nThis moves the checkout directly, with no --apply: it changes no ref, no record and no remote, and git switch refuses to overwrite a local change. --dry-run prints the destination instead.",
 		Args:    cobra.NoArgs,

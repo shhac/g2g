@@ -50,9 +50,9 @@ func TestEveryApplyRediscoversBeforeMutating(t *testing.T) {
 		mutation string
 		spec     bool
 	}{
-		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
+		{name: "github link", args: []string{"github", "link", "--apply"}, mutation: "gh stack link"},
 		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic"},
-		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
+		{name: "github unlink", args: []string{"github", "unlink", "--apply"}, mutation: "gh stack unstack"},
 		{name: "submit", args: []string{"submit", "--apply"}, mutation: "git push --atomic", spec: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -100,9 +100,9 @@ func TestEveryApplyMutatesExactlyOnce(t *testing.T) {
 		args     []string
 		mutation string
 	}{
-		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
+		{name: "github link", args: []string{"github", "link", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
 		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --force-with-lease="},
-		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack 42"},
+		{name: "github unlink", args: []string{"github", "unlink", "--apply"}, mutation: "gh stack unstack 42"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := lifecycleRepository(t, stackedPullRequests)
@@ -125,8 +125,8 @@ func TestWorktreeIsCheckedBeforeCommittedStateChanges(t *testing.T) {
 		args     []string
 		mutation string
 	}{
-		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
-		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
+		{name: "github link", args: []string{"github", "link", "--apply"}, mutation: "gh stack link"},
+		{name: "github unlink", args: []string{"github", "unlink", "--apply"}, mutation: "gh stack unstack"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := lifecycleRepository(t, stackedPullRequests)
@@ -142,7 +142,7 @@ func TestWorktreeIsCheckedBeforeCommittedStateChanges(t *testing.T) {
 func TestBlockedApplyNeverMutates(t *testing.T) {
 	recorder := lifecycleRepository(t, "")
 
-	if _, _, err := run(t, "link", "--apply"); err == nil {
+	if _, _, err := run(t, "github", "link", "--apply"); err == nil {
 		t.Fatal("link --apply on an unmapped path = nil, want a refusal")
 	}
 	recorder.AssertNone("gh stack link", "gh pr create", "git push")
@@ -184,22 +184,23 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		// it would assert nothing.
 		spec bool
 	}{
-		{name: "link", args: []string{"link", "--apply"}, mutation: "gh stack link"},
-		{name: "unlink", args: []string{"unlink", "--apply"}, mutation: "gh stack unstack"},
+		{name: "github link", args: []string{"github", "link", "--apply"}, mutation: "gh stack link"},
+		{name: "github unlink", args: []string{"github", "unlink", "--apply"}, mutation: "gh stack unstack"},
 		{name: "push", args: []string{"push", "--apply"}, mutation: "git push"},
 		{name: "track", args: []string{"track", "--branch", "synthetic-top", "--parent", "synthetic-lower", "--apply"}, store: true},
 		{name: "untrack", args: []string{"untrack", "--branch", "synthetic-top", "--apply"}, store: true},
-		{name: "retarget", args: []string{"retarget", "--apply"}, mutation: "gh pr edit"},
-		{name: "mirror", args: []string{"mirror", "--apply"}, mutation: "gt track"},
-		{name: "import", args: []string{"import", "--apply"}, store: true},
+		{name: "adopt", args: []string{"adopt", "--trunk", "synthetic-main", "--apply"}, store: true},
+		{name: "github retarget", args: []string{"github", "retarget", "--apply"}, mutation: "gh pr edit"},
+		{name: "graphite mirror", args: []string{"graphite", "mirror", "--apply"}, mutation: "gt track"},
+		{name: "graphite adopt", args: []string{"graphite", "adopt", "--apply"}, store: true},
 		// A second read path through the same command: a guard wired to one
 		// branch of the flow and not the other would pass the row above.
-		{name: "import from pull requests", args: []string{"import", "--from", "pull-request", "--apply"}, store: true},
-		{name: "sync", args: []string{"sync", "--apply"}, mutation: "git fetch"},
+		{name: "github adopt", args: []string{"github", "adopt", "--apply"}, store: true},
+		{name: "pull", args: []string{"pull", "--apply"}, mutation: "git fetch"},
 		{name: "submit", args: []string{"submit", "--apply"}, mutation: "git push", spec: true},
 		{name: "prune", args: []string{"prune", "--apply"}, store: true},
 		{name: "land", args: []string{"land", "--apply"}, mutation: "gh pr merge"},
-		{name: "comment", args: []string{"comment", "--apply"}, mutation: "gh " + commentMutationPrefix},
+		{name: "github comment", args: []string{"github", "comment", "--apply"}, mutation: "gh " + commentMutationPrefix},
 		{name: "create", args: []string{"create", "synthetic-new", "--apply"}, mutation: "git switch"},
 		{name: "delete", args: []string{"delete", "--branch", "synthetic-top", "--apply"}, mutation: "git branch -D"},
 		{name: "fold", args: []string{"fold", "--branch", "synthetic-top", "--apply"}, mutation: "git update-ref"},

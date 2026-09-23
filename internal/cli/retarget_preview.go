@@ -11,7 +11,7 @@ import (
 // A base is what a merge follows, so "3 pull requests updated" is not enough
 // for a reader to agree to: they need to see which merge target changes.
 func retargetView(plan retarget.Plan) stackView {
-	view := stackView{Operation: "retarget", Target: plan.Target, TargetSource: plan.TargetSource}
+	view := stackView{Operation: "github retarget", Target: plan.Target, TargetSource: plan.TargetSource}
 	view.Nodes = append(view.Nodes, stackNode{Branch: plan.Base, Trunk: true})
 	for _, branch := range plan.Discovery.Branches {
 		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target})

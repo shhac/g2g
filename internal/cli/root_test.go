@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/shhac/g2g/internal/diagnostic"
 )
 
@@ -16,7 +18,7 @@ func TestBareCommandShowsHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, command := range []string{"link", "unlink", "status", "push", "submit", "graph", "track", "untrack", "restack"} {
+	for _, command := range []string{"status", "adopt", "track", "untrack", "create", "restack", "pull", "push", "submit", "land", "github", "graphite"} {
 		if !strings.Contains(output, "  "+command) {
 			t.Errorf("help does not list %q:\n%s", command, output)
 		}
@@ -80,7 +82,7 @@ func TestCommandContextWritesCompatibilityWarningsToStderrWithoutDebug(t *testin
 // as a durable distribution knob, so changing a command description without it
 // publishes a formula whose brew test fails — which is invisible here unless
 // something checks.
-const helpMatch = "Link a stack to GitHub"
+const helpMatch = "Manage stacked branches"
 
 func TestHelpContainsWhatTheFormulaAsserts(t *testing.T) {
 	output, err := execute(t)
@@ -108,6 +110,7 @@ func TestEveryCommandIsGroupedExceptTheBuiltIns(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root := New("v0.0.0-test", &stdout, &stderr)
 
+	// A namespace's own commands are listed under it, not under a group.
 	ungrouped := make([]string, 0)
 	for _, command := range root.Commands() {
 		switch command.Name() {
@@ -130,14 +133,18 @@ func TestCommandsSayWhetherTheyPreviewOrRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root := New("v0.0.0-test", &stdout, &stderr)
 
-	for _, command := range root.Commands() {
+	for _, command := range everyCommand(root) {
 		switch command.Name() {
 		case "help", "completion":
 			continue
 		}
+		// A namespace does nothing but hold the commands that are checked here.
+		if command.HasSubCommands() {
+			continue
+		}
 		mutates := command.Flags().Lookup("apply") != nil
 		labelled := strings.Contains(command.Short, "(preview by default)")
-		readOnly := strings.Contains(command.Short, "(read-only)")
+		readOnly := strings.Contains(command.Short, "(read-only")
 		// The navigation commands are the one deliberate exception to preview
 		// first: they move the checkout and nothing else. They must say so, and
 		// they must offer the dry run a preview would otherwise have been.
@@ -165,11 +172,21 @@ func TestRegistrationAgreesWithWhatEachServiceRequires(t *testing.T) {
 	bare := NewWithOptions(Options{
 		Version: "v0.0.0-test", CommandName: "g2g", Stdout: &stdout, Stderr: &stderr,
 	})
-	for _, command := range bare.Commands() {
+	for _, command := range everyCommand(bare) {
 		switch command.Name() {
 		case "help", "completion":
 			continue
 		}
-		t.Errorf("%s was registered on a build with no services configured", command.Name())
+		t.Errorf("%s was registered on a build with no services configured", command.CommandPath())
 	}
+}
+
+// everyCommand is every command below root, namespaces and what they hold.
+func everyCommand(root *cobra.Command) []*cobra.Command {
+	var all []*cobra.Command
+	for _, command := range root.Commands() {
+		all = append(all, command)
+		all = append(all, everyCommand(command)...)
+	}
+	return all
 }

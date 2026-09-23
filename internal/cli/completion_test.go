@@ -10,7 +10,7 @@ import (
 )
 
 func TestBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
-	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--branch", "be")
+	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "github", "link", "--branch", "be")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -34,7 +34,7 @@ func TestPushBranchCompletionUsesTrackedLocalBranchNames(t *testing.T) {
 }
 
 func TestTrunkCompletionUsesDeclaredLocalTrunks(t *testing.T) {
-	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "link", "--trunk", "m")
+	output, err := executeWithService(t, cliService(&cliGitHub{}), "__complete", "github", "link", "--trunk", "m")
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}

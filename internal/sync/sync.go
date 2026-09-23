@@ -239,7 +239,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if len(plan.Restack.Lines) != 0 {
 		ways := make([]repair.Step, 0, len(plan.Restack.Lines))
 		for _, leaf := range plan.Restack.Lines {
-			ways = append(ways, repair.Step{Command: "g2g sync --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
+			ways = append(ways, repair.Step{Command: "g2g pull --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
 		}
 		plan.Repair = repair.Note{Reason: plan.Restack.Repair.Reason, Ways: ways}
 		plan.Blocked = plan.Repair.Sentence()

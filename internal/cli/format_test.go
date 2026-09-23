@@ -34,7 +34,7 @@ func TestJSONDocumentCarriesTheRenderedPlan(t *testing.T) {
 	if doc.SchemaVersion != schemaVersion {
 		t.Errorf("schemaVersion = %d, want %d", doc.SchemaVersion, schemaVersion)
 	}
-	if doc.Operation != "link" || doc.Target != "beta" || doc.TargetSource != "--branch" || doc.Trunk != "main" {
+	if doc.Operation != "github link" || doc.Target != "beta" || doc.TargetSource != "--branch" || doc.Trunk != "main" {
 		t.Errorf("header = %#v", doc)
 	}
 	if len(doc.Branches) != 2 {
@@ -152,7 +152,7 @@ func TestMachineFormatsEmitOnlyTheDocument(t *testing.T) {
 			github := &cliGitHub{}
 			var stdout, stderr bytes.Buffer
 			command := NewWithService("v", &stdout, &stderr, cliService(github))
-			command.SetArgs([]string{"link", "--branch", "beta", "--" + string(format)})
+			command.SetArgs([]string{"github", "link", "--branch", "beta", "--" + string(format)})
 			if err := command.Execute(); err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +174,7 @@ func TestJSONIsRequestedPerInvocationNotAtConstruction(t *testing.T) {
 	github := &cliGitHub{}
 	var stdout, stderr bytes.Buffer
 	command := NewWithService("v", &stdout, &stderr, cliService(github))
-	command.SetArgs([]string{"link", "--branch", "beta"})
+	command.SetArgs([]string{"github", "link", "--branch", "beta"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}

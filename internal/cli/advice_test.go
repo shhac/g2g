@@ -20,7 +20,7 @@ func refusedView(note repair.Note) stackView {
 var divergedNote = repair.Note{
 	Reason: "both sides have moved on synthetic-main",
 	Ways: []repair.Step{
-		{Command: "g2g sync --take published", Effect: "take the published version"},
+		{Command: "g2g pull --take published", Effect: "take the published version"},
 		{Effect: "reconcile it yourself"},
 	},
 }
@@ -38,7 +38,7 @@ func TestARefusalWithAChoiceIsLaidOutOnePerLine(t *testing.T) {
 	for _, want := range []string{
 		"Apply blocked",
 		"  both sides have moved on synthetic-main",
-		"  g2g sync --take published   take the published version",
+		"  g2g pull --take published   take the published version",
 		"  reconcile it yourself",
 	} {
 		if !strings.Contains(output.String(), want+"\n") {
@@ -56,7 +56,7 @@ func TestOnlyTheCommandIsDrawnAsOne(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := ansiCommand + " g2g sync --take published " + ansiReset; !strings.Contains(output.String(), want) {
+	if want := ansiCommand + " g2g pull --take published " + ansiReset; !strings.Contains(output.String(), want) {
 		t.Errorf("the command is not drawn as one:\n%q", output.String())
 	}
 	if strings.Contains(output.String(), ansiCommand+" reconcile") {
@@ -77,7 +77,7 @@ func TestAMachineStillReadsTheWholeRefusalInOneField(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &doc); err != nil {
 		t.Fatalf("decode: %v\n%s", err, output.String())
 	}
-	want := "both sides have moved on synthetic-main · run g2g sync --take published to take the published version, or reconcile it yourself"
+	want := "both sides have moved on synthetic-main · run g2g pull --take published to take the published version, or reconcile it yourself"
 	if doc.Blocked != want {
 		t.Errorf("blocked = %q, want %q", doc.Blocked, want)
 	}
@@ -93,7 +93,7 @@ func TestAMachineStillReadsTheWholeRefusalInOneField(t *testing.T) {
 	if doc.Repair.Reason != "both sides have moved on synthetic-main" {
 		t.Errorf("repair reason = %q", doc.Repair.Reason)
 	}
-	if got := doc.Repair.Ways[0]; got.Command != "g2g sync --take published" || got.Effect != "take the published version" {
+	if got := doc.Repair.Ways[0]; got.Command != "g2g pull --take published" || got.Effect != "take the published version" {
 		t.Errorf("first way = %#v", got)
 	}
 	// A way out that is not a thing to run carries no command, rather than an

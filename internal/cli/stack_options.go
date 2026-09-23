@@ -72,7 +72,7 @@ func (o *stackOptions) registerSource(cmd *cobra.Command, completions stack.Comp
 // validateSource refuses a record this command cannot be pointed at.
 //
 // Without it the resolver happily honours --from for any source it holds,
-// including the on-request tier, so push --from pull-request invoked gh before
+// including the on-request tier, so push --from github invoked gh before
 // selection began — breaking the one contract that command has, and doing so
 // through a flag registered on every stack command by default.
 func (o stackOptions) validateSource() error {

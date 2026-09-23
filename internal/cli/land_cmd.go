@@ -88,8 +88,8 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 				noOp:          "Every branch here has already landed. Nothing to do.",
 				applied:       "Landed.",
 				changed:       "Pull requests were merged and branches removed.",
-				recovery:      "Some branches may already have merged · run g2g status to see which.",
-				suggestedNext: "g2g status",
+				recovery:      "Some branches may already have merged · run g2g github status to see which.",
+				suggestedNext: "g2g github status",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

@@ -40,7 +40,7 @@ var removals = map[reshape.Operation]removal{
 			preview:  "Rerun with --apply to delete it.",
 			applied:  "Deleted.",
 			changed:  "The branch is gone and what sat on it is recorded on its parent.",
-			recovery: "The branch may already be gone · run g2g graph to see what is recorded.",
+			recovery: "The branch may already be gone · run g2g status to see what is recorded.",
 		},
 	},
 	reshape.Fold: {
@@ -54,7 +54,7 @@ var removals = map[reshape.Operation]removal{
 			preview:  "Rerun with --apply to fold it.",
 			applied:  "Folded.",
 			changed:  "The parent holds the branch's commits, the branch is gone, and what sat on it is recorded on the parent.",
-			recovery: "The parent may already have moved · run g2g graph to see what is recorded.",
+			recovery: "The parent may already have moved · run g2g status to see what is recorded.",
 		},
 	},
 }
@@ -65,7 +65,7 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     string(operation),
-		GroupID: groupStructure,
+		GroupID: groupShape,
 		Short:   words.short,
 		Long:    words.long,
 		Args:    cobra.NoArgs,
@@ -102,7 +102,7 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "rename <new-name>",
-		GroupID: groupStructure,
+		GroupID: groupShape,
 		Short:   "Rename a branch and every record of it (preview by default)",
 		Long: "Renames the local branch with git branch -m and rewrites the g2g graph to match: its own edge, " +
 			"the branches recorded on it, its place among the trunks, and its fork-point ref. A branch already " +
@@ -130,8 +130,8 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 				preview:       "Rerun with --apply to rename it.",
 				applied:       "Renamed.",
 				changed:       "The branch and every record of it carry the new name.",
-				recovery:      "The branch may already be renamed · run g2g graph to see what is recorded.",
-				suggestedNext: "g2g graph",
+				recovery:      "The branch may already be renamed · run g2g status to see what is recorded.",
+				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
@@ -159,7 +159,7 @@ func removalNext(plan reshape.Plan) string {
 	case len(stale) > 1 && plan.Discovery.Graph.Tracked(plan.Parent):
 		return "g2g restack --branch " + plan.Parent
 	case len(stale) > 1:
-		return "g2g graph"
+		return "g2g status"
 	}
 	return ""
 }
@@ -175,7 +175,7 @@ func reshapeInterrupted(writer io.Writer, p Presentation) func(context.Context, 
 			if err := prose(writer, p, "\n"+p.problem("Stopped part-way: "+partial.Left+": "+partial.Err.Error())); err != nil {
 				return true, err
 			}
-			if err := prose(writer, p, p.subdued(partial.Done+" · run "+runnable("g2g graph")+" to see what is recorded.")); err != nil {
+			if err := prose(writer, p, p.subdued(partial.Done+" · run "+runnable("g2g status")+" to see what is recorded.")); err != nil {
 				return true, err
 			}
 			return true, stoppedPartWay(partial)
@@ -185,7 +185,7 @@ func reshapeInterrupted(writer io.Writer, p Presentation) func(context.Context, 
 			if err := prose(writer, p, "\n"+p.problem("Stopped part-way: "+rolledBack.Error())); err != nil {
 				return true, err
 			}
-			if err := prose(writer, p, p.subdued("Check "+runnable("git status")+" and "+runnable("g2g graph")+" before going on.")); err != nil {
+			if err := prose(writer, p, p.subdued("Check "+runnable("git status")+" and "+runnable("g2g status")+" before going on.")); err != nil {
 				return true, err
 			}
 			return true, stoppedPartWay(rolledBack)

@@ -50,12 +50,12 @@ func unstackedRepository(t *testing.T, defaultHead string) *testutil.Recorder {
 //
 // It used to exit 2 with "no source describes \"main\" · run g2g track to
 // record its parent" — advice that would break the one rule the graph has, on
-// a command that would refuse it, while g2g graph rendered the same fact and
+// a command that would refuse it, while g2g status rendered the same fact and
 // exited 0.
 func TestStatusReportsAnUnstackedTrunkInsteadOfFailing(t *testing.T) {
 	unstackedRepository(t, "refs/remotes/origin/main")
 
-	stdout, _, err := run(t, "status")
+	stdout, _, err := run(t, "github", "status")
 	if err != nil {
 		t.Fatalf("status on an unstacked trunk returned an error: %v\n%s", err, stdout)
 	}
@@ -78,7 +78,7 @@ func TestStatusReportsAnUnstackedTrunkInsteadOfFailing(t *testing.T) {
 func TestAnUnknownDefaultStillReportsRatherThanGuessing(t *testing.T) {
 	unstackedRepository(t, "")
 
-	stdout, _, err := run(t, "status")
+	stdout, _, err := run(t, "github", "status")
 	if err != nil {
 		t.Fatalf("status returned an error: %v\n%s", err, stdout)
 	}
@@ -95,7 +95,7 @@ func TestAnUnknownDefaultStillReportsRatherThanGuessing(t *testing.T) {
 // nothing to act on, and must still refuse rather than quietly doing nothing.
 func TestAMutatingCommandStillRefusesAnUnstackedTrunk(t *testing.T) {
 	for _, command := range [][]string{
-		{"link", "--apply"},
+		{"github", "link", "--apply"},
 		{"push", "--apply"},
 		{"submit", "--apply"},
 	} {
@@ -116,7 +116,7 @@ func TestAMutatingCommandStillRefusesAnUnstackedTrunk(t *testing.T) {
 func TestTheUnstackedStateIsDescribedInJSONToo(t *testing.T) {
 	unstackedRepository(t, "refs/remotes/origin/main")
 
-	stdout, _, err := run(t, "status", "--json")
+	stdout, _, err := run(t, "github", "status", "--json")
 	if err != nil {
 		t.Fatalf("status --json returned an error: %v\n%s", err, stdout)
 	}
@@ -128,10 +128,10 @@ func TestTheUnstackedStateIsDescribedInJSONToo(t *testing.T) {
 	}
 }
 
-// graph answers without a network. It gained --from so the two records can be
+// status answers without a network. It gained --from so the two records can be
 // compared in one format, and that must not have brought gh in with it.
-func TestGraphReachesNoGitHubWhateverSourceIsNamed(t *testing.T) {
-	for _, from := range []string{"", "g2g", "graphite", "pull-request"} {
+func TestStatusReachesNoGitHubWhateverSourceIsNamed(t *testing.T) {
+	for _, from := range []string{"", "g2g", "graphite", "github"} {
 		name := from
 		if name == "" {
 			name = "default"
@@ -139,14 +139,14 @@ func TestGraphReachesNoGitHubWhateverSourceIsNamed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-			args := []string{"graph"}
+			args := []string{"status"}
 			if from != "" {
 				args = append(args, "--from", from)
 			}
 			_, _, err := run(t, args...)
 
-			if from == "pull-request" && err == nil {
-				t.Error("graph --from pull-request was allowed")
+			if from == "github" && err == nil {
+				t.Error("status --from github was allowed")
 			}
 			recorder.AssertNone("gh ")
 		})

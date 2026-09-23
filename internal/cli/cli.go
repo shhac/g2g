@@ -31,15 +31,6 @@ import (
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
-// Command groups order the help by the job a reader is trying to do. Thirteen
-// verbs listed alphabetically say nothing about where to start; three headings
-// say most of it.
-const (
-	groupStructure = "structure"
-	groupPublish   = "publish"
-	groupMaintain  = "maintain"
-)
-
 // Options are the dependencies a root command is built from.
 //
 // A zero service means its command is not registered. That replaces four
@@ -205,8 +196,8 @@ func NewWithOptions(options Options) *cobra.Command {
 		Short: "Manage stacked branches and project them onto GitHub",
 		Long: "Manage stacked branches and project them onto GitHub.\n\n" +
 			"Structure is recorded locally and needs no Graphite. Start with `" + options.CommandName +
-			" track --stack`, which records the stack you are on in one step, then `" + options.CommandName +
-			" graph` to see it.",
+			" adopt`, which records the stack you are on in one step, then `" + options.CommandName +
+			" status` to see it.",
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,
@@ -228,28 +219,15 @@ func NewWithOptions(options Options) *cobra.Command {
 
 	// Completion candidates come from the structure sources themselves, so no
 	// command has to depend on another to complete a flag.
-	root.AddGroup(
-		&cobra.Group{ID: groupStructure, Title: "Recording structure:"},
-		&cobra.Group{ID: groupPublish, Title: "Publishing to GitHub:"},
-		&cobra.Group{ID: groupMaintain, Title: "Keeping it true:"},
-	)
+	root.AddGroup(commandGroups()...)
 	completions := options.Completions
-	// Options' own doc comment says a zero service means its command is not
-	// registered, and these three were the exception to it.
-	if options.Link.Ready() {
-		root.AddCommand(newLink(options.Link, completions, guard, presentation))
-		root.AddCommand(newStatus(options.Link, completions, presentation))
-		root.AddCommand(newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
-	}
-	if options.Push.Ready() {
-		root.AddCommand(newPush(options.Push, completions, guard, presentation))
-	}
-	if options.Submit.Ready() {
-		root.AddCommand(newSubmit(options.Submit, options.Comment, completions, guard, presentation))
-	}
+	// A zero service means its command is not registered, so each is added
+	// under its own condition — and a namespace only when something is in it.
+	var github, graphite []*cobra.Command
 	if options.Graph.Ready() {
 		root.AddCommand(newGraph(options.Graph, options.Link.Selector, completions, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
+		root.AddCommand(newAdopt(options.Graph, guard, presentation))
 		root.AddCommand(newUntrack(options.Graph, guard, presentation))
 	}
 	if options.Create.Ready() {
@@ -267,25 +245,46 @@ func NewWithOptions(options Options) *cobra.Command {
 	if options.Sync.Ready() {
 		root.AddCommand(newSync(options.Sync, guard, presentation))
 	}
-	// prune reads Git and the graph store and nothing else, so it is available
-	// wherever those are. It was registered under sync's condition when it was
-	// still part of sync, which meant a build configured for one and not the
-	// other silently lost the command.
 	if options.Prune.Ready() {
 		root.AddCommand(newPrune(options.Prune, guard, presentation))
 	}
-	if options.Retarget.Ready() {
-		root.AddCommand(newRetarget(options.Retarget, completions, guard, presentation))
+	if options.Push.Ready() {
+		root.AddCommand(newPush(options.Push, completions, guard, presentation))
 	}
-	if options.Comment.Ready() {
-		root.AddCommand(newComment(options.Comment, completions, guard, presentation))
+	if options.Submit.Ready() {
+		root.AddCommand(newSubmit(options.Submit, options.Comment, completions, guard, presentation))
 	}
 	if options.Land.Ready() {
 		root.AddCommand(newLand(options.Land, options.Comment, completions, guard, presentation))
 	}
+	if options.Link.Ready() {
+		github = append(github,
+			newStatus(options.Link, completions, presentation),
+			newLink(options.Link, completions, guard, presentation),
+			newUnlink(options.Link, options.Unstacker, completions, guard, presentation))
+	}
+	if options.Retarget.Ready() {
+		github = append(github, newRetarget(options.Retarget, completions, guard, presentation))
+	}
+	if options.Comment.Ready() {
+		github = append(github, newComment(options.Comment, completions, guard, presentation))
+	}
 	if options.Align.Ready() {
-		root.AddCommand(newMirror(options.Align, guard, presentation))
-		root.AddCommand(newImport(options.Align, completions, guard, presentation))
+		github = append(github, newAdoptFrom(options.Align, align.FromGitHub, completions, guard, presentation))
+		graphite = append(graphite,
+			newAdoptFrom(options.Align, align.FromGraphite, completions, guard, presentation),
+			newMirror(options.Align, guard, presentation))
+	}
+	if len(github) > 0 {
+		root.AddCommand(namespace("github", "Work with the stack's pull requests on GitHub",
+			"The stack as GitHub sees it: each branch's pull request, the base it targets, and the comment that "+
+				"links the stack together. Everything here reads or writes GitHub through gh; the commands at the "+
+				"top level read only git.", github...))
+	}
+	if len(graphite) > 0 {
+		root.AddCommand(namespace("graphite", "Move a stack between Graphite and g2g",
+			"For a repository that has used Graphite: adopt the stack Graphite declares into g2g's own record, "+
+				"or mirror g2g's record back into Graphite. Neither contacts Graphite's service.", graphite...))
 	}
 	root.AddCommand(newCompletion(root))
 	return root

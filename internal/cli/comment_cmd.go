@@ -17,7 +17,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "comment",
-		GroupID: groupPublish,
+		GroupID: groupTools,
 		Short:   "Keep a comment on each pull request listing its stack (preview by default)",
 		Long: "Keeps one comment on every pull request in the stack, listing the stack from where that pull request " +
 			"stands: the trunk, the branches below it, the pull request itself in bold, and everything built on it.\n\n" +
@@ -34,7 +34,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 		if err := selection.validate(); err != nil {
 			return err
 		}
-		root := commandContext(cmd.Context(), cmd, "comment", applyMode(apply), selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, "github comment", applyMode(apply), selection.branch, selection.trunk)
 		flow := applyFlow[comment.Plan]{
 			plan: func(ctx context.Context) (comment.Plan, error) {
 				return service.Plan(ctx, selection.Selection())
@@ -64,7 +64,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 				noOp:     "Every stack comment already says what the stack is. Nothing to do.",
 				applied:  "Commented.",
 				changed:  "Each pull request now lists its stack.",
-				recovery: "Some comments may already be written · rerun g2g comment --apply to finish, which edits them rather than adding more.",
+				recovery: "Some comments may already be written · rerun g2g github comment --apply to finish, which edits them rather than adding more.",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
@@ -81,7 +81,7 @@ func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, p Presentat
 		return err
 	}
 	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
-	if err := prose(writer, p, p.subdued(written+" Rerun "+runnable("g2g comment --apply")+" to finish; it edits rather than adds.")); err != nil {
+	if err := prose(writer, p, p.subdued(written+" Rerun "+runnable("g2g github comment --apply")+" to finish; it edits rather than adds.")); err != nil {
 		return err
 	}
 	return stoppedPartWay(stopped)

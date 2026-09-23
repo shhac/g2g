@@ -14,7 +14,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "mirror",
-		GroupID: groupMaintain,
+		GroupID: groupTools,
 		Short:   "Make Graphite agree with the g2g graph (preview by default)",
 		Long: "Reconciles Graphite so it records what the g2g graph records.\n\n" +
 			"Nothing is ever removed from the g2g graph: this keeps the two in step, it does not hand ownership over. " +
@@ -23,7 +23,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx := commandContext(cmd.Context(), cmd, "mirror", applyMode(apply), "", "")
+		ctx := commandContext(cmd.Context(), cmd, "graphite mirror", applyMode(apply), "", "")
 		flow := applyFlow[align.MirrorPlan]{
 			plan: func(ctx context.Context) (align.MirrorPlan, error) {
 				return service.PlanMirror(ctx, prune)
@@ -44,7 +44,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 				noOp:     "Graphite already agrees with the g2g graph. Nothing to do.",
 				applied:  "Graphite is aligned.",
 				changed:  "The g2g graph is unchanged and still answers for these branches.",
-				recovery: "Some branches may already have been tracked in Graphite · rerun g2g mirror to see what is left.",
+				recovery: "Some branches may already have been tracked in Graphite · rerun g2g graphite mirror to see what is left.",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)

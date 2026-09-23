@@ -42,7 +42,7 @@ func commentsNotKept(cmd *cobra.Command, err error, p Presentation) (bool, error
 	if reportErr := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); reportErr != nil {
 		return true, reportErr
 	}
-	if reportErr := prose(cmd.OutOrStdout(), p, p.subdued("Everything else stands. Run "+runnable("g2g comment --apply")+" to keep them.")); reportErr != nil {
+	if reportErr := prose(cmd.OutOrStdout(), p, p.subdued("Everything else stands. Run "+runnable("g2g github comment --apply")+" to keep them.")); reportErr != nil {
 		return true, reportErr
 	}
 	return true, stoppedPartWay(notKept)

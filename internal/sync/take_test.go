@@ -89,10 +89,10 @@ func TestTheWayOutOfADivergenceKeepsTheSelection(t *testing.T) {
 		stuck     []divergence
 		want      string
 	}{
-		"unbounded": {graph.Selection{}, TakeNothing, []divergence{{Branch: "synthetic-b"}}, "g2g sync --take published"},
-		"selection": {graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeTrunk}, TakeNothing, []divergence{{Branch: "synthetic-b"}}, "g2g sync --branch synthetic-b --scope trunk --take published"},
-		"widened":   {graph.Selection{}, bounded, []divergence{{Branch: "synthetic-b"}}, "g2g sync --take published --through synthetic-b"},
-		"forked":    {graph.Selection{}, bounded, []divergence{{Branch: "synthetic-b"}, {Branch: "synthetic-c"}}, "g2g sync --take published"},
+		"unbounded": {graph.Selection{}, TakeNothing, []divergence{{Branch: "synthetic-b"}}, "g2g pull --take published"},
+		"selection": {graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeTrunk}, TakeNothing, []divergence{{Branch: "synthetic-b"}}, "g2g pull --branch synthetic-b --scope trunk --take published"},
+		"widened":   {graph.Selection{}, bounded, []divergence{{Branch: "synthetic-b"}}, "g2g pull --take published --through synthetic-b"},
+		"forked":    {graph.Selection{}, bounded, []divergence{{Branch: "synthetic-b"}, {Branch: "synthetic-c"}}, "g2g pull --take published"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := divergenceWays(test.selection, test.take, parents, test.stuck)[0].Command; got != test.want {

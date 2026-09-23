@@ -21,7 +21,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 	var selection stackOptions
 	var apply bool
 	var number int
-	cmd := &cobra.Command{Use: "unlink", GroupID: groupPublish, Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "unlink", GroupID: groupTools, Short: "Remove a GitHub-native stack relationship (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		if err := selection.validate(); err != nil {
@@ -30,7 +30,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 		if cmd.Flags().Changed("stack-number") && number <= 0 {
 			return fmt.Errorf("--stack-number must be a positive GitHub stack number")
 		}
-		root := commandContext(cmd.Context(), cmd, "unlink", applyMode(apply), selection.branch, selection.trunk)
+		root := commandContext(cmd.Context(), cmd, "github unlink", applyMode(apply), selection.branch, selection.trunk)
 
 		flow := applyFlow[unlinkPlan]{
 			plan: func(ctx context.Context) (unlinkPlan, error) {
@@ -64,8 +64,8 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 				preview:       "Re-run with --apply to unlink.",
 				applied:       "Unlinked — GitHub stack relationship removed",
 				changed:       "Branches and pull requests were unchanged.",
-				recovery:      "Run g2g status to see whether the relationship was removed.",
-				suggestedNext: "g2g status",
+				recovery:      "Run g2g github status to see whether the relationship was removed.",
+				suggestedNext: "g2g github status",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
@@ -93,13 +93,13 @@ func resolveStackNumber(requested int, plan link.Plan) (int, string, error) {
 	case githubstack.Unlinked:
 		return 0, "", fmt.Errorf("the selected path is not linked into a GitHub stack; there is nothing to unlink")
 	case githubstack.Conflicting:
-		return 0, "", fmt.Errorf("the selected path spans conflicting GitHub stack membership; run g2g status, then pass --stack-number to choose deliberately")
+		return 0, "", fmt.Errorf("the selected path spans conflicting GitHub stack membership; run g2g github status, then pass --stack-number to choose deliberately")
 	}
 	return membership.StackNumber, "discovered on the selected path", nil
 }
 
 func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, source string, p Presentation) error {
-	view, _ := membershipView(plan, "unlink")
+	view, _ := membershipView(plan, "github unlink")
 	view.Action = []string{"gh", "stack", "unstack", fmt.Sprint(number)}
 	view = view.note(fmt.Sprintf("GitHub stack #%d · %s", number, source), severityNeutral)
 	return writeStackView(w, view.note("This removes GitHub's stack relationship only. Branches and pull requests remain unchanged.", severityNeutral), p)

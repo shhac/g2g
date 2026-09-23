@@ -139,7 +139,7 @@ func TestSyncPreviewChangesNothing(t *testing.T) {
 	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
-	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login")
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login")
 	if err != nil {
 		t.Fatalf("sync error = %v", err)
 	}
@@ -156,7 +156,7 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
-	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--apply")
 	if err != nil {
 		t.Fatalf("sync --apply error = %v\n%s", err, out)
 	}
@@ -167,8 +167,8 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	if replay.applies != 1 {
 		t.Errorf("replayed %d times, want exactly once", replay.applies)
 	}
-	if !strings.Contains(out, "Synced.") {
-		t.Errorf("output does not report the sync:\n%s", out)
+	if !strings.Contains(out, "Pulled.") {
+		t.Errorf("output does not report the pull:\n%s", out)
 	}
 	if !strings.Contains(out, "Suggested next step: g2g push") {
 		t.Errorf("successful sync does not suggest publishing what it replayed:\n%s", out)
@@ -184,8 +184,8 @@ func TestSyncRefusesADivergedBaseInBothPreviewAndApply(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "preview", args: []string{"sync", "--branch", "synthetic-login"}, want: "Apply would refuse"},
-		{name: "apply", args: []string{"sync", "--branch", "synthetic-login", "--apply"}, want: "Not applied"},
+		{name: "preview", args: []string{"pull", "--branch", "synthetic-login"}, want: "Apply would refuse"},
+		{name: "apply", args: []string{"pull", "--branch", "synthetic-login", "--apply"}, want: "Not applied"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			git := &syncCLIGit{remoteTip: "base-remote", diverged: true, published: map[string]string{"synthetic-main": "base-remote"}}
@@ -221,7 +221,7 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 		stopped:  true,
 	}
 
-	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--apply")
 
 	// It reports the stop rather than failing at the user, and the status says
 	// so too: zero would have told a script the sync had finished.
@@ -237,7 +237,7 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 	if strings.Contains(out, "Not applied") {
 		t.Errorf("a half-applied sync was reported as unapplied:\n%s", out)
 	}
-	if strings.Contains(out, "Synced.") {
+	if strings.Contains(out, "Pulled.") {
 		t.Errorf("a stopped replay was reported as a completed sync:\n%s", out)
 	}
 }
@@ -251,7 +251,7 @@ func TestSyncReportsAFailedReplayThatLeftNothingResumable(t *testing.T) {
 		applyErr: errors.New("synthetic replay failure"),
 	}
 
-	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--apply")
 
 	if err == nil {
 		t.Error("a failed replay returned no error")
@@ -270,7 +270,7 @@ func TestSyncReportsAFailedReplayAfterTheTrunkAdvanced(t *testing.T) {
 		applyErr: errors.New("synthetic replay failure"),
 	}
 
-	out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--apply")
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--apply")
 
 	if !wasStopped(err) {
 		t.Errorf("error = %v, want the part-way status", err)
@@ -301,7 +301,7 @@ func TestSyncOffersOnlyTheTwoScopesThatMeanSomething(t *testing.T) {
 			git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 			replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
-			out, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", test.scope)
+			out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--scope", test.scope)
 
 			if !test.refused {
 				if err != nil {
@@ -325,7 +325,7 @@ func TestSyncTrunkScopeReachesTheWholeTrunk(t *testing.T) {
 	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
 	replay := &syncCLIRestack{steps: []string{"synthetic-login"}}
 
-	if _, err := runSync(t, git, replay, "sync", "--branch", "synthetic-login", "--scope", "trunk", "--apply"); err != nil {
+	if _, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--scope", "trunk", "--apply"); err != nil {
 		t.Fatalf("sync --scope trunk --apply: %v", err)
 	}
 

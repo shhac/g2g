@@ -12,7 +12,7 @@ import (
 func newUntrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
-	cmd := &cobra.Command{Use: "untrack", GroupID: groupStructure, Short: "Remove a branch from the g2g-owned graph (preview by default)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "untrack", GroupID: groupShape, Short: "Remove a branch from the g2g-owned graph (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		if err := selection.validateScope(); err != nil {

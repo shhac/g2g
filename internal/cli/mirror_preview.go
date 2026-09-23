@@ -13,7 +13,7 @@ import (
 // `untrack`, on opposite sides, so a bare verb here would be ambiguous about
 // which record is losing an edge.
 func mirrorView(plan align.MirrorPlan, prune bool) stackView {
-	view := stackView{Operation: "mirror", Target: "graphite", TargetSource: "destination"}
+	view := stackView{Operation: "graphite mirror", Target: "graphite", TargetSource: "destination"}
 	if plan.Blocked != "" {
 		return view.refusing(plan.Repair.SentenceWith(runnable), plan.Repair)
 	}

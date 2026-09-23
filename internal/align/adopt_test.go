@@ -45,7 +45,7 @@ func (g fakeGit) Resolve(_ context.Context, revision string) (string, error) {
 	return "0000000000000000000000000000000000000000", nil
 }
 
-func importService(adopted graph.Graph, forest graphite.Forest, git fakeGit) (Service, *memoryStore) {
+func adoptService(adopted graph.Graph, forest graphite.Forest, git fakeGit) (Service, *memoryStore) {
 	store := &memoryStore{graph: adopted}
 	return Service{
 		Git: git, Store: store,
@@ -74,18 +74,18 @@ func everyBranchLocal() fakeGit {
 
 // Graphite declares each parent, so this is not the guess track refuses to
 // make. Parents are recorded before the branches that name them.
-func TestImportAdoptsWhatGraphiteDeclares(t *testing.T) {
-	svc, store := importService(graph.New(), declaredChain(), everyBranchLocal())
+func TestAdoptAdoptsWhatGraphiteDeclares(t *testing.T) {
+	svc, store := adoptService(graph.New(), declaredChain(), everyBranchLocal())
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	if got, want := strings.Join(plan.Claims(), ","), "synthetic-lower,synthetic-top"; got != want {
 		t.Fatalf("Claims() = %s, want %s", got, want)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 
 	if parent, _ := store.graph.Parent("synthetic-top"); parent != "synthetic-lower" {
@@ -98,15 +98,15 @@ func TestImportAdoptsWhatGraphiteDeclares(t *testing.T) {
 
 // The fork point cannot be derived later, so it is manufactured now, from the
 // parent's tip. Graphite has no field to copy it from.
-func TestImportRecordsAForkPointGraphiteCannotSupply(t *testing.T) {
-	svc, store := importService(graph.New(), declaredChain(), everyBranchLocal())
+func TestAdoptRecordsAForkPointGraphiteCannotSupply(t *testing.T) {
+	svc, store := adoptService(graph.New(), declaredChain(), everyBranchLocal())
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 
 	if got := store.graph.Edges["synthetic-top"].ForkPoint; got != "bbbb" {
@@ -122,17 +122,17 @@ func TestImportRecordsAForkPointGraphiteCannotSupply(t *testing.T) {
 // Origin says how far Git agrees with an edge, not which tool supplied it, so
 // a declared relationship the commits do not show is still recorded as an
 // assertion.
-func TestImportAssessesEachEdgeAgainstGit(t *testing.T) {
+func TestAdoptAssessesEachEdgeAgainstGit(t *testing.T) {
 	git := everyBranchLocal()
 	git.ancestors = map[string]string{"synthetic-lower": "synthetic-trunk"}
-	svc, store := importService(graph.New(), declaredChain(), git)
+	svc, store := adoptService(graph.New(), declaredChain(), git)
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 
 	if got := store.graph.Edges["synthetic-lower"].Origin; got != graph.OriginAncestry {
@@ -145,16 +145,16 @@ func TestImportAssessesEachEdgeAgainstGit(t *testing.T) {
 
 // The one thing an additive command must not do is silently undo a deliberate
 // g2g change, so a disagreement blocks and names both answers.
-func TestImportBlocksOnADisagreement(t *testing.T) {
+func TestAdoptBlocksOnADisagreement(t *testing.T) {
 	ours := graph.Graph{
 		Edges:  map[string]graph.Edge{"synthetic-top": {Parent: "synthetic-trunk"}},
 		Trunks: []string{"synthetic-trunk"},
 	}
-	svc, store := importService(ours, declaredChain(), everyBranchLocal())
+	svc, store := adoptService(ours, declaredChain(), everyBranchLocal())
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	if len(plan.Conflicts) != 1 {
 		t.Fatalf("Conflicts = %v, want the disagreement reported", plan.Conflicts)
@@ -163,8 +163,8 @@ func TestImportBlocksOnADisagreement(t *testing.T) {
 	if conflict.Ours != "synthetic-trunk" || conflict.Theirs != "synthetic-lower" {
 		t.Errorf("conflict = %+v, want both answers named", conflict)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err == nil {
-		t.Error("ApplyImport() error = nil for a blocked plan")
+	if err := svc.ApplyAdopt(context.Background(), plan); err == nil {
+		t.Error("ApplyAdopt() error = nil for a blocked plan")
 	}
 	if store.graph.Edges["synthetic-top"].Parent != "synthetic-trunk" {
 		t.Error("a blocked import changed the g2g graph")
@@ -173,20 +173,20 @@ func TestImportBlocksOnADisagreement(t *testing.T) {
 
 // Re-running over branches both records already agree about does nothing, which
 // is what makes import safe to repeat when someone tracks a new branch in gt.
-func TestImportIsRepeatable(t *testing.T) {
-	svc, store := importService(graph.New(), declaredChain(), everyBranchLocal())
+func TestAdoptIsRepeatable(t *testing.T) {
+	svc, store := adoptService(graph.New(), declaredChain(), everyBranchLocal())
 
-	first, err := svc.PlanImport(context.Background())
+	first, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), first); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), first); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 
-	second, err := svc.PlanImport(context.Background())
+	second, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("second PlanImport() error = %v", err)
+		t.Fatalf("second PlanAdopt() error = %v", err)
 	}
 	if len(second.Adopt) != 0 {
 		t.Errorf("Adopt = %v on a second run, want nothing", second.Claims())
@@ -195,8 +195,8 @@ func TestImportIsRepeatable(t *testing.T) {
 		t.Errorf("Agreed = %s, want %s", got, want)
 	}
 	before := store.graph
-	if err := svc.ApplyImport(context.Background(), second); err != nil {
-		t.Fatalf("second ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), second); err != nil {
+		t.Fatalf("second ApplyAdopt() error = %v", err)
 	}
 	if !store.graph.Equal(before) {
 		t.Error("a second import changed the graph")
@@ -205,13 +205,13 @@ func TestImportIsRepeatable(t *testing.T) {
 
 // Graphite can name a branch this checkout does not have. Recording an edge for
 // one would put a branch in the graph that no command could act on.
-func TestImportSkipsBranchesThatAreNotLocal(t *testing.T) {
+func TestAdoptSkipsBranchesThatAreNotLocal(t *testing.T) {
 	git := fakeGit{local: []string{"synthetic-trunk", "synthetic-lower"}, tips: map[string]string{"synthetic-trunk": "aaaa"}}
-	svc, _ := importService(graph.New(), declaredChain(), git)
+	svc, _ := adoptService(graph.New(), declaredChain(), git)
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	if got, want := strings.Join(plan.Claims(), ","), "synthetic-lower"; got != want {
 		t.Errorf("Claims() = %s, want %s", got, want)
@@ -220,39 +220,39 @@ func TestImportSkipsBranchesThatAreNotLocal(t *testing.T) {
 
 // Import writes the g2g graph and nothing else. Graphite keeps every branch
 // it had; the only change is which record answers.
-func TestImportWritesNothingToGraphite(t *testing.T) {
+func TestAdoptWritesNothingToGraphite(t *testing.T) {
 	client := &fakeGraphite{forest: declaredChain()}
 	svc := Service{
 		Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()},
 		Graphite: client,
 	}
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 	if got := client.recorded(); got != "" {
 		t.Errorf("recorded %q, want import to write nothing to Graphite", got)
 	}
 }
 
-func TestRevalidateImportRefusesAChangedGraph(t *testing.T) {
-	svc, store := importService(graph.New(), declaredChain(), everyBranchLocal())
+func TestRevalidateAdoptRefusesAChangedGraph(t *testing.T) {
+	svc, store := adoptService(graph.New(), declaredChain(), everyBranchLocal())
 
-	preview, err := svc.PlanImport(context.Background())
+	preview, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	store.graph = graph.Graph{
 		Edges:  map[string]graph.Edge{"synthetic-top": {Parent: "synthetic-trunk"}},
 		Trunks: []string{"synthetic-trunk"},
 	}
 
-	if _, err := svc.RevalidateImport(context.Background(), preview); err == nil {
-		t.Error("RevalidateImport() error = nil after the graph moved")
+	if _, err := svc.RevalidateAdopt(context.Background(), preview); err == nil {
+		t.Error("RevalidateAdopt() error = nil after the graph moved")
 	}
 }
 
@@ -277,7 +277,7 @@ func (r *fakeRefs) PinForkPoint(_ context.Context, branch, object string) error 
 
 func (r *fakeRefs) UnpinForkPoint(context.Context, string) error { return nil }
 
-func TestImportPinsEachForkPointItRecords(t *testing.T) {
+func TestAdoptPinsEachForkPointItRecords(t *testing.T) {
 	refs := &fakeRefs{}
 	store := &memoryStore{graph: graph.New()}
 	svc := Service{
@@ -285,12 +285,12 @@ func TestImportPinsEachForkPointItRecords(t *testing.T) {
 		Graphite: &fakeGraphite{forest: declaredChain()},
 	}
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err != nil {
-		t.Fatalf("ApplyImport() error = %v", err)
+	if err := svc.ApplyAdopt(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 
 	want := map[string]string{"synthetic-lower": "aaaa", "synthetic-top": "bbbb"}
@@ -312,7 +312,7 @@ func TestImportPinsEachForkPointItRecords(t *testing.T) {
 
 // A pin that fails is reported rather than swallowed: the graph is written but
 // the fork point is not protected, and the user needs to know.
-func TestImportReportsAFailedPin(t *testing.T) {
+func TestAdoptReportsAFailedPin(t *testing.T) {
 	svc := Service{
 		Git:      everyBranchLocal(),
 		Store:    &memoryStore{graph: graph.New()},
@@ -320,18 +320,18 @@ func TestImportReportsAFailedPin(t *testing.T) {
 		Graphite: &fakeGraphite{forest: declaredChain()},
 	}
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
-	if err := svc.ApplyImport(context.Background(), plan); err == nil {
-		t.Error("ApplyImport() error = nil when the fork point could not be pinned")
+	if err := svc.ApplyAdopt(context.Background(), plan); err == nil {
+		t.Error("ApplyAdopt() error = nil when the fork point could not be pinned")
 	}
 }
 
 // Git failing mid-plan must fail the whole plan, not return a half-built one a
 // caller might act on.
-func TestImportFailsClosedWhenGitCannotAnswer(t *testing.T) {
+func TestAdoptFailsClosedWhenGitCannotAnswer(t *testing.T) {
 	for name, git := range map[string]fakeGit{
 		"resolve":    {local: []string{"synthetic-trunk", "synthetic-lower", "synthetic-top"}, resolveErr: fmt.Errorf("synthetic resolve failure")},
 		"isAncestor": {local: []string{"synthetic-trunk", "synthetic-lower", "synthetic-top"}, ancestorErr: fmt.Errorf("synthetic ancestry failure")},
@@ -343,8 +343,8 @@ func TestImportFailsClosedWhenGitCannotAnswer(t *testing.T) {
 				Graphite: &fakeGraphite{forest: declaredChain()},
 			}
 
-			if _, err := svc.PlanImport(context.Background()); err == nil {
-				t.Fatalf("PlanImport() error = nil when Git could not answer")
+			if _, err := svc.PlanAdopt(context.Background()); err == nil {
+				t.Fatalf("PlanAdopt() error = nil when Git could not answer")
 			}
 			if len(store.writes) != 0 {
 				t.Error("a failed plan wrote to the graph")
@@ -355,7 +355,7 @@ func TestImportFailsClosedWhenGitCannotAnswer(t *testing.T) {
 
 // Revalidation must catch a plan whose shape is unchanged but whose content
 // moved. Comparing lengths alone would let a stale plan through.
-func TestRevalidateImportCatchesAChangedParentAtTheSameCount(t *testing.T) {
+func TestRevalidateAdoptCatchesAChangedParentAtTheSameCount(t *testing.T) {
 	store := &memoryStore{graph: graph.New()}
 	client := &fakeGraphite{forest: forestOf(map[string]string{
 		"synthetic-trunk": "",
@@ -363,9 +363,9 @@ func TestRevalidateImportCatchesAChangedParentAtTheSameCount(t *testing.T) {
 	}, "synthetic-trunk")}
 	svc := Service{Git: everyBranchLocal(), Store: store, Graphite: client}
 
-	preview, err := svc.PlanImport(context.Background())
+	preview, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	if len(preview.Adopt) != 1 {
 		t.Fatalf("Adopt = %v, want exactly one so the count cannot change", preview.Claims())
@@ -377,15 +377,15 @@ func TestRevalidateImportCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-lower": "synthetic-top",
 	}, "synthetic-top")
 
-	if _, err := svc.RevalidateImport(context.Background(), preview); err == nil {
-		t.Error("RevalidateImport() error = nil when the parent moved at an unchanged adoption count")
+	if _, err := svc.RevalidateAdopt(context.Background(), preview); err == nil {
+		t.Error("RevalidateAdopt() error = nil when the parent moved at an unchanged adoption count")
 	}
 }
 
 // The enrolment gate is shared with mirror, but import must be proven to keep
 // it: a future refactor giving import its own read path would otherwise break
 // the invariant with nothing catching it.
-func TestImportRefusesToAskAGraphiteFreeRepository(t *testing.T) {
+func TestAdoptRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 	asked := false
 	svc := Service{
 		Git: everyBranchLocal(), Store: &memoryStore{graph: graph.New()},
@@ -393,8 +393,8 @@ func TestImportRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 		Configured: func(context.Context) (bool, error) { return false, nil },
 	}
 
-	if _, err := svc.PlanImport(context.Background()); err == nil {
-		t.Error("PlanImport() error = nil in a repository that does not use Graphite")
+	if _, err := svc.PlanAdopt(context.Background()); err == nil {
+		t.Error("PlanAdopt() error = nil in a repository that does not use Graphite")
 	}
 	if asked {
 		t.Error("import read Graphite in a repository that does not use it, which is what enrols it")
@@ -404,7 +404,7 @@ func TestImportRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 // mirror has an end-to-end test for a failing Graphite write; import's
 // equivalent risky write is the graph store itself, and a failure there must
 // be reported rather than followed by a false "adopted".
-func TestImportReportsAFailedGraphWrite(t *testing.T) {
+func TestAdoptReportsAFailedGraphWrite(t *testing.T) {
 	store := &memoryStore{graph: graph.New()}
 	refs := &fakeRefs{}
 	svc := Service{
@@ -414,17 +414,17 @@ func TestImportReportsAFailedGraphWrite(t *testing.T) {
 		Graphite: &fakeGraphite{forest: declaredChain()},
 	}
 
-	plan, err := svc.PlanImport(context.Background())
+	plan, err := svc.PlanAdopt(context.Background())
 	if err != nil {
-		t.Fatalf("PlanImport() error = %v", err)
+		t.Fatalf("PlanAdopt() error = %v", err)
 	}
 	if len(plan.Adopt) == 0 {
 		t.Fatal("nothing to adopt, so the write is never reached")
 	}
 
 	store.err = fmt.Errorf("synthetic store failure")
-	if err := svc.ApplyImport(context.Background(), plan); err == nil {
-		t.Error("ApplyImport() error = nil when the graph could not be written")
+	if err := svc.ApplyAdopt(context.Background(), plan); err == nil {
+		t.Error("ApplyAdopt() error = nil when the graph could not be written")
 	}
 	if len(refs.pinned) != 0 {
 		t.Errorf("pinned %v for a graph that was never saved", refs.pinned)

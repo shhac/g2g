@@ -32,8 +32,8 @@ func TestProjectingCommandsRefuseAFork(t *testing.T) {
 		args     []string
 		mutation string
 	}{
-		{args: []string{"link", "--branch", "synthetic-lower", "--apply"}, mutation: "gh stack link"},
-		{args: []string{"retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh pr edit"},
+		{args: []string{"github", "link", "--branch", "synthetic-lower", "--apply"}, mutation: "gh stack link"},
+		{args: []string{"github", "retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh pr edit"},
 		{args: []string{"submit", "--branch", "synthetic-lower"}, mutation: "git push"},
 		{args: []string{"push", "--branch", "synthetic-lower", "--apply"}, mutation: "git push"},
 	} {
@@ -56,7 +56,7 @@ func TestProjectingCommandsRefuseAFork(t *testing.T) {
 func TestStatusStillReadsAFork(t *testing.T) {
 	g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
 
-	stdout, _, err := run(t, "status", "--branch", "synthetic-lower")
+	stdout, _, err := run(t, "github", "status", "--branch", "synthetic-lower")
 	if err != nil {
 		t.Fatalf("status: %v\n%s", err, stdout)
 	}
@@ -73,11 +73,11 @@ func TestBlockedPlansCarryTheirRepairForAMachine(t *testing.T) {
 	missing := `{"data":{"repository":{` +
 		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[]}}}}`
-	for _, command := range []string{"status", "link"} {
+	for _, command := range []string{"github status", "github link"} {
 		t.Run(command, func(t *testing.T) {
 			g2gOwnedRepositoryWithPullRequests(t, ownedGraph, missing)
 
-			stdout, _, err := run(t, command, "--json")
+			stdout, _, err := run(t, append(strings.Fields(command), "--json")...)
 			if err != nil {
 				t.Fatalf("%s --json: %v\n%s", command, err, stdout)
 			}
@@ -104,11 +104,11 @@ func TestBlockedPreviewsDoNotInviteAnApply(t *testing.T) {
 	missing := `{"data":{"repository":{` +
 		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"},{"number":209,"url":"https://example.test/209","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
-	for _, command := range []string{"link", "retarget"} {
+	for _, command := range []string{"github link", "github retarget"} {
 		t.Run(command, func(t *testing.T) {
 			g2gOwnedRepositoryWithPullRequests(t, ownedGraph, missing)
 
-			stdout, _, err := run(t, command)
+			stdout, _, err := run(t, strings.Fields(command)...)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", command, err, stdout)
 			}

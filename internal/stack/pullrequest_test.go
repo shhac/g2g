@@ -163,7 +163,7 @@ func TestABaseThatIsNotLocalIsStillWhereTheBranchHangs(t *testing.T) {
 	}
 	// Nothing selected is absent, so nothing is refused: the base is GitHub's
 	// to resolve, not this machine's.
-	if err := snapshot.RequireActionable("g2g link"); err != nil {
+	if err := snapshot.RequireActionable("g2g github link"); err != nil {
 		t.Errorf("RequireActionable() = %v; only a selected branch may block a mutation", err)
 	}
 }
@@ -188,12 +188,12 @@ func TestThePullRequestSourceIsReachableOnlyOnRequest(t *testing.T) {
 	}
 
 	// Pinned: it answers.
-	snapshot, err := resolver.Select(context.Background(), Selection{From: SourcePullRequest, Scope: ScopePath}, "synthetic command")
+	snapshot, err := resolver.Select(context.Background(), Selection{From: SourceGitHub, Scope: ScopePath}, "synthetic command")
 	if err != nil {
-		t.Fatalf("Select(--from pull-request) error = %v", err)
+		t.Fatalf("Select(--from github) error = %v", err)
 	}
-	if snapshot.Source != SourcePullRequest {
-		t.Errorf("source = %q, want %q", snapshot.Source, SourcePullRequest)
+	if snapshot.Source != SourceGitHub {
+		t.Errorf("source = %q, want %q", snapshot.Source, SourceGitHub)
 	}
 	if github.calls == 0 {
 		t.Error("GitHub was never called even when the source was named")
@@ -210,8 +210,8 @@ func TestAnUnknownSourceListsTheOnRequestOnesToo(t *testing.T) {
 	}
 
 	_, err := resolver.Select(context.Background(), Selection{From: "synthetic-nonsense"}, "synthetic command")
-	if err == nil || !strings.Contains(err.Error(), string(SourcePullRequest)) {
-		t.Errorf("error = %v, want it to list pull-request among this build's sources", err)
+	if err == nil || !strings.Contains(err.Error(), string(SourceGitHub)) {
+		t.Errorf("error = %v, want it to list github among this build's sources", err)
 	}
 }
 
@@ -225,7 +225,7 @@ func (refusingSelector) Select(context.Context, Selection, string) (Snapshot, er
 
 // A trunk carries no pull request of its own — it only ever appears as
 // somebody else's base — so asking whether the forest holds an edge *for* it
-// answered no, and `g2g status --from pull-request` refused from main with
+// answered no, and `g2g github status --from github` refused from main with
 // "pull-request does not describe \"main\"".
 //
 // Standing on the trunk is where a person looks at what is outstanding, so it
@@ -305,16 +305,16 @@ func TestASelectionCarriesABranchThatIsNotOnThisMachine(t *testing.T) {
 func TestAMutationRefusesABranchThatIsNotOnThisMachine(t *testing.T) {
 	snapshot := Snapshot{Branches: []string{"synthetic-a", "synthetic-remote"}, Absent: []string{"synthetic-remote"}}
 
-	err := snapshot.RequireActionable("g2g link")
+	err := snapshot.RequireActionable("g2g github link")
 	if err == nil {
 		t.Fatal("RequireActionable() = nil for a selection containing an absent branch")
 	}
-	for _, want := range []string{"g2g link", "synthetic-remote", "not a local branch"} {
+	for _, want := range []string{"g2g github link", "synthetic-remote", "not a local branch"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not mention %q", err, want)
 		}
 	}
-	if err := (Snapshot{Branches: []string{"synthetic-a"}}).RequireActionable("g2g link"); err != nil {
+	if err := (Snapshot{Branches: []string{"synthetic-a"}}).RequireActionable("g2g github link"); err != nil {
 		t.Errorf("RequireActionable() = %v for an entirely local selection", err)
 	}
 }

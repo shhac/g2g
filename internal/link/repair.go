@@ -34,7 +34,7 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 	if p.allIssuesAre(IssueBase) {
 		return repair.Note{
 			Reason: "every pull request is open, and " + pick(len(p.Issues), "one is", "some are") + " based on the wrong branch",
-			Ways:   []repair.Step{{Command: "g2g retarget", Effect: "point each pull request at the branch below it"}},
+			Ways:   []repair.Step{{Command: "g2g github retarget", Effect: "point each pull request at the branch below it"}},
 		}, []IssueKind{IssueBase}
 	}
 	if p.allIssuesAre(IssueMissing, IssueClosed) {
@@ -54,7 +54,7 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 func bringDown(source stack.Source) repair.Step {
 	switch source {
 	case stack.SourceG2G:
-		return repair.Step{Command: "g2g sync", Effect: "advance the trunk and replay the branches above onto it"}
+		return repair.Step{Command: "g2g pull", Effect: "advance the trunk and replay the branches above onto it"}
 	case stack.SourceGraphite:
 		return repair.Step{Command: "gt sync", Effect: "restack in Graphite around the branches that merged"}
 	}

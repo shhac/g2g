@@ -307,7 +307,7 @@ func (s scenario) record(t *testing.T, r repo) {
 	t.Helper()
 
 	if !s.bottomUp {
-		if _, _, err := run(t, "track", "--stack", "--trunk", "synthetic-trunk", "--apply"); err != nil {
+		if _, _, err := run(t, "adopt", "--trunk", "synthetic-trunk", "--apply"); err != nil {
 			t.Fatalf("track --stack: %v", err)
 		}
 		return

@@ -19,14 +19,14 @@ const (
 	// SourceGraphite is a branch Graphite declares. g2g reads it and never
 	// writes it back.
 	SourceGraphite Source = "graphite"
-	// SourcePullRequest is the base of a branch's open pull request. It is
+	// SourceGitHub is the base of a branch's open pull request. It is
 	// observed rather than adopted, and it is asked for rather than assumed.
-	SourcePullRequest Source = "pull-request"
+	SourceGitHub Source = "github"
 )
 
 // ReadableSources are the sources a command may be pointed at when reading a
 // pull request costs it nothing it has promised not to do.
-var ReadableSources = []Source{SourceG2G, SourceGraphite, SourcePullRequest}
+var ReadableSources = []Source{SourceG2G, SourceGraphite, SourceGitHub}
 
 // OfflineSources are the sources a command may be pointed at when it must not
 // invoke gh. push is the case: its whole contract is one atomic git push and no

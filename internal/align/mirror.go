@@ -52,7 +52,7 @@ type Service struct {
 	// keeps "no g2g command enrols a repository" true without exception.
 	Configured func(ctx context.Context) (bool, error)
 
-	// PullRequests, Forks and Trunks serve only import --from pull-request,
+	// PullRequests, Forks and Trunks serve only import --from github,
 	// and a service without them still mirrors and imports from Graphite.
 	// PullRequests reads what open pull request bases describe, which invokes
 	// gh; that is why it is asked only when that record is named.

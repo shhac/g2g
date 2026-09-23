@@ -14,7 +14,7 @@ import (
 func TestCommentPreviewsWithoutWriting(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-	stdout, _, err := run(t, "comment")
+	stdout, _, err := run(t, "github", "comment")
 	if err != nil {
 		t.Fatalf("comment: %v\n%s", err, stdout)
 	}
@@ -36,7 +36,7 @@ func TestCommentPreviewsWithoutWriting(t *testing.T) {
 func TestCommentApplyAddsOneCommentToEachPullRequest(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-	stdout, _, err := run(t, "comment", "--apply")
+	stdout, _, err := run(t, "github", "comment", "--apply")
 	if err != nil {
 		t.Fatalf("comment --apply: %v\n%s", err, stdout)
 	}
@@ -65,7 +65,7 @@ func TestCommentApplyEditsTheCommentItFinds(t *testing.T) {
 			`{"id":"IC_synthetic_stale","body":"<!-- g2g:stack-comment -->\nstale","viewerCanUpdate":true,"author":{"login":"synthetic-author"}}]}`, 1)
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, conversations)
 
-	if _, _, err := run(t, "comment", "--apply"); err != nil {
+	if _, _, err := run(t, "github", "comment", "--apply"); err != nil {
 		t.Fatalf("comment --apply: %v", err)
 	}
 	edited := recorder.Find("gh " + commentMutationPrefix + "$id")
@@ -84,7 +84,7 @@ func TestCommentApplyEditsTheCommentItFinds(t *testing.T) {
 func TestCommentJSONCarriesEveryBody(t *testing.T) {
 	g2gOwnedRepository(t, ownedGraph)
 
-	stdout, _, err := run(t, "comment", "--json")
+	stdout, _, err := run(t, "github", "comment", "--json")
 	if err != nil {
 		t.Fatalf("comment --json: %v\n%s", err, stdout)
 	}
@@ -99,7 +99,7 @@ func TestCommentJSONCarriesEveryBody(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &document); err != nil {
 		t.Fatalf("not one JSON document: %v\n%s", err, stdout)
 	}
-	if document.Operation != "comment" || len(document.Comments) != 2 {
+	if document.Operation != "github comment" || len(document.Comments) != 2 {
 		t.Fatalf("document = %+v", document)
 	}
 	for _, written := range document.Comments {
@@ -118,7 +118,7 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 	}
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, second)
 
-	stdout, _, err := run(t, "comment", "--apply")
+	stdout, _, err := run(t, "github", "comment", "--apply")
 	if err == nil {
 		t.Fatalf("comment --apply succeeded with a failing write:\n%s", stdout)
 	}
@@ -143,7 +143,7 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 func TestCommentApplyRevalidatesBeforeWriting(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-	if _, _, err := run(t, "comment", "--apply"); err != nil {
+	if _, _, err := run(t, "github", "comment", "--apply"); err != nil {
 		t.Fatalf("comment --apply: %v", err)
 	}
 	recorder.AssertOrder("gh "+stackCommentsPrefix, "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)

@@ -129,7 +129,7 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 }
 
 func graphStatusView(discovery graph.Discovery) stackView {
-	view := graphView(discovery, "graph")
+	view := graphView(discovery, "status")
 	// A trunk has no recorded parent because it is a root, which the node above
 	// already says. Telling someone standing on it to adopt one contradicts the
 	// line they just read and names a command that would refuse.

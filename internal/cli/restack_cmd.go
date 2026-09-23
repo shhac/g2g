@@ -30,7 +30,7 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 	var options restackOptions
 	cmd := &cobra.Command{
 		Use:     "restack",
-		GroupID: groupMaintain,
+		GroupID: groupUpdate,
 		Short:   "Replay a stack's commits so its contents match its recorded structure (preview by default)",
 		Args:    cobra.NoArgs,
 	}

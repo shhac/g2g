@@ -55,7 +55,7 @@ type forestMemo struct {
 	err    error
 }
 
-func (s PullRequestSelector) Source() Source { return SourcePullRequest }
+func (s PullRequestSelector) Source() Source { return SourceGitHub }
 
 // Describes reports whether this branch has exactly one open pull request.
 //

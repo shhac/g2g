@@ -61,7 +61,7 @@ func repositoryError(err error, output []byte) error {
 	detail := strings.TrimSpace(string(output))
 	switch {
 	case strings.Contains(detail, "no git remotes found"):
-		return fmt.Errorf("this repository has no remote, so there are no pull requests to read · g2g graph, track, restack and mirror work without one")
+		return fmt.Errorf("this repository has no remote, so there are no pull requests to read · g2g status, adopt, track and restack work without one")
 	case strings.Contains(detail, "not a git repository"):
 		return fmt.Errorf("this is not a Git repository")
 	case strings.Contains(strings.ToLower(detail), "authentication") || strings.Contains(detail, "gh auth login"):

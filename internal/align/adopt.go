@@ -36,12 +36,12 @@ type Conflict struct {
 // The records an import can read. They are the resolver's own source names, so
 // a flag, a preview and the JSON output all use one word for each.
 const (
-	FromGraphite     = "graphite"
-	FromPullRequests = "pull-request"
+	FromGraphite = "graphite"
+	FromGitHub   = "github"
 )
 
-// ImportPlan is what an import would adopt.
-type ImportPlan struct {
+// AdoptPlan is what an import would adopt.
+type AdoptPlan struct {
 	// From names the record the edges were read from.
 	From string
 	// Adopt is ordered roots first, so a parent is recorded before the branches
@@ -70,7 +70,7 @@ type ImportPlan struct {
 // is the authority claim, so this is the list that matters most in a preview:
 // afterwards g2g decides for every one of them, and --from on a read is the
 // only way to see the other record's view again.
-func (p ImportPlan) Claims() []string {
+func (p AdoptPlan) Claims() []string {
 	names := make([]string, 0, len(p.Adopt))
 	for _, adoption := range p.Adopt {
 		names = append(names, adoption.Branch)
@@ -78,20 +78,20 @@ func (p ImportPlan) Claims() []string {
 	return names
 }
 
-// PlanImport works out what Graphite declares that the g2g graph does not.
+// PlanAdopt works out what Graphite declares that the g2g graph does not.
 //
 // It is additive by construction. Graphite declares each parent, so this is not
 // the guess `track` refuses to make — but a branch g2g already records
 // differently is a disagreement, not a gap, and gets refused rather than
 // resolved.
-func (s Service) PlanImport(ctx context.Context) (ImportPlan, error) {
+func (s Service) PlanAdopt(ctx context.Context) (AdoptPlan, error) {
 	adopted, forest, err := s.both(ctx)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	local, err := s.Git.LocalBranches(ctx)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	return s.planAdoptions(ctx, adopted, declaredEdges(forest), local, s.graphiteRecord())
 }
@@ -120,7 +120,7 @@ func (s Service) graphiteRecord() record {
 
 // planAdoptions classifies declared edges and builds the graph adopting them
 // would leave, refusing the whole plan on any disagreement.
-func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declared []Adoption, local []string, source record) (ImportPlan, error) {
+func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declared []Adoption, local []string, source record) (AdoptPlan, error) {
 	plan := classify(adopted, declared, local)
 	plan.From = source.from
 	plan.Updated = adopted
@@ -137,7 +137,7 @@ func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declare
 	}
 	updated, trunks, err := s.adopt(ctx, adopted, plan.Adopt, source.forkPoint)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	plan.Updated, plan.NewTrunks = updated, trunks
 	diagnostic.Event(ctx, "import.plan",
@@ -169,8 +169,8 @@ func declaredEdges(forest graphite.Forest) []Adoption {
 //
 // It is pure, like mirror's writes and strangers, so the decision matrix is
 // testable from plain values with no repository, no fakes, and no Git.
-func classify(adopted graph.Graph, declared []Adoption, local []string) ImportPlan {
-	plan := ImportPlan{}
+func classify(adopted graph.Graph, declared []Adoption, local []string) AdoptPlan {
+	plan := AdoptPlan{}
 	for _, edge := range declared {
 		branch, parent := edge.Branch, edge.Parent
 		switch {
@@ -224,12 +224,12 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 	return updated, trunks, nil
 }
 
-// ApplyImport writes the adopted graph and pins each fork point.
+// ApplyAdopt writes the adopted graph and pins each fork point.
 //
 // Nothing is removed and nothing is written to Graphite. Graphite keeps
 // tracking every branch it tracked; the only change is which record g2g reads
 // when asked about them.
-func (s Service) ApplyImport(ctx context.Context, plan ImportPlan) error {
+func (s Service) ApplyAdopt(ctx context.Context, plan AdoptPlan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot import: %s", plan.Blocked)
 	}
@@ -250,20 +250,20 @@ func (s Service) ApplyImport(ctx context.Context, plan ImportPlan) error {
 	return nil
 }
 
-// RevalidateImport recomputes immediately before the write.
-func (s Service) RevalidateImport(ctx context.Context, preview ImportPlan) (ImportPlan, error) {
-	current, err := s.PlanImport(ctx)
+// RevalidateAdopt recomputes immediately before the write.
+func (s Service) RevalidateAdopt(ctx context.Context, preview AdoptPlan) (AdoptPlan, error) {
+	current, err := s.PlanAdopt(ctx)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	if err := diagnostic.Revalidated(ctx, "import", "the graphs", current.Equal(preview)); err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	return current, nil
 }
 
 // Equal compares everything that changes what the write does.
-func (p ImportPlan) Equal(other ImportPlan) bool {
+func (p AdoptPlan) Equal(other AdoptPlan) bool {
 	if p.From != other.From || p.Blocked != other.Blocked || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
 		return false
 	}

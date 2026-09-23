@@ -16,7 +16,7 @@ import (
 // bold and what is nested, and a person deciding whether to post them needs to
 // see what one looks like, not read eight near-copies; --json carries each.
 func commentView(plan comment.Plan) stackView {
-	view := stackView{Operation: "comment", Target: plan.Requested, TargetSource: plan.RequestedSource}
+	view := stackView{Operation: "github comment", Target: plan.Requested, TargetSource: plan.RequestedSource}
 	if plan.Blocked != "" {
 		view = view.refusing(plan.Blocked, plan.Repair)
 	}

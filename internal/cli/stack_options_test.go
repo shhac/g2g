@@ -18,9 +18,10 @@ func commandsOffering(t *testing.T, flag string) []string {
 
 	var offering []string
 	var discard bytes.Buffer
-	for _, cmd := range cli.New("v0.0.0-test", &discard, &discard).Commands() {
+	root := cli.New("v0.0.0-test", &discard, &discard)
+	for _, cmd := range allCommands(root) {
 		if cmd.Flags().Lookup(flag) != nil {
-			offering = append(offering, cmd.Name())
+			offering = append(offering, strings.TrimPrefix(cmd.CommandPath(), root.Name()+" "))
 		}
 	}
 	if len(offering) == 0 {
@@ -38,7 +39,7 @@ func TestEveryCommandOfferingFromValidatesIt(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-			_, _, err := run(t, name, "--from", "synthetic-nonsense")
+			_, _, err := run(t, append(strings.Fields(name), "--from", "synthetic-nonsense")...)
 			if err == nil {
 				t.Fatalf("%s accepted --from synthetic-nonsense", name)
 			}
@@ -61,7 +62,7 @@ func TestEveryCommandOfferingScopeValidatesIt(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-			_, _, err := run(t, name, "--scope", "synthetic-nonsense")
+			_, _, err := run(t, append(strings.Fields(name), "--scope", "synthetic-nonsense")...)
 			if err == nil {
 				t.Fatalf("%s accepted --scope synthetic-nonsense", name)
 			}

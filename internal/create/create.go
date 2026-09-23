@@ -215,7 +215,7 @@ func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 	return plan.refuse(repair.Note{
 		Reason: fmt.Sprintf("%s is not in the g2g graph, so recording %s under it would make %s a trunk", plan.Parent, plan.Name, plan.Parent),
 		Ways: []repair.Step{
-			{Command: "g2g track --stack --branch " + plan.Parent, Effect: "record the stack " + plan.Parent + " is on first"},
+			{Command: "g2g adopt --branch " + plan.Parent, Effect: "record the stack " + plan.Parent + " is on first"},
 			{Effect: "pass --parent with a branch the graph records"},
 			// Nothing here can tell a trunk from a feature branch without
 			// evidence, and the repository did not say. Recording a first branch

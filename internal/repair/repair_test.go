@@ -27,11 +27,11 @@ func TestSentenceReadsAsAnOrderedChoice(t *testing.T) {
 			note: Note{
 				Reason: "both sides have moved on main",
 				Ways: []Step{
-					{Command: "g2g sync --take published", Effect: "take the published version"},
+					{Command: "g2g pull --take published", Effect: "take the published version"},
 					{Effect: "reconcile it yourself"},
 				},
 			},
-			want: "both sides have moved on main · run g2g sync --take published to take the published version, or reconcile it yourself",
+			want: "both sides have moved on main · run g2g pull --take published to take the published version, or reconcile it yourself",
 		},
 		{name: "a reason with nothing to do", note: Note{Reason: "no structure source is configured"}, want: "no structure source is configured"},
 		{name: "ways with no reason", note: Note{Ways: []Step{{Command: "g2g track", Effect: "record its parent"}}}, want: "run g2g track to record its parent"},

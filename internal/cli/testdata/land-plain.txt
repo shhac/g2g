@@ -6,14 +6,14 @@ Target  synthetic-two  · current Git branch
 
 Commands this would run, in order
    1  gh pr merge 41 --squash  · land synthetic-one
-   2  g2g sync --apply  · advance the trunk and replay what is left onto it
+   2  g2g pull --apply  · advance the trunk and replay what is left onto it
    3  g2g prune --branch synthetic-one --scope branch --apply  · forget it, once what sat on it has been reparented
    4  git push origin --delete synthetic-one  · remove the published branch, if the merge has not already
    5  git branch -D synthetic-one  · remove it here
    6  g2g push --branch synthetic-two --scope path --apply  · publish it as it is here
    7  gh pr edit 42 --base synthetic-main  · merge into synthetic-main rather than synthetic-one
    8  gh pr merge 42 --squash --admin  · land synthetic-two
-   9  g2g sync --apply  · advance the trunk and replay what is left onto it
+   9  g2g pull --apply  · advance the trunk and replay what is left onto it
   10  g2g prune --branch synthetic-two --scope branch --apply  · forget it, once what sat on it has been reparented
   11  git push origin --delete synthetic-two  · remove the published branch, if the merge has not already
   12  git branch -D synthetic-two  · remove it here

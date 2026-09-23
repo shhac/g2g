@@ -548,7 +548,7 @@ func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
 	for _, way := range plan.Repair.Ways {
 		commands = append(commands, way.Command)
 	}
-	if strings.Join(commands, ",") != "g2g sync --branch synthetic-left,g2g sync --branch synthetic-right" || strings.Contains(plan.Blocked, "--scope path") {
+	if strings.Join(commands, ",") != "g2g pull --branch synthetic-left,g2g pull --branch synthetic-right" || strings.Contains(plan.Blocked, "--scope path") {
 		t.Errorf("Blocked = %q, ways = %v", plan.Blocked, commands)
 	}
 }

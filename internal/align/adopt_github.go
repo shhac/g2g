@@ -16,7 +16,7 @@ import (
 // PullRequestReader selects a stack from the bases of open pull requests.
 //
 // It is the pull request source's own selection, so a stack means here exactly
-// what it means to status --from pull-request, remote-only branches included.
+// what it means to status --from github, remote-only branches included.
 // Declared here, beside its one consumer, so a test can hand the real selector
 // a GitHub that answers from a table.
 type PullRequestReader interface {
@@ -28,13 +28,13 @@ type Forks interface {
 	MergeBase(ctx context.Context, one, other string) (string, error)
 }
 
-// PullRequestImportScopes are how much of a stack an import from pull requests
+// GitHubAdoptScopes are how much of a stack an import from pull requests
 // may adopt. Both open with the base the stack hangs from, which is what the
 // root rule below needs to see; a scope rooted at the target would leave that
 // base unexamined, and all would span trunks the user did not name.
-var PullRequestImportScopes = []shape.Scope{shape.ScopeStack, shape.ScopeTrunk}
+var GitHubAdoptScopes = []shape.Scope{shape.ScopeStack, shape.ScopeTrunk}
 
-// PlanImportFromPullRequests works out what the open pull requests above a
+// PlanAdoptFromGitHub works out what the open pull requests above a
 // branch declare that the g2g graph does not.
 //
 // It is how a stack someone else published becomes one this checkout can
@@ -43,26 +43,26 @@ var PullRequestImportScopes = []shape.Scope{shape.ScopeStack, shape.ScopeTrunk}
 // on any disagreement, parents recorded before children. Two refusals are its
 // own, and each is about a branch the record names that the graph cannot hold:
 // one that is not on this machine, and a base nothing establishes as a trunk.
-func (s Service) PlanImportFromPullRequests(ctx context.Context, selection stack.Selection) (ImportPlan, error) {
+func (s Service) PlanAdoptFromGitHub(ctx context.Context, selection stack.Selection) (AdoptPlan, error) {
 	if s.Store == nil || s.Git == nil || s.PullRequests == nil || s.Forks == nil {
-		return ImportPlan{}, fmt.Errorf("importing from pull requests is not configured")
+		return AdoptPlan{}, fmt.Errorf("importing from pull requests is not configured")
 	}
-	selection.From = stack.SourcePullRequest
+	selection.From = stack.SourceGitHub
 	selection.Scope = selection.EffectiveScope()
-	if !slices.Contains(PullRequestImportScopes, selection.Scope) {
-		return ImportPlan{}, fmt.Errorf("import --from pull-request adopts a stack or a trunk, not scope %q", selection.Scope)
+	if !slices.Contains(GitHubAdoptScopes, selection.Scope) {
+		return AdoptPlan{}, fmt.Errorf("import --from github adopts a stack or a trunk, not scope %q", selection.Scope)
 	}
-	snapshot, err := s.PullRequests.Select(ctx, selection, "g2g import")
+	snapshot, err := s.PullRequests.Select(ctx, selection, "g2g github adopt")
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	adopted, err := s.Store.Load(ctx)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	local, err := s.Git.LocalBranches(ctx)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 
 	if missing := notHere(snapshot, local); len(missing) != 0 {
@@ -70,38 +70,38 @@ func (s Service) PlanImportFromPullRequests(ctx context.Context, selection stack
 	}
 	declared, err := pullRequestEdges(snapshot)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	if !s.rootable(ctx, adopted, snapshot.Base) {
 		return refused(adopted, unknownBase(snapshot.Base, declared)), nil
 	}
 	plan, err := s.planAdoptions(ctx, adopted, declared, local, s.pullRequestRecord())
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	plan.Unconfirmed = unconfirmed(plan)
 	return plan, nil
 }
 
-// RevalidateImportFromPullRequests recomputes immediately before the write.
+// RevalidateAdoptFromGitHub recomputes immediately before the write.
 //
 // It reads the pull requests again rather than trusting the preview's reading.
 // What is written is local, but it is written from what GitHub said, and a base
 // someone retargeted in between is exactly the change this exists to catch.
-func (s Service) RevalidateImportFromPullRequests(ctx context.Context, selection stack.Selection, preview ImportPlan) (ImportPlan, error) {
-	current, err := s.PlanImportFromPullRequests(ctx, selection)
+func (s Service) RevalidateAdoptFromGitHub(ctx context.Context, selection stack.Selection, preview AdoptPlan) (AdoptPlan, error) {
+	current, err := s.PlanAdoptFromGitHub(ctx, selection)
 	if err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	if err := diagnostic.Revalidated(ctx, "import", "the pull requests and the g2g graph", current.Equal(preview)); err != nil {
-		return ImportPlan{}, err
+		return AdoptPlan{}, err
 	}
 	return current, nil
 }
 
 func (s Service) pullRequestRecord() record {
 	return record{
-		from:   FromPullRequests,
+		from:   FromGitHub,
 		answer: "take the pull request's base",
 		// The merge base, not the base's tip. Nothing else records where the
 		// branch forked — a pull request has no such field — and the base may
@@ -200,7 +200,7 @@ func fetchFirst(missing []string) repair.Note {
 // establishes as a trunk.
 func unknownBase(base string, declared []Adoption) repair.Note {
 	ways := []repair.Step{
-		{Command: "g2g track --stack --branch " + base, Effect: "record the stack " + base + " is on first"},
+		{Command: "g2g adopt --branch " + base, Effect: "record the stack " + base + " is on first"},
 	}
 	if first := firstOnto(base, declared); first != "" {
 		ways = append(ways, repair.Step{
@@ -223,13 +223,13 @@ func firstOnto(base string, declared []Adoption) string {
 	return ""
 }
 
-func refused(adopted graph.Graph, note repair.Note) ImportPlan {
-	return ImportPlan{From: FromPullRequests, Updated: adopted, Repair: note, Blocked: note.Sentence()}
+func refused(adopted graph.Graph, note repair.Note) AdoptPlan {
+	return AdoptPlan{From: FromGitHub, Updated: adopted, Repair: note, Blocked: note.Sentence()}
 }
 
 // unconfirmed names the adoptions Git does not yet agree with, so the preview
 // can say they will read as needing a restack before anyone is surprised by it.
-func unconfirmed(plan ImportPlan) []string {
+func unconfirmed(plan AdoptPlan) []string {
 	names := make([]string, 0)
 	for _, adoption := range plan.Adopt {
 		if plan.Updated.Edges[adoption.Branch].Origin != graph.OriginAncestry {

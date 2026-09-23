@@ -31,7 +31,13 @@ const (
 // was left trimming a presentation decision out of its data. The label is now
 // the renderer's. Read "repair" for the ways out, which this version added and
 // which is why the sentence no longer has to be parsed to find the command.
-const schemaVersion = 2
+//
+// 3 renamed "operation" to the command's path, because the commands moved:
+// "graph" is "status", "sync" is "pull", "import" is "graphite adopt" or
+// "github adopt", and what reads or writes GitHub is "github link",
+// "github status" and so on. A consumer switching on the old names would have
+// read the offline status as the pull request one.
+const schemaVersion = 3
 
 type jsonDocument struct {
 	SchemaVersion int          `json:"schemaVersion"`

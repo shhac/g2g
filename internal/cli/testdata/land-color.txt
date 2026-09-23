@@ -6,14 +6,14 @@
 
 [1;36mCommands this would run, in order[0m
    1  [1;97;48;5;236m gh pr merge 41 --squash [0m  [2m· land synthetic-one[0m
-   2  [1;97;48;5;236m g2g sync --apply [0m  [2m· advance the trunk and replay what is left onto it[0m
+   2  [1;97;48;5;236m g2g pull --apply [0m  [2m· advance the trunk and replay what is left onto it[0m
    3  [1;97;48;5;236m g2g prune --branch synthetic-one --scope branch --apply [0m  [2m· forget it, once what sat on it has been reparented[0m
    4  [1;97;48;5;236m git push origin --delete synthetic-one [0m  [2m· remove the published branch, if the merge has not already[0m
    5  [1;97;48;5;236m git branch -D synthetic-one [0m  [2m· remove it here[0m
    6  [1;97;48;5;236m g2g push --branch synthetic-two --scope path --apply [0m  [2m· publish it as it is here[0m
    7  [1;97;48;5;236m gh pr edit 42 --base synthetic-main [0m  [2m· merge into synthetic-main rather than synthetic-one[0m
    8  [1;97;48;5;236m gh pr merge 42 --squash --admin [0m  [2m· land synthetic-two[0m
-   9  [1;97;48;5;236m g2g sync --apply [0m  [2m· advance the trunk and replay what is left onto it[0m
+   9  [1;97;48;5;236m g2g pull --apply [0m  [2m· advance the trunk and replay what is left onto it[0m
   10  [1;97;48;5;236m g2g prune --branch synthetic-two --scope branch --apply [0m  [2m· forget it, once what sat on it has been reparented[0m
   11  [1;97;48;5;236m git push origin --delete synthetic-two [0m  [2m· remove the published branch, if the merge has not already[0m
   12  [1;97;48;5;236m git branch -D synthetic-two [0m  [2m· remove it here[0m

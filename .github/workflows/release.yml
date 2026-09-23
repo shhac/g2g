@@ -59,4 +59,4 @@ jobs:
       # installed binary's --help, so it has to track the command's own wording.
       # Changing a command description without this publishes a formula whose
       # test fails.
-      help_match: "Link a stack to GitHub"
+      help_match: "Manage stacked branches"

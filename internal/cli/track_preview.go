@@ -25,7 +25,7 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	// cannot read it — that independence is the point — but it can say so, and
 	// name the command that can, which is usually the shorter road.
 	if describedElsewhere && plan.Parent == "" {
-		for _, note := range alignedCommands(repair.Step{Command: "g2g import", Effect: "adopt what Graphite already records"}) {
+		for _, note := range alignedCommands(repair.Step{Command: "g2g graphite adopt", Effect: "adopt what Graphite already records"}) {
 			view = view.note(note.Text, note.Severity)
 		}
 	}
@@ -78,7 +78,7 @@ func candidateNotes(plan graph.TrackPlan) []stackNote {
 	}
 	return append(notes, alignedCommands(
 		repair.Step{Command: "g2g track --parent " + nearest.Branch, Effect: "record just this edge"},
-		repair.Step{Command: "g2g track --stack", Effect: "record the whole ancestry at once"},
+		repair.Step{Command: "g2g adopt", Effect: "record the whole ancestry at once"},
 	)...)
 }
 
@@ -111,10 +111,10 @@ func describeOthers(others []graph.Candidate) string {
 	return listed
 }
 
-// stackView renders a whole-stack adoption. It is the same graph view every
+// gitAdoptView renders a whole-stack adoption. It is the same graph view every
 // other structure command uses; only the notes differ.
-func trackStackView(plan graph.StackPlan) stackView {
-	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
+func gitAdoptView(plan graph.StackPlan) stackView {
+	view := driftNotes(graphView(plan.Discovery, "adopt"), plan.Discovery)
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}

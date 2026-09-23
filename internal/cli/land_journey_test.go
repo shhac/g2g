@@ -306,7 +306,7 @@ func TestJourneyLandRemovesWhatItLanded(t *testing.T) {
 	}
 
 	// And the graph knows nothing of them, with nothing orphaned behind.
-	graph := mustRun(t, "graph", "--scope", "all", "--no-links")
+	graph := mustRun(t, "status", "--scope", "all", "--no-links")
 	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
 		if strings.Contains(graph, branch) {
 			t.Errorf("the graph still records %s:\n%s", branch, graph)

@@ -425,7 +425,7 @@ func TestTheRecipeSyncsAfterEveryBranchAsApplyDoes(t *testing.T) {
 	plan := w.plan(t, Defaults())
 	recipe := 0
 	for _, command := range plan.Commands() {
-		if command.Command == "g2g sync --apply" {
+		if command.Command == "g2g pull --apply" {
 			recipe++
 		}
 	}
@@ -508,7 +508,7 @@ func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
 // replay and nothing to forget — a stack taken apart on GitHub and left whole
 // here.
 func TestLandRefusesAStackG2GHasNotAdopted(t *testing.T) {
-	for _, source := range []stack.Source{stack.SourceGraphite, stack.SourcePullRequest} {
+	for _, source := range []stack.Source{stack.SourceGraphite, stack.SourceGitHub} {
 		t.Run(string(source), func(t *testing.T) {
 			w := newWorld(t)
 			snapshot := w.service.Selector.(fakeSelector).snapshot
@@ -520,7 +520,7 @@ func TestLandRefusesAStackG2GHasNotAdopted(t *testing.T) {
 			if !strings.Contains(plan.Blocked, string(source)) {
 				t.Errorf("Blocked = %q, want it to name the source that described the stack", plan.Blocked)
 			}
-			if !strings.Contains(plan.Repair.Sentence(), "g2g track --stack") {
+			if !strings.Contains(plan.Repair.Sentence(), "g2g adopt") {
 				t.Errorf("Repair = %q, want it to name the way in", plan.Repair.Sentence())
 			}
 			if err := w.service.Apply(context.Background(), plan); err == nil {
@@ -793,14 +793,14 @@ func TestTheRecipeKeepsTheStackCommentsOnWhatRemains(t *testing.T) {
 		t.Fatalf("Above = %v, want what sits on the last branch landed", plan.Above)
 	}
 	commands := plan.Commands()
-	if last := commands[len(commands)-1].Command; last != "g2g comment --branch synthetic-three --apply" {
+	if last := commands[len(commands)-1].Command; last != "g2g github comment --branch synthetic-three --apply" {
 		t.Errorf("last step = %q, want the comments kept on what remains", last)
 	}
 
 	options := Defaults()
 	options.Comment = false
 	for _, command := range w.plan(t, options).Commands() {
-		if strings.HasPrefix(command.Command, "g2g comment") {
+		if strings.HasPrefix(command.Command, "g2g github comment") {
 			t.Errorf("--no-comment still keeps comments: %q", command.Command)
 		}
 	}

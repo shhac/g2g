@@ -308,7 +308,7 @@ func (s Service) blockedBefore(ctx context.Context, discovery stack.Discovery, o
 		note := repair.Note{
 			Reason: fmt.Sprintf("this stack is described by %s, and landing rewrites the branches above each merge in g2g's own graph", discovery.Source),
 			Ways: []repair.Step{
-				{Command: "g2g track --stack", Effect: "adopt it, so there is a structure to replay against"},
+				{Command: "g2g adopt", Effect: "adopt it, so there is a structure to replay against"},
 			},
 		}
 		return note.Sentence(), note

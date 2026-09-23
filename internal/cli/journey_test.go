@@ -34,7 +34,7 @@ func TestJourneyTrunkMovesUpstreamWhileYouWork(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	if local, remote := w.tip(w.Local, "main"), w.tip(w.Other, "main"); local != remote {
@@ -75,7 +75,7 @@ func TestJourneyTheTrunkWasRewrittenAndHasEverythingYouHave(t *testing.T) {
 	theirs := w.tip(w.Other, "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-a")
-	stdout := mustRun(t, "sync", "--apply")
+	stdout := mustRun(t, "pull", "--apply")
 
 	if !strings.Contains(stdout, "rewritten") {
 		t.Errorf("the preview does not say the trunk was replaced:\n%s", stdout)
@@ -107,7 +107,7 @@ func TestJourneyTheTrunkWasRewrittenUpstream(t *testing.T) {
 	w.git(w.Local, "switch", "-q", "synthetic-a")
 
 	before := w.tip(w.Local, "synthetic-a")
-	_, _, err := run(t, "sync", "--apply")
+	_, _, err := run(t, "pull", "--apply")
 
 	if err == nil {
 		t.Fatal("sync reconciled a diverged trunk instead of refusing")
@@ -314,7 +314,7 @@ func TestJourneyYourParentWasSquashMergedAndDeleted(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	if !w.contains(w.Local, "main", "synthetic-b") {
@@ -352,7 +352,7 @@ func TestJourneyAReviewerPushesToYourBranch(t *testing.T) {
 	w.commit(w.Other, "synthetic-a", "review-fix.txt", "fixed")
 	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	w.assertHas(w.Local, "synthetic-a", "review-fix.txt")
@@ -384,7 +384,7 @@ func TestJourneyAReviewerRebasesYourBranchAndPublishesIt(t *testing.T) {
 	w.git(w.Other, "push", "-q", "--force", "origin", "synthetic-a")
 	theirs := w.tip(w.Other, "synthetic-a")
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
@@ -413,7 +413,7 @@ func TestJourneyBothYouAndTheRemoteMovedYourBranch(t *testing.T) {
 	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic yours, revised")
 	before := w.tip(w.Local, "synthetic-a")
 
-	stdout, _, err := run(t, "sync", "--apply")
+	stdout, _, err := run(t, "pull", "--apply")
 	if err == nil {
 		t.Fatal("sync chose between two versions of your branch")
 	}
@@ -449,12 +449,12 @@ func TestJourneyAnOrdinaryCommitDoesNotBlockSync(t *testing.T) {
 	w.commit(w.Local, "synthetic-a", "ordinary.txt", "ordinary")
 	unpublished := w.tip(w.Local, "synthetic-a")
 
-	stdout := mustRun(t, "sync")
+	stdout := mustRun(t, "pull")
 	if strings.Contains(stdout, "diverged") || strings.Contains(stdout, "blocked") {
 		t.Fatalf("an ordinary commit was treated as a divergence:\n%s", stdout)
 	}
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 	if now := w.tip(w.Local, "synthetic-a"); now != unpublished {
 		t.Errorf("sync moved a branch that was simply ahead: %s to %s", unpublished, now)
 	}
@@ -466,7 +466,7 @@ func TestJourneyAnOrdinaryCommitDoesNotBlockSync(t *testing.T) {
 	w.commit(w.Other, "main", "theirs.txt", "theirs")
 	w.git(w.Other, "push", "-q", "origin", "main")
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 	if !w.contains(w.Local, "main", "synthetic-a") {
 		t.Error("the stack was not replayed onto the advanced trunk")
 	}
@@ -493,11 +493,11 @@ func TestJourneySyncingAgainBeforePublishingTheReplay(t *testing.T) {
 	w.commit(w.Other, "main", "first.txt", "first")
 	w.git(w.Other, "push", "-q", "origin", "main")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.commit(w.Other, "main", "second.txt", "second")
 	w.git(w.Other, "push", "-q", "origin", "main")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
@@ -525,7 +525,7 @@ func TestJourneyATrunkAheadOfItsRemoteIsNotDiverged(t *testing.T) {
 	ahead := w.tip(w.Local, "main")
 	w.git(w.Local, "switch", "-q", "synthetic-a")
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	if now := w.tip(w.Local, "main"); now != ahead {
 		t.Errorf("sync moved the trunk from %s to %s", ahead, now)
@@ -549,13 +549,13 @@ func TestJourneyABranchTheRemoteDeletedIsNotPublished(t *testing.T) {
 	w.commit(w.Local, "synthetic-a", "regret.txt", "regret")
 	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
 	mustRun(t, "push", "--apply")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-a")
 	w.git(w.Local, "reset", "-q", "--hard", "HEAD~1")
 	dropped := w.tip(w.Local, "synthetic-a")
 
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	if now := w.tip(w.Local, "synthetic-a"); now != dropped {
 		t.Errorf("sync moved synthetic-a from %s to %s · it brought back the commit that was dropped", dropped, now)
@@ -581,12 +581,12 @@ func TestJourneyTakingThePublishedVersionOfADivergedBranch(t *testing.T) {
 	w.commit(w.Local, "synthetic-a", "yours.txt", "yours")
 	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic yours, revised")
 
-	preview := mustRun(t, "sync", "--take", "published")
+	preview := mustRun(t, "pull", "--take", "published")
 	if !strings.Contains(preview, "discards") {
 		t.Errorf("the preview does not say what it would lose:\n%s", preview)
 	}
 
-	mustRun(t, "sync", "--take", "published", "--apply")
+	mustRun(t, "pull", "--take", "published", "--apply")
 
 	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
 		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
@@ -620,7 +620,7 @@ func TestJourneyTakingThePublishedVersionOfADivergedTrunk(t *testing.T) {
 
 	// Refused by default: choosing between two versions of the trunk is not
 	// something to do behind somebody's back.
-	refused, _, _ := run(t, "sync")
+	refused, _, _ := run(t, "pull")
 	if !strings.Contains(refused, "both sides have moved on main") {
 		t.Errorf("a diverged trunk was not refused:\n%s", refused)
 	}
@@ -628,7 +628,7 @@ func TestJourneyTakingThePublishedVersionOfADivergedTrunk(t *testing.T) {
 		t.Errorf("the refused sync moved the trunk to %s", now)
 	}
 
-	preview := mustRun(t, "sync", "--take", "published")
+	preview := mustRun(t, "pull", "--take", "published")
 	// Every commit it would lose, by name.
 	if !strings.Contains(preview, "discards") || !strings.Contains(preview, mine[:7]) {
 		t.Errorf("the preview does not name the trunk commit it would lose:\n%s", preview)
@@ -639,7 +639,7 @@ func TestJourneyTakingThePublishedVersionOfADivergedTrunk(t *testing.T) {
 		t.Errorf("the preview contradicts itself — it discards and claims to lose nothing:\n%s", preview)
 	}
 
-	mustRun(t, "sync", "--take", "published", "--apply")
+	mustRun(t, "pull", "--take", "published", "--apply")
 
 	if now := w.tip(w.Local, "main"); now != theirs {
 		t.Errorf("main is at %s, want the published %s", now, theirs)
@@ -679,7 +679,7 @@ func TestJourneyAChildOfASupersededBranchIsReplayedOntoIt(t *testing.T) {
 	theirs := w.tip(w.Other, "synthetic-a")
 
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
 		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
@@ -725,7 +725,7 @@ func TestJourneyABoundaryRefusesTheDivergenceAboveIt(t *testing.T) {
 
 	// Bounded at synthetic-a: the branch above it still needs a decision, and
 	// nothing is touched until one is made.
-	bounded, _, _ := run(t, "sync", "--take", "published", "--through", "synthetic-a", "--apply")
+	bounded, _, _ := run(t, "pull", "--take", "published", "--through", "synthetic-a", "--apply")
 	if !strings.Contains(bounded, "synthetic-b") {
 		t.Errorf("the refusal does not name the branch above the boundary:\n%s", bounded)
 	}
@@ -735,7 +735,7 @@ func TestJourneyABoundaryRefusesTheDivergenceAboveIt(t *testing.T) {
 
 	// Unbounded, the same command takes synthetic-b as well — which is exactly
 	// what the boundary is there to prevent.
-	mustRun(t, "sync", "--take", "published", "--apply")
+	mustRun(t, "pull", "--take", "published", "--apply")
 	w.assertHas(w.Local, "synthetic-b", "theirs-b.txt")
 	w.assertClean(w.Local)
 }
@@ -768,7 +768,7 @@ func TestJourneyABoundaryOnOneForkDoesNotTakeItsSibling(t *testing.T) {
 	w.git(w.Local, "switch", "-q", "synthetic-a")
 	sibling := w.tip(w.Local, "synthetic-b")
 
-	stdout, _, err := run(t, "sync", "--take", "published", "--through", "synthetic-c", "--apply")
+	stdout, _, err := run(t, "pull", "--take", "published", "--through", "synthetic-c", "--apply")
 	if err == nil {
 		t.Fatalf("a divergence on the other fork was not refused:\n%s", stdout)
 	}
@@ -777,7 +777,7 @@ func TestJourneyABoundaryOnOneForkDoesNotTakeItsSibling(t *testing.T) {
 	}
 	w.assertHas(w.Local, "synthetic-b", "mine-synthetic-b.txt")
 	// No single boundary covers both forks, so the way through drops it.
-	if !strings.Contains(stdout+err.Error(), "g2g sync --take published to") {
+	if !strings.Contains(stdout+err.Error(), "g2g pull --take published to") {
 		t.Errorf("the refusal does not offer the take that covers both forks:\n%s\n%v", stdout, err)
 	}
 	w.assertClean(w.Local)
@@ -806,7 +806,7 @@ func TestJourneyUnpushedWorkAboveTheBoundaryIsReplayedOntoWhatWasTaken(t *testin
 	w.commit(w.Local, "synthetic-b", "b-new.txt", "b-new")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
 
-	mustRun(t, "sync", "--take", "published", "--through", "synthetic-a", "--apply")
+	mustRun(t, "pull", "--take", "published", "--through", "synthetic-a", "--apply")
 
 	if now := w.tip(w.Local, "synthetic-a"); now != theirs {
 		t.Errorf("synthetic-a is at %s, want the published %s", now, theirs)
@@ -827,7 +827,7 @@ func TestJourneyABoundaryOutsideTheStackIsRefused(t *testing.T) {
 	w.branchOff("main", "synthetic-a", "a.txt")
 	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
 
-	out, _, _ := run(t, "sync", "--take", "published", "--through", "synthetic-elsewhere")
+	out, _, _ := run(t, "pull", "--take", "published", "--through", "synthetic-elsewhere")
 	if !strings.Contains(out, "not in the stack being synced") {
 		t.Errorf("a boundary outside the selection was not refused:\n%s", out)
 	}
@@ -840,7 +840,7 @@ func TestJourneyAnUnknownTakeIsRefused(t *testing.T) {
 	w.branchOff("main", "synthetic-a", "a.txt")
 	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
 
-	_, _, err := run(t, "sync", "--take", "synthetic-nonsense")
+	_, _, err := run(t, "pull", "--take", "synthetic-nonsense")
 	if err == nil {
 		t.Fatal("sync accepted --take synthetic-nonsense")
 	}
@@ -903,7 +903,7 @@ func TestJourneyYourBranchWasDeletedAfterItMerged(t *testing.T) {
 
 	// You sync, which is what you would do next, and it must survive the branch
 	// having gone from the remote: naming a deleted ref fails a whole fetch.
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 	stdout := mustRun(t, "push")
 
 	// Absent from the remote has two meanings and they want opposite answers.
@@ -917,7 +917,7 @@ func TestJourneyYourBranchWasDeletedAfterItMerged(t *testing.T) {
 	}
 	// It reads as finished rather than broken, and the command that closes it
 	// offers to.
-	graph := mustRun(t, "graph")
+	graph := mustRun(t, "status")
 	if strings.Contains(graph, "parent missing") {
 		t.Errorf("a merged branch reads as broken:\n%s", graph)
 	}
@@ -942,7 +942,7 @@ func TestJourneyTheAdvancedTrunkConflictsWithYourWork(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-a")
-	stdout, _, _ := run(t, "sync", "--apply")
+	stdout, _, _ := run(t, "pull", "--apply")
 
 	if !strings.Contains(stdout, "stopped") {
 		t.Fatalf("a conflicting sync did not say it stopped part-way:\n%s", stdout)
@@ -1010,7 +1010,7 @@ func TestJourneySomeoneElseLandedYourCommitsFirst(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-a")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	if !w.contains(w.Local, "main", "synthetic-a") {
@@ -1047,7 +1047,7 @@ func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "--delete", "synthetic-b")
 
 	w.git(w.Local, "switch", "-q", "synthetic-c")
-	stdout, _, err := run(t, "sync", "--apply")
+	stdout, _, err := run(t, "pull", "--apply")
 	t.Logf("sync after an out-of-order merge: err=%v\n%s", err, stdout)
 
 	w.assertClean(w.Local)
@@ -1060,7 +1060,7 @@ func TestJourneyTheMiddleBranchOfYourStackMergesFirst(t *testing.T) {
 	// The branches the merge carried must not read as broken. Telling someone
 	// to retrack a branch that has already served its purpose sends them to
 	// repair something that is finished.
-	graph := mustRun(t, "graph", "--scope", "trunk")
+	graph := mustRun(t, "status", "--scope", "trunk")
 	if strings.Contains(graph, "parent missing") {
 		t.Errorf("a branch the merge carried reads as broken:\n%s", graph)
 	}
@@ -1105,7 +1105,7 @@ func TestJourneyYourParentWasSquashMergedWithSeveralCommits(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	w.assertClean(w.Local)
 	if !w.contains(w.Local, "main", "synthetic-b") {
@@ -1121,7 +1121,7 @@ func TestJourneyYourParentWasSquashMergedWithSeveralCommits(t *testing.T) {
 	w.assertHas(w.Local, "synthetic-b", "second.txt")
 
 	// And the parent reads as finished rather than as needing repair.
-	graph := mustRun(t, "graph", "--scope", "trunk")
+	graph := mustRun(t, "status", "--scope", "trunk")
 	if strings.Contains(graph, "needs restack") {
 		t.Errorf("a squash-merged parent still reads as needing a restack:\n%s", graph)
 	}
@@ -1149,7 +1149,7 @@ func TestJourneyPruningASquashedParentNamesAWayOutThatWorks(t *testing.T) {
 	w.git(w.Other, "commit", "-qm", "synthetic squash of a")
 	w.git(w.Other, "push", "-q", "origin", "main")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	refused := mustRun(t, "prune", "--scope", "trunk")
 	way := "g2g track --branch synthetic-b --parent main"
@@ -1329,7 +1329,7 @@ func TestJourneySyncRefusesToAdvanceATrunkOpenInAnotherWorktree(t *testing.T) {
 	w.git(w.Other, "push", "-q", "origin", "main")
 	before := w.tip(w.Local, "main")
 
-	stdout, _, err := run(t, "sync", "--apply")
+	stdout, _, err := run(t, "pull", "--apply")
 	if err == nil {
 		t.Fatalf("sync advanced a trunk another worktree had checked out:\n%s", stdout)
 	}
@@ -1363,7 +1363,7 @@ func TestJourneySyncOnADirtyTrunkMovesNothing(t *testing.T) {
 	}
 	before := w.tip(w.Local, "main")
 
-	if _, _, err := run(t, "sync", "--apply"); err == nil {
+	if _, _, err := run(t, "pull", "--apply"); err == nil {
 		t.Fatal("sync overwrote a local edit")
 	}
 	if after := w.tip(w.Local, "main"); after != before {
@@ -1395,7 +1395,7 @@ func TestJourneySyncLeavesTheRecordedStructureAlone(t *testing.T) {
 	w.git(w.Local, "switch", "-q", "synthetic-b")
 
 	before := w.readStructure()
-	mustRun(t, "sync", "--apply")
+	mustRun(t, "pull", "--apply")
 
 	// Fork points move, because a replay changes where each branch forks. What
 	// must not move is the structure: who hangs from whom, and what the trunks
@@ -1404,7 +1404,7 @@ func TestJourneySyncLeavesTheRecordedStructureAlone(t *testing.T) {
 		t.Errorf("sync changed the recorded structure:\nbefore: %v\nafter:  %v", before, after)
 	}
 	// And the graph reads as a healthy stack rather than a broken one.
-	graph := mustRun(t, "graph", "--scope", "trunk")
+	graph := mustRun(t, "status", "--scope", "trunk")
 	if strings.Contains(graph, "refs/g2g/") {
 		t.Errorf("an internal ref reached the rendered graph:\n%s", graph)
 	}

@@ -17,8 +17,8 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	var take, through string
 	var apply bool
 	cmd := &cobra.Command{
-		Use:     "sync",
-		GroupID: groupMaintain,
+		Use:     "pull",
+		GroupID: groupUpdate,
 		Short:   "Bring a stack up to date with its remote: fetch, advance the base, replay (preview by default)",
 		Args:    cobra.NoArgs,
 	}
@@ -31,7 +31,7 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 		if err != nil {
 			return err
 		}
-		ctx := commandContext(cmd.Context(), cmd, "sync", applyMode(apply), selection.branch, "")
+		ctx := commandContext(cmd.Context(), cmd, "pull", applyMode(apply), selection.branch, "")
 		flow := applyFlow[syncer.Plan]{
 			guard: guard,
 			plan: func(ctx context.Context) (syncer.Plan, error) {
@@ -62,7 +62,7 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 			notices: flowNotices{
 				preview:  "Rerun with --apply to bring the stack up to date.",
 				noOp:     "The stack is already up to date.",
-				applied:  "Synced.",
+				applied:  "Pulled.",
 				changed:  "The stack sits on the current base.",
 				recovery: "The base may already have been advanced; rerunning is safe.",
 				// A replay leaves the published branches behind their local
@@ -106,7 +106,7 @@ func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentat
 	if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Stopped part-way: "+stopped.Err.Error())); err != nil {
 		return err
 	}
-	if err := prose(cmd.OutOrStdout(), p, p.subdued("Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g sync")+" to see what is left.")); err != nil {
+	if err := prose(cmd.OutOrStdout(), p, p.subdued("Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.")); err != nil {
 		return err
 	}
 	return stoppedPartWay(stopped)

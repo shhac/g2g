@@ -215,10 +215,10 @@ type divergence struct {
 // exists nowhere else, and it has no "mine" value.
 //
 // The command keeps the selection the refusal came from. A bare
-// "g2g sync --take published" told a sync of the whole trunk to run a sync of
+// "g2g pull --take published" told a sync of the whole trunk to run a sync of
 // one stack, and told a bounded one to drop its boundary and take everything.
 func divergenceWays(selection graph.Selection, take Take, parents map[string]string, stuck []divergence) []repair.Step {
-	command := "g2g sync"
+	command := "g2g pull"
 	if selection.Branch != "" {
 		command += " --branch " + selection.Branch
 	}

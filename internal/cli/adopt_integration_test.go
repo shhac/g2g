@@ -68,14 +68,14 @@ func storedGraph(t *testing.T, common string) (map[string]map[string]string, []s
 
 // The whole journey end to end: gh is asked for the pull requests, Git for
 // where each branch forked, and the graph store is written only on --apply.
-func TestImportFromPullRequestsAdoptsAColleaguesStack(t *testing.T) {
+func TestAdoptFromGitHubAdoptsAColleaguesStack(t *testing.T) {
 	recorder, common := publishedRepository(t, []string{"synthetic-lower", "synthetic-top", "synthetic-trunk"}, publishedStackJSON)
 
-	stdout, stderr, err := run(t, "import", "--from", "pull-request")
+	stdout, stderr, err := run(t, "github", "adopt")
 	if err != nil {
-		t.Fatalf("import --from pull-request: %v\n%s%s", err, stdout, stderr)
+		t.Fatalf("github adopt: %v\n%s%s", err, stdout, stderr)
 	}
-	for _, want := range []string{"synthetic-lower", "synthetic-top", "g2g status --from pull-request"} {
+	for _, want := range []string{"synthetic-lower", "synthetic-top", "g2g github status --from github"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("preview omits %q:\n%s", want, stdout)
 		}
@@ -84,9 +84,9 @@ func TestImportFromPullRequestsAdoptsAColleaguesStack(t *testing.T) {
 		t.Fatalf("a preview wrote the graph store: %v", statErr)
 	}
 
-	stdout, stderr, err = run(t, "import", "--from", "pull-request", "--apply")
+	stdout, stderr, err = run(t, "github", "adopt", "--apply")
 	if err != nil {
-		t.Fatalf("import --from pull-request --apply: %v\n%s%s", err, stdout, stderr)
+		t.Fatalf("github adopt --apply: %v\n%s%s", err, stdout, stderr)
 	}
 	branches, trunks := storedGraph(t, common)
 	for branch, parent := range map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower"} {
@@ -122,15 +122,15 @@ func TestImportFromPullRequestsAdoptsAColleaguesStack(t *testing.T) {
 
 // A branch the pull requests place that is not here is refused by name, with
 // the way to bring it here, and nothing is written or created.
-func TestImportFromPullRequestsRefusesARemoteOnlyBranch(t *testing.T) {
+func TestAdoptFromGitHubRefusesARemoteOnlyBranch(t *testing.T) {
 	onlyTop := `{"data":{"repository":{"nameWithOwner":"example/synthetic",` +
 		`"pr0":{"nodes":[{"number":502,"url":"https://example.test/502","headRefName":"synthetic-top","baseRefName":"synthetic-mid","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[]}}}}`
 	recorder, common := publishedRepository(t, []string{"synthetic-top", "synthetic-trunk"}, onlyTop)
 
-	stdout, _, err := run(t, "import", "--from", "pull-request", "--apply")
+	stdout, _, err := run(t, "github", "adopt", "--apply")
 	if err == nil {
-		t.Fatalf("import --from pull-request --apply: error = nil with synthetic-mid not here\n%s", stdout)
+		t.Fatalf("github adopt --apply: error = nil with synthetic-mid not here\n%s", stdout)
 	}
 	for _, want := range []string{"synthetic-mid", "git fetch && git switch synthetic-mid", "git branch synthetic-mid origin/synthetic-mid"} {
 		if !strings.Contains(stdout+err.Error(), want) {
@@ -138,28 +138,27 @@ func TestImportFromPullRequestsRefusesARemoteOnlyBranch(t *testing.T) {
 		}
 	}
 	if _, statErr := os.Stat(filepath.Join(common, "g2g", "graph.json")); !errors.Is(statErr, os.ErrNotExist) {
-		t.Errorf("a refused import wrote the graph store: %v", statErr)
+		t.Errorf("a refused adoption wrote the graph store: %v", statErr)
 	}
 	recorder.AssertNone("git switch", "git branch synthetic", "git update-ref", "gt ")
 }
 
-// The selection flags only mean something for pull requests, and g2g is the
-// record import writes, so each is refused before anything is read.
-func TestImportRefusesWhatItCannotReadFrom(t *testing.T) {
+// Choosing a branch and a scope only means something for pull requests, which
+// describe many stacks; Graphite's adoption takes the whole record, so it has
+// neither flag rather than one it ignores.
+func TestAdoptRefusesWhatItCannotSelect(t *testing.T) {
 	for _, test := range []struct {
 		args []string
 		want string
 	}{
-		{args: []string{"--from", "g2g"}, want: "nothing to import from g2g"},
-		{args: []string{"--from", "synthetic-nonsense"}, want: "unknown source"},
-		{args: []string{"--branch", "synthetic-top"}, want: "--from pull-request"},
-		{args: []string{"--from", "graphite", "--scope", "trunk"}, want: "--from pull-request"},
-		{args: []string{"--from", "pull-request", "--scope", "all"}, want: "scope"},
+		{args: []string{"graphite", "adopt", "--branch", "synthetic-top"}, want: "unknown flag"},
+		{args: []string{"graphite", "adopt", "--scope", "trunk"}, want: "unknown flag"},
+		{args: []string{"github", "adopt", "--scope", "all"}, want: "scope"},
 	} {
 		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
 			recorder, _ := publishedRepository(t, []string{"synthetic-lower", "synthetic-top", "synthetic-trunk"}, publishedStackJSON)
 
-			_, _, err := run(t, append([]string{"import"}, test.args...)...)
+			_, _, err := run(t, test.args...)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Errorf("error = %v, want it to mention %q", err, test.want)
 			}

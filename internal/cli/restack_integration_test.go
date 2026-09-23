@@ -481,7 +481,7 @@ func TestRestackOntoRecordsTheNewParent(t *testing.T) {
 			stdout, gitOutput(t, "log", "--oneline", "--graph", "--all"))
 	}
 	// The graph must now agree, so a later command measures against reality.
-	graph, _, err := run(t, "graph", "--branch", "synthetic-b", "--scope", "stack")
+	graph, _, err := run(t, "status", "--branch", "synthetic-b", "--scope", "stack")
 	if err != nil {
 		t.Fatal(err)
 	}

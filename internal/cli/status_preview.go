@@ -77,7 +77,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 }
 
 func statusView(plan link.Plan) stackView {
-	view, native := membershipView(plan, "status")
+	view, native := membershipView(plan, "github status")
 	if len(plan.Issues) != 0 {
 		// The same reason every mutating command refuses on, under the heading
 		// a read-only report gives it. The heading used to be concatenated in
@@ -194,11 +194,11 @@ func nativeMessage(s githubstack.Membership) string {
 	case githubstack.Aligned:
 		return fmt.Sprintf("GitHub stack #%d · selected path %d/%d · aligned", s.StackNumber, s.Selected, s.StackSize)
 	case githubstack.Partial:
-		return fmt.Sprintf("GitHub stack #%d · partial (%d/%d linked) · run %s to add the marked PRs.", s.StackNumber, s.Linked, s.Selected, runnable("g2g link"))
+		return fmt.Sprintf("GitHub stack #%d · partial (%d/%d linked) · run %s to add the marked PRs.", s.StackNumber, s.Linked, s.Selected, runnable("g2g github link"))
 	case githubstack.Conflicting:
 		return "GitHub stack: conflicting membership · review the marked PRs before changing anything."
 	default:
-		return "GitHub stack: not linked · run " + runnable("g2g link") + " to preview a link."
+		return "GitHub stack: not linked · run " + runnable("g2g github link") + " to preview a link."
 	}
 }
 
@@ -211,7 +211,7 @@ func nativeMessage(s githubstack.Membership) string {
 // "there is a stack" was reading the wrong thing; the branch list says it.
 func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentation) error {
 	view := stackView{
-		Operation:    "status",
+		Operation:    "github status",
 		Target:       undescribed.Branch,
 		TargetSource: "current Git branch",
 		Nodes:        []stackNode{{Branch: undescribed.Branch, Trunk: undescribed.Trunk, Target: true, State: unstackedState(undescribed), Severity: severityNeutral}},

@@ -204,7 +204,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			applied:       "Applied — stack published and missing pull requests created",
 			changed:       "Changes were made.",
 			recovery:      fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
-			suggestedNext: "g2g status",
+			suggestedNext: "g2g github status",
 		},
 	}
 	return flow.run(cmd, o.root, o.budgets, p, true)

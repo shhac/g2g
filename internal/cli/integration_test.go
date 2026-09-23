@@ -153,7 +153,7 @@ const openTopPullRequest = `{"number":102,"url":"https://example.test/102","head
 func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 	recorder := fakeRepository(t, openTopPullRequest)
 
-	stdout, _, err := run(t, "status")
+	stdout, _, err := run(t, "github", "status")
 	if err != nil {
 		t.Fatalf("status error = %v\n%s", err, stdout)
 	}
@@ -202,11 +202,11 @@ func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 // The preview/apply split is a safety contract, so prove at the process
 // boundary that a bare command touches nothing.
 func TestPreviewsNeverInvokeAMutation(t *testing.T) {
-	for _, command := range []string{"link", "push", "status"} {
+	for _, command := range []string{"github link", "push", "github status", "status"} {
 		t.Run(command, func(t *testing.T) {
 			recorder := fakeRepository(t, openTopPullRequest)
 
-			if _, _, err := run(t, command); err != nil {
+			if _, _, err := run(t, strings.Fields(command)...); err != nil {
 				t.Fatalf("%s error = %v", command, err)
 			}
 			recorder.AssertNone("gh stack link", "gh pr create", "gh stack unstack", "git push", "git checkout")
@@ -217,7 +217,7 @@ func TestPreviewsNeverInvokeAMutation(t *testing.T) {
 func TestLinkApplyRunsExactlyOneStackLinkAfterRediscovery(t *testing.T) {
 	recorder := fakeRepository(t, openTopPullRequest)
 
-	stdout, _, err := run(t, "link", "--apply")
+	stdout, _, err := run(t, "github", "link", "--apply")
 	if err != nil {
 		t.Fatalf("link --apply error = %v\n%s", err, stdout)
 	}
@@ -327,7 +327,7 @@ func TestFailedGitHubCallReportsItsOwnOutput(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	command := cli.New("v", &stdout, &stderr)
-	command.SetArgs([]string{"status"})
+	command.SetArgs([]string{"github", "status"})
 	err := command.Execute()
 	if err == nil {
 		t.Fatal("status error = nil, want a GitHub failure")
@@ -342,7 +342,7 @@ func TestFailedGitHubCallReportsItsOwnOutput(t *testing.T) {
 func TestMachineOutputSurvivesTheRealPipeline(t *testing.T) {
 	fakeRepository(t, openTopPullRequest)
 
-	stdout, _, err := run(t, "status", "--json")
+	stdout, _, err := run(t, "github", "status", "--json")
 	if err != nil {
 		t.Fatalf("status --json error = %v", err)
 	}

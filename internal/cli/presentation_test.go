@@ -30,9 +30,9 @@ func TestColorEnabledHonorsTerminalEnvironment(t *testing.T) {
 func TestStyledSentenceResumesAfterACommand(t *testing.T) {
 	p := Presentation{Color: true}
 
-	got := p.subdued("run " + runnable("g2g link") + " to preview a link.")
+	got := p.subdued("run " + runnable("g2g github link") + " to preview a link.")
 
-	want := ansiSubdued + "run " + ansiCommand + " g2g link " + ansiReset + ansiSubdued + " to preview a link." + ansiReset
+	want := ansiSubdued + "run " + ansiCommand + " g2g github link " + ansiReset + ansiSubdued + " to preview a link." + ansiReset
 	if got != want {
 		t.Errorf("subdued hint =\n%q\nwant\n%q", got, want)
 	}
@@ -67,14 +67,14 @@ func jsonNoteText(text string) string {
 // column of padding on each side is painted, so an uncoloured terminal and the
 // machine formats still carry the sentence exactly as it was written.
 func TestTheChipPadsOnlyWhereThereIsABackgroundToPad(t *testing.T) {
-	marked := "run " + runnable("g2g link") + "."
+	marked := "run " + runnable("g2g github link") + "."
 
 	coloured, plain := Presentation{Color: true}, Presentation{}
 
-	if got, want := coloured.drawCommands(marked, ""), "run "+ansiCommand+" g2g link "+ansiReset+"."; got != want {
+	if got, want := coloured.drawCommands(marked, ""), "run "+ansiCommand+" g2g github link "+ansiReset+"."; got != want {
 		t.Errorf("coloured = %q, want %q", got, want)
 	}
-	if got, want := plain.drawCommands(marked, ""), "run g2g link."; got != want {
+	if got, want := plain.drawCommands(marked, ""), "run g2g github link."; got != want {
 		t.Errorf("plain = %q, want %q", got, want)
 	}
 }

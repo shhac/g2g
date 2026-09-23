@@ -218,7 +218,7 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if s.GitHub == nil {
 		return fmt.Errorf("link service is not fully configured")
 	}
-	if err := plan.Snapshot.RequireActionable("g2g link"); err != nil {
+	if err := plan.Snapshot.RequireActionable("g2g github link"); err != nil {
 		return err
 	}
 	// gh stack link takes one ordered list. Handed a fork, it would link the

@@ -132,7 +132,7 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 		want    string
 		absent  string
 	}{
-		{name: "human success", want: "Suggested next step: g2g status"},
+		{name: "human success", want: "Suggested next step: g2g github status"},
 		{name: "blocked", blocked: "a synthetic refusal", absent: "Suggested next step:"},
 		{name: "json", p: Presentation{Format: formatJSON}, absent: "Suggested next step:"},
 		{name: "porcelain", p: Presentation{Format: formatPorcelain}, absent: "Suggested next step:"},
@@ -155,7 +155,7 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 				notices: flowNotices{
 					applied:       "Applied.",
 					changed:       "Changed.",
-					suggestedNext: "g2g status",
+					suggestedNext: "g2g github status",
 				},
 			}
 			err := flow.run(cmd, context.Background(), newBudgets(cmd), test.p, true)

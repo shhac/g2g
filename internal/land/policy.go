@@ -157,7 +157,7 @@ func classify(in facts) (Step, repair.Note) {
 		return Step{}, repair.Note{
 			Reason: fmt.Sprintf("%s conflicts with its base", pullRequest(branch, open.Number)),
 			Ways: []repair.Step{
-				{Command: "g2g sync", Effect: "bring the stack up to date and replay it"},
+				{Command: "g2g pull", Effect: "bring the stack up to date and replay it"},
 			},
 		}
 	}

@@ -133,7 +133,7 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 		{
 			name:    "under a branch the graph does not know",
 			request: Request{Name: "synthetic-new", Parent: "synthetic-stray"},
-			blocked: "would make synthetic-stray a trunk", way: "g2g track --stack --branch synthetic-stray",
+			blocked: "would make synthetic-stray a trunk", way: "g2g adopt --branch synthetic-stray",
 		},
 		{
 			// Standing on it is not a different claim: an unrecorded parent

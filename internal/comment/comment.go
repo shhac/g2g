@@ -26,7 +26,7 @@ import (
 )
 
 // command is how this command names itself where a selector or a refusal asks.
-const command = "g2g comment"
+const command = "g2g github comment"
 
 // historyRounds bounds how many times a run goes back to GitHub for pull
 // requests its comments named. Every comment of a stack records the same
@@ -315,7 +315,7 @@ func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, err
 
 // NotKept is a command that did its own work and then could not keep the
 // stack comments. What it did stands; the comments can be kept later with
-// g2g comment --apply, which is what a caller says.
+// g2g github comment --apply, which is what a caller says.
 type NotKept struct{ Err error }
 
 func (e *NotKept) Error() string { return "the stack comments were not kept: " + e.Err.Error() }

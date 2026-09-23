@@ -33,7 +33,7 @@ func (o *graphOptions) registerBranch(cmd *cobra.Command, service graph.Service)
 func newGraph(service graph.Service, selector stack.PathSelector, completions stack.Completions, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var from string
-	cmd := &cobra.Command{Use: "graph", GroupID: groupStructure, Short: "Inspect a branch graph, from g2g's own store or another record (read-only)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "status", GroupID: groupLook, Short: "Show the stack you are on and where each branch stands (read-only, offline)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
 		if err := selection.validateScope(); err != nil {
@@ -42,7 +42,7 @@ func newGraph(service graph.Service, selector stack.PathSelector, completions st
 		if err := validateOfflineSource(from); err != nil {
 			return err
 		}
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "graph", "read_only", selection.branch, ""))
+		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "status", "read_only", selection.branch, ""))
 		defer cancel()
 		if source := stack.Source(from); source != "" && source != stack.SourceG2G {
 			return writeSourceGraph(ctx, cmd, selector, selection, source, presentation)
@@ -117,9 +117,9 @@ func validateOfflineSource(from string) error {
 		return nil
 	}
 	if stack.Permits(stack.ReadableSources, stack.Source(from)) {
-		return fmt.Errorf("g2g graph cannot read structure from %q · it takes g2g or graphite, because reading a pull request base means invoking gh and this command answers without a network · g2g status --from %s does read it", from, from)
+		return fmt.Errorf("g2g status cannot read structure from %q · it takes g2g or graphite, because reading a pull request base means invoking gh and this command answers without a network · g2g github status --from %s does read it", from, from)
 	}
-	return fmt.Errorf("unknown source %q · g2g graph reads g2g or graphite", from)
+	return fmt.Errorf("unknown source %q · g2g status reads g2g or graphite", from)
 }
 
 // writeSourceGraph renders a tree that another record describes, in the shape
@@ -136,7 +136,7 @@ func writeSourceGraph(ctx context.Context, cmd *cobra.Command, selector stack.Pa
 		Branch: selection.branch,
 		Scope:  selection.effectiveScope(),
 		From:   source,
-	}, "g2g graph")
+	}, "g2g status")
 	if err != nil {
 		return err
 	}
@@ -162,5 +162,5 @@ func sourceGraphView(snapshot stack.Snapshot) stackView {
 			Depth:  depths[branch],
 		})
 	}
-	return stackView{Operation: "graph", Target: snapshot.Target, TargetSource: snapshot.TargetSource, Nodes: nodes}
+	return stackView{Operation: "status", Target: snapshot.Target, TargetSource: snapshot.TargetSource, Nodes: nodes}
 }

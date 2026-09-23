@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/shhac/g2g/internal/cli"
 	"github.com/shhac/g2g/internal/testutil"
 )
@@ -349,27 +351,27 @@ func TestFromRejectsAnUnknownSource(t *testing.T) {
 // pullRequests is what that command needs to have work to do: unlink is the
 // only one whose subject is a stack that is already projected onto GitHub.
 //
-// args are what the command needs to select a stack at all: import reads
-// Graphite whole unless it is pointed at pull requests.
+// name is the command's path below the root, so a namespaced command is
+// "github link".
 var stackCommands = []struct {
 	name         string
 	args         []string
 	pullRequests string
 }{
-	{name: "link", pullRequests: ownedPullRequests},
-	{name: "status", pullRequests: ownedPullRequests},
-	{name: "unlink", pullRequests: ownedLinkedPullRequests},
+	{name: "github link", pullRequests: ownedPullRequests},
+	{name: "github status", pullRequests: ownedPullRequests},
+	{name: "github unlink", pullRequests: ownedLinkedPullRequests},
 	{name: "push", pullRequests: ownedPullRequests},
 	{name: "submit", pullRequests: ownedPullRequests},
-	{name: "retarget", pullRequests: ownedPullRequests},
+	{name: "github retarget", pullRequests: ownedPullRequests},
 	{name: "land", pullRequests: ownedPullRequests},
-	{name: "comment", pullRequests: ownedPullRequests},
-	// graph resolves through a source too now, and reads no pull requests at
+	{name: "github comment", pullRequests: ownedPullRequests},
+	// status resolves through a source too, and reads no pull requests at
 	// all: its whole point is answering without a network.
-	{name: "graph", pullRequests: ownedPullRequests},
-	// import from pull requests over a stack the graph already records the
+	{name: "status", pullRequests: ownedPullRequests},
+	// adopting from pull requests over a stack the graph already records the
 	// same way: nothing to adopt, and still no Graphite.
-	{name: "import", args: []string{"--from", "pull-request"}, pullRequests: ownedPullRequestsForEveryBranch},
+	{name: "github adopt", pullRequests: ownedPullRequestsForEveryBranch},
 }
 
 // ownedPullRequestsForEveryBranch answers for every local branch in the order
@@ -392,16 +394,18 @@ func TestEveryCommandTakingTheStackFlagsIsCovered(t *testing.T) {
 		covered[command.name] = true
 	}
 
-	for _, command := range cli.New("v0.0.0-test", &stdout, &stderr).Commands() {
+	root := cli.New("v0.0.0-test", &stdout, &stderr)
+	for _, command := range allCommands(root) {
 		// --from is what stackOptions registers and nothing else does, so it is
 		// the marker for "this command resolves a stack through a source".
-		// --trunk alone is not: track has one too, meaning where an adoption
-		// stops rather than which base a projection sits on.
+		// --trunk alone is not: adopt has one too, meaning where an adoption
+		// starts rather than which base a projection sits on.
 		if command.Flags().Lookup("branch") == nil || command.Flags().Lookup("from") == nil {
 			continue
 		}
-		if !covered[command.Name()] {
-			t.Errorf("%s takes --branch and --trunk but is not in stackCommands, so nothing checks that it selects or completes without Graphite", command.Name())
+		name := strings.TrimPrefix(command.CommandPath(), root.Name()+" ")
+		if !covered[name] {
+			t.Errorf("%s takes --branch and --trunk but is not in stackCommands, so nothing checks that it selects or completes without Graphite", name)
 		}
 	}
 }
@@ -418,7 +422,7 @@ func TestEveryStackCommandCompletesWithoutGraphite(t *testing.T) {
 				}
 				recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-				stdout, _, err := run(t, "__complete", command.name, flag, "")
+				stdout, _, err := run(t, append(append([]string{"__complete"}, strings.Fields(command.name)...), flag, "")...)
 				if err != nil {
 					t.Fatalf("__complete %s %s: %v\n%s", command.name, flag, err, stdout)
 				}
@@ -461,7 +465,7 @@ func TestEveryStackCommandRunsWithoutGraphite(t *testing.T) {
 		t.Run(command.name, func(t *testing.T) {
 			recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, command.pullRequests)
 
-			stdout, stderr, err := run(t, append([]string{command.name}, command.args...)...)
+			stdout, stderr, err := run(t, append(strings.Fields(command.name), command.args...)...)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s%s", command.name, err, stdout, stderr)
 			}
@@ -480,7 +484,7 @@ func TestEveryStackCommandRunsWithoutGraphite(t *testing.T) {
 func TestApplyingReDiscoversThroughTheSameSourceWithoutGraphite(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-	stdout, stderr, err := run(t, "link", "--apply")
+	stdout, stderr, err := run(t, "github", "link", "--apply")
 	if err != nil {
 		t.Fatalf("link --apply: %v\n%s%s", err, stdout, stderr)
 	}
@@ -565,7 +569,7 @@ func TestAnUndescribedBranchIsRefusedWithARemedy(t *testing.T) {
 func TestLinkSelectsFromTheG2GOwnedGraph(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 
-	stdout, _, err := run(t, "link")
+	stdout, _, err := run(t, "github", "link")
 	if err != nil {
 		t.Fatalf("link: %v\n%s", err, stdout)
 	}
@@ -619,7 +623,7 @@ func inRepository(t *testing.T, dir string, args ...string) (string, string, err
 func TestTrackStackRecordsAWholeTree(t *testing.T) {
 	dir := treeRepository(t)
 
-	stdout, stderr, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply")
+	stdout, stderr, err := inRepository(t, dir, "adopt", "--trunk", "synthetic-trunk", "--apply")
 	if err != nil {
 		t.Fatalf("track --stack --apply: %v\n%s%s", err, stdout, stderr)
 	}
@@ -627,7 +631,7 @@ func TestTrackStackRecordsAWholeTree(t *testing.T) {
 	// Selected from synthetic-a, "my stack" is the trunk beneath it and both
 	// branches above it. Selected from synthetic-b it would not be: synthetic-c
 	// is a cousin there, which is the distinction the scope exists to make.
-	graphOut, _, err := inRepository(t, dir, "graph", "--branch", "synthetic-a", "--scope", "stack")
+	graphOut, _, err := inRepository(t, dir, "status", "--branch", "synthetic-a", "--scope", "stack")
 	if err != nil {
 		t.Fatalf("graph: %v", err)
 	}
@@ -648,7 +652,7 @@ func TestTrackStackRecordsAWholeTree(t *testing.T) {
 func TestTrackStackLeavesOneTrunk(t *testing.T) {
 	dir := treeRepository(t)
 
-	if _, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply"); err != nil {
+	if _, _, err := inRepository(t, dir, "adopt", "--trunk", "synthetic-trunk", "--apply"); err != nil {
 		t.Fatalf("track --stack: %v", err)
 	}
 
@@ -675,10 +679,10 @@ func TestTrackStackLeavesOneTrunk(t *testing.T) {
 func TestTrackStackIsRepeatable(t *testing.T) {
 	dir := treeRepository(t)
 
-	if _, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk", "--apply"); err != nil {
+	if _, _, err := inRepository(t, dir, "adopt", "--trunk", "synthetic-trunk", "--apply"); err != nil {
 		t.Fatalf("first apply: %v", err)
 	}
-	stdout, _, err := inRepository(t, dir, "track", "--stack", "--trunk", "synthetic-trunk")
+	stdout, _, err := inRepository(t, dir, "adopt", "--trunk", "synthetic-trunk")
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -696,8 +700,8 @@ func TestCandidateAdviceOffersWholeStackAdoption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("track: %v", err)
 	}
-	if !strings.Contains(stdout, "--stack") {
-		t.Errorf("the candidate advice does not mention --stack:\n%s", stdout)
+	if !strings.Contains(stdout, "g2g adopt") {
+		t.Errorf("the candidate advice does not mention g2g adopt:\n%s", stdout)
 	}
 }
 
@@ -707,12 +711,12 @@ func TestCandidateAdviceOffersWholeStackAdoption(t *testing.T) {
 //
 // It was honoured: --from is registered on every stack command, and the
 // resolver's on-request tier answers whoever names it, so push --from
-// pull-request ran gh repo view and gh api graphql before selection began. The
+// github ran gh repo view and gh api graphql before selection began. The
 // invariant was stated in the skill and in the comment directly above the field
 // that broke it, and nothing asserted it — the sibling test above checks push
 // reaches no Graphite and never checked GitHub.
 func TestPushNeverReachesGitHubWhateverSourceIsNamed(t *testing.T) {
-	for _, from := range []string{"", "g2g", "pull-request"} {
+	for _, from := range []string{"", "g2g", "github"} {
 		name := from
 		if name == "" {
 			name = "default"
@@ -726,10 +730,10 @@ func TestPushNeverReachesGitHubWhateverSourceIsNamed(t *testing.T) {
 			}
 			stdout, _, err := run(t, args...)
 
-			// pull-request is refused; the others succeed. Either way no gh.
-			if from == "pull-request" {
+			// github is refused; the others succeed. Either way no gh.
+			if from == "github" {
 				if err == nil {
-					t.Fatalf("push --from pull-request was allowed:\n%s", stdout)
+					t.Fatalf("push --from github was allowed:\n%s", stdout)
 				}
 				if !strings.Contains(err.Error(), "gh") {
 					t.Errorf("refusal does not say why: %v", err)
@@ -747,11 +751,19 @@ func TestPushNeverReachesGitHubWhateverSourceIsNamed(t *testing.T) {
 func offersFlag(t *testing.T, command, flag string) bool {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	for _, candidate := range cli.New("v0.0.0-test", &stdout, &stderr).Commands() {
-		if candidate.Name() == command {
-			return candidate.Flags().Lookup(flag) != nil
-		}
+	found, _, err := cli.New("v0.0.0-test", &stdout, &stderr).Find(strings.Fields(command))
+	if err != nil {
+		t.Fatalf("no command named %q: %v", command, err)
 	}
-	t.Fatalf("no command named %q", command)
-	return false
+	return found.Flags().Lookup(flag) != nil
+}
+
+// allCommands is every command below root, namespaces included.
+func allCommands(root *cobra.Command) []*cobra.Command {
+	var all []*cobra.Command
+	for _, command := range root.Commands() {
+		all = append(all, command)
+		all = append(all, allCommands(command)...)
+	}
+	return all
 }

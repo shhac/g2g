@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"testing"
 )
@@ -60,7 +61,44 @@ func TestKnownTipsPrefersTheRemoteTrackingRefWhenTheyAreNotInOrder(t *testing.T)
 
 func TestKnownTipsRefusesARemoteThatDoesNotExist(t *testing.T) {
 	_, client := syntheticRemote(t)
-	if _, err := client.KnownTips(context.Background(), "synthetic-nowhere", []string{"synthetic-trunk"}); err == nil {
-		t.Error("KnownTips() error = nil for a remote that is not configured")
+	if _, err := client.KnownTips(context.Background(), "synthetic-nowhere", []string{"synthetic-trunk"}); !errors.Is(err, ErrNoSuchRemote) {
+		t.Errorf("KnownTips() error = %v, want ErrNoSuchRemote", err)
+	}
+}
+
+// A branch merged and deleted on the remote goes from the remote-tracking refs
+// with the next pruning fetch, and is left behind in g2g's own, which is only
+// ever fetched. Read from that, it stayed published for good.
+func TestKnownTipsForgetsABranchTheRemoteDeleted(t *testing.T) {
+	upstream, client := syntheticRemote(t)
+	for _, args := range [][]string{
+		{"switch", "-q", "-c", "synthetic/topic"},
+		{"commit", "-q", "--allow-empty", "-m", "synthetic topic"},
+		{"push", "-q", "origin", "synthetic/topic"},
+	} {
+		if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	if err := client.FetchIsolated(context.Background(), "origin", []string{"synthetic/topic"}); err != nil {
+		t.Fatal(err)
+	}
+	tips, err := client.KnownTips(context.Background(), "origin", []string{"synthetic/topic"})
+	if err != nil || tips["synthetic/topic"] == "" {
+		t.Fatalf("KnownTips() = %v, %v; want the pushed branch with a slash in its name", tips, err)
+	}
+
+	if output, err := exec.Command("git", "--git-dir", upstream, "branch", "-D", "synthetic/topic").CombinedOutput(); err != nil {
+		t.Fatalf("delete upstream: %v\n%s", err, output)
+	}
+	if output, err := exec.Command("git", "fetch", "-q", "--prune", "origin").CombinedOutput(); err != nil {
+		t.Fatalf("fetch: %v\n%s", err, output)
+	}
+	tips, err = client.KnownTips(context.Background(), "origin", []string{"synthetic/topic"})
+	if err != nil {
+		t.Fatalf("KnownTips() error = %v", err)
+	}
+	if tip, present := tips["synthetic/topic"]; present {
+		t.Errorf("a branch the remote deleted is still known at %s", tip)
 	}
 }

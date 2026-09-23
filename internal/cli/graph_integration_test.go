@@ -46,6 +46,8 @@ func graphRepository(t *testing.T, adopted string) (*testutil.Recorder, string) 
 			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			{Prefix: "rev-parse", Output: "3333333333333333333333333333333333333333"},
+			// A repository nothing has been published from: status draws no remote marks.
+			{Prefix: "remote get-url", Stderr: "error: No such remote 'origin'", Exit: 2},
 			{Prefix: "update-ref"},
 		},
 	})

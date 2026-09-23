@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
 )
@@ -18,7 +20,9 @@ type Published interface {
 //
 // A repository with no such remote is ordinary — nothing has been published
 // from it — so the default remote missing draws no marks rather than failing a
-// read. One named on purpose is a mistake worth saying.
+// read. One named on purpose is a mistake worth saying, and so is any other
+// failure: drawing no marks for one would read as nothing to report, and let
+// doctor say a repository is healthy when it could not tell.
 func readPublished(ctx context.Context, published Published, remote string, named bool, discovery graph.Discovery) (map[string]push.Publication, error) {
 	if published == nil {
 		return nil, nil
@@ -39,7 +43,7 @@ func readPublished(ctx context.Context, published Published, remote string, name
 		}
 		return branch, trunk
 	})
-	if err != nil && !named {
+	if errors.Is(err, localgit.ErrNoSuchRemote) && !named {
 		return nil, nil
 	}
 	return publishing, err

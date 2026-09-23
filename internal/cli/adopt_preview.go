@@ -37,7 +37,7 @@ func adoptView(plan align.AdoptPlan) stackView {
 	return agreementNote(view, plan)
 }
 
-// adoptSource is how a preview speaks about the record an import read.
+// adoptSource is how a preview speaks about the record an adoption read.
 type adoptSource struct {
 	name string
 	// says is how a conflict names this record's side of it.
@@ -78,7 +78,7 @@ func agreementNote(view stackView, plan align.AdoptPlan) stackView {
 
 // unconfirmedNotes says which adopted edges Git does not yet show, in track's
 // words: it is the same state, reached the same way, and a stack that reads as
-// needing a restack straight after an import should not be a surprise.
+// needing a restack straight after an adoption should not be a surprise.
 func unconfirmedNotes(plan align.AdoptPlan) []string {
 	notes := make([]string, 0, len(plan.Unconfirmed))
 	for _, adoption := range plan.Adopt {

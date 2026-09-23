@@ -11,7 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/testutil"
 )
 
-// fakeGit answers the two questions an import asks about a branch: is it here,
+// fakeGit answers the two questions an adoption asks about a branch: is it here,
 // and does Git agree with the relationship Graphite declares.
 type fakeGit struct {
 	local       []string
@@ -167,12 +167,12 @@ func TestAdoptBlocksOnADisagreement(t *testing.T) {
 		t.Error("ApplyAdopt() error = nil for a blocked plan")
 	}
 	if store.graph.Edges["synthetic-top"].Parent != "synthetic-trunk" {
-		t.Error("a blocked import changed the g2g graph")
+		t.Error("a blocked adoption changed the g2g graph")
 	}
 }
 
 // Re-running over branches both records already agree about does nothing, which
-// is what makes import safe to repeat when someone tracks a new branch in gt.
+// is what makes adopting safe to repeat when someone tracks a new branch in gt.
 func TestAdoptIsRepeatable(t *testing.T) {
 	svc, store := adoptService(graph.New(), declaredChain(), everyBranchLocal())
 
@@ -199,7 +199,7 @@ func TestAdoptIsRepeatable(t *testing.T) {
 		t.Fatalf("second ApplyAdopt() error = %v", err)
 	}
 	if !store.graph.Equal(before) {
-		t.Error("a second import changed the graph")
+		t.Error("a second adoption changed the graph")
 	}
 }
 
@@ -218,7 +218,7 @@ func TestAdoptSkipsBranchesThatAreNotLocal(t *testing.T) {
 	}
 }
 
-// Import writes the g2g graph and nothing else. Graphite keeps every branch
+// Adopting writes the g2g graph and nothing else. Graphite keeps every branch
 // it had; the only change is which record answers.
 func TestAdoptWritesNothingToGraphite(t *testing.T) {
 	client := &fakeGraphite{forest: declaredChain()}
@@ -235,7 +235,7 @@ func TestAdoptWritesNothingToGraphite(t *testing.T) {
 		t.Fatalf("ApplyAdopt() error = %v", err)
 	}
 	if got := client.recorded(); got != "" {
-		t.Errorf("recorded %q, want import to write nothing to Graphite", got)
+		t.Errorf("recorded %q, want adopting to write nothing to Graphite", got)
 	}
 }
 
@@ -256,7 +256,7 @@ func TestRevalidateAdoptRefusesAChangedGraph(t *testing.T) {
 	}
 }
 
-// fakeRefs records what was pinned. The fork point is the one thing import
+// fakeRefs records what was pinned. The fork point is the one thing adopting
 // manufactures that Graphite cannot supply, so "a ref was written" is not the
 // assertion that matters — "the right branch, at the right object" is.
 type fakeRefs struct {
@@ -382,8 +382,8 @@ func TestRevalidateAdoptCatchesAChangedParentAtTheSameCount(t *testing.T) {
 	}
 }
 
-// The enrolment gate is shared with mirror, but import must be proven to keep
-// it: a future refactor giving import its own read path would otherwise break
+// The enrolment gate is shared with mirror, but adopting must be proven to keep
+// it: a future refactor giving adoption its own read path would otherwise break
 // the invariant with nothing catching it.
 func TestAdoptRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 	asked := false
@@ -397,11 +397,11 @@ func TestAdoptRefusesToAskAGraphiteFreeRepository(t *testing.T) {
 		t.Error("PlanAdopt() error = nil in a repository that does not use Graphite")
 	}
 	if asked {
-		t.Error("import read Graphite in a repository that does not use it, which is what enrols it")
+		t.Error("adoption read Graphite in a repository that does not use it, which is what enrols it")
 	}
 }
 
-// mirror has an end-to-end test for a failing Graphite write; import's
+// mirror has an end-to-end test for a failing Graphite write; adoption's
 // equivalent risky write is the graph store itself, and a failure there must
 // be reported rather than followed by a false "adopted".
 func TestAdoptReportsAFailedGraphWrite(t *testing.T) {

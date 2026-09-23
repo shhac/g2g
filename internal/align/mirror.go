@@ -2,7 +2,7 @@
 //
 // Source resolution decided which source answers for a branch and left them
 // free to disagree. This is the other half, in both directions: mirror makes
-// Graphite agree with g2g, import adopts what Graphite declares. Neither ever
+// Graphite agree with g2g, adopt takes what Graphite declares. Neither ever
 // removes a branch from the g2g graph — alignment is not ownership transfer.
 package align
 
@@ -52,13 +52,13 @@ type Service struct {
 	// keeps "no g2g command enrols a repository" true without exception.
 	Configured func(ctx context.Context) (bool, error)
 
-	// PullRequests, Forks and Trunks serve only import --from github,
-	// and a service without them still mirrors and imports from Graphite.
+	// PullRequests, Forks and Trunks serve only github adopt,
+	// and a service without them still mirrors and adopts from Graphite.
 	// PullRequests reads what open pull request bases describe, which invokes
 	// gh; that is why it is asked only when that record is named.
 	PullRequests PullRequestReader
 	// Forks says where a branch left its base, which is the fork point an
-	// import from pull requests records.
+	// adoption from pull requests records.
 	Forks Forks
 	// Trunks is the evidence that a base the g2g graph does not record is the
 	// repository's trunk, and so may become a root.
@@ -215,7 +215,7 @@ func (s Service) RevalidateMirror(ctx context.Context, prune bool, preview Mirro
 // Ready reports a service with everything it needs.
 //
 // Unlike its siblings this is the registration rule alone, not also the guard
-// below. One service backs two commands with different needs: import reads
+// below. One service backs two commands with different needs: adopt reads
 // ancestry through the Git client and mirror does not, so the rule for "may
 // these commands exist" is the union and the rule for "may this call proceed"
 // stays per-path.

@@ -30,7 +30,7 @@ func mirrorRepository(t *testing.T, graphJSON string, graphiteLog []string) *tes
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: []string{"synthetic-lower", "synthetic-stale", "synthetic-top", "synthetic-trunk"}},
-			// import resolves a fork point per adopted edge and asks Git whether
+			// graphite adopt resolves a fork point per adopted edge and asks Git whether
 			// it confirms each declared relationship.
 			// Absorbed's version gate and tree comparison: push asks the
 			// whole-branch landed question now, not just the per-commit one.
@@ -163,13 +163,13 @@ func TestMirrorRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	}
 }
 
-// import is the other direction: it writes the g2g graph and never Graphite.
+// graphite adopt is the other direction: it writes the g2g graph and never Graphite.
 func TestAdoptAdoptsIntoTheG2GGraphOnly(t *testing.T) {
 	recorder := mirrorRepository(t, "", strangerGraphiteLog)
 
 	stdout, stderr, err := run(t, "graphite", "adopt", "--apply")
 	if err != nil {
-		t.Fatalf("import --apply: %v\n%s%s", err, stdout, stderr)
+		t.Fatalf("graphite adopt --apply: %v\n%s%s", err, stdout, stderr)
 	}
 
 	for _, branch := range []string{"synthetic-lower", "synthetic-top", "synthetic-stale"} {
@@ -188,7 +188,7 @@ func TestAdoptPreviewNamesTheAuthorityShift(t *testing.T) {
 
 	stdout, _, err := run(t, "graphite", "adopt")
 	if err != nil {
-		t.Fatalf("import: %v\n%s", err, stdout)
+		t.Fatalf("graphite adopt: %v\n%s", err, stdout)
 	}
 	if !strings.Contains(stdout, "answers for") {
 		t.Errorf("preview does not say g2g takes over answering:\n%s", stdout)
@@ -204,7 +204,7 @@ func TestAdoptBlocksAndNamesBothRecords(t *testing.T) {
 
 	stdout, _, err := run(t, "graphite", "adopt")
 	if err != nil {
-		t.Fatalf("import: %v\n%s", err, stdout)
+		t.Fatalf("graphite adopt: %v\n%s", err, stdout)
 	}
 	if !strings.Contains(stdout, "Apply blocked") {
 		t.Errorf("preview is not blocked by the disagreement:\n%s", stdout)
@@ -215,7 +215,7 @@ func TestAdoptBlocksAndNamesBothRecords(t *testing.T) {
 
 	_, _, applyErr := run(t, "graphite", "adopt", "--apply")
 	if applyErr == nil {
-		t.Error("import --apply: error = nil for a blocked plan")
+		t.Error("graphite adopt --apply: error = nil for a blocked plan")
 	}
 }
 
@@ -252,14 +252,14 @@ func TestMirrorReportsAFailedGraphiteWrite(t *testing.T) {
 	}
 }
 
-// import must refuse a Graphite-free repository for the same reason mirror
+// graphite adopt must refuse a Graphite-free repository for the same reason mirror
 // does: reading the forest is what enrols it.
 func TestAdoptRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	recorder, common := g2gOwnedRepository(t, ownedGraph)
 
 	_, _, err := run(t, "graphite", "adopt")
 	if err == nil {
-		t.Fatal("import: error = nil in a repository that does not use Graphite")
+		t.Fatal("graphite adopt: error = nil in a repository that does not use Graphite")
 	}
 	if !strings.Contains(err.Error(), "does not use Graphite") {
 		t.Errorf("error = %v", err)
@@ -272,7 +272,7 @@ func TestAdoptRefusesWithoutTouchingAGraphiteFreeRepository(t *testing.T) {
 	}
 	for _, entry := range entries {
 		if strings.Contains(strings.ToLower(entry.Name()), "graphite") {
-			t.Errorf("previewing an import enrolled the repository: %s", entry.Name())
+			t.Errorf("previewing an adoption enrolled the repository: %s", entry.Name())
 		}
 	}
 }

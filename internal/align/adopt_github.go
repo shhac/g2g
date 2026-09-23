@@ -28,7 +28,7 @@ type Forks interface {
 	MergeBase(ctx context.Context, one, other string) (string, error)
 }
 
-// GitHubAdoptScopes are how much of a stack an import from pull requests
+// GitHubAdoptScopes are how much of a stack an adoption from pull requests
 // may adopt. Both open with the base the stack hangs from, which is what the
 // root rule below needs to see; a scope rooted at the target would leave that
 // base unexamined, and all would span trunks the user did not name.
@@ -39,18 +39,18 @@ var GitHubAdoptScopes = []shape.Scope{shape.ScopeStack, shape.ScopeTrunk}
 //
 // It is how a stack someone else published becomes one this checkout can
 // restack. The pull requests declare each parent, so this is no more a guess
-// than a Graphite import is, and it follows the same rules: additive, refused
+// than a Graphite adoption is, and it follows the same rules: additive, refused
 // on any disagreement, parents recorded before children. Two refusals are its
 // own, and each is about a branch the record names that the graph cannot hold:
 // one that is not on this machine, and a base nothing establishes as a trunk.
 func (s Service) PlanAdoptFromGitHub(ctx context.Context, selection stack.Selection) (AdoptPlan, error) {
 	if s.Store == nil || s.Git == nil || s.PullRequests == nil || s.Forks == nil {
-		return AdoptPlan{}, fmt.Errorf("importing from pull requests is not configured")
+		return AdoptPlan{}, fmt.Errorf("adopting from pull requests is not configured")
 	}
 	selection.From = stack.SourceGitHub
 	selection.Scope = selection.EffectiveScope()
 	if !slices.Contains(GitHubAdoptScopes, selection.Scope) {
-		return AdoptPlan{}, fmt.Errorf("import --from github adopts a stack or a trunk, not scope %q", selection.Scope)
+		return AdoptPlan{}, fmt.Errorf("github adopt adopts a stack or a trunk, not scope %q", selection.Scope)
 	}
 	snapshot, err := s.PullRequests.Select(ctx, selection, "g2g github adopt")
 	if err != nil {
@@ -93,7 +93,7 @@ func (s Service) RevalidateAdoptFromGitHub(ctx context.Context, selection stack.
 	if err != nil {
 		return AdoptPlan{}, err
 	}
-	if err := diagnostic.Revalidated(ctx, "import", "the pull requests and the g2g graph", current.Equal(preview)); err != nil {
+	if err := diagnostic.Revalidated(ctx, "adopt", "the pull requests and the g2g graph", current.Equal(preview)); err != nil {
 		return AdoptPlan{}, err
 	}
 	return current, nil
@@ -179,7 +179,7 @@ func (s Service) defaultBranch(ctx context.Context) string {
 // fetchFirst is the refusal for branches the pull requests name that are not
 // here. Creating them is not this command's business: which remote, which
 // upstream, and whether to check one out are the user's to decide, and an
-// import that quietly made branches would be doing something nobody previewed.
+// adoption that quietly made branches would be doing something nobody previewed.
 func fetchFirst(missing []string) repair.Note {
 	first := missing[0]
 	reason := fmt.Sprintf("%s is only on the remote, and the g2g graph records only local branches", first)

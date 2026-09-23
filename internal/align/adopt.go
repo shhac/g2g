@@ -13,13 +13,13 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 )
 
-// Adoption is one edge an import would record in the g2g graph.
+// Adoption is one edge an adoption would record in the g2g graph.
 type Adoption struct {
 	Branch string
 	Parent string
 	// ForkPoint is where the branch's own work begins, resolved now: the
 	// parent's tip for Graphite, the merge base for a pull request. Neither
-	// record has an equivalent field, so importing does not copy this — it
+	// record has an equivalent field, so adopting does not copy this — it
 	// manufactures the one thing that makes a restack possible, and it cannot
 	// be recovered later.
 	ForkPoint string
@@ -33,14 +33,14 @@ type Conflict struct {
 	Theirs string
 }
 
-// The records an import can read. They are the resolver's own source names, so
+// The records an adoption can read. They are the resolver's own source names, so
 // a flag, a preview and the JSON output all use one word for each.
 const (
 	FromGraphite = "graphite"
 	FromGitHub   = "github"
 )
 
-// AdoptPlan is what an import would adopt.
+// AdoptPlan is what an adoption would adopt.
 type AdoptPlan struct {
 	// From names the record the edges were read from.
 	From string
@@ -56,7 +56,7 @@ type AdoptPlan struct {
 	// NewTrunks are parents about to become roots of the g2g forest.
 	NewTrunks []string
 	// Unconfirmed are adopted branches whose parent is not an ancestor, so
-	// they will read as needing a restack. Only an import from pull requests
+	// they will read as needing a restack. Only an adoption from pull requests
 	// fills it: its fork point is the merge base, which a restack can replay
 	// from, so saying "needs a restack" is true there.
 	Unconfirmed []string
@@ -66,7 +66,7 @@ type AdoptPlan struct {
 	Repair repair.Note
 }
 
-// Claims returns the branches this import would start answering for. Adoption
+// Claims returns the branches this adoption would start answering for. Adoption
 // is the authority claim, so this is the list that matters most in a preview:
 // afterwards g2g decides for every one of them, and --from on a read is the
 // only way to see the other record's view again.
@@ -96,7 +96,7 @@ func (s Service) PlanAdopt(ctx context.Context) (AdoptPlan, error) {
 	return s.planAdoptions(ctx, adopted, declaredEdges(forest), local, s.graphiteRecord())
 }
 
-// record is what differs between the sources an import reads. Everything else
+// record is what differs between the sources an adoption reads. Everything else
 // — the additive rule, the conflict refusal, parents before children, how Git
 // assesses an edge — is one policy, applied once whichever record declared
 // the edges.
@@ -140,7 +140,7 @@ func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declare
 		return AdoptPlan{}, err
 	}
 	plan.Updated, plan.NewTrunks = updated, trunks
-	diagnostic.Event(ctx, "import.plan",
+	diagnostic.Event(ctx, "adopt.plan",
 		diagnostic.Field{Key: "from", Value: source.from},
 		diagnostic.Field{Key: "adopt", Value: strings.Join(plan.Claims(), ",")},
 		diagnostic.Field{Key: "agreed", Value: strings.Join(plan.Agreed, ",")},
@@ -155,7 +155,7 @@ func declaredEdges(forest graphite.Forest) []Adoption {
 	for _, branch := range declaredOrder(forest) {
 		parent := forest.Parents[branch]
 		if parent == "" {
-			// A Graphite root has no edge to import. It becomes a g2g trunk
+			// A Graphite root has no edge to adopt. It becomes a g2g trunk
 			// only if something is adopted onto it.
 			continue
 		}
@@ -200,7 +200,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 		}
 		adoptions[index].ForkPoint = forkPoint
 		// Origin records how far Git agrees with the edge, not which tool
-		// supplied it, so an imported edge is assessed exactly as a tracked one
+		// supplied it, so an adoptioned edge is assessed exactly as a tracked one
 		// is. Another record declaring a relationship does not make the commits
 		// line up, and that difference is worth keeping visible.
 		confirmed, err := s.Git.IsAncestor(ctx, adoption.Parent, adoption.Branch)
@@ -231,7 +231,7 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 // when asked about them.
 func (s Service) ApplyAdopt(ctx context.Context, plan AdoptPlan) error {
 	if plan.Blocked != "" {
-		return fmt.Errorf("cannot import: %s", plan.Blocked)
+		return fmt.Errorf("cannot adopt: %s", plan.Blocked)
 	}
 	if len(plan.Adopt) == 0 {
 		return nil
@@ -256,7 +256,7 @@ func (s Service) RevalidateAdopt(ctx context.Context, preview AdoptPlan) (AdoptP
 	if err != nil {
 		return AdoptPlan{}, err
 	}
-	if err := diagnostic.Revalidated(ctx, "import", "the graphs", current.Equal(preview)); err != nil {
+	if err := diagnostic.Revalidated(ctx, "adopt", "the graphs", current.Equal(preview)); err != nil {
 		return AdoptPlan{}, err
 	}
 	return current, nil

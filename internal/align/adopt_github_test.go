@@ -134,8 +134,8 @@ func TestAdoptFromGitHubAdoptsAPublishedStack(t *testing.T) {
 }
 
 // The graph records local branches, and creating one is not something an
-// import previews. A branch the pull requests place that is only on the
-// remote refuses the whole import and says how to bring it here.
+// adoption previews. A branch the pull requests place that is only on the
+// remote refuses the whole adoption and says how to bring it here.
 func TestAdoptFromGitHubRefusesABranchThatIsNotHere(t *testing.T) {
 	bases := map[string]string{
 		"synthetic-mid": "synthetic-trunk",
@@ -160,7 +160,7 @@ func TestAdoptFromGitHubRefusesABranchThatIsNotHere(t *testing.T) {
 		t.Error("ApplyAdopt() error = nil for a refused plan")
 	}
 	if len(fixture.store.writes) != 0 {
-		t.Error("a refused import wrote the graph")
+		t.Error("a refused adoption wrote the graph")
 	}
 }
 
@@ -185,7 +185,7 @@ func TestAdoptFromGitHubRefusesAConflictingRecordedParent(t *testing.T) {
 		t.Error("ApplyAdopt() error = nil for a conflicting plan")
 	}
 	if fixture.store.graph.Edges["synthetic-top"].Parent != "synthetic-trunk" {
-		t.Error("a refused import changed the recorded parent")
+		t.Error("a refused adoption changed the recorded parent")
 	}
 }
 
@@ -313,7 +313,7 @@ func TestRevalidateAdoptFromGitHubAcceptsAnUnchangedStack(t *testing.T) {
 }
 
 // Reading pull requests is not reading Graphite, so a repository that has
-// never used Graphite imports from them without the enrolment gate refusing,
+// never used Graphite adopts from them without the enrolment gate refusing,
 // and without Graphite being asked anything.
 func TestAdoptFromGitHubNeverAsksGraphite(t *testing.T) {
 	fixture := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "synthetic-trunk")
@@ -323,7 +323,7 @@ func TestAdoptFromGitHubNeverAsksGraphite(t *testing.T) {
 
 	planFromPullRequests(t, fixture, stack.Selection{})
 	if asked {
-		t.Error("an import from pull requests read Graphite")
+		t.Error("an adoption from pull requests read Graphite")
 	}
 }
 

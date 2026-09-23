@@ -132,18 +132,33 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// You have unpublished work. That is push's business, not sync's.
 			continue
 		}
-		// Everything here is on the remote by content, base and all: the
-		// published version is this one reworded or rebuilt in place, and
-		// taking it is what makes the two the same commits again.
-		all, _, err := s.Git.Cherry(ctx, published, branch, "")
+		// This branch's own work, bounded at its parent as currency is: what is
+		// below the parent is the parent's.
+		parent := parentOrBase(parents, branch, base)
+		ours, _, err := s.Git.Cherry(ctx, published, branch, parent)
 		if err != nil {
 			return nil, nil, err
 		}
-		if len(all) == 0 {
+		// The published version is this one reworded or rebuilt in place: it
+		// sits on the parent as it is here, and holds everything of the
+		// branch's own. Taking it is what makes the two the same commits again.
+		//
+		// This used to ask whether the published version held everything
+		// here by content, base and all — which a squash of a one-commit
+		// branch satisfies, because the squash is the same patch as the commit
+		// it replaced. So a branch above a squash-merged one-commit branch,
+		// replayed here and not yet pushed, read as reworded, and the stale
+		// published version was taken over the replay: every descent of
+		// one-commit branches stopped at its second.
+		onParent, err := s.Git.IsAncestor(ctx, parent, published)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(ours) == 0 && onParent {
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue
 		}
-		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parentOrBase(parents, branch, base))
+		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parent)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -162,17 +177,10 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// run, and nothing else: a reviewer's revert is still theirs.
 			continue
 		}
-		// Both sides hold something the other does not, so what counts is
-		// this branch's own work, bounded at its parent as currency is. The
-		// unbounded answer above also held every commit the trunk gained since
-		// the branch was published, and a refusal that counted those claimed
-		// work of the branch's own that it did not have. With none of its own
-		// left, the published version is taken, and the replay decides whether
-		// it can tell which of that version's commits are the branch's.
-		ours, _, err := s.Git.Cherry(ctx, published, branch, parentOrBase(parents, branch, base))
-		if err != nil {
-			return nil, nil, err
-		}
+		// Both sides hold something the other does not. With none of the
+		// branch's own work left out of the published version, it is taken,
+		// and the replay decides whether it can tell which of that version's
+		// commits are the branch's.
 		if len(ours) == 0 {
 			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue

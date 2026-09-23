@@ -1160,6 +1160,10 @@ func (w *world) assertLanded(t *testing.T) {
 		t.Errorf("synthetic-b has %s commits above the trunk, want its own one", own)
 	}
 	w.assertHas(w.Local, "synthetic-b", "b.txt")
+	// The rehomed edge's fork point is pinned, or it can be collected.
+	if pin := w.git(w.Local, "rev-parse", "refs/g2g/forkpoints/synthetic-b"); pin != w.tip(w.Local, "main") {
+		t.Errorf("synthetic-b's fork point is pinned at %s, want the trunk's tip", pin)
+	}
 	w.assertClean(w.Local)
 }
 

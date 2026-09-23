@@ -53,7 +53,7 @@ type pruneAncestry struct {
 
 func (a pruneAncestry) CurrentBranch(context.Context) (string, error) { return a.current, nil }
 func (pruneAncestry) LocalBranches(context.Context) ([]string, error) {
-	return []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c"}, nil
+	return []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d"}, nil
 }
 func (pruneAncestry) AncestorBranches(context.Context, string) ([]string, error) { return nil, nil }
 func (pruneAncestry) Divergence(context.Context, string, string) (int, int, error) {
@@ -82,11 +82,18 @@ func (*pruneStore) Path(context.Context) (string, error) {
 // pruneRefs records what was unpinned. The real one deletes a ref under
 // refs/g2g/forkpoints, which is the part sync never exercised.
 type pruneRefs struct {
+	pinned   map[string]string
 	unpinned []string
 	err      error
 }
 
-func (r *pruneRefs) PinForkPoint(context.Context, string, string) error { return nil }
+func (r *pruneRefs) PinForkPoint(_ context.Context, branch, object string) error {
+	if r.pinned == nil {
+		r.pinned = map[string]string{}
+	}
+	r.pinned[branch] = object
+	return nil
+}
 func (r *pruneRefs) UnpinForkPoint(_ context.Context, branch string) error {
 	if r.err != nil {
 		return r.err
@@ -236,7 +243,7 @@ func TestTheWayOutOfAStrandNamesWhereEachChildBelongs(t *testing.T) {
 // child is recorded on the trunk, exactly as track would, and its parent is
 // forgotten in the same write.
 func TestAChildAlreadyOnTheBranchBelowIsRecordedThere(t *testing.T) {
-	service, store, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
+	service, store, refs, _ := syntheticService(t, "synthetic-c", "synthetic-a")
 	service.Graph.Git = pruneAncestry{current: "synthetic-c", sitting: map[string]bool{"synthetic-b": true}}
 
 	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-c", Scope: graph.ScopeStack})
@@ -261,6 +268,40 @@ func TestAChildAlreadyOnTheBranchBelowIsRecordedThere(t *testing.T) {
 	}
 	if store.writes != 1 {
 		t.Errorf("graph writes = %d, want the rehome and the forgetting in one", store.writes)
+	}
+	// A recorded fork point that can be collected is one that can be lost.
+	if got := refs.pinned["synthetic-b"]; got != want.ForkPoint {
+		t.Errorf("synthetic-b's fork point pinned at %q, want %q", got, want.ForkPoint)
+	}
+	if strings.Join(refs.unpinned, ",") != "synthetic-a" {
+		t.Errorf("unpinned = %v, want the forgotten branch's pin released", refs.unpinned)
+	}
+}
+
+// Two children of one landed branch, only one of which Git places: the plan
+// refuses, and names only the one it could not place, with where it belongs.
+func TestOnlyTheChildGitCannotPlaceIsRefused(t *testing.T) {
+	service, store, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
+	twins, err := store.graph.Track("synthetic-d", graph.Edge{Parent: "synthetic-a", ForkPoint: "0000000000000000000000000000000000000000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.graph = twins
+	service.Graph.Git = pruneAncestry{current: "synthetic-c", sitting: map[string]bool{"synthetic-b": true}}
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeSubtree})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked == "" {
+		t.Fatal("Blocked = \"\"; synthetic-d does not sit on the trunk")
+	}
+	named := ""
+	for _, way := range plan.Repair.Ways {
+		named += way.Command + "\n"
+	}
+	if !strings.Contains(named, "g2g track --branch synthetic-d --parent synthetic-trunk") || strings.Contains(named, "synthetic-b") {
+		t.Errorf("ways = %s, want only synthetic-d, onto the trunk", named)
 	}
 }
 

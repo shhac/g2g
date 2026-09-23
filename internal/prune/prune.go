@@ -125,19 +125,14 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
 	// the same reason.
-	if _, children := s.stranded(discovery, plan.Landed); len(children) != 0 {
-		rehome, left, err := s.rehome(ctx, discovery, plan.Landed, children)
-		if err != nil {
-			return Plan{}, err
-		}
-		plan.Rehome = rehome
-		if len(left) != 0 {
-			plan.Repair = repair.Note{
-				Reason: "forgetting " + strings.Join(parentsOf(discovery.Graph, left), ", ") + " would strand branches recorded under them",
-				Ways:   strandedWays(discovery, plan.Landed, left),
-			}
-			plan.Blocked = plan.Repair.Sentence()
-		}
+	rehome, left, err := s.rehome(ctx, placements(discovery, plan.Landed))
+	if err != nil {
+		return Plan{}, err
+	}
+	plan.Rehome = rehome
+	if len(left) != 0 {
+		plan.Repair = strandedNote(left)
+		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "prune.plan",
 		diagnostic.Field{Key: "selected", Value: strings.Join(discovery.Branches, ",")},
@@ -160,139 +155,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 // squash-merge case and nothing else.
 func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bool, error) {
 	return landed.Into(ctx, s.Git, edge.Parent, branch, edge.ForkPoint)
-}
-
-// stranded names the branches that would be forgotten while something recorded
-// under them survives, and those survivors.
-func (s Service) stranded(discovery graph.Discovery, landed []string) (stranded, children []string) {
-	forgetting := make(map[string]bool, len(landed))
-	for _, branch := range landed {
-		forgetting[branch] = true
-	}
-	stranded, children = make([]string, 0), make([]string, 0)
-	for _, branch := range landed {
-		surviving := false
-		for _, child := range discovery.Graph.Children(branch) {
-			if !forgetting[child] {
-				surviving = true
-				children = append(children, child)
-			}
-		}
-		if surviving {
-			stranded = append(stranded, branch)
-		}
-	}
-	return stranded, children
-}
-
-// rehome decides, for each child a prune would strand, whether Git already
-// answers where it belongs.
-//
-// It is the question track asks, answered the same way. After a pull, a child
-// of a squash-merged branch has been replayed onto the trunk, so the trunk is
-// an ancestor of it and recording it there moves nothing and guesses nothing —
-// refusing sent everyone to run track by hand, on the commonest way a branch
-// lands. Before a pull the trunk is not an ancestor, and that child is left to
-// the refusal. So is one outside the selection, which nobody asked about.
-func (s Service) rehome(ctx context.Context, discovery graph.Discovery, landed, children []string) (map[string]graph.Edge, []string, error) {
-	forgetting := make(map[string]bool, len(landed))
-	for _, branch := range landed {
-		forgetting[branch] = true
-	}
-	rehome := map[string]graph.Edge{}
-	left := make([]string, 0)
-	for _, child := range children {
-		onto := survivor(discovery.Graph, discovery.Graph.Edges[child].Parent, forgetting)
-		sits := false
-		if slices.Contains(discovery.Branches, child) && s.Graph.Git != nil {
-			var err error
-			if sits, err = s.Graph.Git.IsAncestor(ctx, onto, child); err != nil {
-				return nil, nil, err
-			}
-		}
-		if !sits {
-			left = append(left, child)
-			continue
-		}
-		// The fork point is where the branch below ends, as track records it:
-		// everything under it is that branch's, and the child owns the rest.
-		forkPoint, err := s.Graph.Git.Resolve(ctx, onto)
-		if err != nil {
-			return nil, nil, err
-		}
-		rehome[child] = graph.Edge{Parent: onto, ForkPoint: forkPoint, Origin: graph.OriginAncestry}
-	}
-	return rehome, left, nil
-}
-
-// parentsOf names the recorded parent of each branch, once each, in order.
-func parentsOf(recorded graph.Graph, branches []string) []string {
-	parents := make([]string, 0, len(branches))
-	for _, branch := range branches {
-		if parent := recorded.Edges[branch].Parent; !slices.Contains(parents, parent) {
-			parents = append(parents, parent)
-		}
-	}
-	return parents
-}
-
-// strandedWays is how to get past a refusal to strand, one way per child.
-//
-// It used to offer widening the selection, which only helps when the child has
-// landed too -- and the ordinary way to get here is a parent squash-merged,
-// whose child has work of its own and is exactly why it survives. That sent
-// people round in a circle. Recording each child on what the landed branch sat
-// on is what leaves nothing to strand. After a pull the child already sits
-// there and prune records it itself, so a child only reaches this refusal
-// before one: pulling is the way out, and track is the way to say so by hand.
-// Widening is still offered where a child lies outside the selection, because
-// that child has not been asked about.
-func strandedWays(discovery graph.Discovery, landed, children []string) []repair.Step {
-	forgetting := make(map[string]bool, len(landed))
-	for _, branch := range landed {
-		forgetting[branch] = true
-	}
-	ways := make([]repair.Step, 0, len(children)+3)
-	// A child here has work of its own and has not been replayed yet. Pulling
-	// replays it onto the branch below, and prune then records it there itself.
-	for _, child := range children {
-		if slices.Contains(discovery.Branches, child) {
-			ways = append(ways, repair.Step{Command: "g2g pull --prune", Effect: "replay them onto the branch below, where prune then records them"})
-			break
-		}
-	}
-	outside := false
-	for _, child := range children {
-		onto := survivor(discovery.Graph, discovery.Graph.Edges[child].Parent, forgetting)
-		ways = append(ways, repair.Step{
-			Command: fmt.Sprintf("g2g track --branch %s --parent %s", child, onto),
-			Effect:  fmt.Sprintf("record %s on %s, where g2g pull leaves it, then prune again", child, onto),
-		})
-		outside = outside || !slices.Contains(discovery.Branches, child)
-	}
-	if outside {
-		ways = append(ways, repair.Step{Effect: "widen the selection with --scope, if those branches have landed too"})
-	}
-	return append(ways, repair.Step{Command: "g2g untrack", Effect: "forget them deliberately"})
-}
-
-// survivor is the nearest branch at or below this one that is not being
-// forgotten, which is where a child of a landed branch belongs.
-//
-// Bounded by the recorded edges, because a record naming a cycle must end the
-// walk rather than the command.
-func survivor(recorded graph.Graph, branch string, forgetting map[string]bool) string {
-	for range len(recorded.Edges) + 1 {
-		if !forgetting[branch] {
-			return branch
-		}
-		edge, tracked := recorded.Edges[branch]
-		if !tracked {
-			return branch
-		}
-		branch = edge.Parent
-	}
-	return branch
 }
 
 // Revalidate repeats discovery immediately before the write and refuses if the

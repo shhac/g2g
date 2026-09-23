@@ -5,11 +5,9 @@ description: |
   branches itself and projects them onto GitHub. Graphite is an optional
   source it can read, mirror to, and adopt from, never a requirement. Use
   when working on g2g's commands (status, doctor, create, adopt, track,
-  untrack, delete, fold, rename, up/down/top/bottom, restack, pull, prune,
-  push, submit, land, and the github and graphite namespaces: github status,
-  adopt, link, unlink, retarget, comment; graphite adopt, mirror), stack
-  scope and structure, source resolution and alignment, CLI tests, or
-  release readiness.
+  restack, pull, prune, push, submit, land, navigation and reshaping, and
+  the github and graphite namespaces), stack scope and structure, source
+  resolution and alignment, CLI tests, or release readiness.
   Triggers: gt2gh, stack without Graphite, restack after squash merge,
   merge a stack down.
 ---

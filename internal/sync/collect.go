@@ -243,7 +243,11 @@ type divergence struct {
 // The command keeps the selection the refusal came from. A bare
 // "g2g pull --take published" told a sync of the whole trunk to run a sync of
 // one stack, and told a bounded one to drop its boundary and take everything.
-func divergenceWays(selection graph.Selection, take Take, parents map[string]string, stuck []divergence) []repair.Step {
+//
+// The remote goes with it. "Published" is the version on the remote this pull
+// read, and a suggestion without it names origin's version instead — the wrong
+// side of a choice that discards commits.
+func divergenceWays(selection graph.Selection, remote string, take Take, parents map[string]string, stuck []divergence) []repair.Step {
 	command := "g2g pull"
 	if selection.Branch != "" {
 		command += " --branch " + selection.Branch
@@ -251,14 +255,26 @@ func divergenceWays(selection graph.Selection, take Take, parents map[string]str
 	if selection.Scope == graph.ScopeTrunk {
 		command += " --scope " + string(graph.ScopeTrunk)
 	}
+	if remote != "" && remote != "origin" {
+		command += " --remote " + remote
+	}
 	command += " --take " + string(SidePublished)
 	if through := widened(take, parents, stuck); through != "" {
 		command += " --through " + through
 	}
 	return []repair.Step{
-		{Command: command, Effect: "take the published version and discard yours"},
+		{Command: command, Effect: fmt.Sprintf("take the version %s has and discard yours", remoteName(remote))},
 		{Effect: "reconcile it yourself"},
 	}
+}
+
+// remoteName is the remote as a sentence names it. An empty one is what a
+// caller that never chose one means, which is origin.
+func remoteName(remote string) string {
+	if remote == "" {
+		return "origin"
+	}
+	return remote
 }
 
 // widened is the boundary that covers what was refused as well as what was

@@ -66,7 +66,9 @@ description: |
   without checkout; `--apply` is the only path that may invoke
   `gh stack link`. A bare namespace (`g2g github`, `g2g graphite`) prints its
   help.
-- `--take` only ever changes the outcome for a branch that has genuinely
+- `--take published` means each branch as the git remote `--remote` names
+  holds it (a `git remote` name, `origin` by default) — never GitHub, and
+  never a branch name. `--take` only ever changes the outcome for a branch that has genuinely
   diverged from its own published version; every other classification `collect`
   makes is take-independent. `--through <branch>` bounds it to that branch and
   what it is stacked on — its ancestry, never a position in a flattened list,

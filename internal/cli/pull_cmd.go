@@ -44,7 +44,7 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		}
 		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, selection.Selection(), guard), presentation, apply)
 	}
-	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
+	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read from, as git remote names it")
 	// Offered only where the build can prune, rather than offered and refused.
 	if pruner.Ready() {
 		cmd.Flags().BoolVar(&alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
@@ -54,7 +54,7 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	// than the one implemented and naming the value leaves room for them. There
 	// is no "mine": pull moves toward this checkout and push moves toward the
 	// remote, so that choice is already made by which command you run.
-	cmd.Flags().StringVar(&take, "take", "", "resolve a divergence by taking one side: published (discards local commits the remote does not have)")
+	cmd.Flags().StringVar(&take, "take", "", "resolve a divergence by taking one side: published, each branch as --remote holds it (discards local commits it does not have)")
 	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(func(context.Context, string) ([]string, error) {
 		values := make([]string, 0, len(syncer.Sides))
 		for _, value := range syncer.Sides {

@@ -668,8 +668,17 @@ other describes a stack that never existed. A sibling on another fork is
 outside it; the trunk is inside any boundary, and naming the trunk takes it and
 nothing else.
 
-`published` means the version on the remote you named with `--remote`, not
-`origin` in particular.
+**`published` is a side, not a place.** It means the branch as the remote
+holds it: the version `pull` just fetched from the remote `--remote` names —
+one of the names `git remote` lists, `origin` unless you say otherwise. It
+never means GitHub, and it does not ask `gh` anything; a pull request is not
+the published version of a branch, the remote's ref is. When the remote is not
+`origin`, say so on both runs, because the command `pull` suggests carries it:
+
+```sh
+g2g pull --remote upstream                         # refuses: both sides moved
+g2g pull --remote upstream --take published --apply
+```
 
 #### Prune
 
@@ -707,7 +716,7 @@ one branch is the only ambiguity, and it fails closed.
 ```sh
 g2g push --branch feature/top             # preview; full-stack expansion is the default
 g2g push --branch feature/top --apply     # every selected ref advances, or none do
-g2g push --remote staging --apply         # a configured remote other than origin
+g2g push --remote upstream --apply        # another name from git remote, not a branch
 ```
 
 `g2g push` is deliberately narrow: it publishes the selected linear path in one
@@ -1090,7 +1099,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | A pull request is open on the wrong base | `g2g github retarget` |
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
 | The remote has moved on a branch `push` would publish | fetch and reconcile first, or `git push --force-with-lease <remote> <branch>` to replace what is published |
-| A branch and its published version have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
+| A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
 | `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |

@@ -345,6 +345,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   reach, is an enum so the vocabulary can grow, and has no `mine` value. It is
   the one path where `pull` discards work that exists nowhere else, so the
   preview names every commit it would lose rather than counting them.
+  `published` names a side, not a place: the branch as the git remote
+  `--remote` names holds it (one of `git remote`'s names, `origin` by
+  default). It never means GitHub — a value naming `github` would promise a
+  `gh` call `pull` never makes — so the vocabulary stays about sides, and the
+  remote stays its own flag. A suggested `--take` carries `--remote` whenever
+  it is not `origin`, or it would name the wrong side.
 - `land` owns no rules of its own and must not grow any: it publishes through
   `push`, advances and replays through `pull`, and asks Git by content whether
   a branch has landed through the check `prune` uses. Every rule an early draft

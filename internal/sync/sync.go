@@ -200,7 +200,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		// have something the remote does not, which is true of any commit.
 		plan.Repair = repair.Note{
 			Reason: fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not", plan.Base, remote, plan.Base),
-			Ways:   divergenceWays(selection, take, parents, nil),
+			Ways:   divergenceWays(selection, remote, take, parents, nil),
 		}
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
@@ -215,7 +215,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	if len(stuck) != 0 {
-		plan.Repair = repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, take, parents, stuck)}
+		plan.Repair = repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, remote, take, parents, stuck)}
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}

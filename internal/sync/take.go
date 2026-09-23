@@ -25,8 +25,9 @@ const (
 	// SideNothing is the default: a divergence that would cost commits is
 	// reported rather than resolved.
 	SideNothing Side = ""
-	// SidePublished discards local commits the published version does not have,
-	// on the branches where the two have genuinely diverged.
+	// SidePublished takes each branch as the remote holds it — the git remote
+	// pull fetched from, never GitHub — discarding local commits that version
+	// does not have, on the branches where the two have genuinely diverged.
 	SidePublished Side = "published"
 )
 

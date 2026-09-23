@@ -70,10 +70,18 @@ slice sized first, so nothing needs a lock.
 
 Known, measured, and left for a change of its own:
 
-- **A land of N branches is quadratic.** After every merge, `land` advances
-  and replays the whole remaining stack, so the branches at the top are
-  replayed N times. Replaying only up to the next branch to merge, and the rest
-  once at the end, would make it linear; it changes what `land` asks of `pull`.
+- **A land of N branches replays quadratically, and deliberately so.** After
+  every merge, `land` advances and replays the whole remaining stack, so the
+  branch at the top is replayed N times. That cost is local — processes and
+  commits rewritten on this machine — and it buys a stack that is whole and on
+  the current trunk after every step, which is what makes a descent that stops
+  part-way safe to leave. What reaches the remote stays linear: each merge
+  pushes exactly the next branch (`publish` refuses a plan holding any other),
+  retargets its one pull request, and reads the remote in one `ls-remote` and
+  one fetch; the stack comments are kept once, at the end. Keep it that way — a
+  change that pushed the replayed branches above as it went would make the
+  remote quadratic too. The one waste worth removing is the trunk fetch just
+  after a merge settles, which the advance repeats.
 - **restack resolves and re-records serially.** Each step resolves its tips one
   at a time, and fork points are re-recorded for every branch after a rewrite,
   including ones that did not move. One batched resolve and one `update-ref

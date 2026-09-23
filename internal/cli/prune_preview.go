@@ -2,6 +2,8 @@ package cli
 
 import (
 	"io"
+	"maps"
+	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
@@ -31,6 +33,9 @@ func pruneView(plan prune.Plan) stackView {
 	}
 	if plan.Nothing() {
 		return view
+	}
+	for _, child := range slices.Sorted(maps.Keys(plan.Rehome)) {
+		view = view.note("Records "+child+" on "+plan.Rehome[child].Parent+", where it already sits.", severityOK)
 	}
 	return view.note("Forgets "+branchList(plan.Landed)+" from the recorded graph. No branch is deleted.", severityWarn)
 }

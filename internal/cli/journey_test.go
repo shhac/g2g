@@ -1127,14 +1127,10 @@ func TestJourneyYourParentWasSquashMergedWithSeveralCommits(t *testing.T) {
 	}
 }
 
-// After the squashed parent is synced, prune offers to forget it and refuses to
-// strand the child -- and the way out has to be one that works.
-//
-// It offered widening the selection, which brings the child in to be asked
-// about and finds it has work of its own, so it refuses again: a circle, on
-// the commonest way a branch lands. Recording the child on the trunk is what
-// leaves nothing to strand.
-func TestJourneyPruningASquashedParentNamesAWayOutThatWorks(t *testing.T) {
+// squashedParent is main ← a ← b, published, with a then squash-merged into
+// main by a colleague: the commonest way a branch lands.
+func squashedParent(t *testing.T) *world {
+	t.Helper()
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "first.txt")
 	w.commit(w.Local, "synthetic-a", "second.txt", "second")
@@ -1149,20 +1145,14 @@ func TestJourneyPruningASquashedParentNamesAWayOutThatWorks(t *testing.T) {
 	w.git(w.Other, "commit", "-qm", "synthetic squash of a")
 	w.git(w.Other, "push", "-q", "origin", "main")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
-	mustRun(t, "pull", "--apply")
+	return w
+}
 
-	refused := mustRun(t, "prune", "--scope", "trunk")
-	way := "g2g track --branch synthetic-b --parent main"
-	if !strings.Contains(refused, way) {
-		t.Fatalf("prune does not name a way out that reparents the child:\n%s", refused)
-	}
-	if strings.Contains(refused, "widen the selection") {
-		t.Errorf("prune offers widening a selection that already holds the child:\n%s", refused)
-	}
-
-	mustRun(t, append(strings.Fields(way)[1:], "--apply")...)
-	mustRun(t, "prune", "--scope", "trunk", "--apply")
-
+// assertLanded checks the end state both ways of forgetting a squashed parent
+// reach: the parent forgotten, the child recorded on the trunk with only its
+// own work above it, and nothing left in the working tree.
+func (w *world) assertLanded(t *testing.T) {
+	t.Helper()
 	if structure := w.readStructure(); structure["synthetic-a"] != "" || structure["synthetic-b"] != "main" {
 		t.Errorf("recorded structure = %v, want synthetic-a forgotten and synthetic-b on main", structure)
 	}
@@ -1171,6 +1161,51 @@ func TestJourneyPruningASquashedParentNamesAWayOutThatWorks(t *testing.T) {
 	}
 	w.assertHas(w.Local, "synthetic-b", "b.txt")
 	w.assertClean(w.Local)
+}
+
+// The trunk was brought up to date by hand, so the parent reads as landed —
+// but the child still carries the parent's original commits, nothing says it
+// belongs on the trunk, and prune refuses to strand it. The way out it names
+// has to be one that works.
+//
+// It once offered widening the selection, which brings the child in to be
+// asked about and finds it has work of its own, so it refuses again: a circle,
+// on the commonest way a branch lands.
+func TestJourneyPullPruneForgetsASquashedParent(t *testing.T) {
+	w := squashedParent(t)
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "pull", "-q", "--ff-only", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+
+	refused := mustRun(t, "prune", "--scope", "trunk")
+	if !strings.Contains(refused, "g2g pull --prune") {
+		t.Fatalf("prune does not name pull --prune as the way out:\n%s", refused)
+	}
+	if strings.Contains(refused, "widen the selection") {
+		t.Errorf("prune offers widening a selection that already holds the child:\n%s", refused)
+	}
+
+	pulled := mustRun(t, "pull", "--prune", "--apply")
+	for _, want := range []string{"Pulled.", "Records synthetic-b on main", "Forgotten."} {
+		if !strings.Contains(pulled, want) {
+			t.Errorf("pull --prune does not report %q:\n%s", want, pulled)
+		}
+	}
+	w.assertLanded(t)
+}
+
+// After a plain pull the child already sits on the trunk, so prune records it
+// there itself rather than refusing and sending the reader to track.
+func TestJourneyPruneAfterAPullRecordsTheChildWhereItSits(t *testing.T) {
+	w := squashedParent(t)
+	mustRun(t, "pull", "--apply")
+
+	preview := mustRun(t, "prune", "--scope", "trunk")
+	if !strings.Contains(preview, "Records synthetic-b on main, where it already sits.") {
+		t.Fatalf("prune does not say where it records the child:\n%s", preview)
+	}
+	mustRun(t, "prune", "--scope", "trunk", "--apply")
+	w.assertLanded(t)
 }
 
 // The same squash, restacked directly rather than through sync.
@@ -1454,6 +1489,26 @@ func TestJourneyAnOntoWithNothingToReplayStillRecordsTheNewParent(t *testing.T) 
 	if !strings.Contains(w.readStore(), `"synthetic-b": {
       "parent": "main"`) {
 		t.Errorf("--onto did not record the new parent when there was nothing to replay:\n%s", w.readStore())
+	}
+	w.assertClean(w.Local)
+}
+
+// A preview of pull --prune changes nothing: it cannot show the prune, because
+// what has landed is only known once the base moves, so it says it will do one.
+// Machine output is one document and this is two reports, so it is refused.
+func TestJourneyPullPrunePreviewsWithoutForgetting(t *testing.T) {
+	w := squashedParent(t)
+	before := w.readStructure()
+
+	preview := mustRun(t, "pull", "--prune")
+	if !strings.Contains(preview, "then forget what has landed") {
+		t.Errorf("the preview does not say it will prune:\n%s", preview)
+	}
+	if _, _, err := run(t, "pull", "--prune", "--json"); err == nil || !strings.Contains(err.Error(), "one document") {
+		t.Errorf("pull --prune --json error = %v, want it refused", err)
+	}
+	if after := w.readStructure(); !maps.Equal(before, after) {
+		t.Errorf("recorded structure changed from %v to %v", before, after)
 	}
 	w.assertClean(w.Local)
 }

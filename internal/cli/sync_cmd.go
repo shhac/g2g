@@ -7,15 +7,16 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
-func newSync(service syncer.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newSync(service syncer.Service, pruner prune.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var remote string
 	var take, through string
-	var apply bool
+	var apply, alsoPrune bool
 	cmd := &cobra.Command{
 		Use:     "pull",
 		GroupID: groupUpdate,
@@ -30,6 +31,11 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 		chosen, err := syncer.ParseTake(take, through)
 		if err != nil {
 			return err
+		}
+		if alsoPrune {
+			if err := validatePullPrune(pruner, presentation); err != nil {
+				return err
+			}
 		}
 		ctx := commandContext(cmd.Context(), cmd, "pull", applyMode(apply), selection.branch, "")
 		flow := applyFlow[syncer.Plan]{
@@ -70,9 +76,28 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 				suggestedNext: "g2g push",
 			},
 		}
-		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		if !alsoPrune {
+			return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		}
+		// What has landed is only known once the base has moved, so a
+		// preview cannot show the prune it would do; it says it will do one.
+		flow.notices.preview = "Rerun with --apply to bring the stack up to date and then forget what has landed."
+		flow.notices.suggestedNext = ""
+		if err := flow.run(cmd, ctx, newBudgets(cmd), presentation, apply); err != nil || !apply {
+			return err
+		}
+		if err := prose(cmd.OutOrStdout(), presentation, ""); err != nil {
+			return err
+		}
+		// The pull happened and stays happened, so a prune that refuses or
+		// fails after it is a stop part-way rather than a failure to retry.
+		if err := pruneFlow(pruner, selection.Selection(), guard).run(cmd, ctx, newBudgets(cmd), presentation, true); err != nil {
+			return stoppedPartWay(err)
+		}
+		return nil
 	}
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read the base from")
+	cmd.Flags().BoolVar(&alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
 	// An enum rather than a boolean, because which side wins has more answers
 	// than the one implemented and naming the value leaves room for them. There
@@ -98,6 +123,19 @@ func newSync(service syncer.Service, guard func(context.Context) error, presenta
 	// anything here: see shape.SyncScopes.
 	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("sync", shape.SyncScopes))
 	return cmd
+}
+
+// validatePullPrune refuses --prune where it cannot keep its promises: a build
+// with no prune service, and machine output, which is one document where this
+// writes two reports.
+func validatePullPrune(pruner prune.Service, presentation Presentation) error {
+	if !pruner.Ready() {
+		return errors.New("this build cannot prune, so --prune is not available")
+	}
+	if presentation.machine() {
+		return errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")
+	}
+	return nil
 }
 
 // stoppedAfterMoving reports a sync that brought some branches down and then

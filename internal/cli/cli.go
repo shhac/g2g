@@ -243,7 +243,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newRestack(options.Restack, presentation))
 	}
 	if options.Sync.Ready() {
-		root.AddCommand(newSync(options.Sync, guard, presentation))
+		root.AddCommand(newSync(options.Sync, options.Prune, guard, presentation))
 	}
 	if options.Prune.Ready() {
 		root.AddCommand(newPrune(options.Prune, guard, presentation))

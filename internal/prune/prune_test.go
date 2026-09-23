@@ -43,7 +43,13 @@ func (g *pruneGit) Absorbed(_ context.Context, base, branch string) (bool, error
 	return g.squashed[branch], nil
 }
 
-type pruneAncestry struct{ current string }
+// pruneAncestry answers ancestry from sitting: a branch listed there already
+// sits on whatever it is asked about, as a child replayed by a pull does.
+// Nothing listed is the state before a pull, where nothing has moved yet.
+type pruneAncestry struct {
+	current string
+	sitting map[string]bool
+}
 
 func (a pruneAncestry) CurrentBranch(context.Context) (string, error) { return a.current, nil }
 func (pruneAncestry) LocalBranches(context.Context) ([]string, error) {
@@ -53,8 +59,10 @@ func (pruneAncestry) AncestorBranches(context.Context, string) ([]string, error)
 func (pruneAncestry) Divergence(context.Context, string, string) (int, int, error) {
 	return 0, 0, nil
 }
-func (pruneAncestry) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
-func (pruneAncestry) Resolve(_ context.Context, ref string) (string, error)    { return ref, nil }
+func (a pruneAncestry) IsAncestor(_ context.Context, _, descendant string) (bool, error) {
+	return a.sitting[descendant], nil
+}
+func (pruneAncestry) Resolve(_ context.Context, ref string) (string, error) { return ref + "-tip", nil }
 
 type pruneStore struct {
 	graph  graph.Graph
@@ -164,8 +172,9 @@ func TestApplyForgetsTheBranchAndReleasesItsForkPoint(t *testing.T) {
 	}
 }
 
-// Forgetting a parent while keeping its child would strand the child. This
-// reports rather than reparents, which is the rule untrack follows.
+// Forgetting a parent while keeping its child would strand the child. Where Git
+// does not show the child on the branch below, this reports rather than
+// reparents, which is the rule untrack follows.
 func TestPlanRefusesToStrandABranchRecordedUnderALandedOne(t *testing.T) {
 	service, _, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
 
@@ -219,6 +228,54 @@ func TestTheWayOutOfAStrandNamesWhereEachChildBelongs(t *testing.T) {
 				t.Errorf("widening offered = %t, want %t: %+v", widen, test.widen, plan.Repair.Ways)
 			}
 		})
+	}
+}
+
+// After a pull a squash-merged branch's child has been replayed onto the
+// trunk, so Git answers where it belongs and there is nothing to refuse: the
+// child is recorded on the trunk, exactly as track would, and its parent is
+// forgotten in the same write.
+func TestAChildAlreadyOnTheBranchBelowIsRecordedThere(t *testing.T) {
+	service, store, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
+	service.Graph.Git = pruneAncestry{current: "synthetic-c", sitting: map[string]bool{"synthetic-b": true}}
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-c", Scope: graph.ScopeStack})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked != "" {
+		t.Fatalf("Blocked = %q; synthetic-b already sits on the trunk", plan.Blocked)
+	}
+	want := graph.Edge{Parent: "synthetic-trunk", ForkPoint: "synthetic-trunk-tip", Origin: graph.OriginAncestry}
+	if got := plan.Rehome["synthetic-b"]; got != want || len(plan.Rehome) != 1 {
+		t.Fatalf("Rehome = %+v, want synthetic-b on %+v", plan.Rehome, want)
+	}
+	if err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if store.graph.Tracked("synthetic-a") {
+		t.Error("the landed branch is still recorded")
+	}
+	if got := store.graph.Edges["synthetic-b"]; got != want {
+		t.Errorf("synthetic-b = %+v, want %+v", got, want)
+	}
+	if store.writes != 1 {
+		t.Errorf("graph writes = %d, want the rehome and the forgetting in one", store.writes)
+	}
+}
+
+// A child the selection did not ask about is not moved, even where Git would
+// answer for it: nobody asked about that branch.
+func TestAChildOutsideTheSelectionIsNeverRehomed(t *testing.T) {
+	service, _, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
+	service.Graph.Git = pruneAncestry{current: "synthetic-c", sitting: map[string]bool{"synthetic-b": true}}
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if plan.Blocked == "" || len(plan.Rehome) != 0 {
+		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b left to the refusal", plan.Blocked, plan.Rehome)
 	}
 }
 

@@ -132,7 +132,17 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// You have unpublished work. That is push's business, not sync's.
 			continue
 		}
-		// First whether the remote holds anything this branch does not.
+		// Everything here is on the remote by content, base and all: the
+		// published version is this one reworded or rebuilt in place, and
+		// taking it is what makes the two the same commits again.
+		all, _, err := s.Git.Cherry(ctx, published, branch, "")
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(all) == 0 {
+			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
+			continue
+		}
 		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parentOrBase(parents, branch, base))
 		if err != nil {
 			return nil, nil, err
@@ -152,12 +162,13 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// run, and nothing else: a reviewer's revert is still theirs.
 			continue
 		}
-		// Then what this branch has that the remote does not, bounded at the
-		// parent as currency is, because everything below it is the parent's.
-		// Unbounded, a branch restacked here onto a trunk that had moved
-		// counted every commit the trunk gained as its own unpublished work —
-		// a divergence it did not have, at the cost of the trunk's whole
-		// history since the fork.
+		// Both sides hold something the other does not, so what counts is
+		// this branch's own work, bounded at its parent as currency is. The
+		// unbounded answer above also held every commit the trunk gained since
+		// the branch was published, and a refusal that counted those claimed
+		// work of the branch's own that it did not have. With none of its own
+		// left, the published version is taken, and the replay decides whether
+		// it can tell which of that version's commits are the branch's.
 		ours, _, err := s.Git.Cherry(ctx, published, branch, parentOrBase(parents, branch, base))
 		if err != nil {
 			return nil, nil, err

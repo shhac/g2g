@@ -32,8 +32,10 @@ by content — `git cherry`, patch ids — costs every commit on both sides. A
 branch's own side is bounded by its parent or recorded fork point, which is
 also what makes the answer right: counted from the trunk's start, every commit
 the trunk gained reads as the branch's own work. `link`'s currency learned this
-first; `pull`'s comparison with a published version had not, and refused
-branches that had nothing to lose.
+first; `pull`'s comparison with a published version had not, and its refusal
+counted the trunk's commits as the branch's own. It still asks the unbounded
+question once, deliberately: whether the published version holds everything
+here, base and all, is what tells a reworded branch from a replayed one.
 
 **Ask the cheap question first, and let it only say no.** Whether a branch has
 landed needs content, but "no" usually does not: if nothing the trunk gained

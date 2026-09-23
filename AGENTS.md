@@ -39,6 +39,26 @@ This is what makes an end-to-end claim about Graphite-backed behaviour
 checkable. A PATH fake answers whatever it is asked, so it can confirm argv and
 parsing and can never confirm that the grammar is still the one Graphite emits.
 
+## Command surface
+
+- The top level is your own stack and git-like verbs — `status`, `doctor`,
+  `create`, `adopt`, `track`, `pull`, `push` and the rest. Anything that
+  reaches past Git into another tool lives under that tool's name:
+  `g2g github status|adopt|link|unlink|retarget|comment`,
+  `g2g graphite adopt|mirror`. A new command goes on the side its dependencies
+  put it, so the name says when it will talk to GitHub or Graphite. `push`,
+  `submit` and `land` are top level because publishing is part of managing a
+  stack. The groups live in `internal/cli/namespace.go`.
+- No aliases were kept when the commands moved (`graph` → `status`, the old
+  `status` → `github status`, `sync` → `pull`, `track --stack` → `adopt`,
+  `import` → `graphite adopt`/`github adopt`, `mirror` → `graphite mirror`,
+  source `pull-request` → `github`); an old name is an unknown command. Do not
+  add one back. `schemaVersion` 3 exists because `--json`'s `operation` is now
+  the command's path, and a consumer switching on the old names would have read
+  the offline `status` as the pull request one.
+- Exit status is `0`, `2` for failure, `3` for stopped part-way, and `1` from
+  `doctor` alone, meaning it found something.
+
 ## Discovery and external CLIs
 
 - Graphite parsing is a narrow compatibility boundary. Before changing it, read
@@ -96,23 +116,42 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   Its refspecs are forced, and must stay so: those refs are g2g's own record of
   what the remote holds rather than the user's, they carry no work to lose, and
   without the plus a branch the remote rewrote cannot be fetched at all — git
-  refuses the non-fast-forward and fails the whole command, so the second sync
-  after any force push could not fetch. Restacking a stack and republishing it
+  refuses the non-fast-forward and fails the whole command, so the second
+  `pull` after any force push could not fetch. Restacking a stack and republishing it
   is the ordinary way to get there. A bare `--force-with-lease` takes its
   baseline from the remote-tracking ref, so refreshing it silently disarms the
   check; leases are pinned to the tips the plan observed. The forest model,
   per-branch authority, and derived (never stored) graph identity are
   decisions, not accidents.
-- `graph --from` reads another record and draws it in g2g's own format, which
+- `status --from` reads another record and draws it in g2g's own format, which
   is how a divergence between the two becomes visible on a real repository
   rather than only in `internal/stack/parity_test.go`'s fixtures. It offers
-  `stack.OfflineSources` and refuses `pull-request`, because reading a base
+  `stack.OfflineSources` and refuses `github`, because reading a base
   invokes `gh` and answering without a network is why this command exists apart
-  from `status`. The flag is on the command, in `internal/cli`; it does not
-  breach the rule below, which is about the package.
+  from `github status`. The flag is on the command, in `internal/cli`; it does
+  not breach the rule below, which is about the package.
+- `status` compares each branch with its remote **from local refs only** and
+  never fetches: `git.Client.KnownTips` reads `refs/remotes/<remote>/` and
+  g2g's own `refs/g2g/remotes/<remote>/` in one `for-each-ref`, and takes
+  whichever of the two tips descends from the other — a push moves the first, a
+  pull fetches into the second and leaves the first behind — preferring the
+  remote-tracking ref when they are not in order, because that is what a push
+  moves and what `git status` compares with. `push.Known` then counts by
+  content through the same `Compare` `push` uses, so a restacked branch reads
+  as replayed rather than diverged. `push` itself still asks the remote,
+  because a lease must be pinned to what is there now; a report that needed a
+  network would not be one to run before deciding whether to fetch. The default
+  remote missing draws no marks; a `--remote` named on purpose that does not
+  exist is an error.
+- `doctor` is `status` narrowed to what is wrong, across every recorded stack,
+  offline. Each finding carries the one command that puts it right, and it
+  exits `1` when it finds anything (`foundError`), `0` when it finds nothing,
+  and `2` when it could not tell — the `diff`/`grep` convention, so a script
+  can ask. Keep the split: `status` is the full overview, `doctor` only the
+  unexpected. A branch with no commits of its own is not a finding.
 - `internal/graph` must depend on Git alone. Importing Graphite or GitHub into
-  it, or making any of `graph`/`track`/`untrack` need a network, removes the
-  only reason the package exists. The scope vocabulary and the forest traversal
+  it, or making any of `status`/`doctor`/`adopt`/`track`/`untrack` need a
+  network, removes the only reason the package exists. The scope vocabulary and the forest traversal
   therefore live in `internal/shape`, which depends on nothing: taking them
   from `internal/stack` pulled Graphite and GitHub in transitively, through an
   import line that named neither. `internal/graph/boundary_test.go` checks the
@@ -134,7 +173,7 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `TrunkEvidence` on `graph.Service` and `stack.Resolver`, and it never
   chooses what a command selects. Two commands that record structure may let it
   *permit* a root the user is building on — `create` from the default branch
-  and `import --from pull-request` onto it — because the user named the branch
+  and `github adopt` onto it — because the user named the branch
   and the evidence only confirms it is a trunk; without it they refuse and name
   `g2g track`. It never picks a trunk nobody named. An unset ref is
   an empty answer rather than an error, because a repository nobody has told is
@@ -147,8 +186,9 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   contents, `head✗` is about currency, and a subject-less mark carries what is
   about neither. A merged pull request is `pr✓` and neutral — it did what it
   was for, and only the branch left in the stack is a problem, which is the
-  reading `graph` has always taken of an already-landed branch. They used to be one string under one colour, which is how a
-  line came to open with the word "aligned" and go on to describe a divergence,
+  reading the offline view (`status`, once `graph`) has always taken of an
+  already-landed branch. They used to be one string under one colour, which is
+  how a line came to open with the word "aligned" and go on to describe a divergence,
   in whichever colour the worse of them won. `stackNode.marked` renders `State`
   and the worst `Severity` from the marks, so nothing downstream has to
   understand them; do not set `State` beside them. Currency comes from
@@ -193,7 +233,8 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `internal/link/currency_real_test.go` builds a throwaway repository for this,
   because a fake answers whatever it is asked and the question is what Git
   considers equivalent.
-- `status` says a branch has landed rather than that it has no pull request,
+- `github status` says a branch has landed rather than that it has no pull
+  request,
   because GitHub cannot answer that one: a squash merge lands the work under a
   head the branch never had, and a cherry-picked series under no pull request
   at all — so the branch reads as missing one, and the advice for missing is to
@@ -204,9 +245,10 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   finds nothing in a Graphite-declared repository, where the answer is
   `gt sync`; a structure read from pull request bases is not a record anything
   here edits, and that case names no command rather than a wrong one.
-- `status` renders a branch nothing describes instead of refusing it, through
-  the typed `stack.Undescribed`. "Nothing is stacked here" is an answer to what
-  a read-only triage command was asked; only `status` renders it, and every
+- `github status` renders a branch nothing describes instead of refusing it,
+  through the typed `stack.Undescribed`. "Nothing is stacked here" is an answer
+  to what a read-only triage command was asked; only `github status` renders
+  it, and every
   command that mutates still refuses because it still has nothing to act on.
 - `track` previews candidates and blocks rather than choosing; `untrack`
   reports the children it strands rather than reparenting them. Both are the
@@ -222,7 +264,7 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the result is equivalent to none of them — on the commonest way a branch
   lands. `git.Client.Absorbed` merges the branch into the base and checks for
   the base's own tree back, which answers it of the whole branch at once.
-  `graph`'s landed state, `prune`'s, and a step's collapse all consult it —
+  `status`'s landed state, `prune`'s, and a step's collapse all consult it —
   `prune` did not, so the command whose whole job is forgetting landed branches
   was blind to the commonest way they land, and `graph` sent people to it
   saying "already in the trunk · run g2g prune to forget them" about branches
@@ -257,21 +299,22 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   rewrite exactly as safe as it was before the check existed.
 - Where a rewrite lands and what the graph records are two questions, and
   `restack.Onto` keeps them apart. `ToBranch` is a user's `--onto`: they asked
-  for the branch to move, so it is both. `ToLocation` is sync's: it replays onto
+  for the branch to move, so it is both. `ToLocation` is `pull`'s
+  (`internal/sync`): it replays onto
   a ref it fetched under `refs/g2g/` because that is where the trunk is about to
   be, and that ref is a place, not a parent. Deriving the recorded parent from
   the replay target instead put `refs/g2g/remotes/origin/main` in the store on
   the ordinary sync path, so every synced stack reported "parent missing"
   immediately after a sync that said it succeeded.
 - Which side wins a divergence is normally answered by which command runs:
-  `sync` only moves toward this checkout, `push` only toward the remote. Keep
+  `pull` only moves toward this checkout, `push` only toward the remote. Keep
   that one-direction-per-command rule — it is what makes the model legible.
-  `sync --take <enum>` exists only for the outcome neither command can otherwise
+  `pull --take <enum>` exists only for the outcome neither command can otherwise
   reach, is an enum so the vocabulary can grow, and has no `mine` value. It is
-  the one path where `sync` discards work that exists nowhere else, so the
+  the one path where `pull` discards work that exists nowhere else, so the
   preview names every commit it would lose rather than counting them.
 - `land` owns no rules of its own and must not grow any: it publishes through
-  `push`, advances and replays through `sync`, and asks Git by content whether
+  `push`, advances and replays through `pull`, and asks Git by content whether
   a branch has landed through the check `prune` uses. Every rule an early draft
   reached past cost a property the bypassed service already had. It aims every
   pull request at the trunk rather than at the branch below, because by the time
@@ -286,7 +329,21 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   stays merged, replayed stays replayed — so it is not a failure to retry, and
   it plainly is not success. `stoppedPartWay` marks it and the top-level
   printer then says nothing further, because the report is already on stdout
-  with the detail in it.
+  with the detail in it. `pull --prune` whose prune refuses after the pull is
+  this too.
+- `pull --prune` is composition, not a new rule: `pull`'s flow and then
+  `prune`'s over the same selection, each with its own revalidation. Its
+  preview can only say it will prune, because what has landed is known once
+  the base moves. The two reports are why `--json`/`--porcelain` refuse it.
+- `prune` records a child it would strand on the branch below **only on
+  evidence**: when Git shows that branch is an ancestor of the child, which is
+  what a pull's replay leaves, and with the fork point `track` would record.
+  That is recording where the child already sits, not reparenting around a
+  gap. Without the ancestry — a trunk advanced by hand and the stack not
+  replayed — or for a child outside the selection it still refuses, offering
+  `g2g pull --prune` and then one `g2g track --branch <child> --parent
+  <branch>` per child. Do not relax the check into a guess; `untrack` still
+  never reparents, and `delete` remains the one command that does on request.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own
@@ -376,8 +433,8 @@ property the original had.
   output.
 - `diagnostic.Revalidated` — the preview/apply revalidation check and its
   diagnostic event. `graph`'s `matched` delegates to it.
-- `githubstack.PathStep.Classify` — what one branch's pull request is. `link`
-  and `submit` apply different policy to the same answer; only the policy
+- `githubstack.PathStep.Classify` — what one branch's pull request is.
+  `github link` and `submit` apply different policy to the same answer; only the policy
   differs.
 - `repair.Note` — a refusal in two shapes: why, and the ways out. A package
   that refuses builds one and derives its `Blocked` sentence from it, so the

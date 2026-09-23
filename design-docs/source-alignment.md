@@ -5,6 +5,12 @@ sources free to disagree, and gave nobody anything to do about it. This is the
 other half: keeping them in step, in both directions, without either one taking
 the other's work away.
 
+The commands this describes now live under the tool they touch: `import` is
+`g2g graphite adopt`, `import --from pull-request` is `g2g github adopt`, and
+`mirror` is `g2g graphite mirror`. Examples use today's names. Where a passage
+argues about what to call something, it keeps the name the decision was made
+under, because that is what the argument was about.
+
 ## Problem
 
 g2g can read Graphite and can never write it. That was the right call while
@@ -69,7 +75,7 @@ that does not exist.
 
 ## `mirror`
 
-    g2g mirror --to graphite
+    g2g graphite mirror
 
 Reconciles Graphite so it agrees with g2g **about the branches g2g knows**, and
 leaves everything else in Graphite alone. Three operations, from a diff of the
@@ -102,16 +108,17 @@ and each shows up as an ordering rule or a refusal:
 
 ### Removal is not default-on
 
-`sync --prune` defaults to true, and is right to, because its trigger is
-unambiguous: the work has demonstrably landed. "Graphite knows a branch we do
+When `sync` still pruned as its tail it did so by default, and was right to,
+because its trigger is unambiguous: the work has demonstrably landed; `prune`
+and `pull --prune` keep that certainty today. "Graphite knows a branch we do
 not" carries no such certainty — it is just as likely to be a branch someone
 deliberately tracked in `gt`. Destroying their work to satisfy alignment is the
 wrong trade, so removal is opt-in and everything else is not.
 
 ### One word for removal
 
-`sync` already spells this `--prune`, and `mirror` should spell it the same
-way. That leaves one repository-wide vocabulary for a single idea — *drop what
+`sync` already spelled this `--prune`, and `mirror` should spell it the same
+way — as `pull --prune` still does. That leaves one repository-wide vocabulary for a single idea — *drop what
 the authority no longer has* — rather than a different affordance per command.
 
 `link`/`unlink` remain a pair, and the asymmetry is deliberate rather than
@@ -145,7 +152,7 @@ second forest-shaped, branch-unit destination appears. GitHub is not one.
 
 ## `import`
 
-    g2g import --from graphite
+    g2g graphite adopt
 
 Adopts Graphite's declared edges into the g2g store in bulk, deriving a fork
 point per edge. Additive and fail-closed: it adds edges g2g lacks and **refuses
@@ -183,27 +190,28 @@ the g2g store, so it shifts nothing.
 
 ### From pull requests
 
-    g2g import --from pull-request [--branch <b>] [--scope stack|trunk]
+    g2g github adopt [--branch <b>] [--scope stack|trunk]
 
 Picking up a stack a colleague published used to mean fetching it, switching to
 each branch, and `track`-ing them one at a time — while the structure sat,
 complete, in the bases of its pull requests, readable already through
-`status --from pull-request`. This adopts it from there.
+`github status --from github`. This adopts it from there.
 
 It is the Graphite import with a different record behind it, not a second
 import. `planAdoptions` holds the policy both share — additive, a conflicting
 recorded parent refuses the whole plan, parents recorded before children,
 `Origin` assessed against Git — and each record supplies only its edges, how it
-names its side of a conflict, and its fork point. `--from graphite` remains the
-default and behaves exactly as before; `--from g2g` is refused, because the g2g
-graph is what import writes.
+names its side of a conflict, and its fork point. It was first a
+`--from pull-request` mode of `import`; the namespace now names the record, so
+neither adopt takes `--from`, and adopting from the g2g graph — what both
+write — is not a command at all.
 
-Selection is the pull request source's own `Select`, so a stack means here what
-it means to `status --from pull-request`, remote-only branches included. The
+Selection is the GitHub source's own `Select`, so a stack means here what
+it means to `github status --from github`, remote-only branches included. The
 scope is `stack` (the default) or `trunk`: both open with the base the stack
 hangs from, which the root rule below has to see, and `all` would reach trunks
-nobody named. `--branch` and `--scope` are refused with Graphite, which is read
-whole, rather than ignored.
+nobody named. `graphite adopt` offers neither `--branch` nor `--scope`, because
+Graphite is read whole.
 
 The decisions this mode settled:
 
@@ -244,11 +252,13 @@ point.
 
 ## `--from` and `--to`
 
-`--to` names the write destination. `--from` pins the read side for a single
-invocation, filtering the resolver to the named source:
+`--to` was to name the write destination. It was never built: the namespace
+does that job, so the write into Graphite is `g2g graphite mirror`. `--from`
+pins the read side for a single invocation, filtering the resolver to the named
+source:
 
-    g2g status --from graphite
-    g2g graph  --from graphite
+    g2g status        --from graphite
+    g2g github status --from graphite
 
 `--from` is what makes the pair usable. Today, once g2g holds an edge there is
 no way to ask Graphite's opinion at all — so there is no way to see the two
@@ -277,7 +287,8 @@ about which store is losing the edge.
 
 - **Neither command ever removes a branch from the g2g graph.** Alignment is
   not ownership transfer.
-- `mirror` writes Graphite only. `import` writes the g2g store only.
+- `graphite mirror` writes Graphite only. `graphite adopt` and `github adopt`
+  write the g2g store only.
 - Both are previewable, and follow the existing
   preview → revalidate → render → flush → mutate sequence.
 - `--prune` is the only path by which anything is removed from Graphite.
@@ -367,7 +378,7 @@ command it is a path-scoped `untrack`, not a stored authority field.
 **Mirroring to GitHub.** Closed while native stacks are linear, not deferred
 pending effort.
 
-**Retargeting pull request bases.** Built, as `g2g retarget`. It is its own
+**Retargeting pull request bases.** Built, as `g2g github retarget`. It is its own
 command rather than a step inside `submit` or the tail of `restack`, because
 changing what a merge will do is a different class of act from creating a pull
 request and wants its own preview. It moves only the bases that disagree,

@@ -176,7 +176,7 @@ parent. `--onto` over several roots is refused, one command per root offered in
 its place; a caller's location moves every root.
 
 **A caller may move branches before the rewrite runs**, and says where through
-`Pending`: sync collects published versions of your branches, then replays. A
+`Pending`: pull collects published versions of your branches, then replays. A
 branch is measured where it will be, not where it is. Its recorded fork point
 describes the version being replaced, and after a colleague restacked the stack
 and published it, that point is still in the new version but below the trunk
@@ -337,7 +337,7 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
 
 - Every other command must refuse while a restack is in progress. Mid-restack a
   branch's ref may have moved while the graph still records its old parent, so
-  `g2g graph` would render nonsense and `g2g push` would publish a half-rebased
+  `g2g status` would render nonsense and `g2g push` would publish a half-rebased
   stack.
 - The clean-worktree precondition changes meaning: still required before apply,
   but the tool may now leave the tree dirty on purpose.

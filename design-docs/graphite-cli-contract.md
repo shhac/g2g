@@ -4,8 +4,9 @@
 never reads Graphite's private metadata database or configuration and never
 enables `--debug`.
 
-Discovery is read-only. `mirror` is the one command that writes, and it writes
-only through the two commands documented under [Write contract](#write-contract).
+Discovery is read-only. `g2g graphite mirror` is the one command that writes,
+and it writes only through the two commands documented under
+[Write contract](#write-contract).
 
 ## Command contract
 
@@ -36,8 +37,8 @@ only fake executables on `PATH`.
 
 ## Write contract
 
-`g2g mirror` writes Graphite through exactly two commands, both gated on the
-same version check as discovery:
+`g2g graphite mirror` writes Graphite through exactly two commands, both gated
+on the same version check as discovery:
 
 ```text
 gt track <branch> --parent <parent> --no-interactive

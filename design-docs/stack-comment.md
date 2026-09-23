@@ -1,8 +1,8 @@
 # The stack comment
 
-`g2g comment` keeps one comment on every pull request in a stack, listing the
-stack from where that pull request stands. It is the map a reviewer does not
-otherwise have: GitHub shows a pull request in isolation, and finding the other
+`g2g github comment` keeps one comment on every pull request in a stack,
+listing the stack from where that pull request stands. It is the map a reviewer
+does not otherwise have: GitHub shows a pull request in isolation, and finding the other
 four in a stack of five means reading bases one at a time.
 
 ```
@@ -106,7 +106,7 @@ run from inside each stack.
 | one comment you cannot edit | left alone, and said |
 | a conversation that takes no new comment (locked) | left alone, and said |
 | two or more comments | left alone, and said: a person deletes the extra |
-| a branch with two open pull requests | the whole run refuses, as `link` and `retarget` do |
+| a branch with two open pull requests | the whole run refuses, as `github link` and `github retarget` do |
 
 A comment is recognised by its marker, at the start of its body. What it
 records is only believed from a comment you can edit: anyone who can comment can
@@ -149,18 +149,18 @@ above the landed branches once the descent is done — which is when the merged
 pull requests become history in those comments. Both say so in their preview,
 `land` as the last step of its recipe.
 
-It is `comment`'s own planning and writing (`comment.Service.Keep`), run
+It is `github comment`'s own planning and writing (`comment.Service.Keep`), run
 straight after the command's own work rather than previewed again: the
 command's preview already said it would, every write is an edit of a comment
 this tool owns or a new one on an open pull request, and nothing it does is
 worth a second confirmation. A blocked plan is not written. If keeping them
 fails, the command's own work stands — pull requests opened, a stack landed —
-so the run exits `3` and names `g2g comment --apply`.
+so the run exits `3` and names `g2g github comment --apply`.
 
 After every branch of a stack has landed there is nothing left above to keep a
 comment on, so the merged pull requests keep the last comment they had.
 
-`push`, `retarget` and `link` do not keep comments: `push` must never call
+`push`, `github retarget` and `github link` do not keep comments: `push` must never call
 `gh`, and the other two change no pull request's membership of the stack.
 
 ## What was deliberately left out

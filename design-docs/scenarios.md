@@ -37,6 +37,15 @@ refuses, because the alternative is rewinding published history on a guess —
 and names `git push --force-with-lease`, which is what you meant. No g2g
 command does that, so the preview has to say the one that does.
 
+**where do I stand.** Before deciding whether to push or pull you want to know
+which branches differ from the remote, without asking it. `status` answers from
+the refs a fetch or a push last left: not on the remote, level, ahead, and
+after a pull, replayed since pushed. A pull fetches into g2g's own refs and
+leaves `origin/main` where it was, so read from `origin/main` alone the trunk
+would claim to be ahead by everything just pulled; `status` takes whichever of
+the two refs descends from the other, and the trunk reads level. The journey is
+in `internal/cli/status_journey_test.go`.
+
 **indecisive user.** Something conflicts mid-restack and you abandon it.
 `restack --abort` puts every branch back exactly where it was, as though the
 restack had never started.
@@ -44,8 +53,8 @@ restack had never started.
 ## Somebody else moved the trunk
 
 **multi-user.** Other branches land on the trunk while your stack is in flight,
-by merge commit or by squash. `sync` fast-forwards the trunk and replays your
-stack onto it.
+by merge commit or by squash. `pull` fast-forwards the trunk and replays your
+stack onto it, and `pull --prune` then forgets what landed.
 
 **multi-user-conflict.** The same, but your work collides with what landed. The
 trunk still advances, because it was going to either way; the replay stops and
@@ -59,7 +68,7 @@ is nothing to fast-forward.
 If everything the local trunk has is in the published one by content, nothing is
 lost by taking theirs: the trunk is replaced and the stack is replayed onto it.
 That is the same supersede rule the branch case uses, and it is the only place
-`sync` discards commits, so the preview says so plainly.
+`pull` discards commits, so the preview says so plainly.
 
 If the published trunk does *not* have what this one has, it refuses. Choosing
 which commits die is not a side effect.
@@ -79,11 +88,17 @@ Found by landing this repository's own stack. Its two-commit branch conflicted;
 its one-commit branch did not, because a squash of one commit *is* equivalent to
 that commit.
 
-Afterwards the parent has nothing of its own and `prune` offers to forget it,
-but refuses to strand the child still recorded under it. The way out it names
-is `g2g track --branch <child> --parent <trunk>`, which records the child where
-the sync left it. It used to offer widening the selection, which brings the
-child in, finds its own work, and refuses again.
+Afterwards the parent has nothing of its own and `prune` offers to forget it.
+The child still recorded under it already sits on the trunk, because the pull
+replayed it there, and Git shows that: the trunk is an ancestor of the child. So
+prune records the child on the trunk — the same check and fork point `track`
+would use — rather than refusing, and `pull --prune` does the whole thing in
+one command. Where Git does not show it, as when the trunk was advanced by hand
+and the stack not replayed, prune still refuses rather than reparenting around
+the gap, and names `g2g pull --prune` first and then
+`g2g track --branch <child> --parent <trunk>` for each child. It used to offer
+widening the selection, which brings the child in, finds its own work, and
+refuses again.
 
 **borrower.** Someone cherry-picked your commits into their branch and it landed
 first. Your commits are in the trunk under different object ids. Replaying drops
@@ -92,7 +107,7 @@ them by content rather than applying them twice.
 ## Somebody else moved *your* branch
 
 **friendly-fixer.** A reviewer pushes a fix straight onto a branch you own.
-`sync` brings it down: it fetches the selection, not only the base, and
+`pull` brings it down: it fetches the selection, not only the base, and
 fast-forwards a branch whose published version is ahead.
 
 **extra-friendly-fixer.** The same, except they rebased your branch too, so the
@@ -105,16 +120,16 @@ differently because one replaces what you have and the other adds to it.
 exactly that, with the count on both sides, because "you have work the remote
 does not" is true of every ordinary commit and a reader who has just made one
 cannot otherwise tell whether that is what it means. An ordinary commit leaves
-the published tip an ancestor of yours, which `sync` ignores: publishing is
+the published tip an ancestor of yours, which `pull` ignores: publishing is
 `push`'s business.
 
-`sync` refuses by default: choosing between two versions of your own
+`pull` refuses by default: choosing between two versions of your own
 branch is not something to do behind your back. The refusal names the way
 through rather than being a dead end, and names it for the same selection —
 `--branch`, `--scope` and a widened `--through` carried over — because the bare
 command selects something else.
 
-`sync --take published` is that way through. It is the one path where `sync`
+`pull --take published` is that way through. It is the one path where `pull`
 loses work that exists nowhere else, so the preview lists every commit it would
 discard by name — a count would not be enough to decide on.
 
@@ -125,19 +140,19 @@ it is stacked on — ancestry, not position — so where the stack forks, a sibl
 of the boundary is not below it and a divergence there is still refused, as is
 one above it.
 
-There is deliberately no `--take mine`. `sync` only ever moves toward this
+There is deliberately no `--take mine`. `pull` only ever moves toward this
 checkout and `push` only ever moves toward the remote, so which side wins is
 normally answered by which command you run; `push` already prints the
 `git push --force-with-lease` line for the other direction. `--take` is an enum
 rather than a boolean because the question has more answers than the one
 implemented.
 
-**replayed, not yet published.** A sync replayed your stack onto a trunk that
+**replayed, not yet published.** A pull replayed your stack onto a trunk that
 moved, and you have not pushed. Every branch is now ahead of its published
 version by content and beside it by commit id, and counted by id that reads as
 both moved: the trunk's new commits are "here and not published", and once a
 parent has been squashed its original commits are "published and not here".
-`sync` asks whether everything the published version has is here — by commit,
+`pull` asks whether everything the published version has is here — by commit,
 then as a whole branch, which is what sees through a squash — and when it is,
 this is unpublished work like any other and it leaves it to `push`. The second
 sync of the day, and every `land` of three branches over a bottom branch with
@@ -157,7 +172,7 @@ Saying what is true of both is not a guess.
 
 **your branch was deleted after it merged.** You still have it locally with no
 work of its own. `push` says "already in the trunk · nothing to publish" rather
-than offering to recreate it, and `graph` reports it as landed with `prune` as
+than offering to recreate it, and `status` reports it as landed with `prune` as
 the remedy. Absent from the remote has two meanings and they want opposite
 answers.
 

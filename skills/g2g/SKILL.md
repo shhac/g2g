@@ -3,12 +3,13 @@ name: g2g
 description: |
   Develop, test, or safely use the g2g Go CLI, which records stacked
   branches itself and projects them onto GitHub. Graphite is an optional
-  source it can read, mirror to, and import from, never a requirement. Use
-  when working on g2g's commands (track, create, delete, fold, rename,
-  up/down/top/bottom, link,
-  sync, prune, restack, retarget, submit, push, land, comment, graph, mirror,
-  import), stack scope and structure, source resolution and alignment, CLI
-  tests, or release readiness.
+  source it can read, mirror to, and adopt from, never a requirement. Use
+  when working on g2g's commands (status, doctor, create, adopt, track,
+  untrack, delete, fold, rename, up/down/top/bottom, restack, pull, prune,
+  push, submit, land, and the github and graphite namespaces: github status,
+  adopt, link, unlink, retarget, comment; graphite adopt, mirror), stack
+  scope and structure, source resolution and alignment, CLI tests, or
+  release readiness.
   Triggers: gt2gh, stack without Graphite, restack after squash merge,
   merge a stack down.
 ---
@@ -31,6 +32,26 @@ description: |
 - Record the selected command and use it for every later invocation. Do not
   re-detect unless it fails or the environment changes.
 
+## Command surface
+
+- The top level is your own stack and git-like verbs: `status`, `doctor`,
+  `create`, `adopt`, `track`, `untrack`, `delete`, `fold`, `rename`,
+  `up`/`down`/`top`/`bottom`, `restack`, `pull`, `prune`, `push`, `submit`,
+  `land`. Anything that reaches past Git into another tool lives under that
+  tool's name: `g2g github status|adopt|link|unlink|retarget|comment` and
+  `g2g graphite adopt|mirror`. Keep a new command on that side of the line its
+  dependencies put it; `push`, `submit` and `land` are top level because
+  publishing is part of managing a stack.
+- The names moved in one step and **no aliases exist**: `graph` is `status`,
+  the old pull request `status` is `github status`, `sync` is `pull`,
+  `track --stack` is `adopt`, `import` is `graphite adopt` / `github adopt`,
+  `mirror` is `graphite mirror`, and the source `pull-request` is `github`.
+  Do not add an alias back; an old name is an unknown command.
+- `--json` `operation` is the command's path (`status`, `pull`,
+  `github link`, `graphite adopt`), which is why `schemaVersion` is 3.
+- Exit status: `0` success or nothing to do, `2` failure, `3` stopped part-way,
+  and `1` only from `doctor`, meaning it found something.
+
 ## Work in this repository
 
 - Read `README.md` and the design doc for the area before changing behavior;
@@ -43,9 +64,10 @@ description: |
   answers for whatever g2g has not adopted. Read
   `design-docs/source-resolution.md` before changing how a command selects a
   stack, and never reintroduce the assumption that Graphite decides.
-- `link` previews by default. Its optional `--branch` target must work without
-  checkout; `--apply` is the only path that may invoke `gh stack link`. Bare
-  invocation prints help.
+- `github link` previews by default. Its optional `--branch` target must work
+  without checkout; `--apply` is the only path that may invoke
+  `gh stack link`. A bare namespace (`g2g github`, `g2g graphite`) prints its
+  help.
 - `--take` only ever changes the outcome for a branch that has genuinely
   diverged from its own published version; every other classification `collect`
   makes is take-independent. `--through <branch>` bounds it to that branch and
@@ -54,13 +76,42 @@ description: |
   elsewhere, which is a narrowing rather than an
   enabler: unbounded, `--take published` reaches every diverged branch in the
   selection, including ones the user was not thinking about.
-- `sync` has nothing to do with pull requests. It brings a stack up to date with
+- `pull` has nothing to do with pull requests. It brings a stack up to date with
   its remote: fetch into g2g's own ref namespace, fast-forward the base or
   refuse if it has diverged, and replay. It never calls `gh`.
 - `prune` forgets branches whose work has landed. It is its own command rather
-  than sync's tail because it answers a different question on the same
-  boundary, it edits the recorded graph and deletes no branch, and it refuses to
-  strand a branch recorded under a landed one rather than reparenting around it.
+  than pull's tail because it answers a different question on the same
+  boundary, and it edits the recorded graph and deletes no branch. A child that
+  forgetting would strand is recorded on the branch below **only where Git shows
+  that branch is an ancestor of the child** — what a pull leaves — with the
+  same check and fork point `track` uses; that is recording where it already
+  sits, not reparenting around it. Anything else, including a child outside the
+  selection, still refuses, offering `g2g pull --prune` and then a
+  `g2g track --branch <child> --parent <branch>` per child. Do not widen the
+  rehome to a guess.
+- `pull --prune` composes the two over one selection: the pull, then the
+  prune. The preview can only say it will prune, because what has landed is
+  known once the base moves. A prune that refuses after the pull happened is a
+  stop part-way (`3`), not a failure. `--json`/`--porcelain` refuse `--prune`,
+  since it is two reports and those formats are one document.
+- `status` is offline. It draws the stack from g2g's graph (or `--from
+  graphite`) and marks each branch against what the remote last held here,
+  from local refs alone — `refs/remotes/<remote>/<branch>` and
+  `refs/g2g/remotes/<remote>/<branch>`, taking whichever descends from the
+  other and the remote-tracking ref when they are not in order
+  (`git.Client.KnownTips`, through `push.Known`). It never fetches and never
+  calls `gh`; that is what makes it safe to run before deciding whether to.
+  Marks are `origin✓`, `N ahead`, `N behind`, `replayed since pushed`,
+  `diverged · N here, M there`, `on a commit not here`, `not on origin`, counted
+  by content like `push`. The default remote missing draws no marks; a
+  `--remote` named on purpose that does not exist is an error.
+- `doctor` reads every recorded stack offline and reports only what is not as
+  it should be, each with its command: `restack --continue`,
+  `restack --branch`, `track --branch` (moved off, parent gone, no tracked
+  parent), `track --branch --parent` (fork point gone), `untrack --branch`,
+  `prune --branch`, `pull --branch` (diverged from the remote). It exits `1`
+  when it finds something. `status` is the full overview; `doctor` is only the
+  unexpected — keep that split.
 - `push` is a preview-first publication escape hatch. It selects a path through
   source resolution, must never submit or restack, and must never call `gh`;
   only `--apply` may run exactly one
@@ -69,9 +120,9 @@ description: |
   weaker push mode.
 - A command that did part of what it was asked and stopped exits `3` — not `0`,
   which told a script the work had finished, and not the failure status, because
-  what it achieved is not coming back. `sync` stopping mid-replay, `land`
-  stopping after something merged or was tidied, `comment` stopping after
-  writing some comments, `create -m` whose commit failed after the record, and
+  what it achieved is not coming back. `pull` stopping mid-replay, `pull --prune`
+  whose prune refused after the pull, `land` stopping after something merged
+  or was tidied, `github comment` stopping after writing some comments, `create -m` whose commit failed after the record, and
   a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
@@ -81,7 +132,7 @@ description: |
   replays and forgets in g2g's own graph, so on a Graphite-described stack it
   would merge every pull request and then restack and forget nothing. It owns
   no rules of its own: it publishes through `push`, advances and replays
-  through `sync`, and asks Git by content whether a branch has landed through
+  through `pull`, and asks Git by content whether a branch has landed through
   the same check `prune` uses. Do not give it its own copies of those
   refusals — a lease built from tips it read itself always matches, so a
   direct push would overwrite a reviewer's commit and then merge it. It aims
@@ -98,7 +149,7 @@ description: |
   thing whichever record answered. Read `design-docs/stack-scope.md` before
   changing it. `--from` pins which source answers for one invocation.
 - A command named inside a hint is marked at the point the sentence is written
-  (`runnable("g2g link")`) and drawn when the sentence is styled. Do not add a
+  (`runnable("g2g github link")`) and drawn when the sentence is styled. Do not add a
   highlighter that finds commands by pattern: what is drawn as runnable must be
   exactly what can be copied and run. Marks are control characters, never
   content, so keep them out of anything that becomes an `error` — stderr is
@@ -134,21 +185,22 @@ description: |
   read Graphite internal metadata/configuration or use `gt --debug`: supported
   production discovery is strict, compatibility-gated noninteractive CLI
   parsing.
-- `mirror` is the **only** command that writes Graphite, through exactly
+- `graphite mirror` is the **only** command that writes Graphite, through exactly
   `gt track <branch> --parent <p> --no-interactive` and
   `gt untrack <branch> --force --no-interactive`, both behind the same version
   gate as discovery. Every other command's Graphite use stays read-only. Read
   `design-docs/source-alignment.md` before touching `internal/align`.
 - No g2g command may enrol a repository into Graphite — **including the ones
-  that write it**. Reading Graphite's forest is what creates state, so `mirror`
-  and `import` check `graphite.Configured` and refuse before reading. A
+  that write it**. Reading Graphite's forest is what creates state, so
+  `graphite mirror` and `graphite adopt` check `graphite.Configured` and refuse
+  before reading. A
   repository with no Graphite has no trunk and could not be mirrored into
   anyway, so nothing is lost by refusing first.
 
 ## g2g-owned graphs
 
-- `graph`, `track`, and `untrack` operate on a branch forest g2g owns
-  itself. They read Git only: never call Graphite or GitHub from these paths,
+- `status`, `doctor`, `adopt`, `track`, and `untrack` operate on a branch
+  forest g2g owns itself. They read Git only: never call Graphite or GitHub from these paths,
   and never make them require a network. That independence is the feature.
 - The model is a forest: at most one parent per branch, many children per
   parent, several roots. Do not reintroduce a linear assumption. Graph identity
@@ -158,7 +210,7 @@ description: |
   never observed.
 - `track` must never choose a parent. Preview the ordered candidates and block.
   Recording a structure every later command trusts is not a place for a good
-  guess. `track --stack` is not an exception: the user asserts the trunk and
+  guess. `adopt` is not an exception: the user asserts the trunk (`--trunk`) and
   ancestry supplies the rest, and it refuses wherever ancestry cannot order two
   branches. It records a forest, never a chain — a branch whose only selected
   ancestor is the trunk is a separate stack and must be left alone.
@@ -200,18 +252,19 @@ description: |
   and offer `--dry-run`. A trunk is undescribed by every source, so from one
   they ask the g2g graph for its recorded children and resolve onward from the
   single child.
-- `mirror` and `import` must never remove a branch from the g2g graph.
-  Alignment keeps the two records in step; it does not transfer ownership.
-  `mirror` writes Graphite only, `import` writes the g2g graph only, and
-  `import` refuses a branch the g2g graph already records under a different
-  parent rather than resolving the disagreement.
-- `import --from pull-request` adopts a published stack through the same
-  planning (`planAdoptions`: additive, conflict refusal, parents first); only
-  the record read and the fork point differ. `--from graphite` stays the
-  default and unchanged, `--from g2g` is refused, and `--branch`/`--scope
-  stack|trunk` are refused with Graphite because it is read whole. It selects
-  through the pull request source's own `Select` and is the only import that
-  invokes `gh`. It never creates a branch: anything the pull requests place that
+- `graphite mirror` and the two namespaced `adopt`s must never remove a branch
+  from the g2g graph. Alignment keeps the two records in step; it does not
+  transfer ownership. `graphite mirror` writes Graphite only, `graphite adopt`
+  and `github adopt` write the g2g graph only, and both adopts refuse a branch
+  the g2g graph already records under a different parent rather than resolving
+  the disagreement.
+- `github adopt` adopts a published stack through the same planning
+  (`planAdoptions`: additive, conflict refusal, parents first) as
+  `graphite adopt`; only the record read and the fork point differ. The
+  namespace fixes the source, so neither takes `--from`. `github adopt` takes
+  `--branch` and `--scope stack|trunk`; `graphite adopt` takes neither, because
+  Graphite is read whole. It selects through the GitHub source's own `Select`
+  and is the only adopt that invokes `gh`. It never creates a branch: anything the pull requests place that
   is not local (`Snapshot.Absent`, or a base not here) refuses the plan with
   `git fetch && git switch <branch>` / `git branch <branch> origin/<branch>`.
   The stack's base must already be recorded or be `DefaultBranch` — evidence
@@ -255,13 +308,14 @@ description: |
   The type and the traversal live in `internal/shape`, which depends on
   nothing, because every record answers them and `internal/graph` needs them.
 - **A command must refuse any scope it did not offer, and name its own
-  default.** They genuinely differ: `status` and `graph` default to `stack`
+  default.** They genuinely differ: `status` and `github status` default to
+  `stack`
   because reading is free, `restack` to `subtree` because rewriting is not, and
   `all` is offered only where nothing is rewritten: the read-only commands, and
   `prune`, which edits the record and forgets only what has landed. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
-- Projection is a capability, not a scope. `link`, `submit`, `push` and
-  `retarget` take `stack|path` and refuse a forked selection through
+- Projection is a capability, not a scope. `github link`, `submit`, `push` and
+  `github retarget` take `stack|path` and refuse a forked selection through
   `Snapshot.RequireLinear`, which names the remedy instead of choosing a line.
 - Selected from a trunk, `stack` is the whole tree under it — a trunk's path is
   itself. That is how a rewrite asks for an entire shape without being handed a
@@ -287,20 +341,20 @@ description: |
   `restack` refuses a branch it has no fork point for and names `g2g track`.
 - GitHub's native stack is not a source. It is written from the others, and is
   only ever read to report membership or to find a stack to unlink.
-- `pull-request` is the third source and answers only via `--from
-  pull-request`, never by precedence: reading a base invokes `gh`, and `push`
+- `github` is the third source and answers only via `--from github` (on
+  `github status`), never by precedence: reading a base invokes `gh`, and `push`
   must never do that. It describes published branches only, and GitHub
   retargets a child when its base is deleted on merge, so it reports what a
   merge will do rather than what the stack was.
-- `link` covers both creating and repairing the GitHub relationship; there is
-  no separate reconcile command. `sync` means fetch, advance the base, replay.
-  It forgets nothing: `gt sync` prunes as its tail and this does not, because
-  forgetting a landed branch is a different question on the same boundary and
-  belongs to `prune`.
+- `github link` covers both creating and repairing the GitHub relationship;
+  there is no separate reconcile command. `pull` means fetch, advance the base,
+  replay. It forgets nothing unless asked with `--prune`: `gt sync` prunes as
+  its tail and this does not by default, because forgetting a landed branch is
+  a different question on the same boundary and belongs to `prune`.
 - A diverged base is reported, never merged or reset. Pruning edits the graph
   and never deletes a branch.
 
-- `comment` keeps one marked comment per pull request listing its stack. Read
+- `github comment` keeps one marked comment per pull request listing its stack. Read
   `design-docs/stack-comment.md` before changing it. It always keeps the whole
   stack the branch belongs to — each comment lists its own ancestors and
   descendants, so a partial run would leave comments disagreeing — and has no
@@ -315,8 +369,9 @@ description: |
   `--no-comment` — `submit` after opening and linking, `land` on the branches
   above what it landed (`land.Plan.Above`, the last recipe step) — and a
   failure there exits `3` with the command's own work standing. `push` never
-  keeps them (it must never call `gh`), nor do `retarget` and `link`.
-- `retarget` is the only command a user runs to change what a merge will do,
+  keeps them (it must never call `gh`), nor do `github retarget` and
+  `github link`.
+- `github retarget` is the only command a user runs to change what a merge will do,
   and `land` reaches for the same client method rather than growing its own —
   a child's base only goes stale during a descent, once the branch below it has
   merged, and every move it makes appears in the preview. It writes
@@ -374,10 +429,10 @@ description: |
   the pretty graph.
 - A blocked preview names the repairing command, decided once in
   `link.Plan.Repair` (a `repair.Note`) and rendered from it for both readers:
-  merged pull requests point at `g2g sync` for a g2g-recorded stack and `gt
+  merged pull requests point at `g2g pull` for a g2g-recorded stack and `gt
   sync` for a Graphite one, landed branches at `g2g prune`/`gt sync`, missing or
-  closed ones at `g2g submit`, and a wrong base at `g2g retarget` — never
-  `sync`, which does not touch pull requests. A structure read from pull request
+  closed ones at `g2g submit`, and a wrong base at `g2g github retarget` —
+  never `pull`, which does not touch pull requests. A structure read from pull request
   bases gets no command, because nothing here records it. Two open pull
   requests for one branch is deliberately unadvised — a person must choose.
 - A branch's annotation is a list of `stackMark` — one axis each, one severity
@@ -406,20 +461,24 @@ description: |
   missing is `g2g submit`, and submitting work already in the trunk is the bug
   this prevents. What forgets it depends on the source (`g2g prune` for g2g's
   graph, `gt sync` for Graphite), so do not hardcode one.
-- `status` is the read-only triage entry point. It renders one selected
-  path from the resolved g2g or Graphite structure and reports each selected
+- `github status` is the read-only triage entry point for pull requests. It
+  renders one selected path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the
   healthy case to one compact summary line and annotate only
-  missing/conflicting nodes. `unlink` is the deliberate inverse of `link`: it
+  missing/conflicting nodes. `github unlink` is the deliberate inverse of
+  `github link`: it
   discovers the GitHub stack number from the selected path and refuses rather
   than guesses when that path is unlinked or spans several stacks, accepts
   `--stack-number` to override, previews first, and only `--apply` invokes
   `gh stack unstack`. It must never alter Graphite, branches, PR content,
   reviewers, or PR lifecycle.
 
-- After command discovery, use the resolved command's `--help` or `link --help`
-  to inspect the current interface (for example, `g2g link --help` after a
-  Homebrew install).
-- Read the preview before any `--apply`. `sync` never changes GitHub; the
-  commands that do are `link`, `unlink`, `submit`, `retarget`, `comment` and
-  `land`.
+- After command discovery, use the resolved command's `--help` to inspect the
+  current interface (for example, `g2g github --help` after a Homebrew
+  install).
+- Start with `g2g status` (offline, one stack) or `g2g doctor` (offline, every
+  stack, only what is wrong); reach for `g2g github status` when the question
+  is about pull requests.
+- Read the preview before any `--apply`. `pull` never changes GitHub; the
+  commands that do are `submit`, `land` and everything under `g2g github`
+  except `status` and `adopt`.

@@ -31,11 +31,11 @@ already covered against real Git. So it decides the order and nothing else:
 | Step | Service | What it brings that land must not reimplement |
 |---|---|---|
 | publish one branch | `push` | refuses a remote that has moved |
-| advance and replay | `sync` | refuses a diverged trunk; the replay itself |
+| advance and replay | `pull` | refuses a diverged trunk; the replay itself |
 | has this landed | `prune` | `Cherry` then `Absorbed`, by content |
 | the merge | `githubstack` | the only new external call |
 
-This is `sync`'s own architecture, for the same reason it gives: *"It is an
+This is `pull`'s own architecture, for the same reason it gives: *"It is an
 orchestrator and owns no rules of its own."*
 
 The first draft did reach past them — a direct `PushAtomic`, its own refusal
@@ -53,7 +53,7 @@ wait: GitHub has seen the push
 move the pull request's base        ← only if its turn has changed it
 merge
 wait: the merge has reached the base
-advance the trunk, replay the rest  ← sync
+advance the trunk, replay the rest  ← pull
 reparent what sat on it, forget it  ← in that order
 delete it, here and on the remote
 ```
@@ -62,14 +62,14 @@ delete it, here and on the remote
 every merge restarts the checks on every branch above it, and that cost is the
 whole reason to have this rather than `gt merge`. The consequence is worth
 saying out loud: between cycles the branches above are ahead of their pull
-requests, and `g2g status` reports `head✗` for them. That is the intended
+requests, and `g2g github status` reports `head✗` for them. That is the intended
 state, not drift.
 
 ## Every branch is aimed at the trunk
 
 Not at the branch below it. `githubstack.Along` answers the stacked question —
-where should this pull request sit in a stack — which is right for `status` and
-wrong here, because by the time a branch's turn comes the branch below has
+where should this pull request sit in a stack — which is right for
+`github status` and wrong here, because by the time a branch's turn comes the branch below has
 merged and been deleted. A pull request still pointing at it merges into
 nothing and `gh` reports success.
 
@@ -79,7 +79,7 @@ asynchronously, and `--no-delete-remote` stops it happening at all. Relying on
 it is relying on a race.
 
 This is the one place `land` changes what a merge will do, which is otherwise
-`retarget`'s alone. It uses the same client method rather than growing its own,
+`github retarget`'s alone. It uses the same client method rather than growing its own,
 and every base it would move is named in the preview.
 
 ## Reparent before forgetting
@@ -199,7 +199,7 @@ landed branches (`Plan.Above`) — not after every merge, which would edit every
 comment once per branch for a map that is only true at the end. It is the last
 line of the recipe, `--no-comment` skips it, and unlike the cleanups a failure
 there does stop the run with `3`: the descent stands, and the comments still
-need `g2g comment --apply`. See [stack-comment.md](stack-comment.md).
+need `g2g github comment --apply`. See [stack-comment.md](stack-comment.md).
 
 ## The preview is the recipe
 

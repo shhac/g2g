@@ -1,7 +1,7 @@
 # Source resolution
 
-**Status:** implemented. `retarget` is the explicit pull-request-base mutation;
-it is intentionally separate from publishing and restacking.
+**Status:** implemented. `github retarget` is the explicit pull-request-base
+mutation; it is intentionally separate from publishing and restacking.
 
 ## Problem
 
@@ -22,7 +22,7 @@ Given a branch, which source describes it, and what does that permit?
 resolve(branch) → (parent, source)
   a g2g edge exists      → g2g            adoption is the claim
   Graphite tracks it     → graphite       when gt is installed
-  exactly one open PR    → pull-request   observed, asked for
+  exactly one open PR    → github         observed, asked for
   otherwise              → unknown
 ```
 
@@ -72,7 +72,7 @@ It is not consulted by precedence, and the reason is a constraint rather than a
 preference: reading a base means invoking `gh`, and `push` must never do that.
 A source that would be asked merely to resolve a branch would drag GitHub into
 a command whose whole contract is that it does not go there. So it sits in the
-resolver's on-request tier and answers `--from pull-request`.
+resolver's on-request tier and answers `--from github`.
 
 That also suits what it is. It describes only published branches, and GitHub
 retargets a child when its base branch is deleted on merge — so right after a
@@ -127,7 +127,7 @@ commands remembered to check" is not a property worth depending on.
 
 ### Reading one record in another's format
 
-`graph --from` renders a record other than g2g's own store, in the shape g2g
+`status --from` renders a record other than g2g's own store, in the shape g2g
 draws its own graph in. Seeing both in one format is what makes a divergence
 visible on the repository in front of you; the parity table can only compare
 them on fixtures it was given.
@@ -139,14 +139,14 @@ contents have drifted, so annotating one would report the drift this view exists
 to find as a fact.
 
 It offers the offline records only. Reading a pull request base invokes `gh`,
-and `graph` answering without a network is the whole reason it exists apart from
-`status` — so the refusal names `g2g status --from pull-request`, which does
-read it.
+and `status` answering without a network is the whole reason it exists apart
+from `github status` — so the refusal names `g2g github status --from github`,
+which does read it.
 
 **GitHub's native stack is not a source at all.** Nothing defines a stack by
 editing it; branches and bases are edited and the native stack is written from
 them. It is a projection artifact, and its only role here is drift detection —
-which is already all `status` uses it for.
+which is already all `github status` uses it for.
 
 ## Authority governs mutation, not description
 
@@ -158,7 +158,8 @@ whichever source supplied each edge. Writing stops at the boundary.
 - `track` and `untrack` write the g2g store, which is how a branch changes
   hands in either direction. That is the single remedy for every "our record
   disagrees" state.
-- `link` and `push` only need an ordered path, so they work with any source.
+- `github link` and `push` only need an ordered path, so they work with any
+  source.
 
 A Graphite-backed path must **refuse when the repository is not already
 Graphite-tracked** rather than invoking `gt` and enrolling it.
@@ -208,10 +209,11 @@ relationship and repairing it are the same act, and the preview says which one
 is happening.
 
 That frees `sync` for the meaning `gt sync` already has, which is what a
-stacking user expects:
+stacking user expects. It is named `pull` now, after the Git command that does
+the same for one branch, and `link` is `github link`:
 
 ```text
-g2g sync = fetch + advance the base + restack
+g2g pull = fetch + advance the base + restack
 ```
 
 - **fetch** into `refs/g2g/remotes/`, leaving the user's refs alone
@@ -221,7 +223,8 @@ g2g sync = fetch + advance the base + restack
 
 Forgetting what has landed was originally the fourth step here. It became its
 own command: it answers a different question on the same boundary, and being a
-tail cost it both a scope and a test. See [stack scope](stack-scope.md).
+tail cost it both a scope and a test. `pull --prune` runs the two in order when
+asked. See [stack scope](stack-scope.md).
 
 ## Scope
 
@@ -242,7 +245,7 @@ alone cannot detect a squash merge.
 
 ## Completed boundary: retargeting pull-request bases
 
-`g2g retarget` uses `gh pr edit <number> --base <branch>` to make open pull
+`g2g github retarget` uses `gh pr edit <number> --base <branch>` to make open pull
 requests match the resolved linear path. It previews the affected pull requests
 and their old and new bases, revalidates before `--apply`, changes only bases
 that disagree, and refuses a branch with more than one open pull request.
@@ -253,5 +256,5 @@ is a different mutation from creating a pull request or replaying local refs.
 ## Deferred
 
 **Whether one pull request may belong to two native stacks.** Unanswered, and
-it decides what `link` does on a fork. It needs an experiment against real
+it decides what `github link` does on a fork. It needs an experiment against real
 GitHub, not a decision.

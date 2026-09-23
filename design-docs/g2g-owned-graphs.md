@@ -57,13 +57,13 @@ Precedence when several sources describe a branch is:
 
 1. the g2g store, when it holds an adopted edge;
 2. Graphite, when it tracks a branch g2g has not adopted;
-3. a pull-request base only when explicitly selected with `--from pull-request`;
+3. a pull-request base only when explicitly selected with `--from github`;
 4. unknown.
 
 GitHub bases are observed merge behaviour, not local intent. A disagreement is
 reported rather than silently merged. Graphite can remain alongside the local
-record: `import` adopts Graphite edges into g2g, and `mirror` makes Graphite
-agree with the g2g forest. See [source alignment](source-alignment.md).
+record: `graphite adopt` adopts Graphite edges into g2g, and `graphite mirror`
+makes Graphite agree with the g2g forest. See [source alignment](source-alignment.md).
 
 ## Deriving edges from Git
 
@@ -88,7 +88,7 @@ Nothing either way means the candidate is at `C`'s own commit. Each is then an
 ancestor of the other and ancestry cannot say which sits on which — and it is
 the state of every branch the moment it is created, so it is the ordinary case.
 Such a candidate is offered, marked as the same commit, for the user to answer.
-`track --stack` refuses it by name rather than ordering it, with one exception:
+`adopt` refuses it by name rather than ordering it, with one exception:
 the trunk, whose place the user asserted, so a branch just created from it
 sits on it. A branch as near the trunk as it is to the selection sits directly
 on the trunk and stays out, like any other stack there.
@@ -186,8 +186,11 @@ An unrecognised future store version fails closed.
 ## Commands
 
 ```text
-g2g graph   [--branch <branch>] [--scope branch|path|subtree|stack|trunk|all]
-g2g track   [--branch <branch>] [--parent <branch> | --stack] [--apply]
+g2g status  [--branch <branch>] [--scope branch|path|subtree|stack|trunk|all]
+            [--from g2g|graphite] [--remote <remote>]
+g2g doctor  [--remote <remote>]
+g2g adopt   [--branch <branch>] [--trunk <branch>] [--apply]
+g2g track   [--branch <branch>] [--parent <branch>] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
 g2g restack [--branch <branch>] [--scope branch|path|subtree|stack] [--apply]
 g2g create  <branch> [--parent <branch>] [-m <message>] [--apply]
@@ -197,9 +200,9 @@ g2g rename  [--branch <branch>] <new-name> [--apply]
 g2g up [n] | down [n] | top | bottom   [--dry-run]
 ```
 
-`graph` is read-only. `track` and `untrack` follow the same
-preview → revalidate → render → flush → mutate sequence as every other mutating
-command; the only difference is that the mutation writes a local file instead
+`status` and `doctor` are read-only. `adopt`, `track` and `untrack` follow the
+same preview → revalidate → render → flush → mutate sequence as every other
+mutating command; the only difference is that the mutation writes a local file instead
 of calling an external CLI.
 
 `track` with no `--parent` previews the ordered candidate list and blocks,
@@ -212,6 +215,26 @@ refused — that is how a stack looks before a restack — but never silently.
 Recording a branch under a parent that is not itself tracked also records that
 parent as a root. Without it the next branch up the stack could not find the
 trunk as a candidate once the trunk had moved past being an ancestor.
+
+### Reading where a branch stands
+
+`status` draws the recorded forest with each branch's state — needs restack,
+moved off parent, parent missing, landed — and, beside it, how the branch
+stands against its remote. That second half needs no network either: it reads
+what the remote last held from local refs, the remote-tracking ref a push or a
+fetch moves and the ref under `refs/g2g/remotes/` that `pull` fetches into,
+taking whichever descends from the other and the remote-tracking ref when they
+are not in order. Reading only the remote-tracking ref would have the trunk
+claim, after every pull, to be ahead by everything just pulled. Commits are
+counted by content, as `push` counts them, so a branch replayed since it was
+pushed reads as replayed rather than diverged. The comparison is wired in the
+command, not in `internal/graph`, which still depends on Git alone.
+
+`doctor` reads every recorded stack the same way and reports only what is
+wrong, each finding with the one command that repairs it, and exits `1` when it
+finds anything. The two are split on purpose: `status` is the overview of the
+stack you are on, `doctor` the list of the unexpected across all of them, most
+of which broke outside g2g.
 
 ### Creating a branch
 
@@ -229,7 +252,7 @@ nobody recorded would silently become a trunk. `create` therefore requires the
 parent to be recorded — tracked, or a trunk something is recorded under — or to
 be the repository's default branch, which is a trunk by the only evidence the
 repository gives (`refs/remotes/<remote>/HEAD`). Anything else is refused,
-naming `track --stack` and `--parent` as the ways out.
+naming `adopt` and `track --parent` as the ways out.
 
 The edge is written through `PlanTrack` and `ApplyTrack`, so a created branch
 is recorded exactly as `track` records one, fork point included. The order is
@@ -337,10 +360,10 @@ the user's working tree so it can be resolved, then resumed or aborted through
 g2g's journal. [restack](restack.md) describes those boundaries.
 
 GitHub native stacks remain linear. A fork is valid local structure but must be
-narrowed to a path before `link`, `submit`, `push`, or `retarget` can project
-it. `mirror` is the sole Graphite-writing command and only makes a configured
-Graphite repository agree with the local forest; all other Graphite use is
-read-only.
+narrowed to a path before `github link`, `submit`, `push`, or
+`github retarget` can project it. `graphite mirror` is the sole
+Graphite-writing command and only makes a configured Graphite repository agree
+with the local forest; all other Graphite use is read-only.
 
 **No automatic adoption.** Nothing is written to the store without an explicit
 `--apply`. Observing a pull request base or inferring an ancestry edge produces

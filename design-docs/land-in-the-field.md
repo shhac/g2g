@@ -17,8 +17,8 @@ wrong or missing: aiming each pull request at the trunk before its merge, going
 bottom first with a replay between merges, and `--admin` on a protected
 repository were all right. The preview also answered a question a person has to
 ask before running it: with `--scope path` over the bottom five, the nested
-`sync` takes `stack` scope, so the three branches above the selection are
-replayed rather than stranded.
+`sync` (now `pull`) takes `stack` scope, so the three branches above the
+selection are replayed rather than stranded.
 
 That is why "the preview is the recipe" is a design rule rather than a nicety.
 
@@ -54,7 +54,7 @@ consumer following the documented contract had nothing to act on. Every refusal
 with a way out now carries it as structure.
 
 The same refusal fired for a branch the rewrite would never move: restack does
-not move the trunk, and only a caller that advances it (sync, land) should count
+not move the trunk, and only a caller that advances it (pull, land) should count
 it.
 
 ## Discovery cost has to scale with the selection
@@ -70,13 +70,13 @@ ceiling that was in force.
 
 - `gt sync` restacks and reports on every branch in the repository, so in a
   large checkout the stack being landed is buried under warnings about others.
-  `g2g sync` takes the stack, which is why `SyncScopes` stops at `stack` and
+  `g2g pull` takes the stack, which is why `SyncScopes` stops at `stack` and
   `trunk`.
 - `gt sync` reports taking a branch "from remote" with no way to tell a safe
   sync from one that discards local work. Checking survival by content, not by
-  commit id, was the only reliable check — which is how `sync` decides a
+  commit id, was the only reliable check — which is how `pull` decides a
   divergence, and why `--take published` names every commit it would drop.
-- After a partial descent, re-tracking the stack in Graphite (`g2g mirror`)
+- After a partial descent, re-tracking the stack in Graphite (`g2g graphite mirror`)
   restores the parent edges but not Graphite's record that each branch was
   submitted. Graphite then offers, defaulting to yes, to overwrite each local
   branch with the remote version — which after a replay is the pre-replay

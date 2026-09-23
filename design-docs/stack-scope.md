@@ -79,7 +79,7 @@ trunk and everything above, excluding the cousins that merely share a trunk.
 
 ## Defaults differ by command, and that is the point
 
-- **Read commands** (`status`, `graph`) default to **`stack`**. Reading is free,
+- **Read commands** (`status`, `github status`) default to **`stack`**. Reading is free,
   so show where I am — ancestors, descendants, and my position among them.
 - **`restack`** defaults to **`subtree`**. Rewriting is not free.
 
@@ -107,8 +107,8 @@ default widens what you read before agreeing to it.
 
 ## Projection is linear, and that is a capability, not a scope
 
-A GitHub native stack is linear. `link`, `submit`, `push` and `retarget`
-therefore cannot project a fork, and offer only `stack | path`, refusing a
+A GitHub native stack is linear. `github link`, `submit`, `push` and
+`github retarget` therefore cannot project a fork, and offer only `stack | path`, refusing a
 forked `stack` and naming the remedy: select a leaf.
 
 Selecting a leaf is the remedy because it needs no machinery. A leaf has no
@@ -161,6 +161,10 @@ and preview, and gives the fork-point unpin path — which no test ever executed
 because `sync`'s tests built a graph service with no `Refs` — a command of its
 own to be tested through.
 
+`sync` is `pull` now, and `pull --prune` asks for both again — but as two
+commands run in order over one selection, each previewing and revalidating as
+it would alone, not as a tail folded back into the replay.
+
 ## Rendering a tree, and the linear path inside it
 
 `status` renders whatever shape it selected. A chain still renders flat: a
@@ -191,7 +195,7 @@ checking anything out, so nothing stopped it corrupting that worktree's view.
 the branch and the worktree. `restack` offers `branch | path | subtree | stack |
 trunk`.
 
-`sync` offers `stack | trunk` and nothing narrower, because nothing narrower
+`pull` offers `stack | trunk` and nothing narrower, because nothing narrower
 means anything: it advances the base and replays what sits on it, so replaying a
 subtree would leave the branches below it on the old base while the subtree's own
 fork point had not moved — a replay that does nothing.

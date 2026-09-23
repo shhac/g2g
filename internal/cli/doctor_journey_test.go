@@ -109,3 +109,60 @@ func TestJourneyDoctorWorksFromADetachedHead(t *testing.T) {
 		t.Errorf("doctor from a detached HEAD:\n%s", out)
 	}
 }
+
+// doctorNames runs doctor and returns the one command it names for a branch,
+// so a test can run exactly what a person would copy.
+func doctorNames(t *testing.T, branch string) []string {
+	t.Helper()
+	out, _, err := run(t, "doctor", "--no-links")
+	if err == nil {
+		t.Fatalf("doctor found nothing to put right for %s:\n%s", branch, out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, branch+": ") {
+			_, command, found := strings.Cut(line, " · run ")
+			if found {
+				return strings.Fields(strings.TrimSuffix(command, "."))[1:]
+			}
+		}
+	}
+	t.Fatalf("doctor names no command for %s:\n%s", branch, out)
+	return nil
+}
+
+// A repair doctor names has to repair. Two of them named track with the parent
+// already recorded, which was a no-op, so doctor named the same command again
+// after it had been run.
+func TestJourneyDoctorsRepairsRepair(t *testing.T) {
+	for name, breakIt := range map[string]func(w *world){
+		// The parent was amended and the child rebased onto it by hand, so the
+		// recorded fork point is no longer in the child.
+		"moved off parent": func(w *world) {
+			w.git(w.Local, "switch", "-q", "synthetic-p")
+			w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic p, amended")
+			w.git(w.Local, "rebase", "-q", "--onto", "synthetic-p", "synthetic-p@{1}", "synthetic-c")
+		},
+		// The recorded fork point names a commit this repository does not have.
+		"fork point gone": func(w *world) {
+			w.rewriteStore(func(store string) string {
+				tip := w.tip(w.Local, "synthetic-p")
+				return strings.Replace(store, tip, "1234567890123456789012345678901234567890", 1)
+			})
+			w.git(w.Local, "update-ref", "-d", "refs/g2g/forkpoints/synthetic-c")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			w.branchOff("main", "synthetic-p", "p.txt")
+			w.branchOff("synthetic-p", "synthetic-c", "c.txt")
+			mustRun(t, "adopt", "--trunk", "main", "--apply")
+			breakIt(w)
+
+			mustRun(t, append(doctorNames(t, "synthetic-c"), "--apply")...)
+			if out, _, err := run(t, "doctor"); err != nil {
+				t.Errorf("doctor after its own repair: %v\n%s", err, out)
+			}
+			w.assertClean(w.Local)
+		})
+	}
+}

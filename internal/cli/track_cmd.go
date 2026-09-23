@@ -139,8 +139,7 @@ func adoptFlow(service graph.Service, selection graphOptions, trunk string, guar
 
 // trackIsNoOp reports a plan that would rewrite the edge it already found.
 func trackIsNoOp(plan graph.TrackPlan) bool {
-	recorded, tracked := plan.Graph.Parent(plan.Target)
-	return tracked && recorded == plan.Parent && plan.NewTrunk == ""
+	return plan.Updated.Equal(plan.Graph)
 }
 
 // parentCompletions offers the same ordered candidates the preview would, so

@@ -10,6 +10,9 @@ import (
 
 func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
+	if plan.Blocked == "" && plan.Refreshed {
+		return view.note(fmt.Sprintf("Records a new fork point for %s on %s: the recorded one is no longer in it.", plan.Target, plan.Parent), severityOK)
+	}
 	if plan.Blocked == "" {
 		view = view.note(fmt.Sprintf("Records %s under %s.", plan.Target, plan.Parent), severityOK)
 		if plan.NewTrunk != "" {

@@ -142,7 +142,7 @@ func branchFinding(discovery graph.Discovery, branch string) (finding, bool) {
 	case graph.StateNeedsRestack:
 		return finding{Branch: branch, Problem: "its parent moved underneath it", Command: "g2g restack --branch " + branch, Severity: severityWarn}, true
 	case graph.StateMovedOffParent:
-		return finding{Branch: branch, Problem: "no longer built on " + parent, Command: "g2g track --branch " + branch, Severity: severityWarn}, true
+		return finding{Branch: branch, Problem: "no longer built on " + parent, Command: "g2g track --branch " + branch + " --parent " + parent, Severity: severityWarn}, true
 	case graph.StateForkUnresolvable:
 		return finding{Branch: branch, Problem: "its recorded fork point is gone", Command: "g2g track --branch " + branch + " --parent " + parent, Severity: severityBad}, true
 	case graph.StateParentMissing:

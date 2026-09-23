@@ -128,6 +128,16 @@ func runIn(t *testing.T, dir, name string, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
+// rewriteStore edits the recorded graph in place, which is how a test stands up
+// a record something outside this tool has damaged.
+func (w *world) rewriteStore(edit func(string) string) {
+	w.t.Helper()
+	path := filepath.Join(w.Local, ".git", "g2g", "graph.json")
+	if err := os.WriteFile(path, []byte(edit(w.readStore())), 0o600); err != nil {
+		w.t.Fatalf("write graph store: %v", err)
+	}
+}
+
 // readStore returns the recorded graph, so a test can assert that a command
 // which moves contents left the structure exactly as it found it.
 func (w *world) readStore() string {

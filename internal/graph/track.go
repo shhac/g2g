@@ -23,7 +23,10 @@ type TrackPlan struct {
 	Candidates []Candidate
 	// NewTrunk names a parent that is about to become a root of the forest.
 	NewTrunk string
-	Updated  Graph
+	// Refreshed means the parent is the one already recorded and only the fork
+	// point is written again: see refresh.
+	Refreshed bool
+	Updated   Graph
 	// Blocked is why an apply would refuse, empty when it would proceed.
 	Blocked string
 }
@@ -33,6 +36,7 @@ func (p TrackPlan) Equal(other TrackPlan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Parent == other.Parent &&
 		p.NewTrunk == other.NewTrunk &&
+		p.Refreshed == other.Refreshed &&
 		p.Blocked == other.Blocked &&
 		slices.Equal(p.Candidates, other.Candidates) &&
 		p.Updated.Equal(other.Updated)
@@ -63,6 +67,9 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		plan.Blocked = err.Error()
 		return plan, nil
 	}
+	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked && recorded.Parent == parent {
+		return s.refresh(ctx, plan, recorded)
+	}
 	forkPoint, err := s.Git.Resolve(ctx, parent)
 	if err != nil {
 		return TrackPlan{}, err
@@ -83,6 +90,42 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	// the trunk has moved past being an ancestor.
 	plan.NewTrunk = newTrunk
 	plan.Updated = updated
+	return plan, nil
+}
+
+// refresh answers a track naming the parent already recorded.
+//
+// Where the recorded fork point still holds, that is nothing to do: writing the
+// parent's tip over it would hide a parent that has moved, which is what a
+// restack needs to see. Where it does not — the branch was rewritten by hand,
+// or the commit is gone — the parent is right and the fork point is wrong, and
+// this is how to say so. It was a no-op, so the repair doctor names for both
+// states changed nothing and doctor named it again.
+//
+// Only a parent whose tip is in the branch is refreshed. Anything else could
+// be a branch now built on something else entirely, and where it leaves the
+// recorded parent would be a guess.
+func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (TrackPlan, error) {
+	switch plan.States[plan.Target] {
+	case StateMovedOffParent, StateForkUnresolvable:
+	default:
+		return plan, nil
+	}
+	built, err := s.Git.IsAncestor(ctx, recorded.Parent, plan.Target)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	if !built {
+		plan.Blocked = fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)
+		return plan, nil
+	}
+	forkPoint, err := s.Git.Resolve(ctx, recorded.Parent)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	updated := plan.Graph.Clone()
+	updated.Edges[plan.Target] = Edge{Parent: recorded.Parent, Origin: OriginAncestry, ForkPoint: forkPoint}
+	plan.Updated, plan.Refreshed = updated, true
 	return plan, nil
 }
 

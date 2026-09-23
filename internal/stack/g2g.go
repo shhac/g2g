@@ -42,7 +42,9 @@ func (s G2GSelector) Describes(ctx context.Context, branch string) (bool, error)
 // describes, which is the common case because this record is consulted first.
 func (s G2GSelector) Select(ctx context.Context, selection Selection, command string) (Snapshot, error) {
 	scope := selection.EffectiveScope()
-	discovery, err := s.Service.Discover(ctx, graph.Selection{Branch: selection.Branch, Scope: scope})
+	// The shape and nothing else: what each branch's contents are doing is not
+	// what a selection is asked, and asking it cost more than everything else.
+	discovery, err := s.Service.Structure(ctx, graph.Selection{Branch: selection.Branch, Scope: scope})
 	if err != nil {
 		return Snapshot{}, err
 	}

@@ -131,6 +131,30 @@ func (s Service) Ready() bool {
 // Discover loads the adopted graph and assesses the selected branches against
 // Git. It never writes and never checks a branch out.
 func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, error) {
+	discovery, err := s.Structure(ctx, selection)
+	if err != nil {
+		return Discovery{}, err
+	}
+	if discovery.States, err = assess(ctx, s.Git, discovery.Graph, discovery.Branches); err != nil {
+		return Discovery{}, err
+	}
+	if discovery.StorePath, err = s.Store.Path(ctx); err != nil {
+		return Discovery{}, err
+	}
+	discovery.DefaultTrunk = s.defaultTrunk(ctx)
+	return discovery, nil
+}
+
+// Structure is Discover without asking Git how each branch stands: which
+// branches the selection names and how they hang together, and nothing else.
+// States is nil.
+//
+// A command that only acts on the shape — every selection a push, a link or a
+// land makes through the g2g store — paid for the whole assessment and threw it
+// away, and on a long-lived trunk the assessment is most of the cost: a drifted
+// branch asks whether it has landed, by content, against everything the trunk
+// gained.
+func (s Service) Structure(ctx context.Context, selection Selection) (Discovery, error) {
 	if !s.Ready() {
 		return Discovery{}, fmt.Errorf("graph service is not fully configured")
 	}
@@ -154,14 +178,6 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 	if err != nil {
 		return Discovery{}, err
 	}
-	states, err := assess(ctx, s.Git, adopted, branches)
-	if err != nil {
-		return Discovery{}, err
-	}
-	path, err := s.Store.Path(ctx)
-	if err != nil {
-		return Discovery{}, err
-	}
 	diagnostic.Event(ctx, "graph.discovery",
 		diagnostic.Field{Key: "target", Value: target},
 		diagnostic.Field{Key: "source", Value: source},
@@ -169,7 +185,7 @@ func (s Service) Discover(ctx context.Context, selection Selection) (Discovery, 
 		diagnostic.Field{Key: "tracked", Value: fmt.Sprint(len(adopted.Edges))},
 		diagnostic.Field{Key: "selected", Value: strings.Join(branches, ",")},
 	)
-	return Discovery{Graph: adopted, Target: target, TargetSource: source, Scope: scope, Branches: branches, States: states, StorePath: path, DefaultTrunk: s.defaultTrunk(ctx)}, nil
+	return Discovery{Graph: adopted, Target: target, TargetSource: source, Scope: scope, Branches: branches}, nil
 }
 
 // defaultTrunk asks what the remote calls its default branch, and treats not

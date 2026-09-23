@@ -3,7 +3,9 @@ package graph
 import (
 	"context"
 	"fmt"
+
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/parallel"
 )
 
 // What the recorded edge says about a branch as it is now.
@@ -94,13 +96,23 @@ func assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[
 		present[branch] = true
 	}
 
-	states := make(map[string]NodeState, len(branches))
-	for _, branch := range branches {
+	// Each branch is a few independent process spawns and none depends on
+	// another, so they are asked at once: doctor classifies every recorded
+	// branch, and one after another that was most of what it cost. Answers
+	// land in a slice sized first, so each read owns its element and needs no
+	// lock.
+	answers := make([]NodeState, len(branches))
+	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		state, err := classify(ctx, git, g, present, branch)
-		if err != nil {
-			return nil, err
-		}
-		states[branch] = state
+		answers[index] = state
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	states := make(map[string]NodeState, len(branches))
+	for index, branch := range branches {
+		states[branch] = answers[index]
 	}
 	return states, nil
 }

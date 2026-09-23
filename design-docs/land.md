@@ -86,7 +86,10 @@ and every base it would move is named in the preview.
 
 `prune` refuses to forget a branch something is still recorded under, which in a
 merge-down is every branch but the last. Reparenting first leaves the landed
-branch with no children, so the refusal never applies.
+branch with no children, so the refusal never applies. If prune refuses anyway,
+or does not find the branch's work in the trunk by content, the descent stops
+there, before the branch's refs are deleted: carrying on once left the graph
+recording a branch that no longer existed.
 
 The child keeps **its own fork point** — the landed branch's old tip — which is
 what keeps its replay range to its own commits. See
@@ -133,7 +136,8 @@ the branch's turn comes, not taken from the plan. The first version took it from
 the plan, where every branch above the first was still clean, and so merged the
 blocked ones without the flag it had been given for exactly them. The plan's
 forecast still marks those steps, so the recipe says `--admin` where it will be
-needed.
+needed. Since it is readiness, revalidation leaves it out: a pull request whose
+checks pass between the preview and the apply is the same descent.
 
 `--admin` also bypasses approvals, so an unapproved pull request is refused
 under its own name rather than folded into the protection refusal. Someone
@@ -162,7 +166,9 @@ right. The lease still guards the push itself.
 `restack` stays the only resumable operation. `land` is re-entrant by
 recomputation instead: a merged branch is detected by content and skipped, a
 forgotten branch is gone from the graph, so rerunning continues from wherever
-it stopped.
+it stopped. A branch somebody else merged in the browser is detected the same
+way: once any pull request in the stack reads merged, the trunk is fetched and
+a branch whose work is in either version of it has landed.
 
 A descent that stops part-way reports what landed rather than "not applied" —
 those merges are done and staying done — and it reports it from what it

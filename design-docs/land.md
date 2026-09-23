@@ -194,6 +194,13 @@ separate, `--no-delete-remote` and `--no-delete-local`.
 merged and been deleted makes every later `status` and every later replay
 measure against a structure that is not there.
 
+Keeping the stack comments is the last act, once, on what remains above the
+landed branches (`Plan.Above`) — not after every merge, which would edit every
+comment once per branch for a map that is only true at the end. It is the last
+line of the recipe, `--no-comment` skips it, and unlike the cleanups a failure
+there does stop the run with `3`: the descent stands, and the comments still
+need `g2g comment --apply`. See [stack-comment.md](stack-comment.md).
+
 ## The preview is the recipe
 
 A descent is a sequence, so the preview is the ordered list of commands a

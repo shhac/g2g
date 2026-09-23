@@ -308,8 +308,14 @@ description: |
   nothing local remembers a pruned branch; keep only what GitHub says merged,
   never create a comment on a merged pull request, never edit a comment without
   the marker, and leave alone one the viewer cannot edit or a pull request
-  carrying two. Writes are `addComment`/`updateIssueComment` by node id with the
-  body as a raw `-f` field; errors must not echo the body.
+  carrying two, and believe records only from comments the viewer can edit.
+  Writes are `addComment`/`updateIssueComment` by node id with the body as a
+  raw `-f` field; errors must not echo the body. `submit` and `land` keep the
+  comments as their last act through `comment.Service.Keep` unless
+  `--no-comment` — `submit` after opening and linking, `land` on the branches
+  above what it landed (`land.Plan.Above`, the last recipe step) — and a
+  failure there exits `3` with the command's own work standing. `push` never
+  keeps them (it must never call `gh`), nor do `retarget` and `link`.
 - `retarget` is the only command a user runs to change what a merge will do,
   and `land` reaches for the same client method rather than growing its own —
   a child's base only goes stale during a descent, once the branch below it has
@@ -349,8 +355,10 @@ description: |
 
 - `submit` is a preview-first PR creation recovery path. It must never invoke
   `gt submit`, restack Graphite, or retarget an existing PR. Its `--apply`
-  boundary validates/revalidates first, atomically pushes refs, creates only
-  missing draft PRs, then links the eligible stack.
+  boundary validates/revalidates first, publishes through `push` (and so
+  refuses a remote holding work this checkout lacks), creates only missing
+  draft PRs, links the eligible stack, then keeps the stack comments unless
+  `--no-comment`.
 - For non-interactive use, create a private temporary directory with
   `g2g submit --write-spec <dir>`, complete `submission.json`, validate with
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec

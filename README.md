@@ -68,9 +68,9 @@ g2g prune --apply
 # Publish the branches, open missing pull requests as drafts and link them,
 # fix bases a restack left stale, keep a stack map on each, and check it all.
 g2g push --apply
-g2g submit --edit --apply
+g2g submit --edit --apply    # also keeps the stack comments; --no-comment skips
 g2g retarget --apply
-g2g comment --apply
+g2g comment --apply          # or keep them by hand, any time
 g2g status
 
 # Finished: from the top, merge the stack down onto the trunk, bottom first.
@@ -573,7 +573,8 @@ non-atomic or unsafe-force fallback.
 `g2g submit` is a preview-first publication path for a resolved linear stack.
 With `--apply`, it validates the complete spec, revalidates immediately before
 mutation, performs one atomic lease-protected push, creates only missing PRs
-bottom-to-top as drafts, preserves existing PRs, then links the complete stack.
+bottom-to-top as drafts, preserves existing PRs, then links the complete stack
+and keeps the stack comment on each pull request (`--no-comment` skips that).
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
 Generate a reusable spec outside the repository, fill in each title, validate,
@@ -736,6 +737,13 @@ the history survives the branch being pruned and deleted. A merged pull request
 is never given a new comment, a comment you cannot edit is left alone, and a
 branch with two open pull requests refuses the run.
 
+`submit` and `land` keep the comments too, as their last act, because they
+change which pull requests the stack is made of: `submit` once the pull
+requests are opened and linked, `land` on what remains above the branches it
+landed. Both say so in their preview, and `--no-comment` skips it. If keeping
+the comments fails there, the command's own work stands and it exits `3`,
+naming `g2g comment --apply`. `push`, `retarget` and `link` never touch them.
+
 It keeps the whole stack the branch belongs to, whichever branch you run it
 from, and so has no `--scope`: each comment lists its own pull request's
 ancestors and descendants — a fork appears in some comments and not others,
@@ -810,6 +818,10 @@ goes, and leaving it recorded would put them under a branch that no longer
 exists. None of the cleanups can stop a descent — the work is merged, and a ref
 that would not delete is untidiness, not a failed land. A branch the remote
 deleted on merge is already in the state it was asked for.
+
+Once the descent is done, `land` keeps the stack comments on what remains above
+the branches it landed, so those pull requests list what merged as history.
+It is the last line of the recipe, and `--no-comment` skips it.
 
 `--method squash|merge|rebase` defaults to squash, and is refused up front if
 the repository does not allow it. Squash is the case a stack needs help with:

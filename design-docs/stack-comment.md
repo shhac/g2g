@@ -140,11 +140,32 @@ passes through as a string: it reads no file for a value starting with `@` and
 fills no `{owner}` placeholder. A failed write names the mutation and never
 repeats the body back.
 
+## Kept by submit and land, too
+
+`submit` and `land` change which pull requests a stack is made of, so each
+keeps the comments in step as its last act unless `--no-comment` says not to:
+`submit` once the pull requests are opened and linked, `land` on what remains
+above the landed branches once the descent is done — which is when the merged
+pull requests become history in those comments. Both say so in their preview,
+`land` as the last step of its recipe.
+
+It is `comment`'s own planning and writing (`comment.Service.Keep`), run
+straight after the command's own work rather than previewed again: the
+command's preview already said it would, every write is an edit of a comment
+this tool owns or a new one on an open pull request, and nothing it does is
+worth a second confirmation. A blocked plan is not written. If keeping them
+fails, the command's own work stands — pull requests opened, a stack landed —
+so the run exits `3` and names `g2g comment --apply`.
+
+After every branch of a stack has landed there is nothing left above to keep a
+comment on, so the merged pull requests keep the last comment they had.
+
+`push`, `retarget` and `link` do not keep comments: `push` must never call
+`gh`, and the other two change no pull request's membership of the stack.
+
 ## What was deliberately left out
 
 - **Titles.** They would make every retitle an edit, and GitHub already shows a
   referenced pull request's title on hover.
-- **Running from `submit` or `land`.** Posting to every pull request is a
-  different class of act from creating one, and wants its own preview.
 - **Deleting a comment.** A stack that shrinks to one pull request keeps the
   comment it has; nothing here removes a person's view of history.

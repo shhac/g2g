@@ -132,14 +132,7 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// You have unpublished work. That is push's business, not sync's.
 			continue
 		}
-		ours, _, err := s.Git.Cherry(ctx, published, branch, "")
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(ours) == 0 {
-			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
-			continue
-		}
+		// First whether the remote holds anything this branch does not.
 		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parentOrBase(parents, branch, base))
 		if err != nil {
 			return nil, nil, err
@@ -157,6 +150,20 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 			// whose bottom one had more than one commit, refused a branch
 			// nobody else had touched. Missing excuses exactly that squashed
 			// run, and nothing else: a reviewer's revert is still theirs.
+			continue
+		}
+		// Then what this branch has that the remote does not, bounded at the
+		// parent as currency is, because everything below it is the parent's.
+		// Unbounded, a branch restacked here onto a trunk that had moved
+		// counted every commit the trunk gained as its own unpublished work —
+		// a divergence it did not have, at the cost of the trunk's whole
+		// history since the fork.
+		ours, _, err := s.Git.Cherry(ctx, published, branch, parentOrBase(parents, branch, base))
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(ours) == 0 {
+			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
 			continue
 		}
 		if take.AppliesTo(branch, parents) {

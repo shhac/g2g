@@ -1516,3 +1516,47 @@ func TestJourneyPullPrunePreviewsWithoutForgetting(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// A reviewer pushed to the branch while it was restacked here onto a trunk that
+// had moved. Counted without a bound, every commit the trunk gained read as
+// this branch's own unpublished work, and the refusal claimed a divergence the
+// branch did not have. Everything of its own is on the remote by content, so
+// what is left to say is the true reason it stops: the published version sits
+// on an older trunk than the one recorded, and which of its commits are its
+// own cannot be read from ancestry — a parent that was amended looks the same.
+func TestJourneyPullAfterALocalRestackRefusesForTheTrueReason(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "review.txt", "review")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+	for _, name := range []string{"one.txt", "two.txt", "three.txt"} {
+		w.commit(w.Other, "main", name, name)
+	}
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "pull", "-q", "--ff-only", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+	mustRun(t, "restack", "--apply")
+	before := w.tip(w.Local, "synthetic-a")
+
+	out, _, err := run(t, "pull", "--apply")
+	if err == nil {
+		t.Fatalf("pull took a version whose own commits cannot be told:\n%s", out)
+	}
+	if strings.Contains(out, "here that are not published") {
+		t.Errorf("the refusal counts the trunk's commits as this branch's own:\n%s", out)
+	}
+	if !strings.Contains(out, "which commits are its own cannot be told") {
+		t.Errorf("the refusal does not say why:\n%s", out)
+	}
+	if after := w.tip(w.Local, "synthetic-a"); after != before {
+		t.Errorf("a refused pull moved synthetic-a from %s to %s", before, after)
+	}
+	w.assertClean(w.Local)
+}

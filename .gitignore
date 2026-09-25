@@ -1,2 +1,6 @@
 # Agent planning scratch, not part of the project record.
 .ai-cache/
+
+# Field feedback from real repositories; only its README is part of the record.
+/FEEDBACK/*
+!/FEEDBACK/README.md

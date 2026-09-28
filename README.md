@@ -909,7 +909,7 @@ g2g github comment --apply
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
 
-<sub>Kept up to date by g2g 0.38.0, which edits this comment when the stack changes.</sub>
+<sub>Kept up to date by [g2g 0.38.0](https://g2g.paulie.app), which edits this comment when the stack changes.</sub>
 ```
 
 The path from the base to this pull request is one flat column; what forks

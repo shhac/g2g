@@ -16,7 +16,7 @@ four in a stack of five means reading bases one at a time.
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
 
-<sub>Kept up to date by g2g 0.38.0, which edits this comment when the stack changes.</sub>
+<sub>Kept up to date by [g2g 0.38.0](https://g2g.paulie.app), which edits this comment when the stack changes.</sub>
 <!-- g2g:stack-prs 10,11,12>11,13>12,14>11,15>14 -->
 ```
 

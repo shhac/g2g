@@ -70,7 +70,7 @@ func (v view) body() string {
 	for _, entry := range v.Lines {
 		out.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
-	fmt.Fprintf(&out, "\n<sub>Kept up to date by %s, which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version))
+	fmt.Fprintf(&out, "\n<sub>Kept up to date by [%s](%s), which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version), homepage)
 	out.WriteString(dataOpen + encode(v.Recorded) + dataClose + "\n")
 	return out.String()
 }
@@ -203,6 +203,10 @@ func same(existing, rendered string) bool {
 	return normalise(existing) == normalise(rendered)
 }
 
-// footerVersion is the footer's naming of the g2g that wrote it, with or
-// without a version, as a comment from before versions were named has none.
-var footerVersion = regexp.MustCompile(`by g2g[^,<\n]*,`)
+// homepage is where the footer's naming of g2g links to.
+const homepage = "https://g2g.paulie.app"
+
+// footerVersion is the footer's naming of the g2g that wrote it, linked or
+// not and with or without a version: a comment from before either was added
+// has neither.
+var footerVersion = regexp.MustCompile(`by \[?g2g[^,<\n]*,`)

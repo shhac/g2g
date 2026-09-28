@@ -296,7 +296,7 @@ func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
 		return planned
 	}
 	first := versioned("1.0.0", chainGitHub())
-	if body := bodyFor(t, first, 12); !strings.Contains(body, "Kept up to date by g2g 1.0.0, which edits") {
+	if body := bodyFor(t, first, 12); !strings.Contains(body, "Kept up to date by [g2g 1.0.0](https://g2g.paulie.app), which edits") {
 		t.Fatalf("the footer does not name the version:\n%s", body)
 	}
 	github := chainGitHub()
@@ -305,6 +305,15 @@ func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
 	}
 	if got := versioned("2.0.0", github); actions(got) != "#11:current #12:current #13:current" {
 		t.Errorf("writes = %s, want a version change alone to leave every comment", actions(got))
+	}
+	// Nor does a comment written before the footer named or linked g2g.
+	github = chainGitHub()
+	for number, head := range map[int]string{11: "synthetic-one", 12: "synthetic-two", 13: "synthetic-three"} {
+		older := strings.Replace(bodyFor(t, first, number), "[g2g 1.0.0](https://g2g.paulie.app)", "g2g", 1)
+		github.conversations[number] = conversation(number, head, "OPEN", older)
+	}
+	if got := versioned("2.0.0", github); actions(got) != "#11:current #12:current #13:current" {
+		t.Errorf("writes = %s, want an unlinked footer alone to leave every comment", actions(got))
 	}
 }
 

@@ -23,7 +23,7 @@ func (k *kept) writes(forest shape.Forest, base string, members map[string]Membe
 		if !m.listed() {
 			continue
 		}
-		v := view{Trunk: base, Lines: withHistory(linesFrom(forest, branch, members), history), Here: m.Number, Recorded: recorded}
+		v := view{Lines: withHistory(linesFrom(forest, branch, members), history), Here: m.Number, Recorded: recorded}
 		if write, ok := decide(read[m.Number], branch, v.body(), m.State == StateOpen && worthAdding); ok {
 			writes = append(writes, write)
 		}
@@ -46,7 +46,7 @@ func (k *kept) writes(forest shape.Forest, base string, members map[string]Membe
 // stack alone it would say the other does not exist, and a run from each would
 // undo the other's.
 func (k *kept) decideMerged(conversation githubstack.Conversation, forest shape.Forest, base string, members map[string]Member, history []line, recorded []entry) (Write, bool) {
-	v := view{Trunk: base, Lines: withHistory(whole(forest, base, k.branches, members), history), Here: conversation.Number, Recorded: recorded}
+	v := view{Lines: withHistory(whole(forest, base, k.branches, members), history), Here: conversation.Number, Recorded: recorded}
 	write, ok := decide(conversation, conversation.Head, v.body(), false)
 	if !ok {
 		return Write{}, false

@@ -52,7 +52,6 @@ func TestRecordedInReadsWhatItCanAndIgnoresTheRest(t *testing.T) {
 // would render as two stray backticks.
 func TestBodyNamesAMergedPullRequestWithNoBranchByNumber(t *testing.T) {
 	body := view{
-		Trunk: "synthetic-trunk",
 		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Number: 4, State: StateMerged}, {Branch: "synthetic-open", Number: 5, State: StateOpen}},
 		Here:  5, Recorded: []entry{{Number: 4}, {Number: 5}},
 	}.body()
@@ -66,7 +65,6 @@ func TestBodyNamesAMergedPullRequestWithNoBranchByNumber(t *testing.T) {
 func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {
 	hostile := "synthetic--><script>"
 	body := view{
-		Trunk: "synthetic-trunk",
 		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Branch: hostile, Number: 5, State: StateOpen}},
 		Here:  5, Recorded: []entry{{Number: 5}},
 	}.body()

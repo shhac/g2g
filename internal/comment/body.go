@@ -48,7 +48,6 @@ type line struct {
 // request, with the pull requests that merged out of it in the places they
 // sat.
 type view struct {
-	Trunk string
 	Lines []line
 	// Here is the pull request this comment is on.
 	Here int

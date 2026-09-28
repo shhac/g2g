@@ -122,15 +122,11 @@ func (s Service) undeclare(ctx context.Context, landed, into string) error {
 // command that advances a base alone, so the line is Git's own, and forgetting
 // it is untrack rather than prune.
 func (p Plan) declaredCleanup(step Step) []Command {
-	commands := []Command{{
+	return []Command{{
 		Command: fmt.Sprintf("git fetch %s %s:%s", p.Options.Remote, p.Trunk, p.Trunk),
 		Effect:  fmt.Sprintf("advance %s to the merge · where it is checked out, git pull --ff-only there instead", p.Trunk),
+	}, {
+		Command: fmt.Sprintf("g2g untrack --branch %s --apply", step.Branch),
+		Effect:  "stop it being a trunk, now it has landed",
 	}}
-	if p.Options.Forget {
-		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g untrack --branch %s --apply", step.Branch),
-			Effect:  "stop it being a trunk, now it has landed",
-		})
-	}
-	return commands
 }

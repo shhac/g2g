@@ -106,12 +106,10 @@ func (p Plan) cleanupCommands(step Step) []Command {
 		Command: "g2g pull --apply",
 		Effect:  "advance the trunk and replay what is left onto it",
 	})
-	if p.Options.Forget {
-		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g prune --branch %s --scope branch --apply", step.Branch),
-			Effect:  "forget it, once what sat on it has been reparented",
-		})
-	}
+	commands = append(commands, Command{
+		Command: fmt.Sprintf("g2g prune --branch %s --scope branch --apply", step.Branch),
+		Effect:  "forget it, once what sat on it has been reparented",
+	})
 	return append(commands, p.deletions(step)...)
 }
 

@@ -41,9 +41,9 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 			return err
 		}
 		options.Method, options.MethodChosen = chosen, cmd.Flags().Changed("method")
-		options.DeleteRemote, options.DeleteLocal, options.Forget = !noDeleteRemote, !noDeleteLocal, !noForget
+		options.DeleteRemote, options.DeleteLocal = !noDeleteRemote, !noDeleteLocal
 		options.Comment = !noComment && comments.Ready()
-		if !options.Forget {
+		if noForget {
 			// A branch left recorded under one that has merged and been
 			// deleted makes every later status and every later replay measure
 			// against a structure that is not there.

@@ -381,10 +381,8 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]stri
 	if err != nil {
 		return err
 	}
-	if plan.Options.Forget {
-		if err := s.forget(ctx, plan, step.Branch); err != nil {
-			return err
-		}
+	if err := s.forget(ctx, plan, step.Branch); err != nil {
+		return err
 	}
 	s.remove(ctx, plan, step)
 	return nil

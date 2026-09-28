@@ -168,7 +168,7 @@ func TestLandRefusesToKeepTheGraphItWouldInvalidate(t *testing.T) {
 
 func TestLandDefaultsToEveryCleanupAndToSquash(t *testing.T) {
 	defaults := land.Defaults()
-	if !defaults.DeleteRemote || !defaults.DeleteLocal || !defaults.Forget {
+	if !defaults.DeleteRemote || !defaults.DeleteLocal {
 		t.Errorf("Defaults() = %+v, want every cleanup on", defaults)
 	}
 	if defaults.Method != githubstack.MethodSquash {

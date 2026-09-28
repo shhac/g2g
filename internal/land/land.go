@@ -96,10 +96,12 @@ type Options struct {
 	// lands the way its declaration says.
 	MethodChosen bool
 	Admin        bool
-	// The three cleanups, all on unless asked otherwise.
+	// The two deletions, both on unless asked otherwise. Forgetting each
+	// landed branch is not an option: one left recorded under a branch that
+	// has merged and gone makes every later replay measure against a structure
+	// that is not there.
 	DeleteRemote bool
 	DeleteLocal  bool
-	Forget       bool
 	// Comment keeps the stack comments on what remains above the landed
 	// branches once the descent is done, so the pull requests that merged
 	// read as merged history there. On unless asked otherwise.
@@ -108,7 +110,7 @@ type Options struct {
 
 // Defaults are the options a bare invocation means.
 func Defaults() Options {
-	return Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Forget: true, Comment: true}
+	return Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Comment: true}
 }
 
 // Plan is the whole descent, decided before any of it runs.
@@ -148,19 +150,8 @@ type Republish struct {
 	RemoteTip string
 }
 
-// Nothing reports a plan with no branch left to land.
-func (p Plan) Nothing() bool {
-	for _, step := range p.Steps {
-		if step.Merges() {
-			return false
-		}
-	}
-	return len(p.Steps) == 0 || !p.cleaning()
-}
-
-func (p Plan) cleaning() bool {
-	return p.Options.Forget || p.Options.DeleteLocal || p.Options.DeleteRemote
-}
+// Nothing reports a plan with no branch left to land, or to tidy up after.
+func (p Plan) Nothing() bool { return len(p.Steps) == 0 }
 
 // Landing counts the branches with a merge still to perform.
 func (p Plan) Landing() int {

@@ -430,9 +430,8 @@ func TestEachCleanupCanBeTurnedOffOnItsOwn(t *testing.T) {
 		options Options
 		absent  string
 	}{
-		"no remote delete": {options: Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteLocal: true, Forget: true}, absent: "delete-remote:"},
-		"no local delete":  {options: Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, Forget: true}, absent: "delete-local:"},
-		"no forget":        {options: Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true}, absent: "prune:"},
+		"no remote delete": {options: Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteLocal: true}, absent: "delete-remote:"},
+		"no local delete":  {options: Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true}, absent: "delete-local:"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t)
@@ -628,9 +627,9 @@ func TestCommandsFollowTheCleanupFlags(t *testing.T) {
 	for _, command := range plan.Commands() {
 		recipe += command.Command + "\n"
 	}
-	for _, absent := range []string{"g2g prune", "git branch -D", "git push origin --delete"} {
+	for _, absent := range []string{"git branch -D", "git push origin --delete"} {
 		if strings.Contains(recipe, absent) {
-			t.Errorf("recipe offers %q with every cleanup turned off:\n%s", absent, recipe)
+			t.Errorf("recipe offers %q with both deletions turned off:\n%s", absent, recipe)
 		}
 	}
 	if !strings.Contains(recipe, "gh pr merge 41 --rebase") {

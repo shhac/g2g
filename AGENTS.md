@@ -104,6 +104,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the recorded request as well as the result — `Recorder.Find` exists for that. Any Graphite display or error regression
   fixture must be fully synthetic—never copy a real checkout's names, graph, or
   CLI output into the repository.
+- A fake `gh` answers any GraphQL field, so it cannot tell whether GitHub
+  would. `internal/githubstack/schema_test.go` validates every document the
+  package sends against GitHub's published schema
+  (`internal/githubstack/testdata/github.graphql`, kept verbatim, refreshed by
+  the download its comment names), and checks each declared variable is
+  supplied. A new `gh api graphql` call goes in its table. The stack comment
+  read asked for `viewerCanComment`, which `PullRequest` has never had, and
+  shipped with every test passing.
 
 ## g2g-owned graphs
 

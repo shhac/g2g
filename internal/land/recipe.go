@@ -1,10 +1,6 @@
 package land
 
-import (
-	"fmt"
-
-	"github.com/shhac/g2g/internal/githubstack"
-)
+import "fmt"
 
 // Command is one line of the recipe: something a person could run, and what
 // running it achieves.
@@ -132,18 +128,9 @@ func (p Plan) deletions(step Step) []Command {
 }
 
 func mergeCommand(step Step, options Options) string {
-	command := fmt.Sprintf("gh pr merge %d --%s", step.Number, options.Method)
+	command := fmt.Sprintf("gh pr merge %d %s", step.Number, options.Method.Flag())
 	if step.Admin {
 		command += " --admin"
 	}
 	return command
-}
-
-// MergeMethodFlag echoes the chosen method back in a command a preview
-// suggests, so a rerun keeps the choice rather than silently squashing.
-func MergeMethodFlag(method githubstack.Method) string {
-	if method == githubstack.MethodSquash {
-		return ""
-	}
-	return " --method " + string(method)
 }

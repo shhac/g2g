@@ -125,64 +125,36 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	}
 	if o.specPath == "" {
 		// No spec has been read yet, so the choice is whatever the flags say
-		// over the default a fresh spec would carry.
-		return o.previewWithoutSpec(cmd, plan, presentation, templateName, resolveDraft(submit.DefaultDraft, o.ready, o.noReady))
+		// over the default a fresh spec would carry. There is nothing to apply
+		// without one, so this is a preview whatever was asked.
+		draft := resolveDraft(submit.DefaultDraft, o.ready, o.noReady)
+		invitation := "Create a spec with: " + runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft))
+		return o.flow(cmd, service, plan, submit.Spec{Draft: draft}, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, false)
 	}
 	spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
 	if err != nil {
 		return actionableSpecError(err, o.specPath)
 	}
 	spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
-	if !o.apply {
-		return o.previewWithSpec(cmd, plan, presentation, templateName, spec.Draft)
-	}
-	return o.applyPlan(cmd, service, plan, spec, presentation, templateName)
+	invitation := "Re-run with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs."
+	return o.flow(cmd, service, plan, spec, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, o.apply)
 }
 
-func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.link, o.keepsComments()); err != nil {
-		return err
-	}
-	if plan.Blocked() != "" {
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
-	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Create a spec with: "+runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft)))
-}
-
-func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.link, o.keepsComments()); err != nil {
-		return err
-	}
-	// A preview that is already blocked must not close by inviting an apply
-	// that will refuse; the rendered view names the reason.
-	if plan.Blocked() != "" {
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
-	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+linkFlag(o.link)+" to push and create missing PRs.")
-}
-
-func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
+// flow is submit's preview and apply. The spec is what a preview is of and
+// what an apply publishes; invitation closes a preview that could apply.
+func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template, invitation string) applyFlow[submit.Plan] {
 	flow := applyFlow[submit.Plan]{
 		// The preview is already in hand, so planning is a pass-through; the
 		// sequence still re-discovers through revalidate before mutating.
 		plan: func(context.Context) (submit.Plan, error) { return preview, nil },
 		revalidate: func(ctx context.Context, preview submit.Plan) (submit.Plan, error) {
-			validated, err := service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
-			if err != nil {
-				return submit.Plan{}, err
-			}
-			if len(validated.Issues) != 0 {
-				return submit.Plan{}, fmt.Errorf("submit preview has blocked existing pull requests; repair the marked branches and rerun")
-			}
-			if validated.Push.Blocked != "" {
-				return submit.Plan{}, fmt.Errorf("submit cannot publish: %s", validated.Push.Blocked)
-			}
-			return validated, nil
+			return service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
 		},
+		blocked: submitBlocked,
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
 			return writeSubmitPreview(w, plan, presentation, template, spec.Draft, o.link, o.keepsComments())
 		},
-		guard: o.guard,
+
 		execute: func(ctx context.Context, plan submit.Plan) error {
 			if err := service.Apply(ctx, plan, spec, o.link); err != nil {
 				return err
@@ -204,12 +176,29 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
 		},
 		notices: flowNotices{
-			preview:       "Re-run with --apply to push and create missing PRs.",
+			preview:       invitation,
 			applied:       "Applied — stack published and missing pull requests created",
 			changed:       "Changes were made.",
 			recovery:      fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
 			suggestedNext: "g2g github status",
 		},
 	}
-	return flow.run(cmd, o.root, o.budgets, p, true)
+	// Only an apply is refused mid-restack. A preview changes nothing, and
+	// submit's has always been readable while a rewrite is part-way.
+	if o.apply {
+		flow.guard = o.guard
+	}
+	return flow
+}
+
+// submitBlocked is why a submission must not be applied, in the words an
+// apply that refuses says it.
+func submitBlocked(plan submit.Plan) string {
+	switch {
+	case len(plan.Issues) != 0:
+		return "submit preview has blocked existing pull requests; repair the marked branches and rerun"
+	case plan.Push.Blocked != "":
+		return "submit cannot publish: " + plan.Push.Blocked
+	}
+	return ""
 }

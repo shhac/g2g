@@ -47,7 +47,7 @@ func TestCommentApplyAddsOneCommentToEachPullRequest(t *testing.T) {
 		t.Fatalf("addComment calls = %d, want one per pull request:\n%s", got, strings.Join(recorder.Calls(), "\n"))
 	}
 	calls := strings.Join(recorder.Calls(), "\n")
-	for _, want := range []string{"-f subject=PR_synthetic_201 -f body=<!-- g2g:stack-comment -->", "-f subject=PR_synthetic_202 -f body=<!-- g2g:stack-comment -->"} {
+	for _, want := range []string{"-f subject=PR_synthetic_201 -f body=<!-- g2g:stack-comment rev=", "-f subject=PR_synthetic_202 -f body=<!-- g2g:stack-comment rev="} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("no write %q in:\n%s", want, calls)
 		}
@@ -69,7 +69,7 @@ func TestCommentApplyEditsTheCommentItFinds(t *testing.T) {
 		t.Fatalf("comment --apply: %v", err)
 	}
 	edited := recorder.Find("gh " + commentMutationPrefix + "$id")
-	if !strings.Contains(edited, "-f id=IC_synthetic_stale -f body=<!-- g2g:stack-comment -->") {
+	if !strings.Contains(edited, "-f id=IC_synthetic_stale -f body=<!-- g2g:stack-comment rev=") {
 		t.Errorf("edit = %q, want the stale comment replaced", edited)
 	}
 	if strings.Contains(strings.Join(recorder.Calls(), "\n"), "IC_synthetic_reviewer") {
@@ -103,7 +103,7 @@ func TestCommentJSONCarriesEveryBody(t *testing.T) {
 		t.Fatalf("document = %+v", document)
 	}
 	for _, written := range document.Comments {
-		if written.Action != "create" || !strings.HasPrefix(written.Body, "<!-- g2g:stack-comment -->") {
+		if written.Action != "create" || !strings.HasPrefix(written.Body, "<!-- g2g:stack-comment rev=") {
 			t.Errorf("comment = %+v", written)
 		}
 	}

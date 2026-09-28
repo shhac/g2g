@@ -33,7 +33,7 @@ func lifecycleRepositoryIn(t *testing.T, topPullRequest string) (*testutil.Recor
 	lower := `{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":1}}`
 	routes, common := graphiteRoutes(t, []testutil.Route{
 		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
-		{Prefix: "api graphql", Output: `{"data":{"repository":{"pr0":{"nodes":[` + lower + `]},"pr1":{"nodes":[` + topPullRequest + `]}}}}`},
+		{Prefix: "api graphql", Output: `{"data":{"repository":{"pr0":{"nodes":[` + lower + `]},"pr1":{"nodes":[` + topPullRequest + `]},"pr2":{"nodes":[]}}}}`},
 		{Prefix: "pr create"},
 		{Prefix: "stack link"},
 		{Prefix: "stack unstack"},

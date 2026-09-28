@@ -30,7 +30,10 @@ type Conversation struct {
 	State string
 	// Commentable is whether the person running this may add a comment. A
 	// locked conversation takes none, and finding that out from a failed
-	// write part-way down a stack is the wrong time.
+	// write part-way down a stack is the wrong time. GitHub has no field that
+	// answers it for a pull request, so it is read as the conversation not
+	// being locked; a collaborator who could still comment on a locked one is
+	// left alone and told, which is the side to err on.
 	Commentable bool
 	// Comments are only those whose body opens with the marker asked for,
 	// oldest first. Everything else in the conversation is somebody's words
@@ -154,7 +157,7 @@ func conversationQuery(pending []conversationPage) string {
 		if page.After != "" {
 			after = ", after: " + graphqlString(page.After)
 		}
-		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number headRefName baseRefName state viewerCanComment comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
+		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number headRefName baseRefName state locked comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
 	}
 	// Named, as the mergeability query is, because both go to the same
 	// endpoint as the head-ref lookup and a reader of a recorded call — or a
@@ -163,14 +166,14 @@ func conversationQuery(pending []conversationPage) string {
 }
 
 type conversationNode struct {
-	TypeName    string `json:"__typename"`
-	ID          string `json:"id"`
-	Number      int    `json:"number"`
-	Head        string `json:"headRefName"`
-	Base        string `json:"baseRefName"`
-	State       string `json:"state"`
-	Commentable bool   `json:"viewerCanComment"`
-	Comments    struct {
+	TypeName string `json:"__typename"`
+	ID       string `json:"id"`
+	Number   int    `json:"number"`
+	Head     string `json:"headRefName"`
+	Base     string `json:"baseRefName"`
+	State    string `json:"state"`
+	Locked   bool   `json:"locked"`
+	Comments struct {
 		PageInfo struct {
 			HasNextPage bool   `json:"hasNextPage"`
 			EndCursor   string `json:"endCursor"`
@@ -208,7 +211,7 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		}
 		conversation := read[page.Number]
 		if conversation == nil {
-			conversation = &Conversation{ID: node.ID, Number: node.Number, Head: node.Head, Base: node.Base, State: node.State, Commentable: node.Commentable}
+			conversation = &Conversation{ID: node.ID, Number: node.Number, Head: node.Head, Base: node.Base, State: node.State, Commentable: !node.Locked}
 			read[page.Number] = conversation
 		}
 		for _, comment := range node.Comments.Nodes {

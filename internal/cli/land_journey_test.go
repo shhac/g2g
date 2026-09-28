@@ -132,7 +132,7 @@ case "$1 $2" in
       if [ -f "$state_dir/comment-$number" ]; then
         nodes=$(printf '{"id":"IC_%s","body":%s,"viewerCanUpdate":true,"author":{"login":"synthetic"}}' "$number" "$(json_string "$state_dir/comment-$number")")
       fi
-      printf '"c%s":{"__typename":"PullRequest","id":"PR_%s","number":%s,"headRefName":"%s","baseRefName":"%s","state":"%s","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}' \
+      printf '"c%s":{"__typename":"PullRequest","id":"PR_%s","number":%s,"headRefName":"%s","baseRefName":"%s","state":"%s","locked":false,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}' \
         "$index" "$number" "$number" "$(branch_for "$number")" "$(read_state "pr-$number.base" main)" "$(read_state "pr-$number.state" OPEN)" "$nodes"
       index=$((index + 1))
     done

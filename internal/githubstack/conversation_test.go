@@ -50,7 +50,7 @@ func conversationJSON(alias string, number int, state string, hasNext bool, curs
 	for index, body := range comments {
 		nodes = append(nodes, fmt.Sprintf(`{"id":"IC_synthetic_%d_%d","body":%q,"viewerCanUpdate":true,"author":{"login":"synthetic-author"}}`, number, index, body))
 	}
-	return fmt.Sprintf(`%q:{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"url":"https://example.test/pull/%d","headRefName":"synthetic-%d","baseRefName":"synthetic-trunk","state":%q,"viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":%t,"endCursor":%q},"nodes":[%s]}}`,
+	return fmt.Sprintf(`%q:{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"url":"https://example.test/pull/%d","headRefName":"synthetic-%d","baseRefName":"synthetic-trunk","state":%q,"locked":false,"comments":{"pageInfo":{"hasNextPage":%t,"endCursor":%q},"nodes":[%s]}}`,
 		alias, number, number, number, number, state, hasNext, cursor, strings.Join(nodes, ","))
 }
 
@@ -219,5 +219,22 @@ func TestConversationsReadsACommentWithNoAuthor(t *testing.T) {
 	}
 	if len(conversations) != 1 || len(conversations[0].Comments) != 1 || conversations[0].Comments[0].Author != "" {
 		t.Errorf("conversations = %#v", conversations)
+	}
+}
+
+// GitHub has no field saying whether the viewer may comment on a pull
+// request; asking for one failed every read. Locked is the part it does say.
+func TestConversationsReadsALockedConversationAsTakingNoComments(t *testing.T) {
+	response := repositoryJSON(strings.Replace(conversationJSON("c0", 81, "OPEN", false, ""), `"locked":false`, `"locked":true`, 1))
+	runner := &scriptedRunner{responses: []string{response}}
+	conversations, err := Client{Runner: runner}.Conversations(context.Background(), []int{81}, syntheticMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversations) != 1 || conversations[0].Commentable {
+		t.Errorf("conversations = %#v, want one that takes no comments", conversations)
+	}
+	if !strings.Contains(runner.queries[0], " locked ") || strings.Contains(runner.queries[0], "viewerCanComment") {
+		t.Errorf("query = %q, want it to ask whether the conversation is locked", runner.queries[0])
 	}
 }

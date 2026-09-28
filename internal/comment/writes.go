@@ -93,7 +93,7 @@ func decideNew(conversation githubstack.Conversation, write Write, create bool) 
 	}
 	if !conversation.Commentable {
 		write.Action = ActionSkip
-		write.Reason = fmt.Sprintf("#%d does not take new comments from you · its conversation may be locked", conversation.Number)
+		write.Reason = fmt.Sprintf("#%d does not take new comments from you · its conversation is locked", conversation.Number)
 		return write, true
 	}
 	write.Action = ActionCreate

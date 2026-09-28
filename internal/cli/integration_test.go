@@ -111,7 +111,7 @@ func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Ro
 // one: an answer whose alias carries a different number is refused.
 func commentRoutes() []testutil.Route {
 	conversation := func(alias string, number int, head string) string {
-		return fmt.Sprintf(`"%s":{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"headRefName":%q,"baseRefName":"synthetic-main","state":"OPEN","viewerCanComment":true,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}`, alias, number, number, head)
+		return fmt.Sprintf(`"%s":{"__typename":"PullRequest","id":"PR_synthetic_%d","number":%d,"headRefName":%q,"baseRefName":"synthetic-main","state":"OPEN","locked":false,"comments":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}`, alias, number, number, head)
 	}
 	asking := func(number int) string {
 		return stackCommentsPrefix + "$owner: String!, $name: String!) { repository(owner: $owner, name: $name) { c0: issueOrPullRequest(number: " + fmt.Sprint(number) + ")"

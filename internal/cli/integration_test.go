@@ -303,6 +303,42 @@ func TestSubmitKeepsTheStackCommentsUnlessToldNotTo(t *testing.T) {
 	}
 }
 
+// A stop part-way prints nothing on stderr of its own, so the tail that keeps
+// the comments has to show what gh said. It once said only "exit status 1",
+// and the reason — a field GitHub does not have — was lost.
+func TestSubmitThatCannotKeepTheCommentsSaysWhatGitHubSaid(t *testing.T) {
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: mergeabilityPrefix, Output: mergeabilityJSON},
+		{Prefix: "api graphql", Output: pullRequestsJSON(openTopPullRequest)},
+		{Prefix: "pr create"},
+		{Prefix: "stack link"},
+	})
+	routes["gh"] = append([]testutil.Route{{
+		Prefix: stackCommentsPrefix,
+		Output: `{"errors":[{"message":"synthetic field is not on the type"}]}`,
+		Stderr: "gh: synthetic field is not on the type",
+		Exit:   1,
+	}}, routes["gh"]...)
+	testutil.FakeCLIs(t, routes)
+	specDir := t.TempDir()
+	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(specDir, "submission.json")
+	fillSpecTitles(t, specPath)
+
+	stdout, stderr, err := run(t, "submit", "--spec", specPath, "--apply")
+	if err == nil {
+		t.Fatalf("submit --apply succeeded, want it stopped part-way:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "stack comments were not kept") || !strings.Contains(stdout, "Everything else stands") {
+		t.Errorf("stdout does not say the comments were not kept:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "synthetic field is not on the type") {
+		t.Errorf("stderr does not carry what gh said:\n%s", stderr)
+	}
+}
+
 func TestSubmitPreviewWritesNothingAndMutatesNothing(t *testing.T) {
 	recorder := fakeRepository(t, "")
 	specDir := t.TempDir()

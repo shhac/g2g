@@ -72,16 +72,24 @@ func writeError(writer io.Writer, err error) {
 	// its author having to know whether it can also become an error.
 	fmt.Fprintln(writer, "error:", plainCommands(err.Error()))
 	if !alreadyPresented(err) {
-		if diagnostic := commandDiagnostic(err); diagnostic != "" {
-			fmt.Fprintln(writer)
-			for _, line := range strings.Split(diagnostic, "\n") {
-				fmt.Fprintln(writer, "  "+line)
-			}
-		}
+		writeDiagnostic(writer, err)
 	}
 	if hint := remediationHint(err); hint != "" {
 		fmt.Fprintln(writer)
 		fmt.Fprintln(writer, hint)
+	}
+}
+
+// writeDiagnostic writes the bounded output of the external command behind
+// err, if there was one, indented beneath whatever reported the failure.
+func writeDiagnostic(writer io.Writer, err error) {
+	diagnostic := commandDiagnostic(err)
+	if diagnostic == "" {
+		return
+	}
+	fmt.Fprintln(writer)
+	for _, line := range strings.Split(diagnostic, "\n") {
+		fmt.Fprintln(writer, "  "+line)
 	}
 }
 

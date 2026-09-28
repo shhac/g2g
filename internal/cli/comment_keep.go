@@ -42,6 +42,9 @@ func commentsNotKept(cmd *cobra.Command, err error, p Presentation) (bool, error
 	if reportErr := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); reportErr != nil {
 		return true, reportErr
 	}
+	// A stop part-way prints nothing further on stderr, so this is the only
+	// place what gh said can be shown; without it the reason was lost.
+	writeDiagnostic(cmd.ErrOrStderr(), notKept)
 	if reportErr := prose(cmd.OutOrStdout(), p, p.subdued("Everything else stands. Run "+runnable("g2g github comment --apply")+" to keep them.")); reportErr != nil {
 		return true, reportErr
 	}

@@ -158,6 +158,13 @@ case "$1 $2" in
     index=0
     for branch in $(for arg in "$@"; do case "$arg" in (head[0-9]*=*) printf '%s\n' "${arg#*=}" ;; esac; done); do
       number=$(number_for "$branch")
+      # A branch no pull request was opened for -- the trunk, asked about by
+      # the stack comment as the base -- has none, which is an empty list.
+      if [ "$number" = 0 ]; then
+        printf ',"pr%s":{"nodes":[]}' "$index"
+        index=$((index + 1))
+        continue
+      fi
       merged=$(read_state "pr-$number.state" OPEN)
       base=$(read_state "pr-$number.base" main)
       printf ',"pr%s":{"nodes":[{"number":%s,"url":"https://example.test/%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s"}]}' \

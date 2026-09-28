@@ -101,7 +101,10 @@ const ownedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-trunk","synthet
 func ownedPullRequestsJSON(membership string) string {
 	return `{"data":{"repository":{` +
 		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"` + strings.Replace(membership, "POSITION", "1", 1) + `}]},` +
-		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"` + strings.Replace(membership, "POSITION", "2", 1) + `}]}}}}`
+		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"` + strings.Replace(membership, "POSITION", "2", 1) + `}]},` +
+		// The stack comment asks about the base too; no pull request is
+		// opened from it.
+		`"pr2":{"nodes":[]}}}}`
 }
 
 // ownedMergeability answers for the same two pull requests, both ready.

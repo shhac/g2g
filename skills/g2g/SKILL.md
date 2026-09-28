@@ -363,9 +363,12 @@ description: |
 
 - `github comment` keeps one marked comment per pull request listing its stack. Read
   `design-docs/stack-comment.md` before changing it. It always keeps the whole
-  stack the branch belongs to — each comment lists its own ancestors and
-  descendants, so a partial run would leave comments disagreeing — and has no
-  `--scope`. Merged history lives in the comments' own data line because
+  stack the branch belongs to — each comment draws the stack from its own pull
+  request (the path from the base flat, what forks off it counted beside the
+  branch it grew from, everything above it in full), so a partial run would
+  leave comments disagreeing — and has no `--scope`. Every line names its
+  branch, and the footer's g2g version is ignored when deciding a comment is
+  current, so an upgrade alone rewrites nothing. Merged history lives in the comments' own data line because
   nothing local remembers a pruned branch; keep only what GitHub says merged,
   never create a comment on a merged pull request, never edit a comment without
   the marker, and leave alone one the viewer cannot edit or a pull request

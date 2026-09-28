@@ -158,7 +158,7 @@ func TestPlanAddsACommentToEveryOpenPullRequest(t *testing.T) {
 	body := bodyFor(t, got, 12)
 	for _, want := range []string{
 		Marker,
-		"- `synthetic-trunk`\n- #11 `synthetic-one`\n- **#12 `synthetic-two`** 👈 this pull request\n- #13 `synthetic-three`\n",
+		"- base `synthetic-trunk`\n- #11 `synthetic-one`\n- **#12 `synthetic-two`** 👈 this pull request\n- #13 `synthetic-three`\n",
 		dataOpen + "11,12>11,13>12" + dataClose,
 	} {
 		if !strings.Contains(body, want) {
@@ -216,17 +216,95 @@ func TestPlanDrawsEachPullRequestsOwnLineage(t *testing.T) {
 	if !strings.Contains(bottom, "- **#21 `synthetic-one`** 👈 this pull request\n  - #22 `synthetic-left`\n    - #23 `synthetic-left-top`\n  - #24 `synthetic-right`\n") {
 		t.Errorf("bottom comment does not nest the fork above it:\n%s", bottom)
 	}
+	// Its own line is flat, and what else grew from a branch on it hangs under
+	// that branch as one line, so a reviewer learns it is there without reading
+	// it.
 	left := bodyFor(t, got, 22)
-	if strings.Contains(left, "synthetic-right") {
-		t.Errorf("a cousin is listed on #22:\n%s", left)
-	}
-	if !strings.Contains(left, "- `synthetic-trunk`\n- #21 `synthetic-one`\n- **#22 `synthetic-left`** 👈 this pull request\n- #23 `synthetic-left-top`\n") {
-		t.Errorf("#22 does not list its own line flat:\n%s", left)
+	if !strings.Contains(left, "- base `synthetic-trunk`\n- #21 `synthetic-one`\n  - #24 `synthetic-right`\n- **#22 `synthetic-left`** 👈 this pull request\n- #23 `synthetic-left-top`\n") {
+		t.Errorf("#22 does not list its own line flat with what forks off it beside:\n%s", left)
 	}
 	// Every comment records the whole stack, so the next run can find all of it
 	// from any one of them.
 	if !strings.Contains(left, dataOpen+"21,22>21,23>22,24>21"+dataClose) {
 		t.Errorf("#22 does not record the whole stack:\n%s", left)
+	}
+}
+
+// A leaf in a stack that splits twice below it sees each split where it
+// happens: what else grew from a branch on its path hangs under that branch as
+// one line, counted rather than drawn.
+func TestPlanHangsWhatForksOffThePathBesideIt(t *testing.T) {
+	forest := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "", "synthetic-core": "synthetic-trunk",
+		"synthetic-api": "synthetic-core", "synthetic-cli": "synthetic-core",
+		"synthetic-api-a": "synthetic-api", "synthetic-api-b": "synthetic-api", "synthetic-api-c": "synthetic-api",
+		"synthetic-cli-a": "synthetic-cli", "synthetic-cli-b": "synthetic-cli",
+	}}
+	github := &fakeGitHub{conversations: map[int]githubstack.Conversation{}}
+	for number, head := range map[int]string{
+		31: "synthetic-core", 32: "synthetic-api", 33: "synthetic-cli",
+		34: "synthetic-api-a", 35: "synthetic-api-b", 36: "synthetic-api-c",
+		37: "synthetic-cli-a", 38: "synthetic-cli-b",
+	} {
+		parent := forest.Parents[head]
+		github.prs = append(github.prs, pr(number, head, parent, "OPEN"))
+		github.conversations[number] = conversation(number, head, "OPEN")
+	}
+	got := plan(t, forest, "synthetic-core", github)
+
+	want := "- base `synthetic-trunk`\n" +
+		"- #31 `synthetic-core`\n" +
+		"  - #33 `synthetic-cli` · +2 above\n" +
+		"- #32 `synthetic-api`\n" +
+		"  - #34 `synthetic-api-a`\n" +
+		"  - #36 `synthetic-api-c`\n" +
+		"- **#35 `synthetic-api-b`** 👈 this pull request\n"
+	if body := bodyFor(t, got, 35); !strings.Contains(body, want) {
+		t.Errorf("#35 does not hang the forks beside its path:\n%s", body)
+	}
+	// What sits on this pull request is drawn in full, nested where it forks.
+	want = "- **#32 `synthetic-api`** 👈 this pull request\n" +
+		"  - #34 `synthetic-api-a`\n" +
+		"  - #35 `synthetic-api-b`\n" +
+		"  - #36 `synthetic-api-c`\n"
+	if body := bodyFor(t, got, 32); !strings.Contains(body, "  - #33 `synthetic-cli` · +2 above\n"+want) {
+		t.Errorf("#32 does not draw what sits on it in full:\n%s", body)
+	}
+}
+
+// A base with a pull request of its own, as a declared trunk has into where it
+// lands, is named with it.
+func TestPlanNamesTheBasesOwnPullRequest(t *testing.T) {
+	github := chainGitHub()
+	github.prs = append(github.prs, pr(9, "synthetic-trunk", "synthetic-main", "OPEN"))
+	got := plan(t, chain(), "synthetic-one", github)
+	if body := bodyFor(t, got, 12); !strings.Contains(body, "- base #9 `synthetic-trunk`\n- #11 `synthetic-one`\n") {
+		t.Errorf("the base's own pull request is not named:\n%s", body)
+	}
+}
+
+// The footer names the g2g that wrote it, and a newer one does not rewrite a
+// comment that says the same thing otherwise: an upgrade alone would edit
+// every comment in every stack.
+func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
+	versioned := func(version string, github *fakeGitHub) Plan {
+		t.Helper()
+		planned, err := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github, Version: version}.Plan(context.Background(), stack.Selection{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return planned
+	}
+	first := versioned("1.0.0", chainGitHub())
+	if body := bodyFor(t, first, 12); !strings.Contains(body, "Kept up to date by g2g 1.0.0, which edits") {
+		t.Fatalf("the footer does not name the version:\n%s", body)
+	}
+	github := chainGitHub()
+	for number, head := range map[int]string{11: "synthetic-one", 12: "synthetic-two", 13: "synthetic-three"} {
+		github.conversations[number] = conversation(number, head, "OPEN", bodyFor(t, first, number))
+	}
+	if got := versioned("2.0.0", github); actions(got) != "#11:current #12:current #13:current" {
+		t.Errorf("writes = %s, want a version change alone to leave every comment", actions(got))
 	}
 }
 
@@ -278,11 +356,11 @@ func TestPlanKeepsListingAPullRequestThatMergedOutOfTheStack(t *testing.T) {
 	if actions(got) != "#12:update #13:create #11:update" {
 		t.Fatalf("writes = %s", actions(got))
 	}
-	if body := bodyFor(t, got, 13); !strings.Contains(body, "- `synthetic-trunk`\n- #11 `synthetic-one` · merged\n- #12 `synthetic-two`\n") || !strings.Contains(body, dataOpen+"11,12,13>12"+dataClose) {
+	if body := bodyFor(t, got, 13); !strings.Contains(body, "- base `synthetic-trunk`\n- #11 `synthetic-one` · merged\n- #12 `synthetic-two`\n") || !strings.Contains(body, dataOpen+"11,12,13>12"+dataClose) {
 		t.Errorf("#13 does not list what merged where it sat:\n%s", body)
 	}
 	merged := bodyFor(t, got, 11)
-	if !strings.Contains(merged, "- `synthetic-trunk`\n- **#11 `synthetic-one` · merged** 👈 this pull request\n- #12 `synthetic-two`\n- #13 `synthetic-three`\n") {
+	if !strings.Contains(merged, "- base `synthetic-trunk`\n- **#11 `synthetic-one` · merged** 👈 this pull request\n- #12 `synthetic-two`\n- #13 `synthetic-three`\n") {
 		t.Errorf("the merged pull request's comment does not show where the stack went:\n%s", merged)
 	}
 	if strings.Contains(merged, "Merged into") {
@@ -315,7 +393,7 @@ func TestPlanListsWhatMergedInTheOrderItMerged(t *testing.T) {
 		conversations: map[int]githubstack.Conversation{13: unnamed, 14: second, 15: first},
 	}
 	got := plan(t, landed, "synthetic-three", github)
-	want := "- `synthetic-trunk`\n- #15 `synthetic-one` · merged\n- #14 `synthetic-two` · merged\n- **#13 `synthetic-three`** 👈 this pull request\n"
+	want := "- base `synthetic-trunk`\n- #15 `synthetic-one` · merged\n- #14 `synthetic-two` · merged\n- **#13 `synthetic-three`** 👈 this pull request\n"
 	if body := bodyFor(t, got, 13); !strings.Contains(body, want) {
 		t.Errorf("#13 does not list what merged in the order it merged:\n%s", body)
 	}
@@ -426,7 +504,7 @@ func TestPlanFromATrunkKeepsEachStacksHistoryApart(t *testing.T) {
 		},
 	}
 	got := plan(t, forest, "synthetic-trunk", github)
-	if body := bodyFor(t, got, 32); !strings.Contains(body, "- `synthetic-trunk`\n- #30 `synthetic-a-landed` · merged\n- #31 `synthetic-a`\n") {
+	if body := bodyFor(t, got, 32); !strings.Contains(body, "- base `synthetic-trunk`\n- #30 `synthetic-a-landed` · merged\n- #31 `synthetic-a`\n") {
 		t.Errorf("stack a lost its history:\n%s", body)
 	}
 	if body := bodyFor(t, got, 42); strings.Contains(body, "#30") || strings.Contains(body, "synthetic-a") {

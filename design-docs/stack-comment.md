@@ -9,24 +9,49 @@ four in a stack of five means reading bases one at a time.
 <!-- g2g:stack-comment -->
 **Stack**
 
-- `synthetic-main`
+- base `synthetic-main`
 - #10 `synthetic-zero` · merged
 - #11 `synthetic-one`
+  - #14 `synthetic-side` · +1 above
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
 
-<sub>Kept up to date by g2g, which edits this comment when the stack changes.</sub>
-<!-- g2g:stack-prs 10,11,12>11,13>12 -->
+<sub>Kept up to date by g2g 0.38.0, which edits this comment when the stack changes.</sub>
+<!-- g2g:stack-prs 10,11,12>11,13>12,14>11,15>14 -->
 ```
 
 It previews by default. `--apply` revalidates and then writes.
 
+## What each comment draws
+
+The stack from where its own pull request stands, in three parts:
+
+- **The path to it, flat.** The base first — with its own pull request when it
+  has one, as a declared trunk does into where it lands — then what merged out
+  of the stack, then each branch from the bottom up to this one. A reviewer
+  reads what this pull request is built on as one column.
+- **What forks off that path, beside it.** Whatever else grew from a branch on
+  the path hangs one level under that branch as a single line, with how many
+  pull requests sit above it (`· +1 above`). A reviewer learns it is there and
+  where it splits off, without reading work that is not on their way. It used
+  to be left out entirely, so a leaf never learned its parent had other
+  children.
+- **Everything above it, in full,** nested only where it forks, because all of
+  it is built on this pull request.
+
+Every line names its branch. GitHub draws a pull request number with its title
+and state, which is why the merged marker is light, but never the branch,
+which is what a reviewer matches against their own checkout.
+
+The footer names the g2g that wrote it. The version is left out when deciding
+whether a comment is up to date, so an upgrade alone does not edit every
+comment in every stack; it catches up the next time the stack changes.
+
 ## Which comments a run keeps
 
 **The whole stack the branch belongs to, whichever branch it is run from.** Each
-comment lists its own pull request's ancestors and descendants — a cousin that
-merely shares an ancestor is another branch's business — so a fork shows up in
-some comments and not in others. Keeping only the part of a stack a scope
+comment draws the stack from its own pull request, so a fork is drawn
+differently in different comments. Keeping only the part of a stack a scope
 reached would leave the rest describing a different stack, and a run from a
 different branch would rewrite them again. Taking the whole stack from its
 bottom is what makes every run from anywhere on it converge on the same

@@ -27,7 +27,10 @@ const graphiteLog = "◯  synthetic-main\n◯  synthetic-lower\n◯  synthetic-t
 func pullRequestsJSON(top string) string {
 	return `{"data":{"repository":{` +
 		`"pr0":{"nodes":[{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN"}]},` +
-		`"pr1":{"nodes":[` + top + `]}}}}`
+		`"pr1":{"nodes":[` + top + `]},` +
+		// The stack comment asks about the base too; no pull request is
+		// opened from it.
+		`"pr2":{"nodes":[]}}}}`
 }
 
 // fakeRepository installs the three CLIs for a two-branch synthetic stack.

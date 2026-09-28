@@ -48,6 +48,9 @@ type GitHub interface {
 type Service struct {
 	Selector stack.PathSelector
 	GitHub   GitHub
+	// Version is the g2g that writes the comments, named in their footer so a
+	// reader can tell which one drew the stack.
+	Version string
 }
 
 // Ready reports a service with everything it needs.
@@ -153,7 +156,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
-	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, whole, command)
+	discovery, err := stack.DiscoverWithBase(ctx, s.Selector, s.GitHub, whole, command)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -187,7 +190,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	for _, kept := range stacks {
 		plan.Merged = append(plan.Merged, kept.merged()...)
 		plan.Unread = append(plan.Unread, kept.unread()...)
-		for _, write := range kept.writes(forest, discovery.Base, members, read) {
+		for _, write := range kept.writes(forest, baseLine(discovery), members, read, s.Version) {
 			if write.Historic && written[write.Number] {
 				continue
 			}
@@ -317,3 +320,14 @@ type NotKept struct{ Err error }
 
 func (e *NotKept) Error() string { return "the stack comments were not kept: " + e.Err.Error() }
 func (e *NotKept) Unwrap() error { return e.Err }
+
+// baseLine is the first line of every comment: the branch the stack sits on,
+// with its own open pull request when it has one, as a declared trunk does
+// into where it lands.
+func baseLine(discovery stack.Discovery) line {
+	base := line{Branch: discovery.Base, Trunk: true}
+	if open := githubstack.ResolveHeads(discovery.PullRequests)[discovery.Base].Open; open != nil {
+		base.Number = open.Number
+	}
+	return base
+}

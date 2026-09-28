@@ -81,6 +81,17 @@ type PathSelector interface {
 // and reads its pull requests, without checking out a branch or mutating
 // anything.
 func Discover(ctx context.Context, selector PathSelector, github GitHub, selection Selection, command string) (Discovery, error) {
+	return discover(ctx, selector, github, selection, command, false)
+}
+
+// DiscoverWithBase is Discover that also reads the base's own pull requests,
+// in the same query, for a caller that draws the base as part of the stack: a
+// declared trunk is a base with a pull request of its own into where it lands.
+func DiscoverWithBase(ctx context.Context, selector PathSelector, github GitHub, selection Selection, command string) (Discovery, error) {
+	return discover(ctx, selector, github, selection, command, true)
+}
+
+func discover(ctx context.Context, selector PathSelector, github GitHub, selection Selection, command string, withBase bool) (Discovery, error) {
 	if selector == nil || github == nil {
 		return Discovery{}, fmt.Errorf("stack discovery is not fully configured")
 	}
@@ -90,7 +101,11 @@ func Discover(ctx context.Context, selector PathSelector, github GitHub, selecti
 	}
 	diagnostic.Event(ctx, "discovery.target", diagnostic.Field{Key: "target", Value: snapshot.Target}, diagnostic.Field{Key: "source", Value: snapshot.TargetSource})
 	diagnostic.Event(ctx, "discovery.trunk", diagnostic.Field{Key: "trunk", Value: snapshot.Base}, diagnostic.Field{Key: "source", Value: snapshot.BaseSource}, diagnostic.Field{Key: "structure", Value: string(snapshot.Source)}, diagnostic.Field{Key: "path_branches", Value: strings.Join(snapshot.Branches, ",")})
-	prs, err := github.Inspect(ctx, snapshot.Branches)
+	heads := snapshot.Branches
+	if withBase && snapshot.Base != "" {
+		heads = append(slices.Clone(heads), snapshot.Base)
+	}
+	prs, err := github.Inspect(ctx, heads)
 	if err != nil {
 		return Discovery{}, err
 	}

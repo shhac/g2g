@@ -1,6 +1,8 @@
 package comment
 
 import (
+	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -42,6 +44,9 @@ type line struct {
 	State  State
 	Depth  int
 	Trunk  bool
+	// Above is how many pull requests sit on a branch drawn beside the path
+	// rather than on it, which is all a comment says about them.
+	Above int
 }
 
 // view is everything one comment says: the stack as seen from one pull
@@ -54,6 +59,8 @@ type view struct {
 	// Recorded is every pull request the stack knows of, for the next run. It
 	// is the same on every comment of a stack.
 	Recorded []entry
+	// Version is the g2g writing it, named in the footer.
+	Version string
 }
 
 func (v view) body() string {
@@ -63,14 +70,24 @@ func (v view) body() string {
 	for _, entry := range v.Lines {
 		out.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
-	out.WriteString("\n<sub>Kept up to date by g2g, which edits this comment when the stack changes.</sub>\n")
+	fmt.Fprintf(&out, "\n<sub>Kept up to date by %s, which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version))
 	out.WriteString(dataOpen + encode(v.Recorded) + dataClose + "\n")
 	return out.String()
 }
 
 func (v view) item(entry line) string {
+	if entry.Above == 0 {
+		return v.label(entry)
+	}
+	return fmt.Sprintf("%s · +%d above", v.label(entry), entry.Above)
+}
+
+func (v view) label(entry line) string {
+	if entry.Trunk && entry.Number != 0 {
+		return "base #" + strconv.Itoa(entry.Number) + " " + code(entry.Branch)
+	}
 	if entry.Trunk {
-		return code(entry.Branch)
+		return "base " + code(entry.Branch)
 	}
 	if entry.Number == 0 && entry.State == StateMissing {
 		return code(entry.Branch) + " · no pull request yet"
@@ -175,9 +192,17 @@ func parseEntry(field string) (int, int, bool) {
 // same reports whether an existing comment already says what this one would.
 // GitHub stores a body edited in a browser with CRLF line endings, and that is
 // not a reason to edit it again.
+//
+// Nor is a newer g2g: the version in the footer is left out of the comparison,
+// so an upgrade alone does not edit every comment in every stack, and the
+// footer catches up the next time something the comment says has changed.
 func same(existing, rendered string) bool {
 	normalise := func(body string) string {
-		return strings.TrimSpace(strings.ReplaceAll(body, "\r\n", "\n"))
+		return strings.TrimSpace(footerVersion.ReplaceAllString(strings.ReplaceAll(body, "\r\n", "\n"), "by g2g,"))
 	}
 	return normalise(existing) == normalise(rendered)
 }
+
+// footerVersion is the footer's naming of the g2g that wrote it, with or
+// without a version, as a comment from before versions were named has none.
+var footerVersion = regexp.MustCompile(`by g2g[^,<\n]*,`)

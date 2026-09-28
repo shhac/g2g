@@ -902,12 +902,19 @@ g2g github comment --apply
 ```
 **Stack**
 
-- `synthetic-main`
+- base `synthetic-main`
 - #10 `synthetic-zero` · merged
 - #11 `synthetic-one`
+  - #14 `synthetic-side` · +1 above
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
+
+<sub>Kept up to date by g2g 0.38.0, which edits this comment when the stack changes.</sub>
 ```
+
+The path from the base to this pull request is one flat column; what forks
+off it hangs beside the branch it grew from, counted rather than drawn; and
+everything built on this pull request is drawn in full.
 
 Rerunning edits the comment it finds rather than adding another, found by an
 HTML marker in its first line. Pull requests that have merged out of the stack
@@ -926,10 +933,9 @@ naming `g2g github comment --apply`. `push`, `github retarget` and
 `github link` never touch them.
 
 It keeps the whole stack the branch belongs to, whichever branch you run it
-from, and so has no `--scope`: each comment lists its own pull request's
-ancestors and descendants — a fork appears in some comments and not others,
-and keeping only part of a stack would leave the rest describing a different
-one. Run from a trunk, it keeps every stack on it. See
+from, and so has no `--scope`: each comment draws the stack from its own pull
+request, and keeping only part of a stack would leave the rest describing a
+different one. Run from a trunk, it keeps every stack on it. See
 [design-docs/stack-comment.md](design-docs/stack-comment.md).
 
 ### Land

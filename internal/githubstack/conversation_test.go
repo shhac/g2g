@@ -245,11 +245,17 @@ func TestConversationsReadsALockedConversationAsTakingNoComments(t *testing.T) {
 func TestConversationsReadsWhenAPullRequestMerged(t *testing.T) {
 	merged := strings.Replace(conversationJSON("c0", 91, "MERGED", false, ""), `"locked":false`, `"locked":false,"mergedAt":"2026-01-02T03:04:05Z"`, 1)
 	open := strings.Replace(conversationJSON("c1", 92, "OPEN", false, ""), `"locked":false`, `"locked":false,"mergedAt":null`, 1)
-	conversations, err := Client{Runner: &scriptedRunner{responses: []string{repositoryJSON(merged, open)}}}.Conversations(context.Background(), []int{91, 92}, syntheticMarker)
+	runner := &scriptedRunner{responses: []string{repositoryJSON(merged, open)}}
+	conversations, err := Client{Runner: runner}.Conversations(context.Background(), []int{91, 92}, syntheticMarker)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(conversations) != 2 || !conversations[0].MergedAt.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) || !conversations[1].MergedAt.IsZero() {
 		t.Errorf("conversations = %#v", conversations)
+	}
+	// A scripted response answers whether or not it was asked for, and the
+	// order merged pull requests are drawn in rests on this field.
+	if !strings.Contains(runner.queries[0], " mergedAt ") {
+		t.Errorf("query = %q, want it to ask when each pull request merged", runner.queries[0])
 	}
 }

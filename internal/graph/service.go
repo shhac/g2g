@@ -215,3 +215,26 @@ func (s Service) target(ctx context.Context, requested string) (string, string, 
 	}
 	return current, "current Git branch", nil
 }
+
+func matched(ctx context.Context, event string, equal bool) error {
+	return diagnostic.Revalidated(ctx, event, "graph", equal)
+}
+
+// rollbackGraph returns an apply failure after restoring the graph that was
+// current when its plan was made. A pin is auxiliary durability state; it must
+// not leave an adopted edge behind when it cannot be created.
+func (s Service) rollbackGraph(ctx context.Context, previous Graph, applyErr error) error {
+	if err := s.Store.Save(ctx, previous); err != nil {
+		return fmt.Errorf("%w; could not restore the previous graph: %v", applyErr, err)
+	}
+	return applyErr
+}
+
+// pin keeps a fork point reachable. A repository without a pinner still
+// records the fork point; it is only unprotected against collection.
+func (s Service) pin(ctx context.Context, branch, forkPoint string) error {
+	if s.Refs == nil || forkPoint == "" {
+		return nil
+	}
+	return s.Refs.PinForkPoint(ctx, branch, forkPoint)
+}

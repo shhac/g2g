@@ -281,10 +281,6 @@ func (s Service) RevalidateUntrack(ctx context.Context, selection Selection, pre
 	return plan, matched(ctx, "graph.untrack", plan.Equal(preview))
 }
 
-func matched(ctx context.Context, event string, equal bool) error {
-	return diagnostic.Revalidated(ctx, event, "graph", equal)
-}
-
 // ApplyTrack writes the adopted graph. It refuses a blocked plan rather than
 // writing a structure the preview said it would not.
 func (s Service) ApplyTrack(ctx context.Context, plan TrackPlan) error {
@@ -323,16 +319,6 @@ func (s Service) ApplyUntrack(ctx context.Context, plan UntrackPlan) error {
 	return nil
 }
 
-// rollbackGraph returns an apply failure after restoring the graph that was
-// current when its plan was made. A pin is auxiliary durability state; it must
-// not leave an adopted edge behind when it cannot be created.
-func (s Service) rollbackGraph(ctx context.Context, previous Graph, applyErr error) error {
-	if err := s.Store.Save(ctx, previous); err != nil {
-		return fmt.Errorf("%w; could not restore the previous graph: %v", applyErr, err)
-	}
-	return applyErr
-}
-
 func (s Service) restoreUntracked(ctx context.Context, previous Graph, unpinned []string, applyErr error) error {
 	if err := s.Store.Save(ctx, previous); err != nil {
 		return fmt.Errorf("%w; could not restore the previous graph: %v", applyErr, err)
@@ -343,13 +329,4 @@ func (s Service) restoreUntracked(ctx context.Context, previous Graph, unpinned 
 		}
 	}
 	return applyErr
-}
-
-// pin keeps a fork point reachable. A repository without a pinner still
-// records the fork point; it is only unprotected against collection.
-func (s Service) pin(ctx context.Context, branch, forkPoint string) error {
-	if s.Refs == nil || forkPoint == "" {
-		return nil
-	}
-	return s.Refs.PinForkPoint(ctx, branch, forkPoint)
 }

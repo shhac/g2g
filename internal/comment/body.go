@@ -1,16 +1,19 @@
 package comment
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-// Marker identifies the comment this command keeps. It is an HTML comment, so
-// GitHub renders nothing for it, and it is the only thing that makes a comment
-// this tool's to edit: a comment without it is somebody's words.
-const Marker = "<!-- g2g:stack-comment -->"
+// Marker opens the comment this command keeps, and is how one is recognised.
+// It begins an HTML comment, so GitHub renders nothing for it, and it is the
+// only thing that makes a comment this tool's to edit: a comment without it is
+// somebody's words. The line it opens goes on to carry the comment's rev.
+const Marker = "<!-- g2g:stack-comment"
 
 // The data line records every pull request the stack has listed, each with the
 // pull request it sat on: `11,12>11,13>12`. It is what lets a merged pull
@@ -64,15 +67,23 @@ type view struct {
 }
 
 func (v view) body() string {
-	var out strings.Builder
-	out.WriteString(Marker + "\n")
-	out.WriteString("**Stack**\n\n")
+	var stack strings.Builder
+	stack.WriteString("**Stack**\n\n")
 	for _, entry := range v.Lines {
-		out.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
+		stack.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
-	fmt.Fprintf(&out, "\n<sub>Kept up to date by [%s](%s), which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version), homepage)
-	out.WriteString(dataOpen + encode(v.Recorded) + dataClose + "\n")
-	return out.String()
+	data := dataOpen + encode(v.Recorded) + dataClose + "\n"
+	footer := fmt.Sprintf("\n<sub>Kept up to date by [%s](%s), which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version), homepage)
+	return Marker + " rev=" + rev(stack.String()+data) + " -->\n" + stack.String() + footer + data
+}
+
+// rev names what a comment says: the stack it draws and what it records for
+// the next run, and not the footer, so a newer g2g or a changed link is not a
+// reason to edit it. It is only hexadecimal, so like the data line nothing a
+// branch name contains can reach the HTML comment it sits in.
+func rev(said string) string {
+	sum := sha256.Sum256([]byte(said))
+	return hex.EncodeToString(sum[:8])
 }
 
 func (v view) item(entry line) string {
@@ -189,24 +200,31 @@ func parseEntry(field string) (int, int, bool) {
 	return number, parent, true
 }
 
-// same reports whether an existing comment already says what this one would.
-// GitHub stores a body edited in a browser with CRLF line endings, and that is
-// not a reason to edit it again.
+// same reports whether an existing comment already says what this one would,
+// by its rev rather than its text.
 //
-// Nor is a newer g2g: the version in the footer is left out of the comparison,
-// so an upgrade alone does not edit every comment in every stack, and the
-// footer catches up the next time something the comment says has changed.
+// Comparing the text made keeping the comments depend on GitHub handing back
+// exactly what was sent. It stores a body edited in a browser with CRLF line
+// endings, and had it ever normalised anything else -- whitespace, how a
+// character is encoded -- every run would have found every comment changed and
+// rewritten it. A rev is this tool's own record of what it wrote. A comment
+// with none is from before revs, and is rewritten once.
 func same(existing, rendered string) bool {
-	normalise := func(body string) string {
-		return strings.TrimSpace(footerVersion.ReplaceAllString(strings.ReplaceAll(body, "\r\n", "\n"), "by g2g,"))
-	}
-	return normalise(existing) == normalise(rendered)
+	had := revIn(existing)
+	return had != "" && had == revIn(rendered)
 }
+
+// revIn reads the rev from a comment's first line, empty when it has none.
+func revIn(body string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(body), "\n")
+	found := revLine.FindStringSubmatch(strings.TrimSpace(first))
+	if found == nil {
+		return ""
+	}
+	return found[1]
+}
+
+var revLine = regexp.MustCompile(`^` + regexp.QuoteMeta(Marker) + ` rev=([0-9a-f]{16}) -->$`)
 
 // homepage is where the footer's naming of g2g links to.
 const homepage = "https://g2g.paulie.app"
-
-// footerVersion is the footer's naming of the g2g that wrote it, linked or
-// not and with or without a version: a comment from before either was added
-// has neither.
-var footerVersion = regexp.MustCompile(`by \[?g2g[^,<\n]*,`)

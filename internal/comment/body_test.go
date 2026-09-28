@@ -79,7 +79,7 @@ func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {
 	if !strings.Contains(body, "`"+hostile+"`") {
 		t.Errorf("hostile name is not inside a code span:\n%s", body)
 	}
-	if !strings.HasPrefix(body, Marker+"\n") {
-		t.Errorf("body does not open with the marker:\n%s", body)
+	if revIn(body) == "" {
+		t.Errorf("body does not open with the marker and its rev:\n%s", body)
 	}
 }

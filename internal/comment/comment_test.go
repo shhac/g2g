@@ -317,6 +317,23 @@ func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
 	}
 }
 
+// Whether a comment is current is its rev, not its text: were GitHub to hand
+// a body back reformatted, comparing text would rewrite every comment on every
+// run. One from before revs has none, and is rewritten once.
+func TestACommentIsCurrentByItsRevNotItsText(t *testing.T) {
+	first := plan(t, chain(), "synthetic-one", chainGitHub())
+	github := chainGitHub()
+	reformatted := strings.ReplaceAll(strings.ReplaceAll(bodyFor(t, first, 11), "\n- ", "\n* "), "\n", "  \r\n")
+	github.conversations[11] = conversation(11, "synthetic-one", "OPEN", reformatted)
+	unrevised := strings.Replace(bodyFor(t, first, 12), " rev="+revIn(bodyFor(t, first, 12)), "", 1)
+	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", unrevised)
+	github.conversations[13] = conversation(13, "synthetic-three", "OPEN", Marker+" rev=0000000000000000 -->\nsynthetic older stack")
+
+	if got := plan(t, chain(), "synthetic-one", github); actions(got) != "#11:current #12:update #13:update" {
+		t.Errorf("writes = %s, want the reformatted one current and the unrevised and changed ones updated", actions(got))
+	}
+}
+
 func TestPlanEditsTheCommentItFinds(t *testing.T) {
 	first := plan(t, chain(), "synthetic-one", chainGitHub())
 	github := chainGitHub()

@@ -6,7 +6,7 @@ does not otherwise have: GitHub shows a pull request in isolation, and finding t
 four in a stack of five means reading bases one at a time.
 
 ```
-<!-- g2g:stack-comment -->
+<!-- g2g:stack-comment rev=3f1c9a0b7d2e4c65 -->
 **Stack**
 
 - base `synthetic-main`
@@ -43,8 +43,8 @@ Every line names its branch. GitHub draws a pull request number with its title
 and state, which is why the merged marker is light, but never the branch,
 which is what a reviewer matches against their own checkout.
 
-The footer names the g2g that wrote it. The version is left out when deciding
-whether a comment is up to date, so an upgrade alone does not edit every
+The footer names the g2g that wrote it and links to its homepage. It is left
+out of the comment's rev (below), so an upgrade alone does not edit every
 comment in every stack; it catches up the next time the stack changes.
 
 ## Which comments a run keeps
@@ -155,10 +155,16 @@ somebody's words. Adding a second
 beside one somebody else wrote would leave two comments saying the same thing
 differently, which is worse than one that is out of date and says who can fix it.
 
-A body edited in a browser comes back with CRLF endings. That is not a reason to
-edit it again, so the comparison normalises line endings. A comment edited by
-hand in any other way is overwritten: the marker says it is this tool's, and
-revalidation compares what would be written, not what was there.
+Whether a comment is current is decided by its **rev**, not its text. The
+marker line carries a hash of what the comment says — the stack it draws and
+the data line, not the footer — and a comment is left alone when its rev is
+the one this run would write. Comparing text made keeping the comments depend
+on GitHub handing back exactly what was sent: it stores a body edited in a
+browser with CRLF endings, and had it normalised anything else, every run would
+have found every comment changed and rewritten it. A comment from before revs
+has none and is rewritten once. A comment edited by hand keeps its rev, so it
+stands until the stack changes; the marker says it is this tool's, and it is
+overwritten then.
 
 ## The GitHub seam
 

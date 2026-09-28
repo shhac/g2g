@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -115,26 +114,6 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	_ = cmd.Flags().MarkHidden("no-forget")
 	cmd.Flags().BoolVar(&apply, "apply", false, "merge the stack instead of previewing the descent")
 	return cmd
-}
-
-// methodCompletions offers exactly the methods the flag accepts, so completion
-// can never propose a value the command would refuse.
-func methodCompletions() func(context.Context, string) ([]string, error) {
-	return func(context.Context, string) ([]string, error) {
-		names := make([]string, 0, len(githubstack.Methods))
-		for _, method := range githubstack.Methods {
-			names = append(names, string(method))
-		}
-		return names, nil
-	}
-}
-
-func methodNames() string {
-	names := make([]string, 0, len(githubstack.Methods))
-	for _, method := range githubstack.Methods {
-		names = append(names, string(method))
-	}
-	return strings.Join(names, ", ")
 }
 
 // landInterrupted claims a descent that stopped having changed something, and

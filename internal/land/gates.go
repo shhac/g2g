@@ -25,7 +25,39 @@ import (
 // sync sets Blocked straight from the restack it delegates to, with no Repair
 // beside it. Reading the structure alone let exactly that refusal through.
 func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Graph) (string, repair.Note) {
+	if sentence, note := structuralRefusal(plan, recorded); sentence != "" {
+		return sentence, note
+	}
 	discovery, options := plan.Discovery, plan.Options
+	if err := s.Git.Clean(ctx); err != nil {
+		return err.Error(), repair.Note{}
+	}
+	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
+		return held.Sentence(), held
+	}
+	// An error planning the push is not a refusal here: each cycle plans its
+	// own publish again before its merge, so the same error stops the descent
+	// before anything has merged.
+	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote)
+	if err == nil && pushed.Blocked != "" {
+		return pushed.Blocked, pushed.Repair
+	}
+	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, discovery.Target), options.Remote, syncer.TakeNothing)
+	if err != nil && plan.declared() {
+		// Nothing about a base alone makes sync unable to answer, so a failure
+		// here is one the advance after the merge would meet too.
+		return err.Error(), repair.Note{}
+	}
+	if err == nil && synced.Blocked != "" {
+		return synced.Blocked, synced.Repair
+	}
+	return "", repair.Note{}
+}
+
+// structuralRefusal is every refusal the plan's own shape answers, with
+// nothing asked of Git or the remote.
+func structuralRefusal(plan Plan, recorded graph.Graph) (string, repair.Note) {
+	discovery := plan.Discovery
 	if err := discovery.RequireLinear("land"); err != nil {
 		return err.Error(), repair.Note{}
 	}
@@ -63,25 +95,6 @@ func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Gr
 	}
 	if note := linkedOnGitHub(discovery); note.Reason != "" {
 		return note.Sentence(), note
-	}
-	if err := s.Git.Clean(ctx); err != nil {
-		return err.Error(), repair.Note{}
-	}
-	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
-		return held.Sentence(), held
-	}
-	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote)
-	if err == nil && pushed.Blocked != "" {
-		return pushed.Blocked, pushed.Repair
-	}
-	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, discovery.Target), options.Remote, syncer.TakeNothing)
-	if err != nil && plan.declared() {
-		// Nothing about a base alone makes sync unable to answer, so a failure
-		// here is one the advance after the merge would meet too.
-		return err.Error(), repair.Note{}
-	}
-	if err == nil && synced.Blocked != "" {
-		return synced.Blocked, synced.Repair
 	}
 	return "", repair.Note{}
 }

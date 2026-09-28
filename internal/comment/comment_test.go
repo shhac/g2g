@@ -635,6 +635,29 @@ func TestPlanNamesTheAmbiguousBranchInItsRefusal(t *testing.T) {
 	}
 }
 
+// Keep is the tail of submit and land. A blocked plan writes nothing, and a
+// failure part-way comes back as NotKept around the Stopped that says what was
+// written, so the command can say its own work stands.
+func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
+	github := chainGitHub()
+	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
+	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
+	_, err := service.Keep(context.Background(), stack.Selection{})
+	var notKept *NotKept
+	if !errors.As(err, &notKept) || len(github.sent) != 0 {
+		t.Fatalf("Keep() = %v, sent %v; want NotKept and nothing written", err, github.sent)
+	}
+
+	github = chainGitHub()
+	github.failOn = 3
+	service.GitHub = github
+	_, err = service.Keep(context.Background(), stack.Selection{})
+	var stopped *Stopped
+	if !errors.As(err, &notKept) || !errors.As(err, &stopped) || !slices.Equal(stopped.Written, []int{11, 12}) {
+		t.Fatalf("Keep() = %v, want NotKept around a stop after #11 and #12", err)
+	}
+}
+
 // A run that fails after writing some comments reports which, because those
 // stay written; one that fails on the first is an ordinary failure.
 func TestExecuteReportsWhatItWroteBeforeStopping(t *testing.T) {

@@ -2,13 +2,35 @@ package githubstack
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 )
+
+// graphql sends one batched read and returns what gh printed with how it
+// exited, both untouched.
+//
+// The pull request lookup, the mergeability read and the comment read each
+// spelled out the runner check, the diagnostic and the invocation. What they
+// do with a failure is theirs: the comment read keeps a response whose only
+// errors are numbers nothing answers to, so the error is handed back rather
+// than turned into repositoryError here.
+//
+// counting names what count counts, because the lookup by head has always
+// reported branches where the reads by number report pull requests.
+func (c Client) graphql(ctx context.Context, kind, counting string, count int, query string, vars ...string) ([]byte, error) {
+	if c.Runner == nil {
+		return nil, fmt.Errorf("GitHub runner is not configured")
+	}
+	diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: kind}, diagnostic.Field{Key: counting, Value: strconv.Itoa(count)}, diagnostic.Field{Key: "query", Value: "omitted"})
+	args := append([]string{"api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + query}, vars...)
+	return c.Runner.Run(ctx, "gh", args...)
+}
 
 // graphqlString encodes s as a GraphQL string literal.
 //

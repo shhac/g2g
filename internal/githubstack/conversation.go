@@ -77,9 +77,6 @@ const commentPages = 100
 // the numbers come from comments a person can edit, and an edit is not a reason
 // to fail the command. A caller that needs a number to exist checks for it.
 func (c Client) Conversations(ctx context.Context, numbers []int, marker string) ([]Conversation, error) {
-	if c.Runner == nil {
-		return nil, fmt.Errorf("GitHub runner is not configured")
-	}
 	if marker == "" {
 		return nil, fmt.Errorf("a comment marker is required")
 	}
@@ -98,8 +95,7 @@ func (c Client) Conversations(ctx context.Context, numbers []int, marker string)
 		if page == commentPages {
 			return nil, fmt.Errorf("pull request #%d has more than %d pages of comments; stopped reading it", pending[0].Number, commentPages)
 		}
-		diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "pull_request_comments"}, diagnostic.Field{Key: "pull_requests", Value: strconv.Itoa(len(pending))}, diagnostic.Field{Key: "query", Value: "omitted"})
-		output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+conversationQuery(pending))
+		output, err := c.graphql(ctx, "pull_request_comments", "pull_requests", len(pending), conversationQuery(pending))
 		// gh exits non-zero when any alias failed, and a number nothing answers
 		// to is one; the response it printed still answers the rest.
 		if err != nil && !unresolvedOnly(output, len(pending)) {

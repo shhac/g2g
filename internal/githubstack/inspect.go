@@ -16,17 +16,13 @@ import (
 )
 
 func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, error) {
-	if c.Runner == nil {
-		return nil, fmt.Errorf("GitHub runner is not configured")
-	}
 	// One round trip, not two. Which repository this is was asked for
 	// separately, and it is the only thing that answer was used for: gh fills
 	// {owner} and {repo} from the repository of the current directory, which is
 	// the same resolution gh repo view performed — documented for --field, and
 	// the query names the repository back so a reader can still see which one
 	// answered.
-	diagnostic.Event(ctx, "github.query", diagnostic.Field{Key: "kind", Value: "batched_pull_requests"}, diagnostic.Field{Key: "branches", Value: strconv.Itoa(len(branches))}, diagnostic.Field{Key: "query", Value: "omitted"})
-	output, err := c.Runner.Run(ctx, "gh", inspectArguments(branches)...)
+	output, err := c.graphql(ctx, "batched_pull_requests", "branches", len(branches), graphqlQuery(branches), headVariables(branches)...)
 	if err != nil {
 		return nil, repositoryError(err, output)
 	}
@@ -170,7 +166,7 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 	return matching, nil
 }
 
-// inspectArguments is the whole gh invocation for one batched lookup.
+// headVariables supplies the head each alias of graphqlQuery reads.
 //
 // Each head travels as a variable rather than inside the query text. A literal
 // has to be escaped for GraphQL, and the escaping came from Go's own quoting,
@@ -179,12 +175,12 @@ func parsePullRequests(output []byte, branches []string) ([]PullRequest, error) 
 // name can change what the query says. -f rather than -F, because the typed
 // form reads @file and fills {owner}-style placeholders, and a branch name
 // must reach GitHub as exactly what it is.
-func inspectArguments(branches []string) []string {
-	arguments := []string{"api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + graphqlQuery(branches)}
+func headVariables(branches []string) []string {
+	variables := make([]string, 0, 2*len(branches))
 	for index, branch := range branches {
-		arguments = append(arguments, "-f", fmt.Sprintf("head%d=%s", index, branch))
+		variables = append(variables, "-f", fmt.Sprintf("head%d=%s", index, branch))
 	}
-	return arguments
+	return variables
 }
 
 // graphqlQuery batches one aliased head-ref lookup per selected branch, each

@@ -131,21 +131,12 @@ const stateMerged = "MERGED"
 // trip. The repository is named by gh's {owner}/{repo} placeholders, exactly
 // as Inspect does.
 func (c Client) Mergeability(ctx context.Context, numbers []int) (Mergeability, error) {
-	if c.Runner == nil {
-		return Mergeability{}, fmt.Errorf("GitHub runner is not configured")
-	}
 	for _, number := range numbers {
 		if number <= 0 {
 			return Mergeability{}, fmt.Errorf("pull request number is required")
 		}
 	}
-	query := mergeabilityQuery(numbers)
-	diagnostic.Event(ctx, "github.query",
-		diagnostic.Field{Key: "kind", Value: "batched_merge_state"},
-		diagnostic.Field{Key: "pull_requests", Value: strconv.Itoa(len(numbers))},
-		diagnostic.Field{Key: "query", Value: "omitted"},
-	)
-	output, err := c.Runner.Run(ctx, "gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query="+query)
+	output, err := c.graphql(ctx, "batched_merge_state", "pull_requests", len(numbers), mergeabilityQuery(numbers))
 	if err != nil {
 		return Mergeability{}, repositoryError(err, output)
 	}

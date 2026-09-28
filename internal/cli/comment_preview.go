@@ -51,7 +51,7 @@ func commentNodes(plan comment.Plan) []stackNode {
 			writes[write.Number] = write
 		}
 	}
-	forest := plan.Forest()
+	forest := plan.Shape()
 	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), forest.Parent)
 	nodes := []stackNode{{Branch: plan.Base, Trunk: true}}
 	for _, branch := range plan.Branches {

@@ -130,9 +130,6 @@ func (p Plan) Changing() int {
 	return changing
 }
 
-// Forest is the planned stack's shape, rooted at its base.
-func (p Plan) Forest() shape.Forest { return forestOf(p.Snapshot) }
-
 // Equal compares everything that changes what the writes do.
 func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
@@ -177,7 +174,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 		return plan, nil
 	}
 
-	forest := forestOf(discovery.Snapshot)
+	forest := discovery.Shape()
 	stacks := make([]*kept, 0)
 	for _, root := range forest.Children(discovery.Base) {
 		stacks = append(stacks, newKept(forest, root, members))

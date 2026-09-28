@@ -165,6 +165,31 @@ func (s Snapshot) ParentOf(branch string) (string, bool) {
 	return parent, true
 }
 
+// SitsOn is the branch this one is built on: its recorded parent, or the base.
+//
+// Every selector records an edge for each acted-on branch, a root's edge to the
+// base included, so the base answers only for a branch the selection places
+// under nothing — the further trunks an all scope brings in. Each consumer used
+// to derive this for itself, falling back to a rolling chain, to the base, or
+// to nothing, and they disagreed on exactly that case.
+func (s Snapshot) SitsOn(branch string) string {
+	if parent, placed := s.ParentOf(branch); placed {
+		return parent
+	}
+	return s.Base
+}
+
+// Shape is the selection as a forest rooted at its base, with every branch
+// hanging from what it sits on.
+func (s Snapshot) Shape() Forest {
+	parents := make(map[string]string, len(s.Branches)+1)
+	parents[s.Base] = ""
+	for _, branch := range s.Branches {
+		parents[branch] = s.SitsOn(branch)
+	}
+	return Forest{Parents: parents}
+}
+
 // Forks reports whether any selected branch has two selected children.
 //
 // A GitHub native stack is linear, so this is the question every projecting

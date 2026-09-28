@@ -2,7 +2,6 @@ package comment
 
 import (
 	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -43,7 +42,7 @@ func (m Member) listedNumber() int {
 // rule exists once, there; this only names the answer in the comment's terms.
 func classify(discovery stack.Discovery) map[string]Member {
 	members := make(map[string]Member, len(discovery.Branches))
-	for step := range githubstack.Across(discovery.Parents, discovery.Branches, discovery.PullRequests) {
+	for step := range githubstack.Across(discovery.Shape().Parents, discovery.Branches, discovery.PullRequests) {
 		switch step.Classify() {
 		case githubstack.StepAmbiguous:
 			members[step.Branch] = Member{State: StateAmbiguous}
@@ -71,19 +70,4 @@ func ambiguous(branches []string, members map[string]Member) []string {
 		}
 	}
 	return named
-}
-
-// forestOf is the selection's shape with its base as the root. Every selector
-// fills Parents, and a branch with no selected parent hangs from the base.
-func forestOf(snapshot stack.Snapshot) shape.Forest {
-	parents := make(map[string]string, len(snapshot.Branches)+1)
-	parents[snapshot.Base] = ""
-	for _, branch := range snapshot.Branches {
-		parent, ok := snapshot.ParentOf(branch)
-		if !ok {
-			parent = snapshot.Base
-		}
-		parents[branch] = parent
-	}
-	return shape.Forest{Parents: parents}
 }

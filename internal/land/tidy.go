@@ -75,13 +75,9 @@ func (s Service) forget(ctx context.Context, plan Plan, landed string) error {
 	if !tracked {
 		return nil
 	}
-	updated := adopted
-	for _, child := range adopted.Children(landed) {
-		inherited := updated.Edges[child]
-		inherited.Parent = edge.Parent
-		if updated, _, err = updated.Adopt(child, inherited); err != nil {
-			return err
-		}
+	updated, _, err := adopted.Lift(landed)
+	if err != nil {
+		return err
 	}
 	if err := s.Graph.Store.Save(ctx, updated); err != nil {
 		return err

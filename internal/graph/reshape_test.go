@@ -50,6 +50,32 @@ func TestRemoveRecordsTheChildrenOnWhatTheBranchSatOn(t *testing.T) {
 	}
 }
 
+// Lift is Remove without the forgetting: land moves what sat on a landed
+// branch and leaves its edge for prune, which needs it to find where the work
+// went.
+func TestLiftMovesTheChildrenAndKeepsTheBranch(t *testing.T) {
+	adopted := reshapeFixture()
+
+	updated, children, err := adopted.Lift("synthetic-lower")
+	if err != nil {
+		t.Fatalf("Lift() error = %v", err)
+	}
+	if !slices.Equal(children, []string{"synthetic-left", "synthetic-right"}) {
+		t.Errorf("children = %v", children)
+	}
+	if updated.Edges["synthetic-lower"] != adopted.Edges["synthetic-lower"] {
+		t.Errorf("the lifted branch's edge = %+v, want it kept as it was", updated.Edges["synthetic-lower"])
+	}
+	for branch, fork := range map[string]string{"synthetic-left": "lower-tip", "synthetic-right": "lower-older"} {
+		if edge := updated.Edges[branch]; edge.Parent != "synthetic-main" || edge.ForkPoint != fork {
+			t.Errorf("%s = %+v, want it under synthetic-main still forking at %s", branch, edge, fork)
+		}
+	}
+	if adopted.Edges["synthetic-left"].Parent != "synthetic-lower" {
+		t.Error("Lift changed the graph it was called on")
+	}
+}
+
 func TestRemoveRefusesARoot(t *testing.T) {
 	for _, branch := range []string{"synthetic-main", "synthetic-unknown"} {
 		if _, _, err := reshapeFixture().Remove(branch); err == nil {

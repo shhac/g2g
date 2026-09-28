@@ -20,12 +20,29 @@ import (
 // is where the removed branch's work ended, so its commits are excluded from
 // every child's range rather than carried along with it.
 func (g Graph) Remove(branch string) (Graph, []string, error) {
+	lifted, children, err := g.Lift(branch)
+	if err != nil {
+		return Graph{}, nil, err
+	}
+	delete(lifted.Edges, branch)
+	if err := lifted.Validate(); err != nil {
+		return Graph{}, nil, err
+	}
+	return lifted, children, nil
+}
+
+// Lift records each branch that sat on branch under its parent instead, and
+// keeps branch's own edge, returning the new graph and those children.
+//
+// It is Remove's first half, for a branch that is going but is not forgotten
+// here: land lifts what sat on a landed branch and leaves forgetting it to
+// prune, which needs the edge to find where its work landed.
+func (g Graph) Lift(branch string) (Graph, []string, error) {
 	edge, tracked := g.Edges[branch]
 	if !tracked {
 		return Graph{}, nil, fmt.Errorf("%s is not recorded under a parent, so there is nowhere to put what sits on it", branch)
 	}
 	updated := g.Clone()
-	delete(updated.Edges, branch)
 	children := g.Children(branch)
 	for _, child := range children {
 		moved := updated.Edges[child]

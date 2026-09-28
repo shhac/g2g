@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
@@ -277,17 +278,49 @@ func TestPlanKeepsListingAPullRequestThatMergedOutOfTheStack(t *testing.T) {
 	if actions(got) != "#12:update #13:create #11:update" {
 		t.Fatalf("writes = %s", actions(got))
 	}
-	if body := bodyFor(t, got, 13); !strings.Contains(body, "Merged into `synthetic-trunk`: #11\n") || !strings.Contains(body, dataOpen+"11,12,13>12"+dataClose) {
-		t.Errorf("#13 does not list what merged:\n%s", body)
+	if body := bodyFor(t, got, 13); !strings.Contains(body, "- `synthetic-trunk`\n- #11 `synthetic-one` · merged\n- #12 `synthetic-two`\n") || !strings.Contains(body, dataOpen+"11,12,13>12"+dataClose) {
+		t.Errorf("#13 does not list what merged where it sat:\n%s", body)
 	}
 	merged := bodyFor(t, got, 11)
-	if !strings.Contains(merged, "Merged into `synthetic-trunk`: **#11** 👈 this pull request\n") || !strings.Contains(merged, "- #12 `synthetic-two`\n- #13 `synthetic-three`\n") {
+	if !strings.Contains(merged, "- `synthetic-trunk`\n- **#11 `synthetic-one` · merged** 👈 this pull request\n- #12 `synthetic-two`\n- #13 `synthetic-three`\n") {
 		t.Errorf("the merged pull request's comment does not show where the stack went:\n%s", merged)
+	}
+	if strings.Contains(merged, "Merged into") {
+		t.Errorf("what merged is still set apart on a line of its own:\n%s", merged)
 	}
 	// Round one reads what the stack carries; round two, what its comments
 	// named that it no longer does.
 	if len(github.asked) != 2 || !slices.Equal(github.asked[1], []int{11}) {
 		t.Errorf("asked = %v, want #11 read in a second round", github.asked)
+	}
+}
+
+// Once the one below lands, the one above is recorded on the trunk, so the
+// numbers alone no longer say where each merged pull request sat. The order
+// they merged in does: a stack comes down from the bottom. #14 was opened
+// before #15 but stacked on it, so it merged second.
+func TestPlanListsWhatMergedInTheOrderItMerged(t *testing.T) {
+	landed := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-three": "synthetic-trunk",
+	}}
+	previous := Marker + "\nold\n" + dataOpen + "13,14,15" + dataClose
+	first := conversation(15, "synthetic-one", "MERGED", previous)
+	first.MergedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	second := conversation(14, "synthetic-two", "MERGED", previous)
+	second.MergedAt = first.MergedAt.Add(time.Hour)
+	unnamed := conversation(13, "synthetic-three", "OPEN", previous)
+	github := &fakeGitHub{
+		prs:           []githubstack.PullRequest{pr(13, "synthetic-three", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{13: unnamed, 14: second, 15: first},
+	}
+	got := plan(t, landed, "synthetic-three", github)
+	want := "- `synthetic-trunk`\n- #15 `synthetic-one` · merged\n- #14 `synthetic-two` · merged\n- **#13 `synthetic-three`** 👈 this pull request\n"
+	if body := bodyFor(t, got, 13); !strings.Contains(body, want) {
+		t.Errorf("#13 does not list what merged in the order it merged:\n%s", body)
+	}
+	if body := bodyFor(t, got, 14); !strings.Contains(body, "- #15 `synthetic-one` · merged\n- **#14 `synthetic-two` · merged** 👈 this pull request\n- #13 `synthetic-three`\n") {
+		t.Errorf("the merged pull request's own comment does not place it:\n%s", body)
 	}
 }
 
@@ -393,7 +426,7 @@ func TestPlanFromATrunkKeepsEachStacksHistoryApart(t *testing.T) {
 		},
 	}
 	got := plan(t, forest, "synthetic-trunk", github)
-	if body := bodyFor(t, got, 32); !strings.Contains(body, "Merged into `synthetic-trunk`: #30\n") {
+	if body := bodyFor(t, got, 32); !strings.Contains(body, "- `synthetic-trunk`\n- #30 `synthetic-a-landed` · merged\n- #31 `synthetic-a`\n") {
 		t.Errorf("stack a lost its history:\n%s", body)
 	}
 	if body := bodyFor(t, got, 42); strings.Contains(body, "#30") || strings.Contains(body, "synthetic-a") {

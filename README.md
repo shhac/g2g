@@ -902,9 +902,8 @@ g2g github comment --apply
 ```
 **Stack**
 
-Merged into `synthetic-main`: #10
-
 - `synthetic-main`
+- #10 `synthetic-zero` · merged
 - #11 `synthetic-one`
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
@@ -912,8 +911,9 @@ Merged into `synthetic-main`: #10
 
 Rerunning edits the comment it finds rather than adding another, found by an
 HTML marker in its first line. Pull requests that have merged out of the stack
-stay listed: each comment records every pull request the stack has listed, so
-the history survives the branch being pruned and deleted. A merged pull request
+stay listed where they sat, marked merged: each comment records every pull
+request the stack has listed, so the history survives the branch being pruned
+and deleted. A merged pull request
 is never given a new comment, a comment you cannot edit is left alone, and a
 branch with two open pull requests refuses the run.
 

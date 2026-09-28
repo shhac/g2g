@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 )
@@ -28,6 +29,10 @@ type Conversation struct {
 	// history from a pull request that only passed through it.
 	Base  string
 	State string
+	// MergedAt is when it merged, zero for one that has not. Once a pull
+	// request lands, the one above it is recorded as sitting on the trunk, so
+	// the order they merged in is what still says where each one sat.
+	MergedAt time.Time
 	// Commentable is whether the person running this may add a comment. A
 	// locked conversation takes none, and finding that out from a failed
 	// write part-way down a stack is the wrong time. GitHub has no field that
@@ -157,7 +162,7 @@ func conversationQuery(pending []conversationPage) string {
 		if page.After != "" {
 			after = ", after: " + graphqlString(page.After)
 		}
-		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number headRefName baseRefName state locked comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
+		fields = append(fields, fmt.Sprintf("c%d: issueOrPullRequest(number: %d) { __typename ... on PullRequest { id number headRefName baseRefName state locked mergedAt comments(first: 100%s) { pageInfo { hasNextPage endCursor } nodes { id body viewerCanUpdate author { login } } } } }", index, page.Number, after))
 	}
 	// Named, as the mergeability query is, because both go to the same
 	// endpoint as the head-ref lookup and a reader of a recorded call — or a
@@ -166,13 +171,14 @@ func conversationQuery(pending []conversationPage) string {
 }
 
 type conversationNode struct {
-	TypeName string `json:"__typename"`
-	ID       string `json:"id"`
-	Number   int    `json:"number"`
-	Head     string `json:"headRefName"`
-	Base     string `json:"baseRefName"`
-	State    string `json:"state"`
-	Locked   bool   `json:"locked"`
+	TypeName string     `json:"__typename"`
+	ID       string     `json:"id"`
+	Number   int        `json:"number"`
+	Head     string     `json:"headRefName"`
+	Base     string     `json:"baseRefName"`
+	State    string     `json:"state"`
+	Locked   bool       `json:"locked"`
+	MergedAt *time.Time `json:"mergedAt"`
 	Comments struct {
 		PageInfo struct {
 			HasNextPage bool   `json:"hasNextPage"`
@@ -212,6 +218,9 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		conversation := read[page.Number]
 		if conversation == nil {
 			conversation = &Conversation{ID: node.ID, Number: node.Number, Head: node.Head, Base: node.Base, State: node.State, Commentable: !node.Locked}
+			if node.MergedAt != nil {
+				conversation.MergedAt = *node.MergedAt
+			}
 			read[page.Number] = conversation
 		}
 		for _, comment := range node.Comments.Nodes {

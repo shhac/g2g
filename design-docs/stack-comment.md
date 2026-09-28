@@ -9,9 +9,8 @@ four in a stack of five means reading bases one at a time.
 <!-- g2g:stack-comment -->
 **Stack**
 
-Merged into `synthetic-main`: #10
-
 - `synthetic-main`
+- #10 `synthetic-zero` · merged
 - #11 `synthetic-one`
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
@@ -84,6 +83,20 @@ of our own:
 - A pull request that merged before any comment was written was never recorded,
   and is not recovered. GitHub's base-change events could answer that one; the
   comments cannot.
+
+### Where a merged pull request is drawn
+
+In place, between the trunk and what is still open, marked merged — not on a
+line of its own. A reader wants to see where landed work sat in the stack, and
+a separate "merged into" line became a flat list detached from any order once a
+few had landed.
+
+What merged is ordered by when it merged, not by what it recorded sitting on.
+Once the branch below lands, the one above is put on the trunk and records the
+trunk as its parent, so by the time it lands too the record no longer says it
+sat on anything. A stack comes down from the bottom, so the order things
+merged in is the order they sat in. Its branch is named by what GitHub still
+reports for the pull request, and by its number alone when that is nothing.
 
 The numbers are editable by anyone who can edit the pull request, so reading
 them back tolerates junk, is bounded, and follows them for a few rounds at most.

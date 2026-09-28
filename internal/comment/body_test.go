@@ -48,6 +48,19 @@ func TestRecordedInReadsWhatItCanAndIgnoresTheRest(t *testing.T) {
 	}
 }
 
+// GitHub may report no head for a merged pull request; an empty code span
+// would render as two stray backticks.
+func TestBodyNamesAMergedPullRequestWithNoBranchByNumber(t *testing.T) {
+	body := view{
+		Trunk: "synthetic-trunk",
+		Lines: []line{{Branch: "synthetic-trunk", Trunk: true}, {Number: 4, State: StateMerged}, {Branch: "synthetic-open", Number: 5, State: StateOpen}},
+		Here:  5, Recorded: []entry{{Number: 4}, {Number: 5}},
+	}.body()
+	if !strings.Contains(body, "- #4 · merged\n") || strings.Contains(body, "``") {
+		t.Errorf("a merged pull request with no branch is not named by its number alone:\n%s", body)
+	}
+}
+
 // Nothing a branch can be called reaches the HTML comments: only numbers are
 // written inside them.
 func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {

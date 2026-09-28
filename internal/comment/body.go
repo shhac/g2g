@@ -1,7 +1,6 @@
 package comment
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -46,11 +45,11 @@ type line struct {
 }
 
 // view is everything one comment says: the stack as seen from one pull
-// request, and the pull requests that merged out of it.
+// request, with the pull requests that merged out of it in the places they
+// sat.
 type view struct {
-	Trunk  string
-	Merged []int
-	Lines  []line
+	Trunk string
+	Lines []line
 	// Here is the pull request this comment is on.
 	Here int
 	// Recorded is every pull request the stack knows of, for the next run. It
@@ -62,28 +61,12 @@ func (v view) body() string {
 	var out strings.Builder
 	out.WriteString(Marker + "\n")
 	out.WriteString("**Stack**\n\n")
-	if len(v.Merged) != 0 {
-		merged := make([]string, 0, len(v.Merged))
-		for _, number := range v.Merged {
-			merged = append(merged, v.reference(number))
-		}
-		fmt.Fprintf(&out, "Merged into %s: %s\n\n", code(v.Trunk), strings.Join(merged, " · "))
-	}
 	for _, entry := range v.Lines {
 		out.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
 	out.WriteString("\n<sub>Kept up to date by g2g, which edits this comment when the stack changes.</sub>\n")
 	out.WriteString(dataOpen + encode(v.Recorded) + dataClose + "\n")
 	return out.String()
-}
-
-// reference is a pull request number GitHub will link, emphasised where it is
-// this one.
-func (v view) reference(number int) string {
-	if number == v.Here {
-		return "**#" + strconv.Itoa(number) + "** 👈 this pull request"
-	}
-	return "#" + strconv.Itoa(number)
 }
 
 func (v view) item(entry line) string {
@@ -96,7 +79,13 @@ func (v view) item(entry line) string {
 	if entry.Number == 0 {
 		return code(entry.Branch) + " · no open pull request"
 	}
-	said := "#" + strconv.Itoa(entry.Number) + " " + code(entry.Branch)
+	said := "#" + strconv.Itoa(entry.Number)
+	// A merged pull request's branch is named by what GitHub still reports
+	// for it, which can be nothing; an empty code span would render as two
+	// stray backticks.
+	if entry.Branch != "" {
+		said += " " + code(entry.Branch)
+	}
 	if entry.State == StateMerged {
 		said += " · merged"
 	}

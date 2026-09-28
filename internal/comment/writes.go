@@ -1,7 +1,9 @@
 package comment
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
@@ -11,6 +13,7 @@ import (
 // order the stack reads, then those that merged out of it.
 func (k *kept) writes(forest shape.Forest, base string, members map[string]Member, read map[int]githubstack.Conversation) []Write {
 	recorded, merged := k.recorded(), k.merged()
+	history := historyLines(merged, read)
 	// One pull request is not a stack, and a comment saying so is noise. One
 	// already there is kept up to date rather than left saying something false.
 	worthAdding := len(recorded) > 1
@@ -20,13 +23,13 @@ func (k *kept) writes(forest shape.Forest, base string, members map[string]Membe
 		if !m.listed() {
 			continue
 		}
-		v := view{Trunk: base, Merged: merged, Lines: linesFrom(forest, branch, members), Here: m.Number, Recorded: recorded}
+		v := view{Trunk: base, Lines: withHistory(linesFrom(forest, branch, members), history), Here: m.Number, Recorded: recorded}
 		if write, ok := decide(read[m.Number], branch, v.body(), m.State == StateOpen && worthAdding); ok {
 			writes = append(writes, write)
 		}
 	}
 	for _, number := range merged {
-		write, ok := k.decideMerged(read[number], forest, base, members, merged, recorded)
+		write, ok := k.decideMerged(read[number], forest, base, members, history, recorded)
 		if ok {
 			writes = append(writes, write)
 		}
@@ -42,8 +45,8 @@ func (k *kept) writes(forest shape.Forest, base string, members map[string]Membe
 // — the branch a fork grew from, merged — is left as it is: drawn from either
 // stack alone it would say the other does not exist, and a run from each would
 // undo the other's.
-func (k *kept) decideMerged(conversation githubstack.Conversation, forest shape.Forest, base string, members map[string]Member, merged []int, recorded []entry) (Write, bool) {
-	v := view{Trunk: base, Merged: merged, Lines: whole(forest, base, k.branches, members), Here: conversation.Number, Recorded: recorded}
+func (k *kept) decideMerged(conversation githubstack.Conversation, forest shape.Forest, base string, members map[string]Member, history []line, recorded []entry) (Write, bool) {
+	v := view{Trunk: base, Lines: withHistory(whole(forest, base, k.branches, members), history), Here: conversation.Number, Recorded: recorded}
 	write, ok := decide(conversation, conversation.Head, v.body(), false)
 	if !ok {
 		return Write{}, false
@@ -141,6 +144,33 @@ func whole(forest shape.Forest, base string, branches []string, members map[stri
 		lines = append(lines, lineFor(branch, index == 0, depths[branch], members))
 	}
 	return lines
+}
+
+// historyLines are the pull requests that merged out of the stack, in the order
+// they merged.
+//
+// Where each one sat is not recorded in a way that survives: once the one below
+// lands, the one above is put on the trunk and recorded there. A stack comes
+// down from the bottom, so the order things merged in is the order they sat in.
+func historyLines(merged []int, read map[int]githubstack.Conversation) []line {
+	lines := make([]line, 0, len(merged))
+	for _, number := range merged {
+		lines = append(lines, line{Branch: read[number].Head, Number: number, State: StateMerged})
+	}
+	slices.SortStableFunc(lines, func(left, right line) int {
+		return cmp.Or(read[left.Number].MergedAt.Compare(read[right.Number].MergedAt), left.Number-right.Number)
+	})
+	return lines
+}
+
+// withHistory puts what merged between the trunk and what is still open,
+// which is where it sat: the list keeps the stack's shape rather than moving
+// landed work to a line of its own.
+func withHistory(lines, history []line) []line {
+	if len(history) == 0 || len(lines) == 0 {
+		return lines
+	}
+	return slices.Concat(lines[:1], history, lines[1:])
 }
 
 func lineFor(branch string, trunk bool, depth int, members map[string]Member) line {

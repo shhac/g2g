@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shhac/g2g/internal/subprocess"
 	"github.com/shhac/g2g/internal/testutil"
@@ -236,5 +237,19 @@ func TestConversationsReadsALockedConversationAsTakingNoComments(t *testing.T) {
 	}
 	if !strings.Contains(runner.queries[0], " locked ") || strings.Contains(runner.queries[0], "viewerCanComment") {
 		t.Errorf("query = %q, want it to ask whether the conversation is locked", runner.queries[0])
+	}
+}
+
+// When a pull request merged is what orders a stack's history once the one
+// above it has been put on the trunk; one not merged reports null.
+func TestConversationsReadsWhenAPullRequestMerged(t *testing.T) {
+	merged := strings.Replace(conversationJSON("c0", 91, "MERGED", false, ""), `"locked":false`, `"locked":false,"mergedAt":"2026-01-02T03:04:05Z"`, 1)
+	open := strings.Replace(conversationJSON("c1", 92, "OPEN", false, ""), `"locked":false`, `"locked":false,"mergedAt":null`, 1)
+	conversations, err := Client{Runner: &scriptedRunner{responses: []string{repositoryJSON(merged, open)}}}.Conversations(context.Background(), []int{91, 92}, syntheticMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversations) != 2 || !conversations[0].MergedAt.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) || !conversations[1].MergedAt.IsZero() {
+		t.Errorf("conversations = %#v", conversations)
 	}
 }

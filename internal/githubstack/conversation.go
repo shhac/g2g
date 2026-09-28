@@ -132,8 +132,9 @@ func onlyUnresolved(aliases int) func([]graphqlError) bool {
 				return false
 			}
 			alias, _ := failure.Path[1].(string)
-			index, err := strconv.Atoi(strings.TrimPrefix(alias, "c"))
-			if !strings.HasPrefix(alias, "c") || err != nil || index < 0 || index >= aliases {
+			position, aliased := strings.CutPrefix(alias, "c")
+			index, err := strconv.Atoi(position)
+			if !aliased || err != nil || index < 0 || index >= aliases {
 				return false
 			}
 		}
@@ -191,6 +192,40 @@ type conversationNode struct {
 	} `json:"comments"`
 }
 
+// conversation validates one node and converts it, leaving out its comments:
+// a conversation that runs past a page is built from the first and only
+// gathers comments from the rest.
+func (n conversationNode) conversation(alias string, number int) (Conversation, error) {
+	if n.Number != number || n.ID == "" || n.State == "" {
+		return Conversation{}, fmt.Errorf("gh api graphql response has an invalid pull request for %s", alias)
+	}
+	conversation := Conversation{ID: n.ID, Number: n.Number, Head: n.Head, Base: n.Base, State: n.State, Commentable: !n.Locked}
+	if n.MergedAt != nil {
+		conversation.MergedAt = *n.MergedAt
+	}
+	return conversation, nil
+}
+
+// marked is the comments on this page whose body opens with marker. Only
+// those need an id, because only those are ever written back to.
+func (n conversationNode) marked(marker string) ([]Comment, error) {
+	var comments []Comment
+	for _, comment := range n.Comments.Nodes {
+		if !strings.HasPrefix(strings.TrimSpace(comment.Body), marker) {
+			continue
+		}
+		if comment.ID == "" {
+			return nil, fmt.Errorf("gh api graphql response has a comment with no id on #%d", n.Number)
+		}
+		author := ""
+		if comment.Author != nil {
+			author = comment.Author.Login
+		}
+		comments = append(comments, Comment{ID: comment.ID, Body: comment.Body, Author: author, Editable: comment.Editable})
+	}
+	return comments, nil
+}
+
 // parseConversations folds one round into what has been read, and returns the
 // pull requests that have another page.
 func parseConversations(output []byte, pending []conversationPage, marker string, read map[int]*Conversation) ([]conversationPage, error) {
@@ -208,30 +243,20 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		if node == nil || node.TypeName != "PullRequest" {
 			continue
 		}
-		if node.Number != page.Number || node.ID == "" || node.State == "" {
-			return nil, fmt.Errorf("gh api graphql response has an invalid pull request for %s", alias)
+		found, err := node.conversation(alias, page.Number)
+		if err != nil {
+			return nil, err
+		}
+		comments, err := node.marked(marker)
+		if err != nil {
+			return nil, err
 		}
 		conversation := read[page.Number]
 		if conversation == nil {
-			conversation = &Conversation{ID: node.ID, Number: node.Number, Head: node.Head, Base: node.Base, State: node.State, Commentable: !node.Locked}
-			if node.MergedAt != nil {
-				conversation.MergedAt = *node.MergedAt
-			}
+			conversation = &found
 			read[page.Number] = conversation
 		}
-		for _, comment := range node.Comments.Nodes {
-			if !strings.HasPrefix(strings.TrimSpace(comment.Body), marker) {
-				continue
-			}
-			if comment.ID == "" {
-				return nil, fmt.Errorf("gh api graphql response has a comment with no id on #%d", page.Number)
-			}
-			author := ""
-			if comment.Author != nil {
-				author = comment.Author.Login
-			}
-			conversation.Comments = append(conversation.Comments, Comment{ID: comment.ID, Body: comment.Body, Author: author, Editable: comment.Editable})
-		}
+		conversation.Comments = append(conversation.Comments, comments...)
 		if node.Comments.PageInfo.HasNextPage {
 			if node.Comments.PageInfo.EndCursor == "" {
 				return nil, fmt.Errorf("gh api graphql response has another page of comments on #%d and no cursor to it", page.Number)

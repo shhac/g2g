@@ -174,18 +174,17 @@ func classify(in facts) (Step, repair.Note) {
 			},
 		}
 	}
-	if in.State.StateStatus == githubstack.StatusBlocked {
-		if !in.Admin {
-			return Step{}, repair.Note{
-				Reason: fmt.Sprintf("%s is blocked by branch protection, which is what required checks report while they run", pullRequest(branch, open.Number)),
-				Ways: []repair.Step{
-					{Command: "g2g land --admin", Effect: "merge without waiting for them"},
-					{Effect: "wait for the checks and rerun"},
-				},
-			}
+	blocked := in.State.StateStatus == githubstack.StatusBlocked
+	if blocked && !in.Admin {
+		return Step{}, repair.Note{
+			Reason: fmt.Sprintf("%s is blocked by branch protection, which is what required checks report while they run", pullRequest(branch, open.Number)),
+			Ways: []repair.Step{
+				{Command: "g2g land --admin", Effect: "merge without waiting for them"},
+				{Effect: "wait for the checks and rerun"},
+			},
 		}
-		step.Admin = true
 	}
+	step.Admin = blocked
 	return step, repair.Note{}
 }
 

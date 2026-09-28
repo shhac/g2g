@@ -24,28 +24,37 @@ type Command struct {
 func (p Plan) Commands() []Command {
 	commands := make([]Command, 0, len(p.Steps)*4)
 	for _, step := range p.Steps {
-		if step.Merges() {
-			if step.Push {
-				commands = append(commands, Command{
-					Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", step.Branch),
-					Effect:  "publish it as it is here",
-				})
-			}
-			if step.Retargets() {
-				commands = append(commands, Command{
-					Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, step.Base),
-					Effect:  fmt.Sprintf("merge into %s rather than %s", step.Base, step.From),
-				})
-			}
-			commands = append(commands, Command{
-				Command: mergeCommand(step, p.Options),
-				Effect:  fmt.Sprintf("land %s", step.Branch),
-			})
-		}
+		commands = append(commands, p.mergeCommands(step)...)
 		commands = append(commands, p.cleanupCommands(step)...)
 	}
 	commands = append(commands, p.republishCommands()...)
 	return append(commands, p.commentCommands()...)
+}
+
+// mergeCommands are what lands one branch: publishing it, aiming its pull
+// request at the trunk, and the merge. A branch that has already landed has
+// none, only the cleanup after it.
+func (p Plan) mergeCommands(step Step) []Command {
+	if !step.Merges() {
+		return nil
+	}
+	commands := make([]Command, 0, 3)
+	if step.Push {
+		commands = append(commands, Command{
+			Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", step.Branch),
+			Effect:  "publish it as it is here",
+		})
+	}
+	if step.Retargets() {
+		commands = append(commands, Command{
+			Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, step.Base),
+			Effect:  fmt.Sprintf("merge into %s rather than %s", step.Base, step.From),
+		})
+	}
+	return append(commands, Command{
+		Command: mergeCommand(step, p.Options),
+		Effect:  fmt.Sprintf("land %s", step.Branch),
+	})
 }
 
 // republishCommands publish what the syncs replayed above the descent, once,

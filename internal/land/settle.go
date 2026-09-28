@@ -59,14 +59,15 @@ type NotSettled struct {
 }
 
 func (e *NotSettled) Error() string {
-	return fmt.Sprintf("gave up waiting for %s after %d %s", e.What, e.Attempts, attemptWord(e.Attempts))
+	return fmt.Sprintf("gave up waiting for %s after %d %s", e.What, e.Attempts, pick(e.Attempts, "attempt", "attempts"))
 }
 
-func attemptWord(attempts int) string {
-	if attempts == 1 {
-		return "attempt"
+// pick is singular for one and plural otherwise.
+func pick(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
 	}
-	return "attempts"
+	return plural
 }
 
 // settle asks until the answer is yes, the context gives up, or asking fails.
@@ -99,12 +100,7 @@ func settle(ctx context.Context, wait pauser, what string, ask func(context.Cont
 			// point of having two.
 			return &NotSettled{What: what, Attempts: attempts}
 		}
-		if interval < settleMost {
-			interval *= 2
-			if interval > settleMost {
-				interval = settleMost
-			}
-		}
+		interval = min(interval*2, settleMost)
 	}
 }
 

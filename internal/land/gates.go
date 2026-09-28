@@ -133,16 +133,9 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 		})
 	}
 	return repair.Note{
-		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), isAre(len(numbers))),
+		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), pick(len(numbers), "is", "are")),
 		Ways:   ways,
 	}
-}
-
-func isAre(count int) string {
-	if count == 1 {
-		return "is"
-	}
-	return "are"
 }
 
 // heldElsewhere refuses a descent that would move a branch another worktree

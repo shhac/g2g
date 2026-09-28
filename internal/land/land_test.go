@@ -258,6 +258,47 @@ func TestApplyLeavesAnUnpublishedBranchAboveUnpublished(t *testing.T) {
 	}
 }
 
+// A published branch above one that never was cannot be published without
+// publishing that one too, since a push takes the path from the trunk. Finding
+// that out after the first merge stopped the descent part-way; the plan leaves
+// both out instead.
+func TestPlanLeavesOutWhatSitsOnAnUnpublishedBranchAbove(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	w.store.graph.Edges["synthetic-three"] = graph.Edge{Parent: "synthetic-two", ForkPoint: "two-tip"}
+	w.git.local = append(w.git.local, "synthetic-three")
+	w.git.objects["synthetic-three"] = "three-tip"
+	w.git.tips["synthetic-three"] = "three-tip"
+	delete(w.git.tips, "synthetic-two")
+
+	plan := w.plan(t, Defaults())
+	if len(plan.Republish) != 0 {
+		t.Fatalf("Republish = %+v, want nothing above an unpublished branch", plan.Republish)
+	}
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.events.only("push:"); !slices.Equal(got, []string{"push:synthetic-one"}) {
+		t.Errorf("pushes = %v, want only the branch landed", got)
+	}
+}
+
+// A reviewer pushing above between the preview and the apply is refused before
+// anything merges, not found by the publish at the end.
+func TestRevalidationRefusesAMoveAboveTheDescent(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	preview := w.plan(t, Defaults())
+	w.git.tips["synthetic-two"] = "synthetic-reviewer-tip"
+
+	if _, err := w.service.Revalidate(context.Background(), stack.Selection{Scope: shape.ScopeStack}, Defaults(), preview); err == nil {
+		t.Fatal("Revalidate() = nil, want the moved branch above to refuse the descent")
+	}
+	if merges := w.events.only("merge:"); len(merges) != 0 {
+		t.Errorf("merged %v", merges)
+	}
+}
+
 // Somebody pushed onto the branch above while the descent ran. Their work is
 // not overwritten; the descent stands and says it stopped part-way.
 func TestApplyStopsRatherThanOverwriteAReviewersPushAbove(t *testing.T) {

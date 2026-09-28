@@ -341,11 +341,19 @@ func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, r
 	if err != nil {
 		return nil, err
 	}
+	// Publishing a branch pushes its path from the trunk, so one sitting on a
+	// branch that was never published would publish that one too. It is left
+	// out with everything above it, here, rather than refused once something
+	// has already merged.
 	republish := make([]Republish, 0, len(above))
+	reachable := map[string]bool{last: true}
 	for _, branch := range above {
-		if tip := tips[branch]; tip != "" {
-			republish = append(republish, Republish{Branch: branch, RemoteTip: tip})
+		tip := tips[branch]
+		if tip == "" || !reachable[recorded.Edges[branch].Parent] {
+			continue
 		}
+		reachable[branch] = true
+		republish = append(republish, Republish{Branch: branch, RemoteTip: tip})
 	}
 	return republish, nil
 }

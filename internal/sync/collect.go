@@ -21,41 +21,47 @@ import (
 // when both sides moved. Kept apart from the sequencing so the two can be read
 // one at a time, the way land and restack already separate theirs.
 
+// standing is how the base stands against the remote.
+type standing struct {
+	Advance, Supersede, Diverged bool
+	Discards                     []string
+}
+
 // compare asks how the base stands against the remote without changing it.
-func (s Service) compare(ctx context.Context, base, remote string, published map[string]string, take Take) (advance, supersede, diverged bool, discards []string, err error) {
+func (s Service) compare(ctx context.Context, base, remote string, published map[string]string, take Take) (standing, error) {
 	// The base is not on the remote at all, which is ordinary for a local trunk
 	// that was never pushed.
 	if published[base] == "" {
-		return false, false, false, nil, nil
+		return standing{}, nil
 	}
 	fetched := localgit.IsolatedRef(remote, base)
 	local, err := s.Git.Resolve(ctx, base)
 	if err != nil {
-		return false, false, false, nil, err
+		return standing{}, err
 	}
 	upstream, err := s.Git.Resolve(ctx, fetched)
 	if err != nil {
-		return false, false, false, nil, nil
+		return standing{}, nil
 	}
 	if local == upstream {
-		return false, false, false, nil, nil
+		return standing{}, nil
 	}
 	behind, err := s.Git.IsAncestor(ctx, base, fetched)
 	if err != nil {
-		return false, false, false, nil, err
+		return standing{}, err
 	}
 	if behind {
-		return true, false, false, nil, nil
+		return standing{Advance: true}, nil
 	}
 	// A trunk with commits of its own and nothing new upstream has nothing to
 	// advance to. Publishing it is not sync's business, and offering --take
 	// published here offered to discard those commits for no reason at all.
 	ahead, err := s.Git.IsAncestor(ctx, fetched, base)
 	if err != nil {
-		return false, false, false, nil, err
+		return standing{}, err
 	}
 	if ahead {
-		return false, false, false, nil, nil
+		return standing{}, nil
 	}
 	// Neither side is an ancestor of the other, which is what somebody
 	// force-pushing the trunk looks like — usually after rebasing or squashing
@@ -64,15 +70,15 @@ func (s Service) compare(ctx context.Context, base, remote string, published map
 	// remote trunk, local stack replayed onto it.
 	ours, _, err := s.Git.Cherry(ctx, fetched, base, "")
 	if err != nil {
-		return false, false, true, nil, nil
+		return standing{Diverged: true}, nil
 	}
 	if len(ours) == 0 {
-		return false, true, false, nil, nil
+		return standing{Supersede: true}, nil
 	}
 	if take.Published() {
-		return false, true, false, ours, nil
+		return standing{Supersede: true, Discards: ours}, nil
 	}
-	return false, false, true, nil, nil
+	return standing{Diverged: true}, nil
 }
 
 // collect works out which branches of your own the remote has moved on.
@@ -101,106 +107,124 @@ func (s Service) collect(ctx context.Context, remote, base string, branches []st
 	collect := make([]Collection, 0, len(branches))
 	stuck := make([]divergence, 0)
 	for _, branch := range branches {
-		if branch == base || onRemote[branch] == "" {
-			// Not on the remote at all, which is ordinary for work in progress.
-			continue
-		}
-		published, err := s.Git.Resolve(ctx, localgit.IsolatedRef(remote, branch))
-		if err != nil {
-			continue
-		}
-		local, err := s.Git.Resolve(ctx, branch)
+		found, err := s.collectOne(ctx, remote, base, branch, onRemote, take, parents)
 		if err != nil {
 			return nil, nil, err
 		}
-		if local == published {
-			continue
+		if found.collection != nil {
+			collect = append(collect, *found.collection)
 		}
-		behind, err := s.Git.IsAncestor(ctx, branch, published)
-		if err != nil {
-			return nil, nil, err
+		if found.stuck != nil {
+			stuck = append(stuck, *found.stuck)
 		}
-		if behind {
-			collect = append(collect, Collection{Branch: branch, To: published})
-			continue
-		}
-		ahead, err := s.Git.IsAncestor(ctx, published, branch)
-		if err != nil {
-			return nil, nil, err
-		}
-		if ahead {
-			// You have unpublished work. That is push's business, not sync's.
-			continue
-		}
-		// This branch's own work, bounded at its parent as currency is: what is
-		// below the parent is the parent's.
-		parent := parentOrBase(parents, branch, base)
-		ours, _, err := s.Git.Cherry(ctx, published, branch, parent)
-		if err != nil {
-			return nil, nil, err
-		}
-		// The published version is this one reworded or rebuilt in place: it
-		// sits on the parent as it is here, and holds everything of the
-		// branch's own. Taking it is what makes the two the same commits again.
-		//
-		// This used to ask whether the published version held everything
-		// here by content, base and all — which a squash of a one-commit
-		// branch satisfies, because the squash is the same patch as the commit
-		// it replaced. So a branch above a squash-merged one-commit branch,
-		// replayed here and not yet pushed, read as reworded, and the stale
-		// published version was taken over the replay: every descent of
-		// one-commit branches stopped at its second.
-		onParent, err := s.Git.IsAncestor(ctx, parent, published)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(ours) == 0 && onParent {
-			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
-			continue
-		}
-		theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parent)
-		if err != nil {
-			return nil, nil, err
-		}
-		if theirs == 0 {
-			// The published version is this branch before it was replayed here:
-			// everything it has is here by content, and what is here and not
-			// there is the trunk it was replayed onto. That is unpublished work
-			// as surely as an ordinary commit is, so it is push's business too.
-			//
-			// Counted by commit it reads as both sides moving -- the trunk's
-			// commits are "here and not published", and once a parent has been
-			// squashed its original commits are "published and not here" -- so
-			// a second sync before pushing, and every land of three branches
-			// whose bottom one had more than one commit, refused a branch
-			// nobody else had touched. Missing excuses exactly that squashed
-			// run, and nothing else: a reviewer's revert is still theirs.
-			continue
-		}
-		// Both sides hold something the other does not. With none of the
-		// branch's own work left out of the published version, it is taken,
-		// and the replay decides whether it can tell which of that version's
-		// commits are the branch's.
-		if len(ours) == 0 {
-			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true})
-			continue
-		}
-		if take.AppliesTo(branch, parents) {
-			// Asked for explicitly, and the commits it costs are carried so the
-			// preview can name every one before anything happens.
-			collect = append(collect, Collection{Branch: branch, To: published, Superseded: true, Discards: ours})
-			continue
-		}
-		// Both sides moved, so say both. "You have work the remote does not" is
-		// true of every ordinary commit, and a reader who has just made one has
-		// no way to tell that from this.
-		stuck = append(stuck, divergence{Branch: branch, Ours: len(ours), Theirs: theirs})
 	}
 	if len(stuck) != 0 {
 		return nil, stuck, nil
 	}
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
 	return collect, nil, nil
+}
+
+// verdict is what collect decided about one branch: a collection, a
+// divergence, or neither.
+type verdict struct {
+	collection *Collection
+	stuck      *divergence
+}
+
+// collectOne gives one branch one of collect's five answers, each returned
+// where it is decided.
+func (s Service) collectOne(ctx context.Context, remote, base, branch string, onRemote map[string]string, take Take, parents map[string]string) (verdict, error) {
+	if branch == base || onRemote[branch] == "" {
+		// Not on the remote at all, which is ordinary for work in progress.
+		return verdict{}, nil
+	}
+	published, err := s.Git.Resolve(ctx, localgit.IsolatedRef(remote, branch))
+	if err != nil {
+		return verdict{}, nil
+	}
+	local, err := s.Git.Resolve(ctx, branch)
+	if err != nil {
+		return verdict{}, err
+	}
+	if local == published {
+		return verdict{}, nil
+	}
+	behind, err := s.Git.IsAncestor(ctx, branch, published)
+	if err != nil {
+		return verdict{}, err
+	}
+	if behind {
+		return verdict{collection: &Collection{Branch: branch, To: published}}, nil
+	}
+	ahead, err := s.Git.IsAncestor(ctx, published, branch)
+	if err != nil {
+		return verdict{}, err
+	}
+	if ahead {
+		// You have unpublished work. That is push's business, not sync's.
+		return verdict{}, nil
+	}
+	// This branch's own work, bounded at its parent as currency is: what is
+	// below the parent is the parent's.
+	parent := parentOrBase(parents, branch, base)
+	ours, _, err := s.Git.Cherry(ctx, published, branch, parent)
+	if err != nil {
+		return verdict{}, err
+	}
+	// The published version is this one reworded or rebuilt in place: it
+	// sits on the parent as it is here, and holds everything of the
+	// branch's own. Taking it is what makes the two the same commits again.
+	//
+	// This used to ask whether the published version held everything
+	// here by content, base and all — which a squash of a one-commit
+	// branch satisfies, because the squash is the same patch as the commit
+	// it replaced. So a branch above a squash-merged one-commit branch,
+	// replayed here and not yet pushed, read as reworded, and the stale
+	// published version was taken over the replay: every descent of
+	// one-commit branches stopped at its second.
+	onParent, err := s.Git.IsAncestor(ctx, parent, published)
+	if err != nil {
+		return verdict{}, err
+	}
+	if len(ours) == 0 && onParent {
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
+	}
+	theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parent)
+	if err != nil {
+		return verdict{}, err
+	}
+	if theirs == 0 {
+		// The published version is this branch before it was replayed here:
+		// everything it has is here by content, and what is here and not
+		// there is the trunk it was replayed onto. That is unpublished work
+		// as surely as an ordinary commit is, so it is push's business too.
+		//
+		// Counted by commit it reads as both sides moving -- the trunk's
+		// commits are "here and not published", and once a parent has been
+		// squashed its original commits are "published and not here" -- so
+		// a second sync before pushing, and every land of three branches
+		// whose bottom one had more than one commit, refused a branch
+		// nobody else had touched. Missing excuses exactly that squashed
+		// run, and nothing else: a reviewer's revert is still theirs.
+		return verdict{}, nil
+	}
+	// Both sides hold something the other does not. With none of the
+	// branch's own work left out of the published version, it is taken,
+	// and the replay decides whether it can tell which of that version's
+	// commits are the branch's.
+	if len(ours) == 0 {
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
+	}
+	if take.AppliesTo(branch, parents) {
+		// Asked for explicitly, and the commits it costs are carried so the
+		// preview can name every one before anything happens.
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Discards: ours}}, nil
+	}
+	// Both sides moved, so say both. "You have work the remote does not" is
+	// true of every ordinary commit, and a reader who has just made one has
+	// no way to tell that from this.
+	return verdict{stuck: &divergence{Branch: branch, Ours: len(ours), Theirs: theirs}}, nil
 }
 
 // fetchList is the base and the selection, each named once. The base is

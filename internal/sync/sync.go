@@ -191,10 +191,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	for branch, edge := range discovery.Graph.Edges {
 		parents[branch] = edge.Parent
 	}
-	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase, err = s.compare(ctx, plan.Base, remote, published, take)
+	base, err := s.compare(ctx, plan.Base, remote, published, take)
 	if err != nil {
 		return Plan{}, err
 	}
+	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase = base.Advance, base.Supersede, base.Diverged, base.Discards
 	if plan.Diverged {
 		// Same reasoning as a branch: say that both sides moved, not that you
 		// have something the remote does not, which is true of any commit.

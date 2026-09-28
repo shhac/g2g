@@ -41,15 +41,6 @@ type Git interface {
 	UpdateBranch(context.Context, string, string) error
 }
 
-// WorktreeReader reports branches other worktrees have checked out.
-//
-// It is an optional capability rather than a method on Git: every fake in the
-// tests implements Git, and a rewrite that could not ask was safe before this
-// check existed and stays safe now.
-type WorktreeReader interface {
-	CheckedOutElsewhere(ctx context.Context) (map[string]string, error)
-}
-
 // Service rewrites stacks so their contents match their recorded structure.
 type Service struct {
 	Git     Git

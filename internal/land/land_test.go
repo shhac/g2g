@@ -117,6 +117,9 @@ func TestPlanRefusesTheWholeDescentBeforeAnythingMerges(t *testing.T) {
 		"the repository forbids squash merges": func(w *world) {
 			w.github.allowed = githubstack.Allowed{Merge: true}
 		},
+		"a pull request is in a GitHub stack": func(w *world) {
+			w.github.prs[1].StackNumber = 7
+		},
 		"a branch is not approved": func(w *world) {
 			state := w.github.states[41]
 			state.Review = "REVIEW_REQUIRED"
@@ -138,6 +141,27 @@ func TestPlanRefusesTheWholeDescentBeforeAnythingMerges(t *testing.T) {
 				t.Errorf("merged %v while refusing", merges)
 			}
 		})
+	}
+}
+
+// GitHub will not merge a stacked pull request through gh pr merge, so a
+// linked stack stopped at its first merge with nothing changed. The preview
+// says so instead, and names the stack to unlink.
+func TestPlanRefusesAStackLinkedOnGitHubAndNamesTheUnlink(t *testing.T) {
+	w := newWorld(t)
+	w.github.prs[0].StackNumber = 7
+	w.github.prs[1].StackNumber = 7
+
+	plan := w.plan(t, Defaults())
+	if !strings.Contains(plan.Blocked, "#41, #42 are in a GitHub stack") {
+		t.Errorf("Blocked = %q, want it to name the stacked pull requests", plan.Blocked)
+	}
+	want := []repair.Step{{Command: "g2g github unlink --branch synthetic-two --stack-number 7", Effect: "unlink the GitHub stack, keeping its pull requests"}}
+	if !slices.Equal(plan.Repair.Ways, want) {
+		t.Errorf("Ways = %+v, want %+v", plan.Repair.Ways, want)
+	}
+	if len(plan.Steps) != 0 {
+		t.Errorf("Steps = %+v, want none for a refused descent", plan.Steps)
 	}
 }
 

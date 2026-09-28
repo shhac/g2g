@@ -357,6 +357,9 @@ func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Gr
 			return note.Sentence(), note
 		}
 	}
+	if note := linkedOnGitHub(discovery); note.Reason != "" {
+		return note.Sentence(), note
+	}
 	if err := s.Git.Clean(ctx); err != nil {
 		return err.Error(), repair.Note{}
 	}
@@ -377,6 +380,52 @@ func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Gr
 		return synced.Blocked, synced.Repair
 	}
 	return "", repair.Note{}
+}
+
+// linkedOnGitHub refuses a descent through a pull request in a GitHub native
+// stack.
+//
+// GitHub refuses to merge one of those through gh pr merge, and the endpoint it
+// asks for instead merges everything below it in the stack at once, which is
+// not a descent: nothing above would be replayed between merges. Unlinking
+// leaves the pull requests as they are, so it is the way out rather than
+// something land does on its own; were GitHub to accept the ordinary merge,
+// this gate is all there is to remove.
+func linkedOnGitHub(discovery stack.Discovery) repair.Note {
+	resolutions := githubstack.ResolveHeads(discovery.PullRequests)
+	var numbers []string
+	var stacks []int
+	for _, branch := range discovery.Branches {
+		open := resolutions[branch].Open
+		if open == nil || open.StackNumber == 0 {
+			continue
+		}
+		numbers = append(numbers, fmt.Sprintf("#%d", open.Number))
+		if !slices.Contains(stacks, open.StackNumber) {
+			stacks = append(stacks, open.StackNumber)
+		}
+	}
+	if len(stacks) == 0 {
+		return repair.Note{}
+	}
+	ways := make([]repair.Step, 0, len(stacks))
+	for _, number := range stacks {
+		ways = append(ways, repair.Step{
+			Command: fmt.Sprintf("g2g github unlink --branch %s --stack-number %d", discovery.Target, number),
+			Effect:  "unlink the GitHub stack, keeping its pull requests",
+		})
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), isAre(len(numbers))),
+		Ways:   ways,
+	}
+}
+
+func isAre(count int) string {
+	if count == 1 {
+		return "is"
+	}
+	return "are"
 }
 
 // heldElsewhere refuses a descent that would move a branch another worktree

@@ -243,6 +243,21 @@ advanced afterwards, and forgetting it ends a declaration rather than dropping
 an edge. It refuses while anything is still recorded on it. See
 [declared-trunks.md](declared-trunks.md).
 
+## A stack linked on GitHub
+
+GitHub refuses `gh pr merge` on a pull request in one of its native stacks and
+asks for its asynchronous merge endpoint instead, which merges everything below
+the pull request in the stack at once. That is not a descent — nothing above
+would be replayed between merges — so a linked stack is refused in the preview,
+naming `g2g github unlink --branch <target> --stack-number <n>` for each stack
+it meets. Unlinking leaves the pull requests and their bases as they are.
+
+It used to be discovered at the first merge, and `submit` linked every stack it
+opened, so no stack `submit` had published could be landed. `submit` now links
+only with `--link`. The refusal is a gate rather than a rule: if GitHub comes
+to accept the ordinary merge for a stacked pull request, removing it is the
+whole change.
+
 ## Out of scope
 
 Waiting for CI — that is what `--admin` is instead of. Merge queues, which

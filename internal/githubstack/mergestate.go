@@ -39,15 +39,20 @@ func ParseMethod(value string) (Method, error) {
 			return method, nil
 		}
 	}
+	return "", fmt.Errorf("unsupported merge method %q (want %s)", value, strings.Join(MethodNames(), ", "))
+}
+
+// MethodNames is the name of every method, in the order Methods offers them.
+func MethodNames() []string {
 	names := make([]string, 0, len(Methods))
 	for _, method := range Methods {
 		names = append(names, string(method))
 	}
-	return "", fmt.Errorf("unsupported merge method %q (want %s)", value, strings.Join(names, ", "))
+	return names
 }
 
-// flag is the gh flag that selects this method.
-func (m Method) flag() string { return "--" + string(m) }
+// Flag is the gh flag that selects this method.
+func (m Method) Flag() string { return "--" + string(m) }
 
 // The mergeable, mergeStateStatus and reviewDecision values this tool acts on.
 // The enums have more members than these; naming only what is read keeps the
@@ -250,7 +255,7 @@ func (c Client) Merge(ctx context.Context, number int, method Method, admin bool
 	if _, err := ParseMethod(string(method)); err != nil {
 		return err
 	}
-	args := []string{"pr", "merge", strconv.Itoa(number), method.flag()}
+	args := []string{"pr", "merge", strconv.Itoa(number), method.Flag()}
 	if admin {
 		args = append(args, "--admin")
 	}

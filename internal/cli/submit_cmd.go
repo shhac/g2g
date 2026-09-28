@@ -47,7 +47,10 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 	cmd.MarkFlagsMutuallyExclusive("ready", "no-ready")
 	cmd.MarkFlagsMutuallyExclusive("edit", "spec")
 	cmd.MarkFlagsMutuallyExclusive("edit", "write-spec")
-	cmd.Flags().BoolVar(&options.apply, "apply", false, "atomically push, create missing PRs, and link after revalidation")
+	cmd.Flags().BoolVar(&options.apply, "apply", false, "atomically push and create missing PRs after revalidation")
+	// Opt-in because GitHub will not merge a linked pull request through gh pr
+	// merge, which is how g2g land merges each one.
+	cmd.Flags().BoolVar(&options.link, "link", false, "also link the pull requests as a GitHub native stack (g2g land refuses a linked stack)")
 	cmd.Flags().BoolVar(&options.noComment, "no-comment", false, "do not keep the stack comment on each pull request afterwards")
 	return cmd
 }
@@ -58,6 +61,7 @@ type submitOptions struct {
 	// is published, unless noComment.
 	comments  comment.Service
 	noComment bool
+	link      bool
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
 	guard      func(context.Context) error
@@ -136,7 +140,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 }
 
 func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.keepsComments()); err != nil {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.link, o.keepsComments()); err != nil {
 		return err
 	}
 	if plan.Blocked() != "" {
@@ -146,7 +150,7 @@ func (o submitOptions) previewWithoutSpec(cmd *cobra.Command, plan submit.Plan, 
 }
 
 func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p Presentation, template string, draft bool) error {
-	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.keepsComments()); err != nil {
+	if err := writeSubmitPreview(cmd.OutOrStdout(), plan, p, template, draft, o.link, o.keepsComments()); err != nil {
 		return err
 	}
 	// A preview that is already blocked must not close by inviting an apply
@@ -154,7 +158,7 @@ func (o submitOptions) previewWithSpec(cmd *cobra.Command, plan submit.Plan, p P
 	if plan.Blocked() != "" {
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Apply would refuse until that is resolved.")
 	}
-	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+" to push, create missing PRs, and link.")
+	return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" Re-run with --apply"+readyFlag(draft)+linkFlag(o.link)+" to push and create missing PRs.")
 }
 
 func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template string) error {
@@ -176,11 +180,11 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return validated, nil
 		},
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
-			return writeSubmitPreview(w, plan, presentation, template, spec.Draft, o.keepsComments())
+			return writeSubmitPreview(w, plan, presentation, template, spec.Draft, o.link, o.keepsComments())
 		},
 		guard: o.guard,
 		execute: func(ctx context.Context, plan submit.Plan) error {
-			if err := service.Apply(ctx, plan, spec); err != nil {
+			if err := service.Apply(ctx, plan, spec, o.link); err != nil {
 				return err
 			}
 			if o.edit && !o.keepSpec {
@@ -190,8 +194,8 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			selection.Branch = plan.Snapshot.Target
 			return keepComments(ctx, o.comments, o.keepsComments(), selection)
 		},
-		// The pull requests exist and are linked whatever happens to their
-		// comments, so a failure there is not the submission failing.
+		// The pull requests exist, and are linked if asked, whatever happens
+		// to their comments, so a failure there is not the submission failing.
 		interrupted: func(_ context.Context, err error) (bool, error) {
 			return commentsNotKept(cmd, err, p)
 		},
@@ -200,7 +204,7 @@ func (o submitOptions) applyPlan(cmd *cobra.Command, service submit.Service, pre
 			return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
 		},
 		notices: flowNotices{
-			preview:       "Re-run with --apply to push, create missing PRs, and link.",
+			preview:       "Re-run with --apply to push and create missing PRs.",
 			applied:       "Applied — stack published and missing pull requests created",
 			changed:       "Changes were made.",
 			recovery:      fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),

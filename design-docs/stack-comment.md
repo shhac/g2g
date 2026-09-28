@@ -144,7 +144,7 @@ repeats the body back.
 
 `submit` and `land` change which pull requests a stack is made of, so each
 keeps the comments in step as its last act unless `--no-comment` says not to:
-`submit` once the pull requests are opened and linked, `land` on what remains
+`submit` once the pull requests are opened, `land` on what remains
 above the landed branches once the descent is done — which is when the merged
 pull requests become history in those comments. Both say so in their preview,
 `land` as the last step of its recipe.

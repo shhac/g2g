@@ -246,7 +246,14 @@ func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing
 	specPath := filepath.Join(specDir, "submission.json")
 	fillSpecTitles(t, specPath)
 
-	stdout, _, err := run(t, "submit", "--spec", specPath, "--apply")
+	preview, _, err := run(t, "submit", "--spec", specPath, "--link")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(preview, "links them as a GitHub stack") || !strings.Contains(preview, "--apply --link") {
+		t.Errorf("preview does not say it will link, or drops --link from the command it suggests:\n%s", preview)
+	}
+	stdout, _, err := run(t, "submit", "--spec", specPath, "--apply", "--link")
 	if err != nil {
 		t.Fatalf("submit --apply error = %v\n%s", err, stdout)
 	}
@@ -260,6 +267,29 @@ func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing
 	if !strings.Contains(stdout, "Applied") {
 		t.Errorf("submit did not confirm success:\n%s", stdout)
 	}
+}
+
+// GitHub will not merge a linked pull request through gh pr merge, so a stack
+// submit linked was one land could not take down. Without --link it is not
+// linked, and the preview does not say it will be.
+func TestSubmitDoesNotLinkUnlessAsked(t *testing.T) {
+	recorder := fakeRepository(t, "")
+	specDir := t.TempDir()
+	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(specDir, "submission.json")
+	fillSpecTitles(t, specPath)
+
+	stdout, _, err := run(t, "submit", "--spec", specPath, "--apply")
+	if err != nil {
+		t.Fatalf("submit --apply error = %v\n%s", err, stdout)
+	}
+	if strings.Contains(stdout, "GitHub stack") {
+		t.Errorf("submit said it would link:\n%s", stdout)
+	}
+	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create")
+	recorder.AssertNone("gh stack link")
 }
 
 // Once the stack is published and linked, submit keeps the stack comment on
@@ -297,7 +327,7 @@ func TestSubmitKeepsTheStackCommentsUnlessToldNotTo(t *testing.T) {
 				t.Errorf("comment writes = %d, want %d:\n%s", got, test.want, strings.Join(recorder.Calls(), "\n"))
 			}
 			if test.want != 0 {
-				recorder.AssertOrder("gh stack link", "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)
+				recorder.AssertOrder("git push --atomic", "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)
 			}
 		})
 	}

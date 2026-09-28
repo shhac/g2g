@@ -138,8 +138,13 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remo
 }
 
 // Apply publishes all refs atomically, creates only branches with no PR, then
-// links the resulting complete stack. Existing PRs are never retargeted.
-func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
+// links the resulting complete stack when asked to. Existing PRs are never
+// retargeted.
+//
+// Linking is asked for rather than assumed because GitHub will not merge a
+// linked pull request through gh pr merge, which is how g2g land merges each
+// one; a stack submitted and then landed would stop at its first merge.
+func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) error {
 	if blocked := plan.Blocked(); blocked != "" {
 		return fmt.Errorf("submission is blocked by %s", blocked)
 	}
@@ -156,7 +161,7 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec) error {
 	if err := s.createMissingPulls(ctx, plan, spec); err != nil {
 		return err
 	}
-	if len(plan.Snapshot.Branches) < 2 {
+	if !link || len(plan.Snapshot.Branches) < 2 {
 		return nil
 	}
 	return s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches)

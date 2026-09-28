@@ -89,7 +89,7 @@ g2g rename synthetic-better-name --apply
 # The trunk moved: fetch, fast-forward it, replay, and forget what landed.
 g2g pull --prune --apply
 
-# Publish the branches, open missing pull requests as drafts and link them,
+# Publish the branches, open missing pull requests as drafts,
 # fix bases a restack left stale, keep a stack map on each, and check it all.
 g2g push --apply
 g2g submit --edit --apply        # also keeps the stack comments; --no-comment skips
@@ -744,8 +744,11 @@ since the last fetch.
 `g2g submit` is a preview-first publication path for a resolved linear stack.
 With `--apply`, it validates the complete spec, revalidates immediately before
 mutation, performs one atomic lease-protected push, creates only missing PRs
-bottom-to-top as drafts, preserves existing PRs, then links the complete stack
-and keeps the stack comment on each pull request (`--no-comment` skips that).
+bottom-to-top as drafts, preserves existing PRs, and keeps the stack comment on
+each pull request (`--no-comment` skips that). `--link` also links the complete
+stack as a GitHub native stack. That is opt-in because GitHub will not merge a
+linked pull request through `gh pr merge`, which is how `land` merges each one;
+`land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
 Generate a reusable spec outside the repository, fill in each title, validate,
@@ -916,7 +919,7 @@ branch with two open pull requests refuses the run.
 
 `submit` and `land` keep the comments too, as their last act, because they
 change which pull requests the stack is made of: `submit` once the pull
-requests are opened and linked, `land` on what remains above the branches it
+requests are opened, `land` on what remains above the branches it
 landed. Both say so in their preview, and `--no-comment` skips it. If keeping
 the comments fails there, the command's own work stands and it exits `3`,
 naming `g2g github comment --apply`. `push`, `github retarget` and

@@ -139,7 +139,7 @@ func TestSupersededBranchIsSubmittedAgain(t *testing.T) {
 		{Branch: "synthetic/top", Title: "top"},
 	}}
 
-	if err := service.Apply(context.Background(), plan, spec); err != nil {
+	if err := service.Apply(context.Background(), plan, spec, true); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	if got, want := strings.Join(github.created, ","), "synthetic/lower<-main,synthetic/middle<-synthetic/lower,synthetic/top<-synthetic/middle"; got != want {

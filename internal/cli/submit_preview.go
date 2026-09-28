@@ -15,7 +15,7 @@ import (
 // command in this package follows, and which submit was already close to with
 // submit_spec.go and submit_templates.go beside it.
 
-func submitView(plan submit.Plan, template string, draft, comments bool) stackView {
+func submitView(plan submit.Plan, template string, draft, link, comments bool) stackView {
 	view := stackView{
 		Operation:    "submit",
 		Target:       plan.Snapshot.Target,
@@ -49,6 +49,9 @@ func submitView(plan submit.Plan, template string, draft, comments bool) stackVi
 		return view.refusing(plan.Push.Repair.SentenceWith(runnable), plan.Push.Repair)
 	}
 	view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
+	if link && len(plan.Snapshot.Branches) > 1 {
+		view = view.note("Then links them as a GitHub stack · g2g land refuses a linked stack until it is unlinked.", severityNeutral)
+	}
 	if comments {
 		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)
 	}
@@ -73,6 +76,14 @@ func openAsPlural(draft bool) string {
 	return "ready for review"
 }
 
+// linkFlag echoes --link back, as readyFlag does --ready.
+func linkFlag(link bool) string {
+	if link {
+		return " --link"
+	}
+	return ""
+}
+
 // readyFlag echoes the choice back in any command this preview suggests, so a
 // copied command reproduces the run that was previewed.
 func readyFlag(draft bool) string {
@@ -82,8 +93,8 @@ func readyFlag(draft bool) string {
 	return " --ready"
 }
 
-func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string, draft, comments bool) error {
-	return writeStackView(w, submitView(plan, template, draft, comments), p)
+func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template string, draft, link, comments bool) error {
+	return writeStackView(w, submitView(plan, template, draft, link, comments), p)
 }
 
 // existingNumber routes through the shared resolution rather than scanning for

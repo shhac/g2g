@@ -373,7 +373,7 @@ description: |
   Writes are `addComment`/`updateIssueComment` by node id with the body as a
   raw `-f` field; errors must not echo the body. `submit` and `land` keep the
   comments as their last act through `comment.Service.Keep` unless
-  `--no-comment` — `submit` after opening and linking, `land` on the branches
+  `--no-comment` — `submit` after opening them, `land` on the branches
   above what it landed (`land.Plan.Above`, the last recipe step) — and a
   failure there exits `3` with the command's own work standing. `push` never
   keeps them (it must never call `gh`), nor do `github retarget` and
@@ -419,8 +419,11 @@ description: |
   `gt submit`, restack Graphite, or retarget an existing PR. Its `--apply`
   boundary validates/revalidates first, publishes through `push` (and so
   refuses a remote holding work this checkout lacks), creates only missing
-  draft PRs, links the eligible stack, then keeps the stack comments unless
-  `--no-comment`.
+  draft PRs, links the eligible stack only when `--link` asks, then keeps the
+  stack comments unless `--no-comment`. Linking is opt-in because GitHub will
+  not merge a linked pull request through `gh pr merge`; `land` refuses a
+  linked stack in its preview and names `g2g github unlink --branch <target>
+  --stack-number <n>`. Do not make linking the default again.
 - For non-interactive use, create a private temporary directory with
   `g2g submit --write-spec <dir>`, complete `submission.json`, validate with
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec

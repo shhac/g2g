@@ -287,7 +287,7 @@ func TestJourneySubmitPublishesTheRefsItCreatesPullRequestsFor(t *testing.T) {
 			t.Errorf("%s did not reach the remote: local %s, remote %s", branch, local, remote)
 		}
 	}
-	// One pull request per branch, and the stack linked once.
+	// One pull request per branch.
 	if got := strings.Count(strings.Join(recorder.Calls(), "\n"), "pr create"); got != 2 {
 		t.Errorf("created %d pull requests, want one per branch", got)
 	}

@@ -17,7 +17,7 @@ func TestApplyCreatesOnlyMissingPullsBottomToTopThenLinks(t *testing.T) {
 	github := &fakeGitHub{prs: []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11}}}
 	plan := Plan{Snapshot: snapshot(), Remote: "origin", Existing: github.prs}
 	spec := Spec{Version: 1, Draft: true, Pulls: []Pull{{Branch: "synthetic/lower", Title: "lower"}, {Branch: "synthetic/middle", Title: "middle", Body: "body"}, {Branch: "synthetic/top", Title: "top"}}}
-	if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), plan, spec); err != nil {
+	if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), plan, spec, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.Join(github.created, ","); got != "synthetic/middle<-synthetic/lower,synthetic/top<-synthetic/middle" {
@@ -28,11 +28,24 @@ func TestApplyCreatesOnlyMissingPullsBottomToTopThenLinks(t *testing.T) {
 	}
 }
 
+// A linked pull request is one GitHub will not merge through gh pr merge, so
+// land could not take down a stack submit had linked. Linking is asked for.
+func TestApplyLinksOnlyWhenAsked(t *testing.T) {
+	git, github := &fakeGit{}, &fakeGitHub{}
+	spec := Spec{Version: 1, Draft: true, Pulls: []Pull{{Branch: "synthetic/lower", Title: "lower"}, {Branch: "synthetic/middle", Title: "middle"}, {Branch: "synthetic/top", Title: "top"}}}
+	if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec, false); err != nil {
+		t.Fatal(err)
+	}
+	if git.pushes != 1 || len(github.created) != 3 || github.links != 0 {
+		t.Errorf("pushes=%d creates=%d links=%d, want the stack published and not linked", git.pushes, len(github.created), github.links)
+	}
+}
+
 func TestApplyDoesNothingForInvalidOrBlockedPlan(t *testing.T) {
 	for _, plan := range []Plan{{Snapshot: snapshot(), Remote: "origin", Issues: map[string]string{"synthetic/middle": "closed pull request"}}, {Snapshot: snapshot(), Remote: "origin"}} {
 		git, github := &fakeGit{}, &fakeGitHub{}
 		spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower"}, {Branch: "synthetic/middle"}, {Branch: "synthetic/top"}}}
-		if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), plan, spec); err == nil {
+		if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), plan, spec, true); err == nil {
 			t.Fatal("Apply() = nil, want error")
 		}
 		if git.pushes != 0 || len(github.created) != 0 || github.links != 0 {
@@ -44,7 +57,7 @@ func TestApplyDoesNothingForInvalidOrBlockedPlan(t *testing.T) {
 func TestApplyPushFailureCreatesNothing(t *testing.T) {
 	git, github := &fakeGit{pushErr: errors.New("synthetic lease rejection")}, &fakeGitHub{}
 	spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower", Title: "a"}, {Branch: "synthetic/middle", Title: "b"}, {Branch: "synthetic/top", Title: "c"}}}
-	if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec); err == nil {
+	if err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec, true); err == nil {
 		t.Fatal("Apply() = nil")
 	}
 	if len(github.created) != 0 || github.links != 0 {
@@ -56,7 +69,7 @@ func TestApplyStopsOnCreateFailureAndDoesNotLink(t *testing.T) {
 	git := &fakeGit{}
 	github := &fakeGitHub{createErrAt: 2}
 	spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower", Title: "lower"}, {Branch: "synthetic/middle", Title: "middle"}, {Branch: "synthetic/top", Title: "top"}}}
-	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec)
+	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec, true)
 	if err == nil || !strings.Contains(err.Error(), "synthetic create failure") {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -72,7 +85,7 @@ func TestApplyLinkFailureFollowsSuccessfulCreation(t *testing.T) {
 	git := &fakeGit{}
 	github := &fakeGitHub{linkErr: errors.New("synthetic link failure")}
 	spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower", Title: "lower"}, {Branch: "synthetic/middle", Title: "middle"}, {Branch: "synthetic/top", Title: "top"}}}
-	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec)
+	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec, true)
 	if err == nil || !strings.Contains(err.Error(), "synthetic link failure") {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -158,7 +171,7 @@ func TestAnOptionLikeReviewerIsRefusedBeforeThePush(t *testing.T) {
 		{Branch: "synthetic/top", Title: "c"},
 	}}
 
-	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec)
+	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), Plan{Snapshot: snapshot(), Remote: "origin"}, spec, true)
 
 	if err == nil {
 		t.Fatal("Apply() = nil for a reviewer gh would read as an option")
@@ -189,7 +202,7 @@ func TestAPushThatWouldDropRemoteWorkBlocksTheSubmission(t *testing.T) {
 		t.Fatalf("Blocked() = %q, want push's refusal", plan.Blocked())
 	}
 	spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower", Title: "a"}, {Branch: "synthetic/middle", Title: "b"}, {Branch: "synthetic/top", Title: "c"}}}
-	if err := service.Apply(context.Background(), plan, spec); err == nil {
+	if err := service.Apply(context.Background(), plan, spec, true); err == nil {
 		t.Fatal("Apply() published over work the remote has")
 	}
 	if git.pushes != 0 || len(github.created) != 0 {

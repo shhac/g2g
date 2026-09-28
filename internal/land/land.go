@@ -124,6 +124,12 @@ type Plan struct {
 	// remains of the stack afterwards: each is the bottom of a stack on the
 	// trunk once the descent is done.
 	Above []string
+	// Republish is everything above the last branch landed that was already
+	// published, parents first, each with what the remote held when this was
+	// planned. Every sync replays them onto the advanced trunk, and without a
+	// push their pull requests go on showing commits built on a branch that
+	// has merged and gone.
+	Republish []Republish
 	// Protected names the branches whose merge will need --admin once their
 	// own restack has force-pushed them and restarted the required checks
 	// that were green when this was planned. It is said in the preview
@@ -132,6 +138,14 @@ type Plan struct {
 	Protected []string
 	Blocked   string
 	Repair    repair.Note
+}
+
+// Republish is one branch above the descent, to publish once it is over.
+type Republish struct {
+	Branch string
+	// RemoteTip is what the remote held when the descent was planned. A remote
+	// holding anything else is carrying work this descent has not seen.
+	RemoteTip string
 }
 
 // Nothing reports a plan with no branch left to land.
@@ -178,7 +192,8 @@ func (p Plan) Equal(other Plan) bool {
 		p.Declaration == other.Declaration &&
 		p.Blocked == other.Blocked &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
-		slices.Equal(p.Above, other.Above)
+		slices.Equal(p.Above, other.Above) &&
+		slices.Equal(p.Republish, other.Republish)
 }
 
 // sameStep compares everything about a step but how ready it is.
@@ -285,7 +300,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		plan.Steps = append(plan.Steps, decided)
 	}
 	if len(plan.Steps) != 0 {
-		plan.Above = recorded.Children(plan.Steps[len(plan.Steps)-1].Branch)
+		last := plan.Steps[len(plan.Steps)-1].Branch
+		plan.Above = recorded.Children(last)
+		if plan.Republish, err = s.republishing(ctx, recorded, last, options.Remote); err != nil {
+			return Plan{}, err
+		}
 	}
 	blocking := protectedAfterRestack(plan.Steps, mergeability)
 	if !options.Admin {
@@ -307,6 +326,28 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		diagnostic.Field{Key: "blocked", Value: plan.Blocked},
 	)
 	return plan, nil
+}
+
+// republishing is what the syncs will replay above the last branch landed and
+// is already on the remote: the subtree above it, which is what a sync of its
+// stack takes. A branch never published is left unpublished, as push would
+// leave it for anyone who had not asked.
+func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, remote string) ([]Republish, error) {
+	above := recorded.Shape().Subtree(last)[1:]
+	if len(above) == 0 {
+		return nil, nil
+	}
+	tips, err := s.Git.RemoteTips(ctx, remote, above)
+	if err != nil {
+		return nil, err
+	}
+	republish := make([]Republish, 0, len(above))
+	for _, branch := range above {
+		if tip := tips[branch]; tip != "" {
+			republish = append(republish, Republish{Branch: branch, RemoteTip: tip})
+		}
+	}
+	return republish, nil
 }
 
 // blockedBefore is everything that refuses the whole descent before any of it

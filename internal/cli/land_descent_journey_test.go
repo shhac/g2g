@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -405,10 +404,11 @@ func TestJourneyLandStopsForAReviewersCommitMidDescent(t *testing.T) {
 }
 
 // path is land's default scope, and from the middle of a stack it means "as
-// far as here". The branch above is not landed and not published -- its pull
-// request's checks are not restarted for a descent that is not its -- but it is
-// replayed onto the trunk here and recorded there, because the branch it sat
-// on is gone.
+// far as here". The branch above is not landed, but it is replayed onto the
+// trunk and recorded there, because the branch it sat on is gone -- and then
+// published once, after the descent. Left alone, its pull request went on
+// showing a version built on a deleted branch, which GitHub had meanwhile
+// retargeted onto the trunk: checks run against code that will never merge.
 func TestJourneyLandFromTheMiddleStopsWhereItWasAsked(t *testing.T) {
 	w := newWorld(t)
 	threeBranchStack(t, w, "synthetic-b", 2)
@@ -436,13 +436,8 @@ func TestJourneyLandFromTheMiddleStopsWhereItWasAsked(t *testing.T) {
 	if got := len(matching(log, merging("43"))); got != 0 {
 		t.Errorf("#43 was asked to merge %d times:\n%s", got, dump)
 	}
-	if got := w.tip(w.Remote, "refs/heads/synthetic-c"); got != published {
-		t.Errorf("the remote synthetic-c moved from %s to %s during a descent that stopped below it", published[:8], got[:8])
-	}
-	if updates := matching(log, prefixed("ref ")); slices.ContainsFunc(updates, func(index int) bool {
-		return strings.HasSuffix(log[index], " refs/heads/synthetic-c")
-	}) {
-		t.Errorf("the remote synthetic-c was touched at all:\n%s", dump)
+	if got, replayed := w.tip(w.Remote, "refs/heads/synthetic-c"), w.tip(w.Local, "synthetic-c"); got == published || got != replayed {
+		t.Errorf("the remote synthetic-c holds %s, want the replay %s rather than the version before the descent %s", got[:8], replayed[:8], published[:8])
 	}
 
 	// Replayed onto the advanced trunk, carrying its own work and nothing of

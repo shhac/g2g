@@ -48,7 +48,22 @@ func (p Plan) Commands() []Command {
 		}
 		commands = append(commands, p.cleanupCommands(step)...)
 	}
+	commands = append(commands, p.republishCommands()...)
 	return append(commands, p.commentCommands()...)
+}
+
+// republishCommands publish what the syncs replayed above the descent, once,
+// and before the comments are kept, so the map is written about pull requests
+// that already show where their branches now sit.
+func (p Plan) republishCommands() []Command {
+	commands := make([]Command, 0, len(p.Republish))
+	for _, above := range p.Republish {
+		commands = append(commands, Command{
+			Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", above.Branch),
+			Effect:  fmt.Sprintf("publish it, replayed onto %s", p.Trunk),
+		})
+	}
+	return commands
 }
 
 // commentCommands keep the stack comments on what is left, once. Doing it

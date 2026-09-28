@@ -65,6 +65,18 @@ saying out loud: between cycles the branches above are ahead of their pull
 requests, and `g2g github status` reports `head✗` for them. That is the intended
 state, not drift.
 
+**What is left above is published once, when the descent is over**
+(`Plan.Republish`): every branch above the last one landed that was already on
+the remote, parents first, and before the stack comments are kept. Leaving it
+was once deliberate — its checks are not this descent's to restart — and was
+wrong. GitHub moves that pull request onto the trunk when the branch below is
+deleted, so what it goes on showing is a version built on a branch that has
+merged and gone, carrying commits the trunk now holds as a squash: checks
+against code that will never merge, and a diff full of work already landed.
+Each is pinned to the tip the plan saw, exactly as a step's own publish is, so
+a reviewer's push above stops the run part-way rather than being overwritten. A
+branch never published stays that way.
+
 ## Every branch is aimed at the trunk
 
 Not at the branch below it. `githubstack.Along` answers the stacked question —

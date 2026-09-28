@@ -948,7 +948,10 @@ Each branch in turn is published, merged, and then forgotten and deleted, and
 the branches above it are replayed onto the advanced trunk before the next one
 goes. Only the branch about to merge is pushed: republishing the whole stack
 after every merge restarts the checks on every branch above it, which is the
-cost this exists to avoid.
+cost this exists to avoid. What is left above the last branch landed is
+published once at the end, before the stack comments are kept, so its pull
+request shows the replayed version rather than one built on a deleted branch.
+A branch that was never published is left unpublished.
 
 The preview is the recipe. Every line is a command you could run yourself, in
 order, so driving it by hand is a first-class option rather than a fallback:

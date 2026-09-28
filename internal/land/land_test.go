@@ -194,6 +194,91 @@ func TestPlanAimsEveryBranchAtTheTrunk(t *testing.T) {
 	}
 }
 
+// landingTheBottom selects the path to synthetic-one alone, so synthetic-two
+// is left above the descent: replayed by every sync and landed by none.
+func landingTheBottom(w *world) {
+	w.service.Selector = fakeSelector{snapshot: stack.Snapshot{
+		Target:       "synthetic-one",
+		TargetSource: "--branch",
+		Ancestry:     []string{"synthetic-main", "synthetic-one"},
+		Base:         "synthetic-main",
+		Branches:     []string{"synthetic-one"},
+		Scope:        shape.ScopePath,
+		Source:       stack.SourceG2G,
+	}}
+}
+
+// The syncs replay what sits above the landed branch, and a replay nobody
+// publishes leaves its pull request showing commits built on a branch that has
+// merged and gone. It is published once, after the descent, and said in the
+// recipe before the comments are kept.
+func TestApplyPublishesWhatItReplayedAboveTheDescent(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	plan := w.plan(t, Defaults())
+	if want := []Republish{{Branch: "synthetic-two", RemoteTip: "two-tip"}}; !slices.Equal(plan.Republish, want) {
+		t.Fatalf("Republish = %+v, want %+v", plan.Republish, want)
+	}
+	commands := make([]string, 0)
+	for _, command := range plan.Commands() {
+		commands = append(commands, command.Command)
+	}
+	publish := slices.Index(commands, "g2g push --branch synthetic-two --scope path --apply")
+	comment := slices.Index(commands, "g2g github comment --branch synthetic-two --apply")
+	if publish < 0 || comment < publish || publish < slices.Index(commands, "git branch -D synthetic-one") {
+		t.Errorf("recipe does not publish synthetic-two after the descent and before the comments:\n%s", strings.Join(commands, "\n"))
+	}
+
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := w.events.only("push:"), []string{"push:synthetic-one", "push:synthetic-two"}; !slices.Equal(got, want) {
+		t.Errorf("pushes = %v, want %v", got, want)
+	}
+	if w.events.index("push:synthetic-two") < w.events.index("sync:synthetic-one") {
+		t.Errorf("synthetic-two was published before its replay: %v", w.events.seen)
+	}
+}
+
+// A branch above that was never published stays that way: landing publishes
+// what it replayed, not what nobody had asked to publish.
+func TestApplyLeavesAnUnpublishedBranchAboveUnpublished(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	delete(w.git.tips, "synthetic-two")
+	plan := w.plan(t, Defaults())
+	if len(plan.Republish) != 0 {
+		t.Fatalf("Republish = %+v, want nothing", plan.Republish)
+	}
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.events.only("push:synthetic-two"); len(got) != 0 {
+		t.Errorf("published a branch that was never on the remote: %v", got)
+	}
+}
+
+// Somebody pushed onto the branch above while the descent ran. Their work is
+// not overwritten; the descent stands and says it stopped part-way.
+func TestApplyStopsRatherThanOverwriteAReviewersPushAbove(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	plan := w.plan(t, Defaults())
+	w.git.tips["synthetic-two"] = "synthetic-reviewer-tip"
+
+	err := w.service.Apply(context.Background(), plan)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !stopped.PartWay() || stopped.Branch != "synthetic-two" || !slices.Equal(stopped.Landed, []string{"synthetic-one"}) {
+		t.Fatalf("Apply() = %v, want a stop part-way at synthetic-two after landing synthetic-one", err)
+	}
+	if !strings.Contains(err.Error(), "has moved on synthetic-two") {
+		t.Errorf("error = %v, want it to say the remote moved", err)
+	}
+	if got := w.events.only("push:synthetic-two"); len(got) != 0 {
+		t.Errorf("pushed over the reviewer's work: %v", got)
+	}
+}
+
 func TestApplyLandsBottomUpAndTidiesAfterEachBranch(t *testing.T) {
 	w := newWorld(t)
 	plan := w.plan(t, Defaults())

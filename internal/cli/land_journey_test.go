@@ -349,6 +349,53 @@ func TestJourneyLandTakesDownThreeBranchesAboveASeveralCommitBranch(t *testing.T
 	w.assertClean(w.Local)
 }
 
+// Landing only the bottom branch leaves the two above it replayed onto the
+// squashed trunk, and their pull requests were still showing the versions built
+// on the branch that merged and was deleted. They are published once the
+// descent is over. The bottom branch has two commits, so the versions on the
+// remote carry work the trunk now holds as one squash equivalent to neither --
+// the shape push alone would refuse as somebody else's.
+func TestJourneyLandPublishesWhatItReplayedAboveTheDescent(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.commit(w.Local, "synthetic-a", "a-more.txt", "more")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	w.branchOff("synthetic-b", "synthetic-c", "c.txt")
+	for _, edge := range [][2]string{{"synthetic-a", "main"}, {"synthetic-b", "synthetic-a"}, {"synthetic-c", "synthetic-b"}} {
+		mustRun(t, "track", "--branch", edge[0], "--parent", edge[1], "--apply")
+	}
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b", "synthetic-c")
+	w.git(w.Local, "switch", "-q", "synthetic-c")
+	state := landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b", "synthetic-c")
+
+	preview := mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path")
+	for _, branch := range []string{"synthetic-b", "synthetic-c"} {
+		if !strings.Contains(preview, "g2g push --branch "+branch+" --scope path --apply") {
+			t.Errorf("the preview does not say %s will be published:\n%s", branch, preview)
+		}
+	}
+	mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--apply")
+
+	if got := readState(t, state, "pr-41.state"); got != "MERGED" {
+		t.Fatalf("pull request #41 state = %q, want MERGED", got)
+	}
+	for _, number := range []string{"42", "43"} {
+		if got := readState(t, state, "pr-"+number+".state"); got == "MERGED" {
+			t.Errorf("pull request #%s merged, and only the bottom branch was asked for", number)
+		}
+	}
+	trunk := w.tip(w.Remote, "main")
+	for _, branch := range []string{"synthetic-b", "synthetic-c"} {
+		if local, remote := w.tip(w.Local, branch), w.tip(w.Remote, branch); local != remote {
+			t.Errorf("%s was replayed to %s here and the remote still holds %s", branch, local[:8], remote[:8])
+		}
+		if base := strings.TrimSpace(w.git(w.Remote, "merge-base", trunk, branch)); base != trunk {
+			t.Errorf("%s on the remote is not built on the trunk the merge produced", branch)
+		}
+	}
+	w.assertClean(w.Local)
+}
+
 // The recurring failure in this tool has never been a wrong answer. It is a ref
 // moving and the working tree not following, which git then reports as changes
 // nobody made. Landing moves refs and deletes the branch being stood on.

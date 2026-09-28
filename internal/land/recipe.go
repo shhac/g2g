@@ -66,11 +66,20 @@ func (p Plan) republishCommands() []Command {
 	return commands
 }
 
+// KeepsComments reports whether the descent ends by keeping the stack
+// comments on what is left above it. The recipe and the command's tail both
+// ask this, because they answered it separately once and disagreed: a descent
+// that only tidied up after merges made in a browser kept the comments without
+// the preview saying so.
+func (p Plan) KeepsComments() bool {
+	return p.Options.Comment && len(p.Above) != 0
+}
+
 // commentCommands keep the stack comments on what is left, once. Doing it
 // after every merge would edit every comment once per branch for a map that
 // is only true at the end.
 func (p Plan) commentCommands() []Command {
-	if !p.Options.Comment || p.Landing() == 0 {
+	if !p.KeepsComments() {
 		return nil
 	}
 	commands := make([]Command, 0, len(p.Above))

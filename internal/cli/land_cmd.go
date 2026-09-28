@@ -67,7 +67,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 				for _, above := range plan.Above {
 					selections = append(selections, stack.Selection{Branch: above})
 				}
-				return keepComments(ctx, comments, plan.Options.Comment, selections...)
+				return keepComments(ctx, comments, plan.KeepsComments(), selections...)
 			},
 			branches: func(plan land.Plan) int { return plan.Landing() },
 			// Landing waits on GitHub between its calls, so the ordinary

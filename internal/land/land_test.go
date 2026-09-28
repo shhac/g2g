@@ -589,6 +589,37 @@ func TestTheRecipeSyncsAfterEveryBranchAsApplyDoes(t *testing.T) {
 	}
 }
 
+// A descent that only tidies up after merges made in a browser still keeps the
+// comments on what is left, and the recipe says so. The two were once decided
+// apart, and the recipe left the line out while the command wrote them.
+func TestATidyOnlyDescentSaysItKeepsTheComments(t *testing.T) {
+	plan := Plan{
+		Options: Defaults(),
+		Trunk:   "synthetic-main",
+		Steps:   []Step{{Branch: "synthetic-one", Number: 41, Landed: true}},
+		Above:   []string{"synthetic-two"},
+	}
+	if plan.Landing() != 0 || !plan.KeepsComments() {
+		t.Fatalf("Landing() = %d, KeepsComments() = %t, want a tidy-only descent that keeps them", plan.Landing(), plan.KeepsComments())
+	}
+	if recipe := recipeOf(plan); !strings.Contains(recipe, "g2g github comment --branch synthetic-two --apply") {
+		t.Errorf("recipe does not say it keeps the comments:\n%s", recipe)
+	}
+
+	plan.Options.Comment = false
+	if plan.KeepsComments() || strings.Contains(recipeOf(plan), "g2g github comment") {
+		t.Error("--no-comment still keeps the comments")
+	}
+}
+
+func recipeOf(plan Plan) string {
+	recipe := ""
+	for _, command := range plan.Commands() {
+		recipe += command.Command + "\n"
+	}
+	return recipe
+}
+
 func TestCommandsFollowTheCleanupFlags(t *testing.T) {
 	w := newWorld(t)
 	plan := w.plan(t, Options{Remote: "origin", Method: githubstack.MethodRebase, Admin: true})

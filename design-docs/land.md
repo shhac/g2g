@@ -196,6 +196,27 @@ A descent that stopped before merging or tidying anything has not stopped
 part-way; it is "not applied", with the failure status, because exit `3` says
 something was achieved.
 
+## Uncommitted work
+
+Most of a descent never touches the checkout: the merge happens on GitHub, a
+replay that applies cleanly moves refs with `git replay`, and deleting a branch
+that is not checked out needs nothing from the working tree. So uncommitted
+work is refused only where it would be touched, and the refusal says which:
+
+- **Up front**, when the branch checked out here is one the descent moves — the
+  trunk it advances, a branch it replays, or the branch it deletes, which it
+  would first have to switch away from.
+- **Before each replay**, when the replay's own preview found a conflict (or
+  could not be previewed). That is resolved by a rebase in this working tree,
+  which would mix the conflict into somebody's changes. The descent stops
+  part-way with what merged standing and no rebase started, naming the way
+  through: commit, `g2g pull --apply`, rerun `g2g land`, which skips what has
+  already landed.
+
+It used to refuse any dirty tree, which stopped someone landing a lone branch
+while another held work in progress — and stashing is no answer when the stash
+is shared with other worktrees.
+
 ## Cleanup cannot fail a descent
 
 Landing is the act; tidying after it is not. A ref that will not delete is

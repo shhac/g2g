@@ -165,6 +165,78 @@ func TestPlanRefusesAStackLinkedOnGitHubAndNamesTheUnlink(t *testing.T) {
 	}
 }
 
+// A dirty tree is refused up front only where the descent moves the branch
+// checked out here. A lone branch, or a stack whose replays apply cleanly,
+// lands on GitHub and moves refs, and never needs the checkout.
+func TestADirtyTreeIsRefusedOnlyWhereLandingTouchesIt(t *testing.T) {
+	dirty := func(current string, lone bool) *world {
+		w := newWorld(t)
+		landingTheBottom(w)
+		if lone {
+			delete(w.store.graph.Edges, "synthetic-two")
+		}
+		w.git.current = current
+		w.git.dirty = errors.New("working tree is not clean; commit or stash changes before --apply")
+		return w
+	}
+
+	for _, w := range []*world{dirty("synthetic-elsewhere", true), dirty("synthetic-elsewhere", false)} {
+		if plan := w.plan(t, Defaults()); plan.Blocked != "" {
+			t.Fatalf("Blocked = %q, want a descent that need not touch the checkout allowed beside unrelated work in progress", plan.Blocked)
+		}
+	}
+	for name, arrange := range map[string]struct {
+		world *world
+		why   string
+	}{
+		"the branch landing is checked out": {dirty("synthetic-one", true), "synthetic-one is checked out here"},
+		"the trunk is checked out":          {dirty("synthetic-main", true), "synthetic-main is checked out here"},
+		"a branch above is checked out":     {dirty("synthetic-two", false), "synthetic-two is checked out here"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if plan := arrange.world.plan(t, Defaults()); !strings.Contains(plan.Blocked, arrange.why) {
+				t.Errorf("Blocked = %q, want it refused saying %q", plan.Blocked, arrange.why)
+			}
+		})
+	}
+}
+
+// A replay that conflicts is resolved in the working tree, which here holds
+// somebody's uncommitted work. The descent stops before replaying, with what
+// merged standing, rather than mixing a conflict into their changes.
+func TestADescentStopsBeforeAConflictingReplayInADirtyTree(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	w.git.current = "synthetic-elsewhere"
+	w.git.dirty = errors.New("working tree is not clean; commit or stash changes before --apply")
+	w.syncer.conflicting = "synthetic-two"
+	plan := w.plan(t, Defaults())
+	if plan.Blocked != "" {
+		t.Fatalf("Blocked = %q, want the descent planned", plan.Blocked)
+	}
+
+	err := w.service.Apply(context.Background(), plan)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !stopped.PartWay() || !slices.Equal(stopped.Landed, []string{"synthetic-one"}) {
+		t.Fatalf("Apply() = %v, want a stop part-way after landing synthetic-one", err)
+	}
+	if !strings.Contains(err.Error(), "replaying synthetic-two onto synthetic-main conflicts") || !strings.Contains(err.Error(), "g2g pull --apply") {
+		t.Errorf("error = %v, want it to name the replay and the way through", err)
+	}
+	if synced := w.events.only("sync:"); len(synced) != 0 {
+		t.Errorf("replayed anyway: %v", synced)
+	}
+
+	// With nothing uncommitted, the same replay goes ahead: resolving it here
+	// is the ordinary answer.
+	w = newWorld(t)
+	landingTheBottom(w)
+	w.syncer.conflicting = "synthetic-two"
+	if err := w.service.Apply(context.Background(), w.plan(t, Defaults())); err != nil {
+		t.Fatalf("Apply() = %v, want a clean tree to take the conflicting replay", err)
+	}
+}
+
 func TestPlanRefusesToLandFromTheTrunk(t *testing.T) {
 	w := newWorld(t)
 	w.service.Selector = fakeSelector{snapshot: stack.Snapshot{

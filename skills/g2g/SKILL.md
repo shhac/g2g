@@ -149,7 +149,10 @@ description: |
   neither does it wait on CI; the merge wait is answered by ancestry from the
   merge commit, never by watching a tip change, because a colleague's push
   changes that too. It merges nothing until every branch has been found
-  landable. Cleanup never fails a descent. It is not journaled and must not
+  landable. Uncommitted work is refused only where the descent would touch it:
+  up front when the checkout is a branch it moves, and before a replay whose
+  preview conflicts (`restack.Plan.NeedsWorkingTree`), which stops part-way
+  rather than rebasing into somebody's changes. Cleanup never fails a descent. It is not journaled and must not
   become so: re-entrancy comes from recomputation, and `restack` stays the only
   resumable operation.
 - How much of the structure a command means is `--scope`, and it means the same

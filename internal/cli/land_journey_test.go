@@ -403,6 +403,46 @@ func TestJourneyLandPublishesWhatItReplayedAboveTheDescent(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// Landing never needed the checkout for a branch it does not move: the merge
+// happens on GitHub and a replay that applies cleanly moves refs only. It used
+// to refuse any dirty tree, so work in progress on an unrelated branch -- and
+// a stash shared with other worktrees -- stood in the way of landing anything.
+// The descent here merges one branch and replays the one above it, and the
+// uncommitted change on the branch checked out is exactly as it was.
+func TestJourneyLandLeavesUnrelatedWorkInProgressAlone(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	for _, edge := range [][2]string{{"synthetic-a", "main"}, {"synthetic-b", "synthetic-a"}} {
+		mustRun(t, "track", "--branch", edge[0], "--parent", edge[1], "--apply")
+	}
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b")
+	w.branchOff("main", "synthetic-wip", "wip.txt")
+	if err := os.WriteFile(filepath.Join(w.Local, "wip.txt"), []byte("half done\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirty := w.git(w.Local, "status", "--porcelain")
+	state := landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b")
+
+	mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--apply")
+
+	if got := readState(t, state, "pr-41.state"); got != "MERGED" {
+		t.Fatalf("pull request #41 state = %q, want MERGED", got)
+	}
+	if got := strings.TrimSpace(w.git(w.Local, "branch", "--show-current")); got != "synthetic-wip" {
+		t.Errorf("the checkout moved to %q", got)
+	}
+	if got := w.git(w.Local, "status", "--porcelain"); got != dirty {
+		t.Errorf("the work in progress changed from %q to %q", dirty, got)
+	}
+	if content, err := os.ReadFile(filepath.Join(w.Local, "wip.txt")); err != nil || string(content) != "half done\n" {
+		t.Errorf("wip.txt = %q, %v; want the uncommitted change kept", content, err)
+	}
+	if local, remote := w.tip(w.Local, "synthetic-b"), w.tip(w.Remote, "synthetic-b"); local != remote || !w.contains(w.Local, "main", "synthetic-b") {
+		t.Errorf("synthetic-b was not replayed onto the trunk and published: local %s, remote %s", local[:8], remote[:8])
+	}
+}
+
 // The recurring failure in this tool has never been a wrong answer. It is a ref
 // moving and the working tree not following, which git then reports as changes
 // nobody made. Landing moves refs and deletes the branch being stood on.

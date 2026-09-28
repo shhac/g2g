@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
@@ -246,6 +247,9 @@ type fakeSyncer struct {
 	events  *events
 	blocked string
 	nothing bool
+	// conflicting is a replay whose preview found a conflict, so applying it
+	// would need the working tree.
+	conflicting string
 	// selections is what each sync was asked to bring up to date.
 	selections []graph.Selection
 }
@@ -254,6 +258,10 @@ func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string
 	f.selections = append(f.selections, selection)
 	plan := syncer.Plan{Blocked: f.blocked, Base: "synthetic-main", Advance: !f.nothing}
 	plan.Restack.Discovery = graph.Discovery{Target: selection.Branch}
+	if f.conflicting != "" {
+		plan.Restack.Steps = []restack.Step{{Branch: f.conflicting}}
+		plan.Restack.Predicted = true
+	}
 	return plan, nil
 }
 

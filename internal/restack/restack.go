@@ -222,6 +222,14 @@ func (p Plan) inPlace() bool {
 	return p.Clean || len(p.rewriting()) == 0
 }
 
+// NeedsWorkingTree reports a rewrite Apply will do in the user's own working
+// tree: one whose preview found a conflict, or that could not be previewed. A
+// caller that must not touch that tree -- one holding somebody's uncommitted
+// work -- asks this before applying rather than finding out from git.
+func (p Plan) NeedsWorkingTree() bool {
+	return len(p.Steps) != 0 && !p.Absorb && !p.inPlace()
+}
+
 // rewriteInPlace collapses and replays without touching the checkout until the
 // end, and is all or nothing.
 //

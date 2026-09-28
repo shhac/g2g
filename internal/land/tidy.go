@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
@@ -47,6 +49,9 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	if synced.Nothing() {
 		return false, nil
 	}
+	if err := s.replayableHere(ctx, plan, synced.Restack); err != nil {
+		return false, err
+	}
 	if err := s.Syncer.Apply(ctx, synced); err != nil {
 		// A sync that moved branches before failing has changed the stack as
 		// surely as one that finished.
@@ -54,6 +59,24 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 		return errors.As(err, &partial), err
 	}
 	return true, nil
+}
+
+// replayableHere stops a descent whose replay would have to be resolved in a
+// working tree holding somebody's uncommitted work.
+//
+// Most replays apply cleanly and never touch the checkout, so a dirty tree is
+// no reason to refuse a descent up front. One that conflicts falls back to a
+// rebase in this tree, and that is where it would mix a conflict into their
+// changes. Nothing has been replayed yet when this refuses: what has merged
+// stays merged, and pull does the replay once the tree is clean.
+func (s Service) replayableHere(ctx context.Context, plan Plan, replay restack.Plan) error {
+	if !replay.NeedsWorkingTree() {
+		return nil
+	}
+	if err := s.Git.Clean(ctx); err != nil {
+		return fmt.Errorf("replaying %s onto %s conflicts, and resolving that needs this working tree, which has uncommitted changes · commit them, run g2g pull --apply, then rerun g2g land", strings.Join(replay.Branches(), ", "), plan.Trunk)
+	}
+	return nil
 }
 
 // forget reparents what sat on the landed branch, then drops it from the graph.

@@ -29,8 +29,8 @@ func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Gr
 		return sentence, note
 	}
 	discovery, options := plan.Discovery, plan.Options
-	if err := s.Git.Clean(ctx); err != nil {
-		return err.Error(), repair.Note{}
+	if dirty := s.dirtyWhereItMatters(ctx, recorded, discovery.Target, discovery.Base); dirty.Reason != "" {
+		return dirty.Sentence(), dirty
 	}
 	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
 		return held.Sentence(), held
@@ -168,6 +168,47 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, target
 	// stack whatever was selected, because the replay after each merge takes
 	// everything above it.
 	return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+}
+
+// dirtyWhereItMatters refuses uncommitted work only where the descent would
+// touch it.
+//
+// Most of a descent never goes near the checkout: the merge happens on GitHub,
+// a replay that applies cleanly moves refs without it, and deleting a branch
+// that is not checked out needs nothing from it. Refusing every dirty tree
+// stopped someone landing a lone branch while another held work in progress,
+// and stashing it is no answer when the stash is shared with other worktrees.
+// What does touch it is moving the branch checked out here, and a replay that
+// conflicts, which is resolved in this working tree -- found out before each
+// replay rather than guessed here.
+func (s Service) dirtyWhereItMatters(ctx context.Context, recorded graph.Graph, target, base string) repair.Note {
+	why := s.touchesCheckout(ctx, recorded, target, base)
+	if why == "" {
+		return repair.Note{}
+	}
+	if err := s.Git.Clean(ctx); err != nil {
+		return repair.Note{Reason: why + " · " + err.Error(), Ways: []repair.Step{{Effect: "commit the changes, or land from a checkout that has none"}}}
+	}
+	return repair.Note{}
+}
+
+// touchesCheckout says why the descent needs this working tree, empty when it
+// does not.
+func (s Service) touchesCheckout(ctx context.Context, recorded graph.Graph, target, base string) string {
+	branches, err := moving(recorded, target, base)
+	if err != nil {
+		return "which branches landing moves could not be worked out"
+	}
+	current, err := s.Git.CurrentBranch(ctx)
+	if err != nil {
+		return "which branch is checked out here could not be read"
+	}
+	if current != "" && slices.Contains(branches, current) {
+		return fmt.Sprintf("%s is checked out here, and landing moves it", current)
+	}
+	// A replay that conflicts would need the tree too, and is only known once
+	// the merge below it has happened; replayableHere asks then.
+	return ""
 }
 
 // moving is every branch a descent can move: the target's whole stack, and the

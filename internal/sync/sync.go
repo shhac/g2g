@@ -161,36 +161,14 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 
 	// The base and everything selected, in one fetch. Fetching only the base is
 	// what left a reviewer's commit unreachable from here.
-	wanted := fetchList(plan.Base, discovery.Branches)
-	published, err := s.Git.RemoteTips(ctx, remote, wanted)
+	published, err := s.fetch(ctx, remote, fetchList(plan.Base, discovery.Branches))
 	if err != nil {
 		return Plan{}, err
 	}
-	stale, err := s.stale(ctx, remote, wanted, published)
-	if err != nil {
-		return Plan{}, err
+	if note, outside := throughOutside(take, discovery.Branches, plan.Base); outside {
+		return plan.refused(note), nil
 	}
-	if len(stale) != 0 {
-		if err := s.Git.FetchIsolated(ctx, remote, stale); err != nil {
-			return Plan{}, err
-		}
-	}
-	// A boundary naming something outside the selection resolves nothing and
-	// would look exactly like an ordinary refusal, so it is refused itself.
-	if take.Bounded() && !slices.Contains(discovery.Branches, take.Through) && take.Through != plan.Base {
-		plan.Repair = repair.Note{
-			Reason: fmt.Sprintf("--through %s is not in the stack being synced", take.Through),
-			Ways: []repair.Step{
-				{Effect: "name a branch this sync selects, or drop --through to take the whole stack"},
-			},
-		}
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
-	}
-	parents := make(map[string]string, len(discovery.Graph.Edges))
-	for branch, edge := range discovery.Graph.Edges {
-		parents[branch] = edge.Parent
-	}
+	parents := discovery.Graph.Shape().Parents
 	base, err := s.compare(ctx, plan.Base, remote, published, take)
 	if err != nil {
 		return Plan{}, err
@@ -199,12 +177,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if plan.Diverged {
 		// Same reasoning as a branch: say that both sides moved, not that you
 		// have something the remote does not, which is true of any commit.
-		plan.Repair = repair.Note{
+		return plan.refused(repair.Note{
 			Reason: fmt.Sprintf("both sides have moved on %s · it and %s/%s each hold commits the other does not", plan.Base, remote, plan.Base),
 			Ways:   divergenceWays(selection, remote, take, parents, nil),
-		}
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
+		}), nil
 	}
 
 	// The replay is planned against the base as it will be, which is why the
@@ -216,9 +192,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	if len(stuck) != 0 {
-		plan.Repair = repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, remote, take, parents, stuck)}
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
+		return plan.refused(repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, remote, take, parents, stuck)}), nil
 	}
 	plan.Collect = collect
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
@@ -234,12 +208,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// leaf sync's own stack scope is exactly that line — whereas the restack
 	// command restack offers takes a scope sync does not.
 	if len(plan.Restack.Lines) != 0 {
-		ways := make([]repair.Step, 0, len(plan.Restack.Lines))
-		for _, leaf := range plan.Restack.Lines {
-			ways = append(ways, repair.Step{Command: "g2g pull --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
-		}
-		plan.Repair = repair.Note{Reason: plan.Restack.Repair.Reason, Ways: ways}
-		plan.Blocked = plan.Repair.Sentence()
+		plan = plan.refused(repair.Note{Reason: plan.Restack.Repair.Reason, Ways: lineWays(plan.Restack.Lines)})
 	}
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
@@ -247,6 +216,60 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		diagnostic.Field{Key: "replays", Value: strings.Join(plan.Restack.Replaying(), ",")},
 	)
 	return plan, nil
+}
+
+// refused is this plan blocked for the reason note gives, with the sentence a
+// machine reads derived from the same note a person reads.
+func (p Plan) refused(note repair.Note) Plan {
+	p.Repair = note
+	p.Blocked = note.Sentence()
+	return p
+}
+
+// throughOutside refuses a boundary naming something outside the selection. It
+// resolves nothing and would look exactly like an ordinary refusal.
+func throughOutside(take Take, branches []string, base string) (repair.Note, bool) {
+	if !take.Bounded() || slices.Contains(branches, take.Through) || take.Through == base {
+		return repair.Note{}, false
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("--through %s is not in the stack being synced", take.Through),
+		Ways: []repair.Step{
+			{Effect: "name a branch this sync selects, or drop --through to take the whole stack"},
+		},
+	}, true
+}
+
+// lineWays is one pull per line of descent a conflicting replay was split
+// into, each bringing that line up to date alone.
+func lineWays(lines []string) []repair.Step {
+	ways := make([]repair.Step, 0, len(lines))
+	for _, leaf := range lines {
+		ways = append(ways, repair.Step{Command: "g2g pull --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
+	}
+	return ways
+}
+
+// fetch asks the remote which of the wanted branches it has, and brings down
+// the ones g2g's own refs do not already hold at that tip. What the remote has
+// comes back, because whether a branch is published is the remote's answer
+// and never the fetched ref's.
+func (s Service) fetch(ctx context.Context, remote string, wanted []string) (map[string]string, error) {
+	published, err := s.Git.RemoteTips(ctx, remote, wanted)
+	if err != nil {
+		return nil, err
+	}
+	stale, err := s.stale(ctx, remote, wanted, published)
+	if err != nil {
+		return nil, err
+	}
+	if len(stale) == 0 {
+		return published, nil
+	}
+	if err := s.Git.FetchIsolated(ctx, remote, stale); err != nil {
+		return nil, err
+	}
+	return published, nil
 }
 
 // Fetched says what g2g's own fetched refs already hold for each branch, from

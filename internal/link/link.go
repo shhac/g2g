@@ -169,7 +169,7 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Issues = assessPRs(plan.PullRequests, plan.Base, plan.Branches, plan.Parents)
+	plan.Issues = assessPRs(plan.PullRequests, plan.Snapshot)
 	if err := s.markLanded(ctx, plan); err != nil {
 		return Plan{}, err
 	}
@@ -253,9 +253,9 @@ func (left Plan) Equal(right Plan) bool {
 		maps.Equal(left.Currency, right.Currency)
 }
 
-func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []string, parents map[string]string) []Issue {
+func assessPRs(prs []githubstack.PullRequest, snapshot stack.Snapshot) []Issue {
 	issues := make([]Issue, 0)
-	for step := range steps(prs, baseBranch, branches, parents) {
+	for step := range githubstack.Across(snapshot.Shape().Parents, snapshot.Branches, prs) {
 		// link can only project what exists, so a missing pull request blocks
 		// here where it would be ordinary for submit.
 		switch step.Classify() {
@@ -275,23 +275,4 @@ func assessPRs(prs []githubstack.PullRequest, baseBranch string, branches []stri
 		}
 	}
 	return issues
-}
-
-// steps walks the selection the way its shape demands. A path rolls its base;
-// a forked selection takes each branch's base from its recorded parent, because
-// "the branch before this one" stops meaning anything once there are siblings.
-func steps(prs []githubstack.PullRequest, baseBranch string, branches []string, parents map[string]string) func(func(githubstack.PathStep) bool) {
-	if len(parents) != 0 {
-		return githubstack.Across(parents, branches, prs)
-	}
-	return githubstack.Along(baseBranch, branches, prs)
-}
-
-// ownCommitsFrom is where this branch's own work starts: the branch below it in
-// the selection, or the base when nothing is.
-func ownCommitsFrom(plan Plan, branch string) string {
-	if parent, within := plan.ParentOf(branch); within {
-		return parent
-	}
-	return plan.Base
 }

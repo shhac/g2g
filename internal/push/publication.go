@@ -170,16 +170,3 @@ func standingApart(ours, theirs int) Standing {
 		return Diverged
 	}
 }
-
-// parentOf is the branch below this one on the path, which is what a squashed
-// parent's commits would have landed in.
-func parentOf(base string, branches []string, branch string) string {
-	below := base
-	for _, candidate := range branches {
-		if candidate == branch {
-			return below
-		}
-		below = candidate
-	}
-	return base
-}

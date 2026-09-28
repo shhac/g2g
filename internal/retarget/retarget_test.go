@@ -26,6 +26,7 @@ func (fakeSelector) Select(context.Context, stack.Selection, string) (stack.Snap
 		Target:   "synthetic-top",
 		Base:     "synthetic-trunk",
 		Branches: []string{"synthetic-lower", "synthetic-top"},
+		Parents:  map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower"},
 	}, nil
 }
 

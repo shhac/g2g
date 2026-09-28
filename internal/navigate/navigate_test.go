@@ -37,9 +37,6 @@ var forest = shape.Forest{Parents: map[string]string{
 // its trunk as the base, and its edges restricted to the selection.
 type fakeSelector struct {
 	forest shape.Forest
-	// linear leaves Parents empty, as a source that predates forked selection
-	// does, so the order has to carry the structure.
-	linear bool
 	absent []string
 	asked  []stack.Selection
 }
@@ -53,11 +50,7 @@ func (f *fakeSelector) Select(_ context.Context, selection stack.Selection, _ st
 	if err != nil {
 		return stack.Snapshot{}, err
 	}
-	snapshot := stack.Snapshot{Target: selection.Branch, Base: selected[0], Branches: selected[1:], Absent: f.absent, Source: stack.SourceG2G}
-	if !f.linear {
-		snapshot.Parents = f.forest.Restrict(selected)
-	}
-	return snapshot, nil
+	return stack.Snapshot{Target: selection.Branch, Base: selected[0], Branches: selected[1:], Parents: f.forest.Restrict(selected), Absent: f.absent, Source: stack.SourceG2G}, nil
 }
 
 type fakeGit struct {
@@ -161,28 +154,6 @@ func TestAMoveGoesExactlyWhereTheStructureLeadsAndRefusesToChoose(t *testing.T) 
 				t.Errorf("switched to %v, want %v", git.switched, wantSwitched)
 			}
 		})
-	}
-}
-
-// A source that records no edges hands back a chain, and its order is its
-// structure. Walking it must give the same answers as walking the edges.
-func TestALinearSelectionWalksByItsOrder(t *testing.T) {
-	for _, test := range []struct {
-		from, to string
-		move     Direction
-	}{
-		{from: "synthetic-e", to: "synthetic-d", move: Down},
-		{from: "synthetic-e", to: "synthetic-a", move: Bottom},
-		{from: "synthetic-d", to: "synthetic-e", move: Up},
-	} {
-		service := Service{Selector: &fakeSelector{forest: forest, linear: true}, Git: &fakeGit{current: test.from}}
-		move, err := service.Plan(context.Background(), Request{Direction: test.move})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if move.Destination != test.to || move.Blocked != "" {
-			t.Errorf("%s from %s = %q (blocked %q), want %s", test.move, test.from, move.Destination, move.Blocked, test.to)
-		}
 	}
 }
 

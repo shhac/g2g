@@ -128,10 +128,9 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	// A push is of one linear path, so the branch below each is the one before
-	// it and every one stands on the same base.
+	// A push is of one linear path, so every branch stands on the same base.
 	publishing, err := Compare(ctx, s.Git, snapshot.Branches, tips, func(branch string) (string, string) {
-		return parentOf(snapshot.Base, snapshot.Branches, branch), snapshot.Base
+		return snapshot.SitsOn(branch), snapshot.Base
 	})
 	if err != nil {
 		return Plan{}, err

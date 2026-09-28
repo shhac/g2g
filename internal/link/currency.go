@@ -148,7 +148,7 @@ func (s Service) compareWithPullRequest(ctx context.Context, plan Plan, branch, 
 // excludes everything the branch can reach, so what is left is the pull
 // request's own commits and never the base's.
 func (s Service) compare(ctx context.Context, plan Plan, branch, head string) (Currency, error) {
-	ours, _, err := s.Tips.Cherry(ctx, head, branch, ownCommitsFrom(plan, branch))
+	ours, _, err := s.Tips.Cherry(ctx, head, branch, plan.SitsOn(branch))
 	if err != nil {
 		return Currency{}, err
 	}

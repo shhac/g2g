@@ -184,25 +184,12 @@ type outline struct {
 	source  stack.Source
 }
 
-// outlineOf reads a snapshot's edges. A selection that records none is a chain,
-// which is what every source produced before selections could fork, so its
-// order is its structure.
+// outlineOf reads a snapshot's edges. The base is among them as a root, which
+// no walk looks up: descending and finding the bottom both stop on reaching it.
 func outlineOf(snapshot stack.Snapshot) outline {
-	parents := make(map[string]string, len(snapshot.Branches))
-	previous := snapshot.Base
-	for _, branch := range snapshot.Branches {
-		parent, known := snapshot.ParentOf(branch)
-		if !known && len(snapshot.Parents) == 0 {
-			parent, known = previous, true
-		}
-		if known {
-			parents[branch] = parent
-		}
-		previous = branch
-	}
 	return outline{
 		base:    snapshot.Base,
-		parents: parents,
+		parents: snapshot.Shape().Parents,
 		members: append([]string{snapshot.Base}, snapshot.Branches...),
 		absent:  snapshot.Absent,
 		source:  snapshot.Source,

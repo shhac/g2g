@@ -388,10 +388,14 @@ func TestAssessedIssuesCarryTheirKind(t *testing.T) {
 		{Number: 3, Head: "ambiguous", Base: "closed-only", State: "OPEN"},
 		{Number: 4, Head: "ambiguous", Base: "closed-only", State: "OPEN"},
 	}
-	branches := []string{"wrong-base", "closed-only", "ambiguous", "missing"}
+	snapshot := stack.Snapshot{
+		Base:     "main",
+		Branches: []string{"wrong-base", "closed-only", "ambiguous", "missing"},
+		Parents:  map[string]string{"wrong-base": "main", "closed-only": "wrong-base", "ambiguous": "closed-only", "missing": "ambiguous"},
+	}
 
 	kinds := map[string]IssueKind{}
-	for _, issue := range assessPRs(prs, "main", branches, nil) {
+	for _, issue := range assessPRs(prs, snapshot) {
 		kinds[issue.Branch] = issue.Kind
 	}
 

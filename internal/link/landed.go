@@ -42,7 +42,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 		if !s.landed(ctx, plan, branch) {
 			return nil
 		}
-		below := ownCommitsFrom(plan, branch)
+		below := plan.SitsOn(branch)
 		plan.Issues[index] = Issue{
 			Branch: branch,
 			Kind:   IssueLanded,
@@ -61,7 +61,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 // compared, which is an answer rather than a failure, so the only fallible call
 // in here is answered rather than returned.
 func (s Service) landed(ctx context.Context, plan Plan, branch string) bool {
-	below := ownCommitsFrom(plan, branch)
+	below := plan.SitsOn(branch)
 	upstream, err := landed.Into(ctx, s.Tips, below, branch, below)
 	return err == nil && upstream
 }

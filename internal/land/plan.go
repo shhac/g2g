@@ -113,95 +113,38 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 	if plan.declared() && !options.MethodChosen {
 		method, refused := declaredMethod(plan.Declaration)
 		if refused.Reason != "" {
-			plan.Blocked, plan.Repair = refused.Sentence(), refused
-			return plan, nil
+			return plan.refuse(refused), nil
 		}
 		options.Method = method
 		plan.Options = options
 	}
 	if sentence, note := s.blockedBefore(ctx, plan, recorded); sentence != "" {
-		plan.Blocked, plan.Repair = sentence, note
-		return plan, nil
+		return plan.refusedAs(sentence, note), nil
 	}
 
-	numbers := openNumbers(discovery)
-	mergeability, err := s.GitHub.Mergeability(ctx, numbers)
+	mergeability, err := s.GitHub.Mergeability(ctx, openNumbers(discovery))
 	if err != nil {
 		return Plan{}, err
 	}
 	if !mergeability.Allowed.Permits(options.Method) {
-		plan.Repair = repair.Note{
+		return plan.refuse(repair.Note{
 			Reason: fmt.Sprintf("this repository does not allow %s merges", options.Method),
 			Ways:   allowedWays(mergeability.Allowed),
-		}
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
+		}), nil
 	}
-
-	tips, err := s.Git.RemoteTips(ctx, options.Remote, discovery.Branches)
+	steps, refused, err := s.decideSteps(ctx, discovery, options, mergeability)
 	if err != nil {
 		return Plan{}, err
 	}
-	trunks, err := s.trunksToAsk(ctx, discovery, plan.Trunk, options.Remote)
-	if err != nil {
-		return Plan{}, err
+	if refused.Reason != "" {
+		return plan.refuse(refused), nil
 	}
-	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
-		// Landing merges every branch into the trunk, in turn, so that is what
-		// each pull request's base has to be by the time its turn comes -- not
-		// the branch below it, which is where it correctly sits now and which
-		// will not exist by then. Along answers the stacked question, which is
-		// the right one for status and the wrong one for this.
-		step.ExpectedBase = plan.Trunk
-		landed := s.landedIn(ctx, step.Branch, trunks)
-		state := stateFor(mergeability, step)
-		tip, _ := s.Git.Resolve(ctx, step.Branch)
-		decided, note := classify(facts{
-			Step:    step,
-			State:   state,
-			Landed:  landed,
-			Current: tip != "" && tips[step.Branch] == tip,
-			Tip:     tip,
-			Admin:   options.Admin,
-		})
-		if note.Reason != "" {
-			// The whole descent is refused, so there is no partial one to
-			// describe. Keeping the steps decided so far would draw a stack
-			// missing its upper branches and offer a recipe covering some of
-			// them, which reads as the plan rather than as a fragment of one.
-			plan.Repair = note
-			plan.Blocked = note.Sentence()
-			plan.Steps = nil
-			return plan, nil
-		}
-		decided.RemoteTip = tips[step.Branch]
-		if len(plan.Steps) != 0 {
-			// Everything above the bottom branch is replayed onto the advanced
-			// trunk before its turn, which rewrites it, so it will need
-			// publishing however current it looks now.
-			decided.Push = true
-		}
-		plan.Steps = append(plan.Steps, decided)
-	}
+	plan.Steps, plan.Protected = forecastAdmin(steps, protectedAfterRestack(steps, mergeability), options.Admin)
 	if len(plan.Steps) != 0 {
 		last := plan.Steps[len(plan.Steps)-1].Branch
 		plan.Above = recorded.Children(last)
 		if plan.Republish, err = s.republishing(ctx, recorded, last, options.Remote); err != nil {
 			return Plan{}, err
-		}
-	}
-	blocking := protectedAfterRestack(plan.Steps, mergeability)
-	if !options.Admin {
-		plan.Protected = blocking
-	}
-	if options.Admin {
-		// Said where it will be needed, so the preview and the recipe show the
-		// merge that will actually be asked for. Whether it is needed is decided
-		// again when the branch's turn comes; this is the forecast.
-		for index := range plan.Steps {
-			if slices.Contains(blocking, plan.Steps[index].Branch) {
-				plan.Steps[index].Admin = true
-			}
 		}
 	}
 	diagnostic.Event(ctx, "land.plan",
@@ -210,6 +153,79 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		diagnostic.Field{Key: "blocked", Value: plan.Blocked},
 	)
 	return plan, nil
+}
+
+// refuse is the plan refused for note's reason, with no steps.
+//
+// A refused descent keeps none of the steps decided before the refusal:
+// drawing a stack missing its upper branches, with a recipe covering some of
+// them, reads as the plan rather than as a fragment of one.
+func (p Plan) refuse(note repair.Note) Plan { return p.refusedAs(note.Sentence(), note) }
+
+// refusedAs is refuse for a refusal that reached the plan as a sentence,
+// possibly with no structure behind it; see blockedBefore.
+func (p Plan) refusedAs(sentence string, note repair.Note) Plan {
+	p.Blocked, p.Repair, p.Steps = sentence, note, nil
+	return p
+}
+
+// decideSteps decides every branch of the descent in order, or the reason the
+// whole descent is refused.
+func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, options Options, mergeability githubstack.Mergeability) ([]Step, repair.Note, error) {
+	tips, err := s.Git.RemoteTips(ctx, options.Remote, discovery.Branches)
+	if err != nil {
+		return nil, repair.Note{}, err
+	}
+	trunks, err := s.trunksToAsk(ctx, discovery, discovery.Base, options.Remote)
+	if err != nil {
+		return nil, repair.Note{}, err
+	}
+	steps := make([]Step, 0, len(discovery.Branches))
+	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
+		// Landing merges every branch into the trunk, in turn, so that is what
+		// each pull request's base has to be by the time its turn comes -- not
+		// the branch below it, which is where it correctly sits now and which
+		// will not exist by then. Along answers the stacked question, which is
+		// the right one for status and the wrong one for this.
+		step.ExpectedBase = discovery.Base
+		tip, _ := s.Git.Resolve(ctx, step.Branch)
+		decided, note := classify(facts{
+			Step:    step,
+			State:   stateFor(mergeability, step),
+			Landed:  s.landedIn(ctx, step.Branch, trunks),
+			Current: tip != "" && tips[step.Branch] == tip,
+			Tip:     tip,
+			Admin:   options.Admin,
+		})
+		if note.Reason != "" {
+			return nil, note, nil
+		}
+		decided.RemoteTip = tips[step.Branch]
+		// Everything above the bottom branch is replayed onto the advanced
+		// trunk before its turn, which rewrites it, so it will need publishing
+		// however current it looks now.
+		decided.Push = decided.Push || len(steps) != 0
+		steps = append(steps, decided)
+	}
+	return steps, repair.Note{}, nil
+}
+
+// forecastAdmin says which merges will need --admin once their own restack
+// has restarted the checks. Without --admin that is a warning the preview
+// carries (Protected); with it, the mark goes on each step where it will be
+// needed, so the preview and the recipe show the merge that will actually be
+// asked for. Whether it is needed is decided again when the branch's turn
+// comes; this is the forecast.
+func forecastAdmin(steps []Step, blocking []string, admin bool) ([]Step, []string) {
+	if !admin {
+		return steps, blocking
+	}
+	for index := range steps {
+		if slices.Contains(blocking, steps[index].Branch) {
+			steps[index].Admin = true
+		}
+	}
+	return steps, nil
 }
 
 // republishing is what the syncs will replay above the last branch landed and

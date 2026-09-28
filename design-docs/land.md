@@ -110,8 +110,10 @@ parent, never onto "the trunk".
 
 `restack --onto` looks like the tool for this and is not. It was a silent no-op
 in exactly this shape, and flattened a subtree in the other; both were fixed
-before `land` shipped, and `land` still does not use it. One `Graph.Adopt` per
-landed branch is the whole structural act.
+before `land` shipped, and `land` still does not use it. One `Graph.Lift` per
+landed branch is the whole structural act: the first half of `Graph.Remove`,
+which is where the rule for a branch that is going lives, keeping the landed
+branch's edge for `prune` to forget.
 
 ## The two waits
 

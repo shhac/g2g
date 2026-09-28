@@ -1,18 +1,14 @@
-// Package land takes a stack down onto its trunk, one branch at a time.
-//
-// It owns no rules of its own. Publishing, advancing the base, replaying and
-// forgetting are each a service that already exists, already previews, and
-// already refuses the things it knows how to refuse; this decides only the
-// order, waits for GitHub in the two places where acting on a stale answer
-// would merge the wrong thing, and rewrites one edge per branch that lands.
 package land
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
 )
 
 // The wait between attempts, and its ceiling. Short enough that an answer
@@ -110,4 +106,91 @@ func settle(ctx context.Context, wait pauser, what string, ask func(context.Cont
 			}
 		}
 	}
+}
+
+// settlePush waits until GitHub is looking at what was just pushed.
+//
+// Three facts, not one. headRefOid says GitHub has the commit; baseRefName
+// says the merge will go where it is meant to; mergeable says GitHub has
+// finished working out whether it can merge at all, which it reports as
+// UNKNOWN while it thinks. None of them is about CI.
+func (s Service) settlePush(ctx context.Context, step Step, tip string, remote string) error {
+	err := settle(ctx, s.pause, fmt.Sprintf("GitHub to see %s at %s", step.Branch, shortID(tip)), func(ctx context.Context) (bool, error) {
+		state, err := s.state(ctx, step.Number)
+		if err != nil {
+			return false, err
+		}
+		return state.HeadOID == tip && state.Base == step.Base && state.Mergeable != githubstack.MergeableUnknown, nil
+	})
+	var unsettled *NotSettled
+	if !errors.As(err, &unsettled) {
+		return err
+	}
+	// Which of the two failed. "Waiting for GitHub" reads as propagation lag,
+	// and the answer to that is to wait longer -- so a push that never reached
+	// the remote at all sends somebody to raise a timeout that was never the
+	// problem. The remote is one cheap read and it separates them.
+	//
+	// Asked on a context of its own, because the wait only gives up once the
+	// budget has expired, and a read on that context never runs: the diagnosis
+	// existed and could not happen, which only a fake that ignored the context
+	// failed to notice. Bounded, so an unreachable remote cannot hold a command
+	// that has already run out of time.
+	diagnose, cancel := context.WithTimeout(context.WithoutCancel(ctx), diagnoseBudget)
+	defer cancel()
+	tips, readErr := s.Git.RemoteTips(diagnose, remote, []string{step.Branch})
+	if readErr != nil {
+		return err
+	}
+	if published, present := tips[step.Branch]; !present || published != tip {
+		return fmt.Errorf("%s is not on %s at %s (it has %s), so GitHub was never going to see it · the push did not take effect",
+			step.Branch, remote, shortID(tip), describeTip(published))
+	}
+	return err
+}
+
+// describeTip names a tip a remote does not have, so the sentence above reads
+// as a fact either way.
+func describeTip(tip string) string {
+	if tip == "" {
+		return "no such branch"
+	}
+	return shortID(tip)
+}
+
+// settleMerge waits until the merge has reached the base on the remote.
+//
+// By ancestry, never by watching the tip change: a colleague's unrelated push
+// changes it too, and acting on that fetches a base that does not contain this
+// merge and replays the branch above onto it. The merge commit is already in
+// the answer GitHub gives about the merge it just performed.
+func (s Service) settleMerge(ctx context.Context, plan Plan, step Step) error {
+	return settle(ctx, s.pause, fmt.Sprintf("the merge of %s to reach %s", step.Branch, plan.Trunk), func(ctx context.Context) (bool, error) {
+		state, err := s.state(ctx, step.Number)
+		if err != nil {
+			return false, err
+		}
+		if !state.Merged() || state.MergeCommit == "" {
+			return false, nil
+		}
+		if err := s.Git.FetchIsolated(ctx, plan.Options.Remote, []string{plan.Trunk}); err != nil {
+			return false, err
+		}
+		return s.Git.IsAncestor(ctx, state.MergeCommit, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk))
+	})
+}
+
+func (s Service) state(ctx context.Context, number int) (githubstack.MergeState, error) {
+	mergeability, err := s.GitHub.Mergeability(ctx, []int{number})
+	if err != nil {
+		return githubstack.MergeState{}, err
+	}
+	return mergeability.States[number], nil
+}
+
+func shortID(object string) string {
+	if len(object) <= 7 {
+		return object
+	}
+	return object[:7]
 }

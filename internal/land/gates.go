@@ -1,0 +1,180 @@
+package land
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/stack"
+	syncer "github.com/shhac/g2g/internal/sync"
+)
+
+// blockedBefore is everything that refuses the whole descent before any of it
+// is decided branch by branch.
+//
+// Each of these is somebody else's refusal, asked here so it arrives before the
+// first merge rather than after it. A diverged trunk discovered half way down
+// leaves a stack that has partly landed and cannot be replayed.
+//
+// It answers with a sentence as well as the structure behind it, because a
+// refusal that reaches a plan from another one may carry only the sentence:
+// sync sets Blocked straight from the restack it delegates to, with no Repair
+// beside it. Reading the structure alone let exactly that refusal through.
+func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Graph) (string, repair.Note) {
+	discovery, options := plan.Discovery, plan.Options
+	if err := discovery.RequireLinear("land"); err != nil {
+		return err.Error(), repair.Note{}
+	}
+	if err := discovery.RequireActionable("g2g land"); err != nil {
+		return err.Error(), repair.Note{}
+	}
+	if len(discovery.Branches) == 0 {
+		return "nothing is stacked here to land", repair.Note{}
+	}
+	// Landing reads pull requests from whichever source describes the stack and
+	// then replays, reparents and forgets in g2g's own graph. Those are not the
+	// same record. Told to act on a structure g2g has not adopted, it would
+	// merge every pull request and then find nothing to replay and nothing to
+	// forget -- a stack taken apart on GitHub and left untouched here.
+	if discovery.Source != stack.SourceG2G {
+		note := repair.Note{
+			Reason: fmt.Sprintf("this stack is described by %s, and landing rewrites the branches above each merge in g2g's own graph", discovery.Source),
+			Ways: []repair.Step{
+				{Command: "g2g adopt", Effect: "adopt it, so there is a structure to replay against"},
+			},
+		}
+		return note.Sentence(), note
+	}
+	if discovery.Target == discovery.Base {
+		note := repair.Note{
+			Reason: fmt.Sprintf("%s is a trunk, and landing it would merge every branch above it", discovery.Target),
+			Ways:   []repair.Step{{Effect: "stand on the branch you mean to land, or name it with --branch"}},
+		}
+		return note.Sentence(), note
+	}
+	if plan.declared() {
+		if note := declaredRefusal(recorded, discovery.Target); note.Reason != "" {
+			return note.Sentence(), note
+		}
+	}
+	if note := linkedOnGitHub(discovery); note.Reason != "" {
+		return note.Sentence(), note
+	}
+	if err := s.Git.Clean(ctx); err != nil {
+		return err.Error(), repair.Note{}
+	}
+	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
+		return held.Sentence(), held
+	}
+	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote)
+	if err == nil && pushed.Blocked != "" {
+		return pushed.Blocked, pushed.Repair
+	}
+	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, discovery.Target), options.Remote, syncer.TakeNothing)
+	if err != nil && plan.declared() {
+		// Nothing about a base alone makes sync unable to answer, so a failure
+		// here is one the advance after the merge would meet too.
+		return err.Error(), repair.Note{}
+	}
+	if err == nil && synced.Blocked != "" {
+		return synced.Blocked, synced.Repair
+	}
+	return "", repair.Note{}
+}
+
+// linkedOnGitHub refuses a descent through a pull request in a GitHub native
+// stack.
+//
+// GitHub refuses to merge one of those through gh pr merge, and the endpoint it
+// asks for instead merges everything below it in the stack at once, which is
+// not a descent: nothing above would be replayed between merges. Unlinking
+// leaves the pull requests as they are, so it is the way out rather than
+// something land does on its own; were GitHub to accept the ordinary merge,
+// this gate is all there is to remove.
+func linkedOnGitHub(discovery stack.Discovery) repair.Note {
+	resolutions := githubstack.ResolveHeads(discovery.PullRequests)
+	var numbers []string
+	var stacks []int
+	for _, branch := range discovery.Branches {
+		open := resolutions[branch].Open
+		if open == nil || open.StackNumber == 0 {
+			continue
+		}
+		numbers = append(numbers, fmt.Sprintf("#%d", open.Number))
+		if !slices.Contains(stacks, open.StackNumber) {
+			stacks = append(stacks, open.StackNumber)
+		}
+	}
+	if len(stacks) == 0 {
+		return repair.Note{}
+	}
+	ways := make([]repair.Step, 0, len(stacks))
+	for _, number := range stacks {
+		ways = append(ways, repair.Step{
+			Command: fmt.Sprintf("g2g github unlink --branch %s --stack-number %d", discovery.Target, number),
+			Effect:  "unlink the GitHub stack, keeping its pull requests",
+		})
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), isAre(len(numbers))),
+		Ways:   ways,
+	}
+}
+
+func isAre(count int) string {
+	if count == 1 {
+		return "is"
+	}
+	return "are"
+}
+
+// heldElsewhere refuses a descent that would move a branch another worktree
+// has checked out: the trunk it advances, the branches it merges and deletes,
+// and those above it that it replays.
+//
+// Each step's own sync refuses the same thing, but only once there is
+// something to move — after the first merge, which does not come back. Asking
+// sync up front found nothing while the trunk was level, so a descent with the
+// trunk open in another worktree merged its bottom branch and then stopped.
+func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, target, base string) repair.Note {
+	if s.Holds == nil {
+		return repair.Note{}
+	}
+	cannotTell := func(err error) repair.Note {
+		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
+	}
+	branches, err := moving(recorded, target, base)
+	if err != nil {
+		return cannotTell(err)
+	}
+	held, err := s.Holds.HeldElsewhere(ctx, branches)
+	if err != nil {
+		return cannotTell(err)
+	}
+	if held.Reason == "" {
+		return repair.Note{}
+	}
+	// Narrowing the selection is no way out here: a descent moves the whole
+	// stack whatever was selected, because the replay after each merge takes
+	// everything above it.
+	return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+}
+
+// moving is every branch a descent can move: the target's whole stack, and the
+// base it advances. A declared trunk is a root of its own, so its stack does
+// not reach the base it lands into, which is why the base is added rather than
+// assumed.
+func moving(recorded graph.Graph, target, base string) ([]string, error) {
+	branches, err := recorded.Shape().Stack(target)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(branches, base) {
+		branches = append(branches, base)
+	}
+	return branches, nil
+}

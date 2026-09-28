@@ -152,22 +152,16 @@ func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
 			return err
 		}
 	}
-	if err := prose(cmd.OutOrStdout(), p, p.subdued("The pull stands and nothing was forgotten · run "+runnable("g2g prune")+" once that is resolved.")); err != nil {
-		return err
-	}
-	return stoppedPartWay(cause)
+	return writeWhatStands(cmd.OutOrStdout(), p, "The pull stands and nothing was forgotten · run "+runnable("g2g prune")+" once that is resolved.", cause)
 }
 
 // stoppedAfterMoving reports a sync that brought some branches down and then
 // failed without leaving a replay to resume.
 func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentation) error {
-	if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Stopped part-way: "+stopped.Err.Error())); err != nil {
-		return err
-	}
-	if err := prose(cmd.OutOrStdout(), p, p.subdued("Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.")); err != nil {
-		return err
-	}
-	return stoppedPartWay(stopped)
+	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+		"Stopped part-way: "+stopped.Err.Error(),
+		"Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.",
+		stopped)
 }
 
 // stoppedMidSync reports a sequence that got part-way. It deliberately does
@@ -177,9 +171,10 @@ func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentat
 // the prose says. A replay that stopped on a conflict has left the stack
 // part-way through and needs the person back.
 func stoppedMidSync(cmd *cobra.Command, p Presentation) error {
-	_ = prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way."))
-	if err := prose(cmd.OutOrStdout(), p, p.subdued("The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+".")); err != nil {
+	if err := prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way.")); err != nil {
 		return err
 	}
-	return stoppedPartWay(errors.New("the replay stopped part-way"))
+	return writeWhatStands(cmd.OutOrStdout(), p,
+		"The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+".",
+		errors.New("the replay stopped part-way"))
 }

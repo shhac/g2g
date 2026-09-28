@@ -172,23 +172,17 @@ func reshapeInterrupted(writer io.Writer, p Presentation) func(context.Context, 
 	return func(_ context.Context, err error) (bool, error) {
 		var partial *reshape.Partial
 		if errors.As(err, &partial) {
-			if err := prose(writer, p, "\n"+p.problem("Stopped part-way: "+partial.Left+": "+partial.Err.Error())); err != nil {
-				return true, err
-			}
-			if err := prose(writer, p, p.subdued(partial.Done+" · run "+runnable("g2g status")+" to see what is recorded.")); err != nil {
-				return true, err
-			}
-			return true, stoppedPartWay(partial)
+			return true, writeStoppedPartWay(writer, p,
+				"Stopped part-way: "+partial.Left+": "+partial.Err.Error(),
+				partial.Done+" · run "+runnable("g2g status")+" to see what is recorded.",
+				partial)
 		}
 		var rolledBack *reshape.RolledBack
 		if errors.As(err, &rolledBack) && rolledBack.Stuck() {
-			if err := prose(writer, p, "\n"+p.problem("Stopped part-way: "+rolledBack.Error())); err != nil {
-				return true, err
-			}
-			if err := prose(writer, p, p.subdued("Check "+runnable("git status")+" and "+runnable("g2g status")+" before going on.")); err != nil {
-				return true, err
-			}
-			return true, stoppedPartWay(rolledBack)
+			return true, writeStoppedPartWay(writer, p,
+				"Stopped part-way: "+rolledBack.Error(),
+				"Check "+runnable("git status")+" and "+runnable("g2g status")+" before going on.",
+				rolledBack)
 		}
 		return false, nil
 	}

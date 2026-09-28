@@ -43,6 +43,24 @@ func (e stoppedError) Unwrap() error { return e.err }
 // carry what the prose already said.
 func stoppedPartWay(err error) error { return stoppedError{err} }
 
+// writeStoppedPartWay reports a stop part-way: what stopped it, set apart from
+// what came before, then what stands and how to go on.
+func writeStoppedPartWay(w io.Writer, p Presentation, problem, detail string, cause error) error {
+	if err := prose(w, p, "\n"+p.problem(problem)); err != nil {
+		return err
+	}
+	return writeWhatStands(w, p, detail, cause)
+}
+
+// writeWhatStands closes a stop part-way whose problem line is already on the
+// page, for the reports that say it differently or not at all.
+func writeWhatStands(w io.Writer, p Presentation, detail string, cause error) error {
+	if err := prose(w, p, p.subdued(detail)); err != nil {
+		return err
+	}
+	return stoppedPartWay(cause)
+}
+
 func wasStopped(err error) bool {
 	var stopped stoppedError
 	return errors.As(err, &stopped)

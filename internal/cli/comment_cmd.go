@@ -75,13 +75,9 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 
 // stoppedMidComment says which comments were written before the run failed.
 func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, p Presentation) error {
-	writer := cmd.OutOrStdout()
-	if err := prose(writer, p, "\n"+p.problem(fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err))); err != nil {
-		return err
-	}
 	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
-	if err := prose(writer, p, p.subdued(written+" Rerun "+runnable("g2g github comment --apply")+" to finish; it edits rather than adds.")); err != nil {
-		return err
-	}
-	return stoppedPartWay(stopped)
+	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err),
+		written+" Rerun "+runnable("g2g github comment --apply")+" to finish; it edits rather than adds.",
+		stopped)
 }

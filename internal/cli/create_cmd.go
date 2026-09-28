@@ -75,11 +75,8 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 // could not be committed to. What it says is exactly what is true: the branch
 // exists, it is checked out, it is recorded, and the changes are still staged.
 func stoppedMidCreate(writer io.Writer, partial *create.Partial, p Presentation) error {
-	if err := prose(writer, p, "\n"+p.problem("Stopped part-way: the commit failed: "+partial.Err.Error())); err != nil {
-		return err
-	}
-	if err := prose(writer, p, p.subdued(partial.Branch+" is created, checked out and recorded under "+partial.Parent+", and what was staged is still staged · commit it with "+runnable("git commit")+".")); err != nil {
-		return err
-	}
-	return stoppedPartWay(partial)
+	return writeStoppedPartWay(writer, p,
+		"Stopped part-way: the commit failed: "+partial.Err.Error(),
+		partial.Branch+" is created, checked out and recorded under "+partial.Parent+", and what was staged is still staged · commit it with "+runnable("git commit")+".",
+		partial)
 }

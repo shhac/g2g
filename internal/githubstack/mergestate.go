@@ -244,9 +244,6 @@ func parseMergeability(output []byte, numbers []int) (Mergeability, error) {
 // remove the user's own, outside this tool's own guarded ref handling and
 // without previewing it. The two deletions are separate acts and stay separate.
 func (c Client) Merge(ctx context.Context, number int, method Method, admin bool) error {
-	if c.Runner == nil {
-		return fmt.Errorf("GitHub runner is not configured")
-	}
 	if number <= 0 {
 		return fmt.Errorf("pull request number is required")
 	}

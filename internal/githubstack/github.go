@@ -131,9 +131,6 @@ func (e *CommandError) Summary() string {
 func (e *CommandError) Diagnostic() string { return diagnostic.BoundedOutput([]byte(e.Output)) }
 
 func (c Client) Link(ctx context.Context, trunk string, branches []string) error {
-	if c.Runner == nil {
-		return fmt.Errorf("GitHub runner is not configured")
-	}
 	args := append([]string{"stack", "link", "--base", trunk}, branches...)
 	diagnostic.Event(ctx, "github.stack_link", diagnostic.Field{Key: "decision", Value: "invoke"}, diagnostic.Field{Key: "base", Value: trunk}, diagnostic.Field{Key: "branches", Value: strings.Join(branches, ",")})
 	_, err := c.run(ctx, args...)
@@ -143,9 +140,6 @@ func (c Client) Link(ctx context.Context, trunk string, branches []string) error
 // Unstack removes only the GitHub-native stack relationship identified by its
 // GitHub stack number. It does not change branches, PR contents, or Graphite.
 func (c Client) Unstack(ctx context.Context, number int) error {
-	if c.Runner == nil {
-		return fmt.Errorf("GitHub runner is not configured")
-	}
 	if number <= 0 {
 		return fmt.Errorf("GitHub stack number must be positive")
 	}
@@ -165,9 +159,6 @@ func commandError(command string, err error, output []byte) error {
 // how the pull requests are displayed, which is why it is a deliberate command
 // of its own rather than the tail of a restack.
 func (c Client) Retarget(ctx context.Context, number int, base string) error {
-	if c.Runner == nil {
-		return fmt.Errorf("GitHub runner is not configured")
-	}
 	if number <= 0 {
 		return fmt.Errorf("pull request number is required")
 	}

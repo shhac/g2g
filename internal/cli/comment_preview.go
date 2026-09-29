@@ -24,6 +24,9 @@ func commentView(plan comment.Plan) stackView {
 	if len(plan.Merged) != 0 {
 		view = view.note("Merged out of the stack and still listed: "+pullRequestList(plan.Merged), severityNeutral)
 	}
+	if len(plan.Alone) != 0 {
+		view = view.note("A stack listing one pull request gets no stack comment; one is added once the stack lists another.", severityNeutral)
+	}
 	if len(plan.Unread) != 0 {
 		view = view.note("Named by a comment and not read yet, so not listed this time: "+pullRequestList(plan.Unread), severityWarn)
 	}
@@ -61,6 +64,8 @@ func commentNodes(plan comment.Plan) []stackNode {
 		switch {
 		case written && node.PRNumber != 0:
 			node = node.marked(commentMark(write))
+		case slices.Contains(plan.Alone, node.PRNumber):
+			node = node.marked(stackMark{Detail: "no comment · the only pull request in its stack", Severity: severityNeutral})
 		case node.PRNumber != 0:
 			node = node.marked(stackMark{Detail: "no comment kept", Severity: severityNeutral})
 		case plan.Members[branch].State == comment.StateAmbiguous:

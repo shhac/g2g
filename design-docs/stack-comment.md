@@ -137,7 +137,7 @@ run from inside each stack.
 
 | The pull request | Its comment |
 |---|---|
-| open, no comment yet | added, if the stack lists at least two pull requests |
+| open, no comment yet | added, if the stack lists at least two pull requests; otherwise the preview names it as the only one, so it does not read as a write that failed |
 | any, one comment that is out of date | edited |
 | any, one comment already saying this | left alone |
 | merged, no comment | **never added** — nobody is reviewing it, and a new comment notifies everyone who did |

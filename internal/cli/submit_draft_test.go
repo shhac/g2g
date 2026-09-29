@@ -92,3 +92,24 @@ func TestSuggestedCommandCarriesTheReadyChoice(t *testing.T) {
 		t.Errorf("readyFlag(ready) = %q, want \" --ready\"", got)
 	}
 }
+
+// A stack of one pull request gets no stack comment, so a preview promising one
+// on each pull request would leave a reader looking for a write that failed.
+func TestSubmitPreviewSaysAStackOfOneGetsNoComment(t *testing.T) {
+	for _, test := range []struct {
+		branches []string
+		want     string
+	}{
+		{[]string{"synthetic-top"}, "which a stack listing only one pull request does not get"},
+		{[]string{"synthetic-lower", "synthetic-top"}, "Then keeps the stack comment on each pull request"},
+	} {
+		plan := submit.Plan{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-trunk", Branches: test.branches}}
+		var out bytes.Buffer
+		if err := writeSubmitPreview(&out, plan, Presentation{}, "", true, false, true); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), test.want) {
+			t.Errorf("%d branches: preview missing %q:\n%s", len(test.branches), test.want, out.String())
+		}
+	}
+}

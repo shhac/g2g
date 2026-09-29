@@ -14,9 +14,9 @@ import (
 func (k *kept) writes(forest shape.Forest, base line, members map[string]Member, read map[int]githubstack.Conversation, version string) []Write {
 	recorded, merged := k.recorded(), k.merged()
 	history := historyLines(merged, read)
-	// One pull request is not a stack, and a comment saying so is noise. One
-	// already there is kept up to date rather than left saying something false.
-	worthAdding := len(recorded) > 1
+	// One already there is kept up to date rather than left saying something
+	// false.
+	worthAdding := !k.single()
 	writes := make([]Write, 0, len(k.own)+len(merged))
 	for _, branch := range k.branches {
 		m := members[branch]
@@ -35,6 +35,27 @@ func (k *kept) writes(forest shape.Forest, base line, members map[string]Member,
 		}
 	}
 	return writes
+}
+
+// single reports a stack that lists one pull request at most. One pull request
+// is not a stack, and a new comment saying so is noise.
+func (k *kept) single() bool { return len(k.recorded()) < 2 }
+
+// alone are the open pull requests that get no comment because their stack
+// lists nothing else, which a preview says rather than leaving a reader to
+// wonder whether a write failed.
+func (k *kept) alone(members map[string]Member, writes []Write) []int {
+	if !k.single() {
+		return nil
+	}
+	alone := make([]int, 0, 1)
+	for _, branch := range k.branches {
+		m := members[branch]
+		if m.State == StateOpen && !slices.ContainsFunc(writes, func(w Write) bool { return w.Number == m.Number }) {
+			alone = append(alone, m.Number)
+		}
+	}
+	return alone
 }
 
 // decideMerged is what happens to the comment on a pull request that merged

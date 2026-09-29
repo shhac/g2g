@@ -52,7 +52,10 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	if link && len(plan.Snapshot.Branches) > 1 {
 		view = view.note("Then links them as a GitHub stack · g2g land refuses a linked stack until it is unlinked.", severityNeutral)
 	}
-	if comments {
+	switch {
+	case comments && len(plan.Snapshot.Branches) == 1:
+		view = view.note("Then keeps the stack comment, which a stack listing only one pull request does not get · --no-comment skips it.", severityNeutral)
+	case comments:
 		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)
 	}
 	return view

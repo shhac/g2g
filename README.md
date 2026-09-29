@@ -922,7 +922,9 @@ stay listed where they sat, marked merged: each comment records every pull
 request the stack has listed, so the history survives the branch being pruned
 and deleted. A merged pull request
 is never given a new comment, a comment you cannot edit is left alone, and a
-branch with two open pull requests refuses the run.
+branch with two open pull requests refuses the run. A stack that lists only one
+pull request gets no comment, since one pull request is not a stack, and the
+preview says so; one already there is kept up to date.
 
 `submit` and `land` keep the comments too, as their last act, because they
 change which pull requests the stack is made of: `submit` once the pull

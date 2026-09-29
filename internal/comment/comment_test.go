@@ -496,10 +496,16 @@ func TestPlanAddsNothingToAStackOfOne(t *testing.T) {
 	if len(got.Writes) != 0 || !got.NothingToDo() {
 		t.Fatalf("writes = %s, want none", actions(got))
 	}
+	if !slices.Equal(got.Alone, []int{11}) {
+		t.Errorf("Alone = %v, want #11 named as the pull request left without a comment", got.Alone)
+	}
 
 	github = chainGitHub()
 	github.prs = []githubstack.PullRequest{github.prs[0], github.prs[2]}
 	got = plan(t, chain(), "synthetic-one", github)
+	if len(got.Alone) != 0 {
+		t.Errorf("Alone = %v, want none in a stack of two", got.Alone)
+	}
 	if body := bodyFor(t, got, 13); !strings.Contains(body, "- `synthetic-two` · no pull request yet\n") {
 		t.Errorf("a branch with no pull request is not shown:\n%s", body)
 	}
@@ -831,8 +837,8 @@ func TestPlanAddsOnlyWhereThereIsAStackAndKeepsWhatIsThere(t *testing.T) {
 		prs:           []githubstack.PullRequest{pr(11, "synthetic-one", "synthetic-trunk", "OPEN")},
 		conversations: map[int]githubstack.Conversation{11: conversation(11, "synthetic-one", "OPEN", Marker+" stale")},
 	}
-	if got := plan(t, alone, "synthetic-one", github); actions(got) != "#11:update" {
-		t.Errorf("writes = %s, want the existing comment kept up to date", actions(got))
+	if got := plan(t, alone, "synthetic-one", github); actions(got) != "#11:update" || len(got.Alone) != 0 {
+		t.Errorf("writes = %s, Alone = %v; want the existing comment kept up to date", actions(got), got.Alone)
 	}
 
 	github.conversations[11] = conversation(11, "synthetic-one", "OPEN")

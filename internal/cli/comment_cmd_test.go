@@ -33,6 +33,30 @@ func TestCommentPreviewsWithoutWriting(t *testing.T) {
 	recorder.AssertOrder("gh api graphql -F owner={owner} -F name={repo} -f query=query($owner", "gh "+stackCommentsPrefix)
 }
 
+// A stack of one pull request gets no comment, and the preview says so rather
+// than reading as though a comment were already there.
+func TestCommentSaysAStackOfOnePullRequestGetsNone(t *testing.T) {
+	onePullRequest := `{"data":{"repository":{` +
+		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[]},"pr2":{"nodes":[]}}}}`
+	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, onePullRequest)
+
+	stdout, _, err := run(t, "github", "comment")
+	if err != nil {
+		t.Fatalf("comment: %v\n%s", err, stdout)
+	}
+	for _, want := range []string{
+		"no comment · the only pull request in its stack",
+		"A stack listing one pull request gets no stack comment",
+		"No stack comment needs adding or editing.",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("preview missing %q:\n%s", want, stdout)
+		}
+	}
+	recorder.AssertNone("gh " + commentMutationPrefix)
+}
+
 func TestCommentApplyAddsOneCommentToEachPullRequest(t *testing.T) {
 	recorder, _ := g2gOwnedRepository(t, ownedGraph)
 

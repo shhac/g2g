@@ -106,6 +106,9 @@ type Plan struct {
 	Unread []int
 	// Writes are ordered as the stack reads, then the merged pull requests.
 	Writes []Write
+	// Alone are open pull requests left without a comment because their
+	// stack lists no other pull request.
+	Alone []int
 	// Members is each branch's pull request, as the open-is-identity rule
 	// decided it. A renderer reads the number from here rather than working
 	// it out again, which is how a preview came to name a pull request the
@@ -143,6 +146,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Unread, other.Unread) &&
 		slices.Equal(p.Ambiguous, other.Ambiguous) &&
 		slices.Equal(p.Writes, other.Writes) &&
+		slices.Equal(p.Alone, other.Alone) &&
 		maps.Equal(p.Members, other.Members)
 }
 
@@ -161,7 +165,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 		return Plan{}, err
 	}
 	members := classify(discovery)
-	plan := Plan{Discovery: discovery, Requested: requested.Target, RequestedSource: requested.TargetSource, Merged: []int{}, Unread: []int{}, Writes: []Write{}, Members: members, Ambiguous: ambiguous(discovery.Branches, members)}
+	plan := Plan{Discovery: discovery, Requested: requested.Target, RequestedSource: requested.TargetSource, Merged: []int{}, Unread: []int{}, Writes: []Write{}, Alone: []int{}, Members: members, Ambiguous: ambiguous(discovery.Branches, members)}
 	if err := discovery.Snapshot.RequireActionable(command); err != nil {
 		plan.Blocked = err.Error()
 		return plan, nil
@@ -190,7 +194,9 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	for _, kept := range stacks {
 		plan.Merged = append(plan.Merged, kept.merged()...)
 		plan.Unread = append(plan.Unread, kept.unread()...)
-		for _, write := range kept.writes(forest, baseLine(discovery), members, read, s.Version) {
+		writes := kept.writes(forest, baseLine(discovery), members, read, s.Version)
+		plan.Alone = append(plan.Alone, kept.alone(members, writes)...)
+		for _, write := range writes {
 			if write.Historic && written[write.Number] {
 				continue
 			}

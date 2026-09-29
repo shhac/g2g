@@ -60,7 +60,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to write these comments.",
-				noOp:     "Every stack comment already says what the stack is. Nothing to do.",
+				noOp:     "No stack comment needs adding or editing. Nothing to do.",
 				applied:  "Commented.",
 				changed:  "Each pull request now lists its stack.",
 				recovery: "Some comments may already be written · rerun g2g github comment --apply to finish, which edits them rather than adding more.",

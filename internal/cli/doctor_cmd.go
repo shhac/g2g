@@ -30,7 +30,7 @@ func newDoctor(service graph.Service, restacker restack.Service, published push.
 			"that puts it right: a branch whose parent moved, one deleted or renamed with plain git, a parent " +
 			"that is gone, work that has already landed, a restack that stopped part-way, a branch that has " +
 			"diverged from its remote.\n\n" +
-			"It asks nothing of the network. It exits 0 when it finds nothing, and 1 when it finds something.",
+			"It asks nothing of the network. It exits 0 when it finds nothing, 1 when it finds something, and 2 when it could not tell.",
 		Args: cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {

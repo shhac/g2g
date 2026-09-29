@@ -212,17 +212,28 @@ func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 	if adopted.Records(plan.Parent) || plan.Parent == discovery.DefaultTrunk {
 		return plan, false
 	}
-	return plan.refuse(repair.Note{
-		Reason: fmt.Sprintf("%s is not in the g2g graph, so recording %s under it would make %s a trunk", plan.Parent, plan.Name, plan.Parent),
-		Ways: []repair.Step{
-			{Command: "g2g adopt --branch " + plan.Parent, Effect: "record the stack " + plan.Parent + " is on first"},
-			{Effect: "pass --parent with a branch the graph records"},
-			// Nothing here can tell a trunk from a feature branch without
-			// evidence, and the repository did not say. Recording a first branch
-			// by hand is the user saying so, and after it create works here.
-			{Effect: "if " + plan.Parent + " is a trunk, start its first branch with git switch -c and record it with g2g track --parent " + plan.Parent},
-		},
-	}), true
+	return plan.refuse(untrustedParent(plan, discovery.DefaultTrunk == "")), true
+}
+
+// untrustedParent is the refusal for a parent nothing establishes. Where no
+// default branch is known it says so, because that is the evidence that would
+// have let create accept the parent, and without it the refusal reads as
+// arbitrary to someone standing on main in a repository with no remote yet.
+func untrustedParent(plan Plan, unknownDefault bool) repair.Note {
+	reason := fmt.Sprintf("%s is not in the g2g graph, so recording %s under it would make %s a trunk", plan.Parent, plan.Name, plan.Parent)
+	ways := []repair.Step{
+		{Command: "g2g adopt --branch " + plan.Parent, Effect: "record the stack " + plan.Parent + " is on first"},
+		{Effect: "pass --parent with a branch the graph records"},
+	}
+	if unknownDefault {
+		reason = fmt.Sprintf("%s is not in the g2g graph and no default branch is known here, so recording %s under it would make %s a trunk", plan.Parent, plan.Name, plan.Parent)
+		ways = append(ways, repair.Step{Command: "git remote set-head origin --auto", Effect: "if " + plan.Parent + " is origin's default branch, record that here · create then accepts it"})
+	}
+	// Nothing here can tell a trunk from a feature branch without evidence,
+	// and the repository did not say. Recording a first branch by hand is the
+	// user saying so, and after it create works here.
+	ways = append(ways, repair.Step{Effect: "if " + plan.Parent + " is a trunk, start its first branch with git switch -c and record it with g2g track --parent " + plan.Parent})
+	return repair.Note{Reason: reason, Ways: ways}
 }
 
 func refuseCommit(plan Plan) Plan {

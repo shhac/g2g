@@ -136,6 +136,13 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 			blocked: "would make synthetic-stray a trunk", way: "g2g adopt --branch synthetic-stray",
 		},
 		{
+			// The refusal names the evidence that would have let it through.
+			name:    "under an unrecorded branch where no default branch is known",
+			request: Request{Name: "synthetic-new", Parent: "synthetic-stray"},
+			arrange: func(_ *fakeGit, f *fakeGraph) { f.defaultTrunk = "" },
+			blocked: "no default branch is known here", way: "git remote set-head origin --auto",
+		},
+		{
 			// Standing on it is not a different claim: an unrecorded parent
 			// becomes a trunk however it was named.
 			name:    "standing on a branch the graph does not know",
@@ -199,6 +206,19 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 				t.Errorf("repair offers %+v, want %q among them", plan.Repair.Ways, test.way)
 			}
 		})
+	}
+}
+
+// Where the repository already names its default branch, recording one is not
+// a way out, so the refusal does not offer it.
+func TestAKnownDefaultBranchIsNotOfferedAsTheWayOut(t *testing.T) {
+	git, graphs := fixture()
+	plan, err := Service{Git: git, Graph: graphs}.Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-stray"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.Blocked, "set-head") || strings.Contains(plan.Blocked, "no default branch") {
+		t.Errorf("Blocked = %q, want nothing about a default branch the repository already names", plan.Blocked)
 	}
 }
 

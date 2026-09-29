@@ -136,7 +136,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		return actionableSpecError(err, o.specPath)
 	}
 	spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
-	invitation := "Re-run with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs."
+	invitation := "Rerun with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs."
 	return o.flow(cmd, service, plan, spec, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, o.apply)
 }
 
@@ -179,7 +179,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			preview:       invitation,
 			applied:       "Applied — stack published and missing pull requests created",
 			changed:       "Changes were made.",
-			recovery:      fmt.Sprintf("Re-running g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
+			recovery:      fmt.Sprintf("Rerunning g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
 			suggestedNext: "g2g github status",
 		},
 	}

@@ -47,7 +47,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 					return blockedReason(plan)
 				},
 				notices: flowNotices{
-					preview:       "Re-run with --apply to link.",
+					preview:       "Rerun with --apply to link.",
 					noOp:          "No changes were needed or made.",
 					applied:       "Applied — GitHub stack updated",
 					changed:       "Changes were made.",

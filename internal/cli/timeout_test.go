@@ -111,9 +111,9 @@ func firstOf(ctx context.Context, cancel context.CancelFunc) context.Context {
 }
 
 func TestMutationTimeoutExplainsPartialCompletion(t *testing.T) {
-	err := mutationTimeout(context.DeadlineExceeded, "Re-running is safe.")
+	err := mutationTimeout(context.DeadlineExceeded, "Rerunning is safe.")
 
-	for _, want := range []string{"mutation phase", "may have partly completed", "Re-running is safe.", "--timeout"} {
+	for _, want := range []string{"mutation phase", "may have partly completed", "Rerunning is safe.", "--timeout"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err, want)
 		}
@@ -122,7 +122,7 @@ func TestMutationTimeoutExplainsPartialCompletion(t *testing.T) {
 
 func TestMutationTimeoutLeavesOtherErrorsUnchanged(t *testing.T) {
 	cause := errors.New("gh stack link failed: exit status 1")
-	if got := mutationTimeout(cause, "Re-running is safe."); got != cause {
+	if got := mutationTimeout(cause, "Rerunning is safe."); got != cause {
 		t.Fatalf("mutationTimeout rewrote a non-deadline error: %v", got)
 	}
 }

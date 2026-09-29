@@ -62,7 +62,7 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 			},
 			branches: func(plan unlinkPlan) int { return len(plan.Branches) },
 			notices: flowNotices{
-				preview:       "Re-run with --apply to unlink.",
+				preview:       "Rerun with --apply to unlink.",
 				applied:       "Unlinked — GitHub stack relationship removed",
 				changed:       "Branches and pull requests were unchanged.",
 				recovery:      "Run g2g github status to see whether the relationship was removed.",

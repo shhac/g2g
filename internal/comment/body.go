@@ -227,4 +227,4 @@ func revIn(body string) string {
 var revLine = regexp.MustCompile(`^` + regexp.QuoteMeta(Marker) + ` rev=([0-9a-f]{16}) -->$`)
 
 // homepage is where the footer's naming of g2g links to.
-const homepage = "https://g2g.paulie.app"
+const homepage = "https://g2g.foo"

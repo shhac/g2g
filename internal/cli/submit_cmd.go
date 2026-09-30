@@ -131,12 +131,12 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 		// over the default a fresh spec would carry. There is nothing to apply
 		// without one, so this is a preview whatever was asked.
 		draft := resolveDraft(submit.DefaultDraft, o.ready, o.noReady)
-		invitation := "Create a spec with: " + runnable("g2g submit --write-spec <private-temp-dir>"+readyFlag(draft))
+		invitation := "Create a spec with: " + runnable(o.retryCommand("--write-spec", "<private-temp-dir>")+readyFlag(draft))
 		return o.flow(cmd, service, plan, submit.Spec{Draft: draft}, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, false)
 	}
 	spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
 	if err != nil {
-		return actionableSpecError(err, o.specPath)
+		return o.actionableSpecError(err, o.specPath)
 	}
 	spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
 	invitation := "Rerun with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs."
@@ -182,7 +182,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			preview:       invitation,
 			applied:       "Applied — stack published and missing pull requests created",
 			changed:       "Changes were made.",
-			recovery:      fmt.Sprintf("Rerunning g2g submit --spec %s --apply is safe: it preserves existing pull requests and creates only the missing ones.", o.specPath),
+			recovery:      fmt.Sprintf("Rerunning %s is safe: it preserves existing pull requests and creates only the missing ones.", o.retryCommand("--spec", o.specPath, "--apply")),
 			suggestedNext: "g2g github status",
 		},
 	}

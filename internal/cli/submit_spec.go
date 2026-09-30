@@ -31,7 +31,7 @@ func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body st
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote draft submission spec: %s\n", path)
 	// Written straight out rather than through prose, because a machine format
 	// still needs to be told where the document it just asked for went.
-	_, err = fmt.Fprintln(cmd.OutOrStdout(), p.drawCommands("Next: add a title for every PR, then run "+runnable("g2g submit --spec "+path)+" to validate it.", ""))
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), p.drawCommands("Next: add a title for every PR, then run "+runnable(o.retryCommand("--spec", path))+" to validate it.", ""))
 	return err
 }
 
@@ -84,6 +84,32 @@ func editSpec(ctx context.Context, path string) error {
 	return subprocess.RunInteractive(ctx, parts[0], append(parts[1:], path)...)
 }
 
-func actionableSpecError(err error, path string) error {
-	return fmt.Errorf("%w\n\nNext steps:\n  1. Repair %s.\n  2. Validate: g2g submit --spec %s\n  3. Apply: g2g submit --spec %s --apply", err, path, path, path)
+func (o submitOptions) actionableSpecError(err error, path string) error {
+	return fmt.Errorf("%w\n\nNext steps:\n  1. Repair %s.\n  2. Validate: %s\n  3. Apply: %s", err, path, o.retryCommand("--spec", path), o.retryCommand("--spec", path, "--apply"))
+}
+
+// retryCommand keeps the invocation's selection and publication policy intact.
+// A spec carries PR text, not the stack-selection flags that produced it.
+func (o submitOptions) retryCommand(tail ...string) string {
+	args := []string{"g2g", "submit"}
+	for _, flag := range []struct{ name, value string }{
+		{"--branch", o.selection.branch}, {"--trunk", o.selection.trunk},
+		{"--scope", o.selection.scope}, {"--from", o.selection.from}, {"--remote", o.remote},
+	} {
+		if flag.value != "" {
+			args = append(args, flag.name, flag.value)
+		}
+	}
+	for _, flag := range []struct {
+		name string
+		set  bool
+	}{
+		{"--link", o.link}, {"--no-comment", o.noComment}, {"--no-set-upstream", o.noSetUpstream},
+		{"--ready", o.ready}, {"--no-ready", o.noReady},
+	} {
+		if flag.set {
+			args = append(args, flag.name)
+		}
+	}
+	return commandText(append(args, tail...))
 }

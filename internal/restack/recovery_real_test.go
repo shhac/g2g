@@ -176,3 +176,40 @@ func TestSkipAfterASecondConflictFinishesTheDescendant(t *testing.T) {
 	}
 	r.assertClean()
 }
+
+func TestAFreshRestackCannotReplaceAnotherWorktreesJournal(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	r.branch("synthetic-x", "synthetic-main", "x.txt", "synthetic x")
+	r.amend("synthetic-main", "root.txt", "synthetic amended root")
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	before, _, err := r.service.Journal.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "synthetic-other")
+	r.Run("worktree", "add", "-q", other, "synthetic-x")
+	t.Chdir(other)
+	plan := r.plan(graph.Selection{Branch: "synthetic-x", Scope: graph.ScopeStack})
+	if len(plan.Steps) == 0 {
+		t.Fatal("unrelated stack has nothing to replay")
+	}
+	if err := r.service.Apply(ctx, plan); err == nil || !strings.Contains(err.Error(), "already in progress") {
+		t.Fatalf("Apply error = %v, want existing-operation refusal", err)
+	}
+	after, found, err := r.service.Journal.Load(ctx)
+	if err != nil || !found || after.Branch != before.Branch || after.Worktree != before.Worktree {
+		t.Fatalf("existing journal replaced: %+v, %v, %v", after, found, err)
+	}
+	if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
+		t.Fatalf("other worktree changed: %s", status)
+	}
+	t.Chdir(r.Dir)
+	if active, _ := r.client.RebaseInProgress(ctx); !active {
+		t.Fatal("original rebase lost")
+	}
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+}

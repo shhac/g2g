@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -16,6 +17,42 @@ func newJournal(t *testing.T) (FileJournal, string) {
 	t.Helper()
 	common := t.TempDir()
 	return FileJournal{Git: fakeLocator{dir: common}}, common
+}
+
+func TestJournalStartIsExclusiveAcrossConcurrentCallers(t *testing.T) {
+	journal, common := newJournal(t)
+	ctx := context.Background()
+	const callers = 8
+	results := make(chan error, callers)
+	var group sync.WaitGroup
+	for range callers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			results <- journal.Start(ctx, Record{Branch: "synthetic-a"})
+		}()
+	}
+	group.Wait()
+	close(results)
+	successes := 0
+	for err := range results {
+		if err == nil {
+			successes++
+		} else if !strings.Contains(err.Error(), "already in progress") {
+			t.Fatal(err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("%d starts succeeded, want exactly one", successes)
+	}
+	loaded, found, err := journal.Load(ctx)
+	if err != nil || !found || loaded.Branch != "synthetic-a" {
+		t.Fatalf("journal = %+v, %v, %v", loaded, found, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(common, "g2g"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("temporary files leaked: %v, %v", entries, err)
+	}
 }
 
 // Nothing in flight is the ordinary state, not an error.

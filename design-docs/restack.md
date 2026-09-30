@@ -303,6 +303,12 @@ to be rewritten opened in another worktree meanwhile. That is not completion:
 the journal stays and the refusal is reported, so the half-rewritten stack can
 still be continued once the cause is gone, or aborted.
 
+A fresh restack refuses while any journal exists, even on an unrelated stack
+in another worktree. Publishing a new journal is atomic and exclusive: it
+links a fully written temporary file into place, so two simultaneous starts
+cannot replace one another's recovery state. Resumed passes replace their own
+journal atomically as before.
+
 Restoring a tip is a bare ref move, so `--abort` brings the checkout along with
 the branch it is standing on. A user who finished git's own rebase by hand is
 left on a rewritten branch with no rebase in progress, and moving that branch's

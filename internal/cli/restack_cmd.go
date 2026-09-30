@@ -167,6 +167,7 @@ func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter
 func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service, options restackOptions, p Presentation) error {
 	selection := options.selector.Selection()
 	flow := applyFlow[restack.Plan]{
+		guard: restackGuard(service),
 		plan: func(ctx context.Context) (restack.Plan, error) {
 			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb, nil)
 		},

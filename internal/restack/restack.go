@@ -40,6 +40,11 @@ func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto
 // replayed without touching the checkout; anything else takes the resumable
 // engine, which needs the user's working tree and says so first.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
+	if active, err := s.InProgress(ctx); err != nil {
+		return err
+	} else if active {
+		return fmt.Errorf("a restack is already in progress · run g2g restack --continue or g2g restack --abort in the worktree that started it")
+	}
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot restack: %s", plan.Blocked)
 	}
@@ -101,6 +106,11 @@ func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Recor
 		if err != nil {
 			return Record{}, err
 		}
+	}
+	if starter, ok := s.Journal.(interface {
+		Start(context.Context, Record) error
+	}); ok {
+		return record, starter.Start(ctx, record)
 	}
 	return record, s.Journal.Save(ctx, record)
 }

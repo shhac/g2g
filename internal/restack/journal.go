@@ -127,6 +127,17 @@ func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
 // Save writes the record atomically, so an interrupted write cannot leave a
 // half-parsed journal that blocks every later command.
 func (j FileJournal) Save(ctx context.Context, record Record) error {
+	return j.write(ctx, record, false)
+}
+
+// Start publishes a new journal only if none exists. Linking a complete
+// temporary file is atomic and exclusive, unlike check-then-rename; two
+// worktrees starting at once cannot replace each other's recovery state.
+func (j FileJournal) Start(ctx context.Context, record Record) error {
+	return j.write(ctx, record, true)
+}
+
+func (j FileJournal) write(ctx context.Context, record Record, exclusive bool) error {
 	path, err := j.path(ctx)
 	if err != nil {
 		return err
@@ -154,9 +165,19 @@ func (j FileJournal) Save(ctx context.Context, record Record) error {
 		os.Remove(name)
 		return fmt.Errorf("close restack journal: %w", err)
 	}
-	if err := os.Rename(name, path); err != nil {
+	install := os.Rename
+	if exclusive {
+		install = os.Link
+	}
+	if err := install(name, path); err != nil {
 		os.Remove(name)
+		if exclusive && errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("a restack is already in progress · run g2g restack --continue or g2g restack --abort in the worktree that started it")
+		}
 		return fmt.Errorf("replace restack journal: %w", err)
+	}
+	if exclusive {
+		os.Remove(name)
 	}
 	return nil
 }

@@ -78,6 +78,9 @@ func (p Plan) republishCommands() []Command {
 // pushCommand publishes one branch the way the descent does.
 func (p Plan) pushCommand(branch string) string {
 	command := fmt.Sprintf("g2g push --branch %s --scope path", branch)
+	if p.Options.Remote != Defaults().Remote {
+		command += " --remote " + p.Options.Remote
+	}
 	if p.Options.Upstream == localgit.LeaveUpstream {
 		command += " --no-set-upstream"
 	}

@@ -281,6 +281,29 @@ func landingTheBottom(w *world) {
 	}}
 }
 
+// A push line that left out the remote would publish to origin when copied,
+// whichever remote the descent itself publishes to.
+func TestTheRecipePublishesToTheDescentsRemote(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	options := Defaults()
+	options.Remote = "synthetic-fork"
+	plan := w.plan(t, options)
+	pushes := 0
+	for _, command := range plan.Commands() {
+		if !strings.HasPrefix(command.Command, "g2g push ") {
+			continue
+		}
+		pushes++
+		if !strings.Contains(command.Command, " --remote synthetic-fork ") {
+			t.Errorf("recipe line %q does not name the remote", command.Command)
+		}
+	}
+	if pushes == 0 {
+		t.Fatal("recipe has no push to check")
+	}
+}
+
 // The recipe is what someone would run by hand, so a descent that leaves
 // upstreams alone says so on every push it lists, and the push it makes is
 // planned the same way.

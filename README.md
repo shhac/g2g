@@ -1283,6 +1283,17 @@ design doc for the area. Tests use fake executables on `PATH`, or throwaway
 local repositories where the question is what Git itself does, so they need
 neither authentication nor a network connection. Run them with `go test ./...`.
 
+For a fresh full run on a machine with several cores, use
+`bash scripts/test-fast.sh` (four CLI shards, or pass a number from 1 to 16).
+The CLI tests change process-wide cwd and PATH, so they cannot use `t.Parallel`.
+This runner compiles that package once and distributes every top-level test
+across separate processes, keeping subtests together and running the other
+packages through `go test`. Every process ignores the host's global and system
+Git configuration, matching the fixture helpers. It preserves the real-Git
+journeys and reports a failure if any shard fails. CLI shards always run fresh;
+use `go test ./...` when you want Go's cached results or its standard coverage
+and race flags.
+
 | Path | Holds |
 |---|---|
 | `cmd/g2g` | executable entry point |

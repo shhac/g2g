@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
@@ -30,15 +31,21 @@ func pushView(plan push.Plan) stackView {
 }
 
 // pushAction is the git invocation in the shape a reader would type it: the
-// leases collapse to the flag, because the pinned tips are the plan's business
-// and a line of object ids hides what the command does.
+// leases collapse to one flag, because the pinned tips are the plan's business
+// and a line of object ids hides what the command does. Everything else is the
+// invocation itself, so the line cannot name a flag the push does not pass.
 func pushAction(plan push.Plan) []string {
-	action := []string{"git", "push", "--atomic"}
-	if plan.Upstream == localgit.SetUpstream {
-		action = append(action, "--set-upstream")
+	action := []string{"git"}
+	for _, argument := range localgit.PushArguments(plan.Remote, plan.Leases(), plan.Upstream) {
+		if !strings.HasPrefix(argument, "--force-with-lease=") {
+			action = append(action, argument)
+			continue
+		}
+		if action[len(action)-1] != "--force-with-lease" {
+			action = append(action, "--force-with-lease")
+		}
 	}
-	action = append(action, "--force-with-lease", plan.Remote)
-	return append(action, plan.Branches...)
+	return action
 }
 
 // publicationState says what pushing one branch would do. Saying nothing was

@@ -381,6 +381,9 @@ func TestJourneyLandPublishesWhatItReplayedAboveTheDescent(t *testing.T) {
 			t.Errorf("the preview does not say %s will be published:\n%s", branch, preview)
 		}
 	}
+	if kept := mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--no-set-upstream"); !strings.Contains(kept, "g2g push --branch synthetic-b --scope path --no-set-upstream --apply") {
+		t.Errorf("--no-set-upstream does not reach the recipe:\n%s", kept)
+	}
 	mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--apply")
 
 	if got := readState(t, state, "pr-41.state"); got != "MERGED" {
@@ -395,6 +398,9 @@ func TestJourneyLandPublishesWhatItReplayedAboveTheDescent(t *testing.T) {
 	for _, branch := range []string{"synthetic-b", "synthetic-c"} {
 		if local, remote := w.tip(w.Local, branch), w.tip(w.Remote, branch); local != remote {
 			t.Errorf("%s was replayed to %s here and the remote still holds %s", branch, local[:8], remote[:8])
+		}
+		if upstream := strings.TrimSpace(w.git(w.Local, "rev-parse", "--abbrev-ref", branch+"@{upstream}")); upstream != "origin/"+branch {
+			t.Errorf("%s tracks %q after it was published, want origin/%s", branch, upstream, branch)
 		}
 		if base := strings.TrimSpace(w.git(w.Remote, "merge-base", trunk, branch)); base != trunk {
 			t.Errorf("%s on the remote is not built on the trunk the merge produced", branch)

@@ -499,3 +499,11 @@ func TestABranchThatSquashMergedIsNotOfferedForRepublication(t *testing.T) {
 		t.Errorf("Publishing[lower] = %+v, want the unlanded branches unaffected", plan.Publishing["lower"])
 	}
 }
+
+// The preview is what was approved, so a push planned to set upstreams is a
+// different push from one planned to leave them.
+func TestPlansThatDifferOnlyInUpstreamAreNotEqual(t *testing.T) {
+	if (Plan{Upstream: localgit.SetUpstream}).Equal(Plan{Upstream: localgit.LeaveUpstream}) {
+		t.Error("plans differing only in Upstream compare equal")
+	}
+}

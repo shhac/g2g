@@ -295,6 +295,23 @@ func TestSubmitDoesNotLinkUnlessAsked(t *testing.T) {
 	recorder.AssertNone("gh stack link")
 }
 
+func TestSubmitNoSetUpstreamPushesWithoutIt(t *testing.T) {
+	recorder := fakeRepository(t, "")
+	specDir := t.TempDir()
+	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(specDir, "submission.json")
+	fillSpecTitles(t, specPath)
+
+	stdout, _, err := run(t, "submit", "--spec", specPath, "--no-set-upstream", "--apply")
+	if err != nil {
+		t.Fatalf("submit --apply error = %v\n%s", err, stdout)
+	}
+	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create")
+	recorder.AssertNone("git push --atomic --set-upstream")
+}
+
 // Once the stack is published and linked, submit keeps the stack comment on
 // each pull request, after everything else, and --no-comment leaves them.
 func TestSubmitKeepsTheStackCommentsUnlessToldNotTo(t *testing.T) {

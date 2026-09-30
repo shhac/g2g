@@ -91,6 +91,11 @@ func TestRecoveryReconcilesAnInterruptedBareRefMove(t *testing.T) {
 			t.Run(verb+map[bool]string{false: "/stale-index", true: "/updated-index"}[resettled], func(t *testing.T) {
 				r := newRealStack(t)
 				ctx := context.Background()
+				if supported, err := r.client.SupportsReplay(ctx); err != nil {
+					t.Fatal(err)
+				} else if !supported {
+					t.Skip("this Git is below the verified replay baseline")
+				}
 				r.branch("synthetic-a", "synthetic-main", "a.txt", "synthetic a")
 				original := r.Revision("synthetic-a")
 				r.Run("switch", "-q", "synthetic-main")
@@ -212,4 +217,47 @@ func TestAFreshRestackCannotReplaceAnotherWorktreesJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.assertClean()
+}
+
+// A collapse is the other bare-ref engine and needs no git replay support.
+func TestRecoveryReconcilesAnInterruptedCollapse(t *testing.T) {
+	for _, verb := range []string{"continue", "abort"} {
+		t.Run(verb, func(t *testing.T) {
+			r := newRealStack(t)
+			ctx := context.Background()
+			r.branch("synthetic-a", "synthetic-main", "a.txt", "synthetic a")
+			original := r.Revision("synthetic-a")
+			r.Run("switch", "-q", "synthetic-main")
+			r.Run("merge", "-q", "--squash", "synthetic-a")
+			r.Run("commit", "-qm", "synthetic squash")
+			r.Commit("synthetic advance", "new.txt", "synthetic new")
+			r.Run("switch", "-q", "synthetic-a")
+			plan := r.plan(graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack})
+			if len(plan.collapsing()) != 1 {
+				t.Fatal("expected a collapse")
+			}
+			standing, err := r.service.standingOn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.service.begin(ctx, plan, standing); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.service.collapse(ctx, plan); err != nil {
+				t.Fatal(err)
+			}
+			method := r.service.Continue
+			want := r.Revision("synthetic-main")
+			if verb == "abort" {
+				method, want = r.service.Abort, original
+			}
+			if err := method(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.Revision("synthetic-a"); got != want {
+				t.Fatalf("tip = %s, want %s", got, want)
+			}
+			r.assertClean()
+		})
+	}
 }

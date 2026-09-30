@@ -871,7 +871,7 @@ func TestJourneyYouDropACommitYouAlreadyPublished(t *testing.T) {
 	}
 	// Loud enough to act on: the command that does what you meant has to be in
 	// the preview, because no g2g command does it.
-	if !strings.Contains(stdout, "git push --force-with-lease") {
+	if !strings.Contains(stdout, "git push --atomic --force-with-lease=refs/heads/synthetic-a:"+published) {
 		t.Errorf("preview does not name the command that would republish:\n%s", stdout)
 	}
 	if _, _, err := run(t, "push", "--apply"); err == nil {

@@ -134,7 +134,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing)}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing, tips)}
 	plan.Blocked = plan.Repair.Sentence()
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
@@ -151,10 +151,9 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 
 // blockedBy refuses a push the remote would reject.
 //
-// The lease already rejects it, so this changes no outcome — it moves the
-// refusal in front of the network call and says which branch, instead of
-// inviting an --apply that fails at git.
-func blockedBy(remote string, branches []string, publishing map[string]Publication) repair.Note {
+// A pinned lease protects against movement after preview, not against knowingly
+// replacing remote-only work. That needs the user's explicit choice.
+func blockedBy(remote string, branches []string, publishing map[string]Publication, tips map[string]string) repair.Note {
 	rejected := make([]string, 0, len(branches))
 	for _, branch := range branches {
 		if publishing[branch].Rejected() {
@@ -164,6 +163,11 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 	if len(rejected) == 0 {
 		return repair.Note{}
 	}
+	leases := make([]localgit.Lease, 0, len(rejected))
+	for _, branch := range rejected {
+		leases = append(leases, localgit.Lease{Branch: branch, Expected: tips[branch]})
+	}
+	replace := repair.Command(append([]string{"git"}, localgit.PushArguments(remote, leases, localgit.LeaveUpstream)...))
 	// Naming the command that does work matters more than the refusal. No g2g
 	// command republishes over a remote that has moved, and deliberately
 	// dropping a published commit is a real thing to want, so a preview that
@@ -173,7 +177,7 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 		Ways: []repair.Step{
 			{Effect: "fetch and reconcile first"},
 			{
-				Command: fmt.Sprintf("git push --force-with-lease %s %s", remote, strings.Join(rejected, " ")),
+				Command: replace,
 				Effect:  "replace what is published, dropping what the remote has",
 			},
 		},

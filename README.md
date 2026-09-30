@@ -1125,7 +1125,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | A branch has no pull request, or one closed without merging | `g2g submit` |
 | A pull request is open on the wrong base | `g2g github retarget` |
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
-| The remote has moved on a branch `push` would publish | fetch and reconcile first, or `git push --force-with-lease <remote> <branch>` to replace what is published |
+| The remote has moved on a branch `push` would publish | fetch and reconcile first, or use the printed atomic push with explicit tip-pinned leases to replace what is published, dropping remote-only work |
 | A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
 | `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |

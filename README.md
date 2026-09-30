@@ -586,6 +586,12 @@ stored queue, so your own git commands simply change what remains to do.
 `g2g restack --abort` restores every branch to where it started, including
 ones an earlier step already moved.
 
+A stopped restack exits `3`, including when `--continue` hits another conflict.
+Run recovery from the worktree that started it: linked worktrees share the
+journal but not Git's rebase state. Abort refuses to rewind a completed branch
+that another worktree has since checked out; release that branch there and
+retry `g2g restack --abort`.
+
 This is g2g's only resumable operation, so **every other command that
 changes anything refuses while a restack is unfinished** — mid-restack a
 branch may already have moved while the graph still records where it used to

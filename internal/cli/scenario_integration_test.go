@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/g2g/internal/cli"
 	"github.com/shhac/g2g/internal/testutil"
 )
 
@@ -379,7 +380,7 @@ func (r repo) restackToCompletion(t *testing.T) {
 	// scenarios ask for the entire shape without a scope that reaches other
 	// trunks, which is exactly what a rewrite must not be handed.
 	stdout, _, err := run(t, "restack", "--branch", "synthetic-trunk", "--scope", "stack", "--apply")
-	if err == nil {
+	if err == nil || cli.StoppedPartWayForTest(err) {
 		r.settle(t, stdout)
 		return
 	}
@@ -390,7 +391,7 @@ func (r repo) restackToCompletion(t *testing.T) {
 		// A line already correct refuses with nothing to do, which is not a
 		// failure of the sequence.
 		out, _, lineErr := run(t, "restack", "--branch", leaf, "--scope", "path", "--apply")
-		if lineErr != nil {
+		if lineErr != nil && !cli.StoppedPartWayForTest(lineErr) {
 			continue
 		}
 		r.settle(t, out)

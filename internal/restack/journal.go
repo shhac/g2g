@@ -30,6 +30,12 @@ const journalFileName = "restack.json"
 // running, so rolling back paths that already completed needs our own record.
 type Record struct {
 	SchemaVersion int `json:"schemaVersion"`
+	// Worktree owns Git's private rebase state. The journal itself is shared.
+	Worktree string `json:"worktree,omitempty"`
+	// Checkout records the index's baseline before a bare ref move. A process
+	// may die after moving the ref but before bringing the index along.
+	CheckoutBranch string `json:"checkoutBranch,omitempty"`
+	CheckoutTip    string `json:"checkoutTip,omitempty"`
 	// OntoParent is the branch an explicit --onto asked the graph to record,
 	// empty when the structure already says
 	// where each branch belongs.

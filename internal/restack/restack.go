@@ -76,7 +76,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // while it exists, which is right while branches may have moved and wrong once
 // they are back where they were.
 func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout) error {
-	if err := s.Journal.Save(ctx, s.record(plan, standing)); err != nil {
+	if _, err := s.begin(ctx, plan, standing); err != nil {
 		return err
 	}
 	if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
@@ -91,19 +91,35 @@ func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout)
 	return s.Journal.Clear(ctx)
 }
 
+// begin persists both rollback state and the checkout's owner before any ref
+// moves. Worktree identity is optional for injected Git implementations.
+func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Record, error) {
+	record := s.record(plan, standing)
+	if locator, ok := s.Git.(WorktreeLocator); ok {
+		var err error
+		record.Worktree, err = locator.WorktreeDir(ctx)
+		if err != nil {
+			return Record{}, err
+		}
+	}
+	return record, s.Journal.Save(ctx, record)
+}
+
 // record is what survives an interrupted rewrite. ReturnTo is where the
 // checkout stood, not the selection's target: the two differ whenever someone
 // restacks a stack from outside it, and it was the target that was written.
 func (s Service) record(plan Plan, standing checkout) Record {
 	record := Record{
-		OntoParent: plan.Onto.Parent,
-		Absorb:     plan.Absorb,
-		Branch:     plan.Target,
-		Scope:      string(plan.Scope),
-		ReturnTo:   standing.Branch,
-		Original:   map[string]string{},
-		Reparent:   plan.reparenting(),
-		Structure:  map[string]RecordedEdge{},
+		OntoParent:     plan.Onto.Parent,
+		Absorb:         plan.Absorb,
+		Branch:         plan.Target,
+		Scope:          string(plan.Scope),
+		ReturnTo:       standing.Branch,
+		CheckoutBranch: standing.Branch,
+		CheckoutTip:    standing.Tip,
+		Original:       map[string]string{},
+		Reparent:       plan.reparenting(),
+		Structure:      map[string]RecordedEdge{},
 	}
 	for _, step := range plan.Steps {
 		record.Original[step.Branch] = step.Tip
@@ -328,8 +344,8 @@ func (s Service) putBack(ctx context.Context, before map[string]string, cause er
 // The journal comes first: a collapse moves refs too, and a branch moved with
 // no record of where it was is one --abort cannot put back.
 func (s Service) rebase(ctx context.Context, plan Plan, standing checkout) error {
-	record := s.record(plan, standing)
-	if err := s.Journal.Save(ctx, record); err != nil {
+	record, err := s.begin(ctx, plan, standing)
+	if err != nil {
 		return err
 	}
 	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})

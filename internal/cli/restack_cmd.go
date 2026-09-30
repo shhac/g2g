@@ -140,16 +140,19 @@ type conflictReporter interface {
 // saying it has sends the reader looking for something that is not there. In
 // that case what Git said is the only useful thing we have.
 func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter, cause error, p Presentation) error {
+	if cause == nil {
+		cause = fmt.Errorf("restack stopped part-way")
+	}
 	paths, err := conflicts.Conflicted(ctx)
 	if err != nil || len(paths) == 0 {
 		_ = prose(cmd.OutOrStdout(), p, p.problem("The rewrite stopped part-way, with nothing left unmerged."))
 		if cause != nil {
 			_ = prose(cmd.OutOrStdout(), p, p.subdued(cause.Error()))
 		}
-		return prose(cmd.OutOrStdout(), p, p.subdued("Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo."))
+		return writeWhatStands(cmd.OutOrStdout(), p, "Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo.", cause)
 	}
 	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+branchList(paths)+"."))
-	return prose(cmd.OutOrStdout(), p, p.subdued("Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo."))
+	return writeWhatStands(cmd.OutOrStdout(), p, "Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo.", cause)
 }
 
 // runRestack is the preview/apply sequence, driven by applyFlow like every

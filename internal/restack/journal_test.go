@@ -32,10 +32,13 @@ func TestJournalRoundTripsTheOriginalTips(t *testing.T) {
 	journal, _ := newJournal(t)
 	ctx := context.Background()
 	record := Record{
-		Branch:   "synthetic-b",
-		Scope:    "graph",
-		ReturnTo: "synthetic-b",
-		Original: map[string]string{"synthetic-a": "aaa", "synthetic-b": "bbb"},
+		Branch:         "synthetic-b",
+		Scope:          "graph",
+		ReturnTo:       "synthetic-b",
+		Worktree:       "/synthetic/git/worktrees/checkout",
+		CheckoutBranch: "synthetic-b",
+		CheckoutTip:    "bbb",
+		Original:       map[string]string{"synthetic-a": "aaa", "synthetic-b": "bbb"},
 		Structure: map[string]RecordedEdge{
 			"synthetic-b": {Parent: "synthetic-a", ForkPoint: "aaa"},
 		},
@@ -56,6 +59,9 @@ func TestJournalRoundTripsTheOriginalTips(t *testing.T) {
 	}
 	if loaded.Selection().Branch != "synthetic-b" {
 		t.Errorf("Selection() = %#v", loaded.Selection())
+	}
+	if loaded.Worktree != record.Worktree || loaded.CheckoutBranch != record.CheckoutBranch || loaded.CheckoutTip != record.CheckoutTip {
+		t.Errorf("checkout recovery state lost: %+v", loaded)
 	}
 }
 

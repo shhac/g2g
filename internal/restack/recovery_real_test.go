@@ -1,0 +1,178 @@
+package restack
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/shhac/g2g/internal/graph"
+)
+
+func TestRecoveryRefusesAnotherWorktreeBeforeTouchingAnything(t *testing.T) {
+	for _, verb := range []string{"continue", "skip", "abort"} {
+		t.Run(verb, func(t *testing.T) {
+			r := conflictingStack(t)
+			ctx := context.Background()
+			r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+			before, _, err := r.service.Journal.Load(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other := filepath.Join(t.TempDir(), "synthetic-other")
+			r.Run("worktree", "add", "-q", "--detach", other, "synthetic-main")
+			t.Chdir(other)
+			methods := map[string]func(context.Context) error{"continue": r.service.Continue, "skip": r.service.Skip, "abort": r.service.Abort}
+			if err := methods[verb](ctx); err == nil || !strings.Contains(err.Error(), "another worktree") {
+				t.Fatalf("%s error = %v, want owner refusal", verb, err)
+			}
+			after, found, err := r.service.Journal.Load(ctx)
+			if err != nil || !found || after.Worktree != before.Worktree {
+				t.Fatalf("journal lost or changed: %+v, %v, %v", after, found, err)
+			}
+			if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
+				t.Fatalf("other worktree changed: %s", status)
+			}
+			t.Chdir(r.Dir)
+			if active, err := r.client.RebaseInProgress(ctx); err != nil || !active {
+				t.Fatalf("original rebase changed: %v, %v", active, err)
+			}
+			if err := r.service.Abort(ctx); err != nil {
+				t.Fatal(err)
+			}
+			r.assertClean()
+		})
+	}
+}
+
+func TestAbortRefusesACompletedBranchHeldElsewhere(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	r.Write("a.txt", "synthetic resolved")
+	r.Run("add", "a.txt")
+	if err := r.service.Continue(ctx); err == nil {
+		t.Fatal("expected synthetic-b conflict")
+	}
+	completed := r.Revision("synthetic-a")
+	other := filepath.Join(t.TempDir(), "synthetic-other")
+	r.Run("worktree", "add", "-q", other, "synthetic-a")
+	if err := r.service.Abort(ctx); err == nil || !strings.Contains(err.Error(), "another worktree") {
+		t.Fatalf("Abort error = %v, want held-branch refusal", err)
+	}
+	if got := r.Revision("synthetic-a"); got != completed {
+		t.Fatal("abort partially restored synthetic-a")
+	}
+	if active, _ := r.client.RebaseInProgress(ctx); !active {
+		t.Fatal("abort ended the active rebase before refusing")
+	}
+	if active, _ := r.service.InProgress(ctx); !active {
+		t.Fatal("abort cleared its journal")
+	}
+	r.Run("-C", other, "switch", "-q", "--detach")
+	if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
+		t.Fatalf("other worktree stranded: %s", status)
+	}
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+	if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
+		t.Fatalf("other worktree changed: %s", status)
+	}
+}
+
+// Model interruption at the actual boundary: replay has moved the refs, but
+// the checkout and graph have not been reconciled. Also retry after the index
+// has already caught up, as a crash can occur immediately after read-tree.
+func TestRecoveryReconcilesAnInterruptedBareRefMove(t *testing.T) {
+	for _, verb := range []string{"continue", "abort"} {
+		for _, resettled := range []bool{false, true} {
+			t.Run(verb+map[bool]string{false: "/stale-index", true: "/updated-index"}[resettled], func(t *testing.T) {
+				r := newRealStack(t)
+				ctx := context.Background()
+				r.branch("synthetic-a", "synthetic-main", "a.txt", "synthetic a")
+				original := r.Revision("synthetic-a")
+				r.Run("switch", "-q", "synthetic-main")
+				r.Commit("synthetic advance", "new.txt", "synthetic new")
+				r.Run("switch", "-q", "synthetic-a")
+				plan := r.plan(graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack})
+				standing, err := r.service.standingOn(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := r.service.begin(ctx, plan, standing); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.service.replay(ctx, plan); err != nil {
+					t.Fatal(err)
+				}
+				if resettled {
+					if err := r.service.resettle(ctx, standing); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// Unrelated work must survive recovery, even though HEAD moved.
+				r.Write("root.txt", "synthetic local edit")
+				method := r.service.Continue
+				if verb == "abort" {
+					method = r.service.Abort
+				}
+				if err := method(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if verb == "abort" && r.Revision("synthetic-a") != original {
+					t.Fatal("abort did not restore original tip")
+				}
+				if verb == "continue" {
+					r.builtOn("synthetic-main", "synthetic-a")
+				}
+				if got := r.Run("diff", "--name-only"); got != "root.txt" {
+					t.Fatalf("local edit lost or phantom changes: %s", got)
+				}
+				if staged := r.Run("diff", "--cached", "--name-only"); staged != "" {
+					t.Fatalf("phantom staged changes: %s", staged)
+				}
+				if active, _ := r.service.InProgress(ctx); active {
+					t.Fatal("finished operation kept journal")
+				}
+			})
+		}
+	}
+}
+
+func TestSkipAfterASecondConflictFinishesTheDescendant(t *testing.T) {
+	r := newRealStack(t)
+	ctx := context.Background()
+	r.Commit("synthetic first base", "first.txt", "synthetic base")
+	r.Commit("synthetic second base", "second.txt", "synthetic base")
+	r.branch("synthetic-a", "synthetic-main", "first.txt", "synthetic first change")
+	r.Commit("synthetic second change", "second.txt", "synthetic second change")
+	r.branch("synthetic-b", "synthetic-a", "b.txt", "synthetic child")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Write("first.txt", "synthetic upstream first")
+	r.Write("second.txt", "synthetic upstream second")
+	r.Run("commit", "-qam", "synthetic upstream changes")
+	r.Run("switch", "-q", "synthetic-b")
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	r.Write("first.txt", "synthetic resolved first")
+	r.Run("add", "first.txt")
+	if err := r.service.Continue(ctx); err == nil {
+		t.Fatal("second commit did not stop on its own conflict")
+	}
+	if paths, err := r.service.Conflicted(ctx); err != nil || strings.Join(paths, ",") != "second.txt" {
+		t.Fatalf("second conflict = %v, %v", paths, err)
+	}
+	if err := r.service.Skip(ctx); err != nil {
+		t.Fatal(err)
+	}
+	r.builtOn("synthetic-main", "synthetic-a")
+	r.builtOn("synthetic-a", "synthetic-b")
+	if got := r.Run("show", "synthetic-b:second.txt"); got != "synthetic upstream second" {
+		t.Fatalf("skipped change survived: %s", got)
+	}
+	if got := r.Run("branch", "--show-current"); got != "synthetic-b" {
+		t.Fatalf("did not return to original branch: %s", got)
+	}
+	r.assertClean()
+}

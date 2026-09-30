@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// WorktreeDir identifies this checkout's private Git directory, not the common
+// directory shared by linked worktrees. Rebase state belongs to this directory.
+func (c Client) WorktreeDir(ctx context.Context) (string, error) {
+	output, err := c.run(ctx, "rev-parse", "--absolute-git-dir")
+	return strings.TrimSpace(string(output)), err
+}
+
 // CheckedOutElsewhere maps each branch checked out in another worktree to the
 // worktree holding it. The current worktree is excluded: rewriting the branch
 // you are standing on is ordinary, and the engines handle it.

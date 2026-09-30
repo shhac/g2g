@@ -22,6 +22,9 @@ func (s Service) Continue(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("no restack is in progress")
 	}
+	if err := s.requireOwner(ctx, record); err != nil {
+		return err
+	}
 	inProgress, err := s.Git.RebaseInProgress(ctx)
 	if err != nil {
 		return err
@@ -30,6 +33,8 @@ func (s Service) Continue(ctx context.Context) error {
 		if err := s.Git.RebaseContinue(ctx); err != nil {
 			return err
 		}
+	} else if err := s.recoverCheckout(ctx, record); err != nil {
+		return err
 	}
 	return s.finish(ctx, record)
 }
@@ -42,6 +47,9 @@ func (s Service) Skip(ctx context.Context) error {
 	}
 	if !found {
 		return fmt.Errorf("no restack is in progress")
+	}
+	if err := s.requireOwner(ctx, record); err != nil {
+		return err
 	}
 	if err := s.Git.RebaseSkip(ctx); err != nil {
 		return err
@@ -60,7 +68,7 @@ const (
 // either completes, retries after collapses, or advances the selected engine.
 func (s Service) finish(ctx context.Context, record Record) error {
 	for pass := 0; ; pass++ {
-		outcome, err := s.finishPass(ctx, record, pass)
+		outcome, err := s.finishPass(ctx, &record, pass)
 		if err != nil {
 			return err
 		}
@@ -99,7 +107,7 @@ func (s Service) conclude(ctx context.Context, record Record) error {
 // finishPass makes one explicit convergence decision. Recording comes before
 // planning because a successful rewrite has moved refs beyond the graph's old
 // fork points; planning against those stale points would see false drift.
-func (s Service) finishPass(ctx context.Context, record Record, pass int) (finishOutcome, error) {
+func (s Service) finishPass(ctx context.Context, record *Record, pass int) (finishOutcome, error) {
 	discovery, err := s.Graph.Discover(ctx, record.Selection())
 	if err != nil {
 		return finishComplete, err
@@ -144,6 +152,9 @@ func (s Service) finishPass(ctx context.Context, record Record, pass int) (finis
 	if err != nil {
 		return finishComplete, err
 	}
+	if err := s.checkpoint(ctx, record, standing); err != nil {
+		return finishComplete, err
+	}
 	if plan.inPlace() {
 		if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
 			return finishComplete, err
@@ -171,6 +182,23 @@ func (s Service) Abort(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("no restack is in progress")
 	}
+	if err := s.requireOwner(ctx, record); err != nil {
+		return err
+	}
+	// Refuse before aborting Git's current invocation or restoring any tip.
+	// Completed branches may have been opened elsewhere since the last pass.
+	var moving []string
+	for _, branch := range slices.Sorted(maps.Keys(record.Original)) {
+		tip, err := s.Git.Resolve(ctx, branch)
+		if err != nil || tip != record.Original[branch] {
+			moving = append(moving, branch)
+		}
+	}
+	if held, err := s.HeldElsewhere(ctx, moving); err != nil {
+		return err
+	} else if held.Reason != "" {
+		return fmt.Errorf("the restack cannot be aborted: %s · switch that worktree to another branch, or close it, then run g2g restack --abort", held.Reason)
+	}
 	inProgress, err := s.Git.RebaseInProgress(ctx)
 	if err != nil {
 		return err
@@ -179,6 +207,8 @@ func (s Service) Abort(ctx context.Context) error {
 		if err := s.Git.RebaseAbort(ctx); err != nil {
 			return err
 		}
+	} else if err := s.recoverCheckout(ctx, record); err != nil {
+		return err
 	}
 	// Where the checkout stands once git has put back what it knows about.
 	// Restoring a tip is a bare ref move, and a rebase the user finished by
@@ -187,6 +217,9 @@ func (s Service) Abort(ctx context.Context) error {
 	// made -- under a message saying every branch is back where it started.
 	standing, err := s.standingOn(ctx)
 	if err != nil {
+		return err
+	}
+	if err := s.checkpoint(ctx, &record, standing); err != nil {
 		return err
 	}
 	diagnostic.Event(ctx, "restack.abort", diagnostic.Field{Key: "branches", Value: strings.Join(slices.Sorted(maps.Keys(record.Original)), ",")})

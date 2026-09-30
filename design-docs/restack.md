@@ -239,8 +239,9 @@ consent, and it is only possible because replay has no side effects.
 
 **Apply, no conflict predicted** uses `git replay`. Nothing is checked out,
 HEAD never moves, and the existing safety story is fully preserved. If HEAD is
-on a rewritten branch and the new tree differs, the index is left stale — git
-does not resync it — so a `git reset --keep` follows.
+on a rewritten branch and the new tree differs, the index is left stale.
+`git read-tree -m -u` brings it from the recorded old tip to the new one;
+`git reset --keep HEAD` cannot do this once HEAD already names the moved ref.
 
 **Apply, conflict predicted** uses `git rebase --update-refs` **in the user's
 own worktree**. This is a deliberate renegotiation of the no-checkout
@@ -281,6 +282,10 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
 
 - the `--onto` for the in-flight rebase
 - the branch the user was on, to restore afterwards
+- the private Git directory owning the rebase: linked worktrees share this
+  journal, but cannot continue, skip, or abort another worktree's operation
+- the checkout's branch and tip before each bare ref move, so recovery can
+  reconcile its index after interruption between the ref move and read-tree
 - **every branch's tip at operation start**, so `--abort` can roll back paths
   that already completed — which git cannot do, because it only knows about the
   current invocation
@@ -302,6 +307,11 @@ Restoring a tip is a bare ref move, so `--abort` brings the checkout along with
 the branch it is standing on. A user who finished git's own rebase by hand is
 left on a rewritten branch with no rebase in progress, and moving that branch's
 ref back without its working tree reported the whole rewrite as staged changes.
+
+Abort checks every tip it would restore before touching Git's active rebase.
+A completed branch may have been opened in another worktree meanwhile; refusing
+leaves both the rebase and journal intact, rather than stranding that checkout.
+An unchanged branch held elsewhere does not prevent abort.
 
 The remaining queue is deliberately absent. It is re-derived from the refs on
 every invocation, which is what makes a user's own `git rebase --continue` or

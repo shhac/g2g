@@ -22,8 +22,8 @@ func stoppedOutput(t *testing.T, conflicts conflictReporter, cause error) string
 	cmd := &cobra.Command{}
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	if err := stopped(cmd, context.Background(), conflicts, cause, Presentation{}); err != nil {
-		t.Fatalf("stopped() error = %v", err)
+	if err := stopped(cmd, context.Background(), conflicts, cause, Presentation{}); !wasStopped(err) || exitCode(err) != 3 {
+		t.Fatalf("stopped() error = %v, want exit status 3", err)
 	}
 	return out.String()
 }

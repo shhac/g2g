@@ -34,7 +34,7 @@ type Git interface {
 // on the remote was force-pushed over, and then a pull request opened for
 // what was left. push refuses exactly that, and land already went through it.
 type Pusher interface {
-	Plan(ctx context.Context, selection stack.Selection, remote string) (push.Plan, error)
+	Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (push.Plan, error)
 	Execute(ctx context.Context, plan push.Plan) error
 }
 
@@ -84,7 +84,7 @@ func (p Plan) Blocked() string {
 	return p.Push.Blocked
 }
 
-func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("submit service is not fully configured")
 	}
@@ -103,7 +103,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
-	published, err := s.Pusher.Plan(ctx, selection, remote)
+	published, err := s.Pusher.Plan(ctx, selection, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -126,11 +126,11 @@ func (p Plan) Equal(other Plan) bool {
 		p.Push.Equal(other.Push)
 }
 
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
+func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream, preview Plan) (Plan, error) {
 	if err := s.Git.Clean(ctx); err != nil {
 		return Plan{}, err
 	}
-	plan, err := s.Plan(ctx, selection, remote)
+	plan, err := s.Plan(ctx, selection, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}

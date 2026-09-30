@@ -31,7 +31,7 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
-			plan, err := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths()})}.Plan(context.Background(), test.selection, "origin")
+			plan, err := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths()})}.Plan(context.Background(), test.selection, "origin", localgit.SetUpstream)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,7 +48,7 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}})}
-	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil || strings.Join(plan.Branches, ",") != "lower,middle,top" {
 		t.Fatalf("Plan() = (%#v, %v)", plan, err)
 	}
@@ -62,7 +62,7 @@ func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	}}
 	git.branches = append(git.branches, "side")
 	service.Selector = graphiteSelector(git, forked)
-	_, err = service.Plan(context.Background(), link.Selection{}, "origin")
+	_, err = service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err == nil || !strings.Contains(err.Error(), "one ordered path") {
 		t.Fatalf("Plan() fork error = %v", err)
 	}
@@ -75,11 +75,11 @@ func TestApplyRevalidatesThenMakesOneAtomicLeasePush(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}})}
 	selection := link.Selection{}
-	preview, err := service.Plan(context.Background(), selection, "origin")
+	preview, err := service.Plan(context.Background(), selection, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := service.Revalidate(context.Background(), selection, "origin", preview)
+	validated, err := service.Revalidate(context.Background(), selection, "origin", localgit.SetUpstream, preview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +95,11 @@ func TestRevalidateRefusesAChangedPushPlanBeforeMutation(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	graphite := &changingGraphite{first: paths()["middle"], next: graphite.Stack{Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}
 	service := Service{Git: git, Selector: graphiteSelector(git, graphite)}
-	preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	preview, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
 		t.Fatalf("Revalidate() error = %v", err)
 	}
 	if git.pushes != 0 {
@@ -120,16 +120,16 @@ func TestApplyRefusesChangedPlanAndRemoteOrPushFailures(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := Service{Git: test.git, Selector: graphiteSelector(test.git, test.graphite)}
 			if test.name == "missing remote" {
-				if _, err := service.Plan(context.Background(), link.Selection{}, "origin"); err == nil || !strings.Contains(err.Error(), test.wantError) {
+				if _, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream); err == nil || !strings.Contains(err.Error(), test.wantError) {
 					t.Fatalf("Plan() error = %v", err)
 				}
 				return
 			}
-			preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
+			preview, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 			if err != nil {
 				t.Fatal(err)
 			}
-			validated, err := service.Revalidate(context.Background(), link.Selection{}, "origin", preview)
+			validated, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,7 +145,7 @@ func TestPlanRejectsEmptyRemote(t *testing.T) {
 		Git:      &fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, remoteErr: errors.New("remote name must be nonempty")},
 		Selector: graphiteSelector(&fakeGit{current: "middle", branches: []string{"main", "lower", "middle"}, remoteErr: errors.New("remote name must be nonempty")}, fakeGraphite{paths: paths()}),
 	}
-	if _, err := service.Plan(context.Background(), link.Selection{}, ""); err == nil || !strings.Contains(err.Error(), "nonempty") {
+	if _, err := service.Plan(context.Background(), link.Selection{}, "", localgit.SetUpstream); err == nil || !strings.Contains(err.Error(), "nonempty") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: map[string]graphite.Stack{
 		"tip": {Path: []string{"main", "-synthetic-option", "tip"}, Trunks: []string{"main"}},
 	}})}
-	if _, err := service.Plan(context.Background(), link.Selection{Scope: shape.ScopePath}, "origin"); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
+	if _, err := service.Plan(context.Background(), link.Selection{Scope: shape.ScopePath}, "origin", localgit.SetUpstream); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if git.pushes != 0 {
@@ -169,6 +169,7 @@ type fakeGit struct {
 	absorbed             map[string]bool
 	tips                 map[string]string
 	leases               []localgit.Lease
+	upstream             localgit.Upstream
 	current, remote      string
 	branches, pushed     []string
 	remoteErr, pushErr   error
@@ -188,7 +189,8 @@ func (f *fakeGit) RemoteTips(_ context.Context, _ string, branches []string) (ma
 	return testutil.RemoteTips(branches), nil
 }
 
-func (f *fakeGit) PushAtomic(_ context.Context, remote string, leases []localgit.Lease) error {
+func (f *fakeGit) PushAtomic(_ context.Context, remote string, leases []localgit.Lease, upstream localgit.Upstream) error {
+	f.upstream = upstream
 	branches := make([]string, 0, len(leases))
 	for _, lease := range leases {
 		branches = append(branches, lease.Branch)
@@ -248,7 +250,7 @@ func TestPlanPinsTheObservedRemoteTipsAsLeases(t *testing.T) {
 		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
 
-	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,13 +267,13 @@ func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
 	git := &fakeGit{current: "beta", branches: []string{"main", "alpha", "beta"},
 		tips: map[string]string{"alpha": "aaa111", "beta": "bbb222"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
-	preview, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	preview, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	git.tips = map[string]string{"alpha": "aaa111", "beta": "ccc333"}
-	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", preview); err == nil {
+	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview); err == nil {
 		t.Fatal("Revalidate() error = nil after a remote tip moved")
 	}
 }
@@ -283,7 +285,7 @@ func TestUnpushedBranchesLeaseTheAbsentValue(t *testing.T) {
 		tips: map[string]string{"alpha": "aaa111"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{stackPaths: map[string]graphite.Stack{"beta": {Path: []string{"main", "alpha", "beta"}, Trunks: []string{"main"}}}})}
 
-	plan, err := service.Plan(context.Background(), link.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +419,7 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 			selector := graphiteSelector(test.git, fakeGraphite{paths: map[string]graphite.Stack{
 				"synthetic-top": {Path: []string{"main", "synthetic-top"}, Trunks: []string{"main"}},
 			}})
-			plan, err := Service{Git: test.git, Selector: selector}.Plan(context.Background(), link.Selection{}, "origin")
+			plan, err := Service{Git: test.git, Selector: selector}.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 			if err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}
@@ -479,7 +481,7 @@ func TestABranchThatSquashMergedIsNotOfferedForRepublication(t *testing.T) {
 	}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths()})}
 
-	plan, err := service.Plan(context.Background(), link.Selection{Branch: "top"}, "origin")
+	plan, err := service.Plan(context.Background(), link.Selection{Branch: "top"}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

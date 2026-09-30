@@ -115,9 +115,10 @@ description: |
 - `push` is a preview-first publication escape hatch. It selects a path through
   source resolution, must never submit or restack, and must never call `gh`;
   only `--apply` may run exactly one
-  `git push --atomic --force-with-lease <remote> <branches>` call. Keep the
-  remote default explicit (`origin`), validate it, and never fall back to a
-  weaker push mode.
+  `git push --atomic --set-upstream --force-with-lease <remote> <branches>`
+  call (`--no-set-upstream` drops `--set-upstream`; `submit` and `land` carry
+  the same flag through to it). Keep the remote default explicit (`origin`),
+  validate it, and never fall back to a weaker push mode.
 - A command that did part of what it was asked and stopped exits `3` — not `0`,
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `pull` stopping mid-replay, `pull --prune`

@@ -6,6 +6,6 @@ Target  synthetic-top
   ● synthetic-top    new branch on the remote  ← target
 
 Command to run
-git push --atomic --force-with-lease origin synthetic-lower synthetic-top
+git push --atomic --set-upstream --force-with-lease origin synthetic-lower synthetic-top
 
 Atomic push: all selected refs advance together or none do.

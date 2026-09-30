@@ -88,6 +88,19 @@ type Lease struct {
 	Expected string
 }
 
+// Upstream says whether a push records each branch it publishes as tracking
+// the remote's copy, the way git push --set-upstream does. Setting it is the
+// zero value because it is the default: a branch published without it leaves
+// git status, a bare git pull and @{upstream} with nothing to compare against.
+type Upstream int
+
+const (
+	SetUpstream Upstream = iota
+	// LeaveUpstream is --no-set-upstream: whatever the branch tracked before,
+	// including nothing, it still tracks afterwards.
+	LeaveUpstream
+)
+
 func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	if c.Runner == nil {
 		return nil, fmt.Errorf("Git runner is not configured")

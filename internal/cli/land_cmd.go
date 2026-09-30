@@ -22,7 +22,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	// The three cleanups are on, and each is declared as its own negative flag
 	// rather than a default-true boolean with a second --no- spelling beside
 	// it. One flag, one spelling, and the help line says what passing it does.
-	var noDeleteRemote, noDeleteLocal, noForget, noComment bool
+	var noDeleteRemote, noDeleteLocal, noForget, noComment, noSetUpstream bool
 
 	cmd := &cobra.Command{
 		Use:     "land",
@@ -42,6 +42,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 		options.Method, options.MethodChosen = chosen, cmd.Flags().Changed("method")
 		options.DeleteRemote, options.DeleteLocal = !noDeleteRemote, !noDeleteLocal
 		options.Comment = !noComment && comments.Ready()
+		options.Upstream = upstreamFor(noSetUpstream)
 		if noForget {
 			// A branch left recorded under one that has merged and been
 			// deleted makes every later status and every later replay measure
@@ -105,6 +106,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	cmd.Flags().BoolVar(&options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
 	cmd.Flags().BoolVar(&noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
 	cmd.Flags().BoolVar(&noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
+	registerNoSetUpstream(cmd, &noSetUpstream)
 	// Registered only so that asking for it is answered with why not: a
 	// branch left recorded under a landed, deleted one breaks every later
 	// replay. It is hidden because a help line offering it would be offering

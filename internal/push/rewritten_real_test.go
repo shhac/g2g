@@ -47,7 +47,7 @@ func planPush(t *testing.T, repo testutil.GitRepo) Plan {
 	t.Helper()
 	t.Chdir(repo.Dir)
 	service := Service{Git: localgit.Client{Runner: subprocess.ExecRunner{}}, Selector: linePath{}}
-	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

@@ -101,7 +101,7 @@ func TestEveryApplyMutatesExactlyOnce(t *testing.T) {
 		mutation string
 	}{
 		{name: "github link", args: []string{"github", "link", "--apply"}, mutation: "gh stack link --base synthetic-main synthetic-lower synthetic-top"},
-		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --force-with-lease="},
+		{name: "push", args: []string{"push", "--apply"}, mutation: "git push --atomic --set-upstream --force-with-lease="},
 		{name: "github unlink", args: []string{"github", "unlink", "--apply"}, mutation: "gh stack unstack 42"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

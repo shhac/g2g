@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
@@ -209,9 +210,11 @@ type fakePusher struct {
 	scopes []shape.Scope
 	// executeErr is a push that fails outright, as a refused lease does.
 	executeErr error
+	// upstreams is what each push that ran was planned to do with upstreams.
+	upstreams []localgit.Upstream
 }
 
-func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string) (push.Plan, error) {
+func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string, upstream localgit.Upstream) (push.Plan, error) {
 	f.scopes = append(f.scopes, selection.Scope)
 	if f.planErr != nil {
 		return push.Plan{}, f.planErr
@@ -220,7 +223,7 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	if f.extra != "" {
 		branches = append([]string{f.extra}, branches...)
 	}
-	plan := push.Plan{Blocked: f.blocked}
+	plan := push.Plan{Blocked: f.blocked, Upstream: upstream}
 	plan.Snapshot = stack.Snapshot{Branches: branches, Base: selection.Trunk}
 	plan.Publishing = map[string]push.Publication{selection.Branch: {Standing: push.Ahead, Ours: 1}}
 	if f.level {
@@ -231,6 +234,7 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 
 func (f *fakePusher) Execute(_ context.Context, plan push.Plan) error {
 	f.events.record("push:" + strings.Join(plan.Branches, ","))
+	f.upstreams = append(f.upstreams, plan.Upstream)
 	if f.executeErr != nil {
 		return f.executeErr
 	}

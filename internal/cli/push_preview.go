@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
 )
 
@@ -13,7 +14,7 @@ func pushView(plan push.Plan) stackView {
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
-		Action:       append([]string{"git", "push", "--atomic", "--force-with-lease", plan.Remote}, plan.Branches...),
+		Action:       pushAction(plan),
 	}
 	for _, branch := range plan.Branches {
 		// A branch missing from the map reads as Uncompared, never as the
@@ -26,6 +27,18 @@ func pushView(plan push.Plan) stackView {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	return view
+}
+
+// pushAction is the git invocation in the shape a reader would type it: the
+// leases collapse to the flag, because the pinned tips are the plan's business
+// and a line of object ids hides what the command does.
+func pushAction(plan push.Plan) []string {
+	action := []string{"git", "push", "--atomic"}
+	if plan.Upstream == localgit.SetUpstream {
+		action = append(action, "--set-upstream")
+	}
+	action = append(action, "--force-with-lease", plan.Remote)
+	return append(action, plan.Branches...)
 }
 
 // publicationState says what pushing one branch would do. Saying nothing was

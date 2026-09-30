@@ -135,26 +135,36 @@ func (l Lease) Argument() string {
 // already provides for everything else.
 //
 // There is deliberately no fallback to a weaker push mode.
-func (c Client) PushAtomic(ctx context.Context, remote string, leases []Lease) error {
+func (c Client) PushAtomic(ctx context.Context, remote string, leases []Lease, upstream Upstream) error {
 	if err := c.Remote(ctx, remote); err != nil {
 		return err
 	}
 	if len(leases) == 0 {
 		return fmt.Errorf("no branches selected for push")
 	}
-	args := []string{"push", "--atomic"}
-	branches := make([]string, 0, len(leases))
 	for _, lease := range leases {
 		if err := safeRef(lease.Branch); err != nil {
 			return err
 		}
+	}
+	_, err := c.run(ctx, PushArguments(remote, leases, upstream)...)
+	return err
+}
+
+// PushArguments is the invocation PushAtomic makes, so a diagnostic that
+// describes the push can name exactly the command that runs.
+func PushArguments(remote string, leases []Lease, upstream Upstream) []string {
+	args := []string{"push", "--atomic"}
+	if upstream == SetUpstream {
+		args = append(args, "--set-upstream")
+	}
+	branches := make([]string, 0, len(leases))
+	for _, lease := range leases {
 		args = append(args, lease.Argument())
 		branches = append(branches, lease.Branch)
 	}
 	args = append(args, remote)
-	args = append(args, branches...)
-	_, err := c.run(ctx, args...)
-	return err
+	return append(args, branches...)
 }
 
 // DeleteRemoteBranch removes a branch from the remote after its work has

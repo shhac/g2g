@@ -53,7 +53,7 @@ type GitHub interface {
 type (
 	// Pusher publishes one branch and refuses a remote that has moved.
 	Pusher interface {
-		Plan(ctx context.Context, selection stack.Selection, remote string) (push.Plan, error)
+		Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (push.Plan, error)
 		Execute(ctx context.Context, plan push.Plan) error
 	}
 	// Syncer advances the base and replays what is left onto it.
@@ -105,6 +105,9 @@ type Options struct {
 	// that is not there.
 	DeleteRemote bool
 	DeleteLocal  bool
+	// Upstream is whether each branch the descent publishes is recorded as
+	// tracking the remote's copy, as push does by default.
+	Upstream localgit.Upstream
 	// Comment keeps the stack comments on what remains above the landed
 	// branches once the descent is done, so the pull requests that merged
 	// read as merged history there. On unless asked otherwise.

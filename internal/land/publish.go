@@ -66,7 +66,7 @@ func (s Service) pushPinned(ctx context.Context, plan Plan, branch, planned stri
 	}
 	// The path, not the branch alone: push needs a base to compare against and
 	// a single-branch selection has no ancestry to take one from.
-	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: branch, Trunk: plan.Trunk, Scope: shape.ScopePath}, plan.Options.Remote)
+	published, err := s.Pusher.Plan(ctx, stack.Selection{Branch: branch, Trunk: plan.Trunk, Scope: shape.ScopePath}, plan.Options.Remote, plan.Options.Upstream)
 	if err != nil {
 		return false, err
 	}

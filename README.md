@@ -717,6 +717,7 @@ one branch is the only ambiguity, and it fails closed.
 g2g push --branch feature/top             # preview; full-stack expansion is the default
 g2g push --branch feature/top --apply     # every selected ref advances, or none do
 g2g push --remote upstream --apply        # another name from git remote, not a branch
+g2g push --no-set-upstream --apply        # leave what each branch tracks alone
 ```
 
 `g2g push` is deliberately narrow: it publishes the selected linear path in one
@@ -733,6 +734,12 @@ so a commit that is here under a new id is not mistaken for somebody else's.
 One the remote has that this checkout does not, by content, is refused rather
 than dropped. Unsupported atomic pushes and rejected leases fail without a
 non-atomic or unsafe-force fallback.
+
+Each pushed branch is set to track its copy on the remote, as
+`git push --set-upstream` does, so `git status`, a bare `git pull` and
+`@{upstream}` have something to compare against. That replaces whatever the
+branch tracked before; `--no-set-upstream` leaves it as it was. `submit` and
+`land` publish through `push` and take the same flag.
 
 `push` asks the remote itself, because a lease has to be pinned to what is there
 now. `g2g status` makes the same comparison from what the remote last held here,

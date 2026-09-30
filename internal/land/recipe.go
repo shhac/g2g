@@ -1,6 +1,10 @@
 package land
 
-import "fmt"
+import (
+	"fmt"
+
+	localgit "github.com/shhac/g2g/internal/git"
+)
 
 // Command is one line of the recipe: something a person could run, and what
 // running it achieves.
@@ -41,7 +45,7 @@ func (p Plan) mergeCommands(step Step) []Command {
 	commands := make([]Command, 0, 3)
 	if step.Push {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", step.Branch),
+			Command: p.pushCommand(step.Branch),
 			Effect:  "publish it as it is here",
 		})
 	}
@@ -64,11 +68,20 @@ func (p Plan) republishCommands() []Command {
 	commands := make([]Command, 0, len(p.Republish))
 	for _, above := range p.Republish {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g push --branch %s --scope path --apply", above.Branch),
+			Command: p.pushCommand(above.Branch),
 			Effect:  fmt.Sprintf("publish it, replayed onto %s", p.Trunk),
 		})
 	}
 	return commands
+}
+
+// pushCommand publishes one branch the way the descent does.
+func (p Plan) pushCommand(branch string) string {
+	command := fmt.Sprintf("g2g push --branch %s --scope path", branch)
+	if p.Options.Upstream == localgit.LeaveUpstream {
+		command += " --no-set-upstream"
+	}
+	return command + " --apply"
 }
 
 // KeepsComments reports whether the descent ends by keeping the stack

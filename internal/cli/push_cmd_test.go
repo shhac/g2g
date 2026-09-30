@@ -24,9 +24,9 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"preview current", []string{"push"}, []string{"Target  synthetic-middle", "synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
-		{"preview default full stack", []string{"push", "--branch", "synthetic-middle"}, []string{"synthetic-top", "git push --atomic --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
-		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--scope", "path"}, []string{"git push --atomic --force-with-lease origin synthetic-lower synthetic-middle"}},
+		{"preview current", []string{"push"}, []string{"Target  synthetic-middle", "synthetic-top", "git push --atomic --set-upstream --force-with-lease origin synthetic-lower synthetic-middle synthetic-top", "Atomic push: all selected refs advance together or none do.", "No changes were made."}},
+		{"preview default full stack", []string{"push", "--branch", "synthetic-middle"}, []string{"synthetic-top", "git push --atomic --set-upstream --force-with-lease origin synthetic-lower synthetic-middle synthetic-top"}},
+		{"preview no stack", []string{"push", "--branch", "synthetic-middle", "--scope", "path"}, []string{"git push --atomic --set-upstream --force-with-lease origin synthetic-lower synthetic-middle"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -54,6 +54,32 @@ func TestPushPreviewAndApplyUseOneAtomicLeasePush(t *testing.T) {
 	}
 	if git.pushes != 1 || strings.Join(git.pushed, ",") != "synthetic-lower,synthetic-middle,synthetic-top" || !strings.Contains(stdout.String(), "Ready to apply") || !strings.Contains(stdout.String(), "Applied — remote refs updated atomically") {
 		t.Errorf("pushes=%d branches=%v output=%q", git.pushes, git.pushed, stdout.String())
+	}
+	if git.upstream != localgit.SetUpstream {
+		t.Errorf("upstream = %v, want it set by default", git.upstream)
+	}
+}
+
+func TestNoSetUpstreamIsPreviewedAndCarriedToThePush(t *testing.T) {
+	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}}
+	pushService := push.Service{Git: git, Selector: stack.GraphiteSelector{Git: git, Graphite: cliPushGraphite{}}}
+	for _, apply := range []bool{false, true} {
+		args := []string{"push", "--no-set-upstream"}
+		if apply {
+			args = append(args, "--apply")
+		}
+		var stdout, stderr bytes.Buffer
+		command := newWithPresentation("v", "g2g", &stdout, &stderr, link.Service{}, pushService, Presentation{})
+		command.SetArgs(args)
+		if err := command.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stdout.String(), "git push --atomic --force-with-lease origin synthetic-lower") {
+			t.Errorf("apply=%v output = %q, want the action without --set-upstream", apply, stdout.String())
+		}
+	}
+	if git.pushes != 1 || git.upstream != localgit.LeaveUpstream {
+		t.Errorf("pushes=%d upstream=%v, want one push leaving upstreams alone", git.pushes, git.upstream)
 	}
 }
 
@@ -173,7 +199,7 @@ func TestPushDebugIsStderrOnly(t *testing.T) {
 	for _, expected := range []string{
 		"operation=\"push\"", "event=push.plan", "target=\"synthetic-middle\"",
 		"scope=\"stack\"", "remote=\"origin\"",
-		"command=\"git push --atomic --force-with-lease=refs/heads/synthetic-lower:",
+		"command=\"git push --atomic --set-upstream --force-with-lease=refs/heads/synthetic-lower:",
 	} {
 		if !strings.Contains(stderr.String(), expected) {
 			t.Errorf("debug missing %q: %q", expected, stderr.String())
@@ -190,6 +216,7 @@ type cliPushGit struct {
 	branches, pushed   []string
 	remoteErr, pushErr error
 	pushes             int
+	upstream           localgit.Upstream
 	events             *[]string
 }
 
@@ -200,7 +227,8 @@ func (f *cliPushGit) RemoteTips(_ context.Context, _ string, branches []string) 
 	return testutil.RemoteTips(branches), nil
 }
 
-func (f *cliPushGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease) error {
+func (f *cliPushGit) PushAtomic(_ context.Context, _ string, leases []localgit.Lease, upstream localgit.Upstream) error {
+	f.upstream = upstream
 	branches := make([]string, 0, len(leases))
 	for _, lease := range leases {
 		branches = append(branches, lease.Branch)

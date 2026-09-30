@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
@@ -278,6 +279,36 @@ func landingTheBottom(w *world) {
 		Scope:        shape.ScopePath,
 		Source:       stack.SourceG2G,
 	}}
+}
+
+// The recipe is what someone would run by hand, so a descent that leaves
+// upstreams alone says so on every push it lists, and the push it makes is
+// planned the same way.
+func TestNoSetUpstreamReachesTheRecipeAndThePush(t *testing.T) {
+	w := newWorld(t)
+	landingTheBottom(w)
+	options := Defaults()
+	options.Upstream = localgit.LeaveUpstream
+	plan := w.plan(t, options)
+	pushes := 0
+	for _, command := range plan.Commands() {
+		if !strings.HasPrefix(command.Command, "g2g push ") {
+			continue
+		}
+		pushes++
+		if !strings.Contains(command.Command, " --no-set-upstream ") {
+			t.Errorf("recipe line %q does not leave upstreams alone", command.Command)
+		}
+	}
+	if pushes == 0 {
+		t.Fatal("recipe has no push to check")
+	}
+	if err := w.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(w.pusher.upstreams, []localgit.Upstream{localgit.LeaveUpstream, localgit.LeaveUpstream}) {
+		t.Errorf("pushes planned with %v, want every one leaving upstreams alone", w.pusher.upstreams)
+	}
 }
 
 // The syncs replay what sits above the landed branch, and a replay nobody

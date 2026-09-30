@@ -20,14 +20,14 @@ if [ "$1 $2" = "remote get-url" ]; then printf 'https://example.test/synthetic.g
 if [ "$1" = "push" ]; then exit 0; fi
 exit 9`,
 	})
-	if err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-lower", Expected: "aaa"}, {Branch: "synthetic-top", Expected: "bbb"}}); err != nil {
+	if err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-lower", Expected: "aaa"}, {Branch: "synthetic-top", Expected: "bbb"}}, SetUpstream); err != nil {
 		t.Fatal(err)
 	}
 	called, err := os.ReadFile(arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "remote get-url origin\npush --atomic --force-with-lease=refs/heads/synthetic-lower:aaa --force-with-lease=refs/heads/synthetic-top:bbb origin synthetic-lower synthetic-top\n"
+	want := "remote get-url origin\npush --atomic --set-upstream --force-with-lease=refs/heads/synthetic-lower:aaa --force-with-lease=refs/heads/synthetic-top:bbb origin synthetic-lower synthetic-top\n"
 	if got := string(called); got != want {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
@@ -44,7 +44,7 @@ if [ "$1 $2" = "remote get-url" ]; then exit 0; fi
 printf '%s\n' 'synthetic push failure' >&2
 exit 1`,
 			})
-			err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-branch", Expected: "aaa"}})
+			err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", []Lease{{Branch: "synthetic-branch", Expected: "aaa"}}, LeaveUpstream)
 			if err == nil {
 				t.Fatal("PushAtomic() error = nil")
 			}
@@ -70,7 +70,7 @@ func TestPushAtomicRejectsEmptyBranchList(t *testing.T) {
 if [ "$1 $2" = "remote get-url" ]; then exit 0; fi
 exit 9`,
 	})
-	err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", nil)
+	err := (Client{Runner: subprocess.ExecRunner{}}).PushAtomic(context.Background(), "origin", nil, SetUpstream)
 	if err == nil || !strings.Contains(err.Error(), "no branches") {
 		t.Fatalf("PushAtomic() error = %v", err)
 	}

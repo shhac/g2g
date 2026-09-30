@@ -38,7 +38,7 @@ func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Gr
 	// An error planning the push is not a refusal here: each cycle plans its
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
-	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote)
+	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote, options.Upstream)
 	if err == nil && pushed.Blocked != "" {
 		return pushed.Blocked, pushed.Repair
 	}

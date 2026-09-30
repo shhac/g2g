@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
@@ -13,7 +14,7 @@ import (
 func newPush(service push.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var remote string
 	var selection stackOptions
-	var apply bool
+	var apply, noSetUpstream bool
 	cmd := &cobra.Command{
 		Use:     "push",
 		GroupID: groupPublish,
@@ -25,10 +26,13 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				return err
 			}
 			root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
+			upstream := upstreamFor(noSetUpstream)
 			flow := applyFlow[push.Plan]{
-				plan: func(ctx context.Context) (push.Plan, error) { return service.Plan(ctx, selection.Selection(), remote) },
+				plan: func(ctx context.Context) (push.Plan, error) {
+					return service.Plan(ctx, selection.Selection(), remote, upstream)
+				},
 				revalidate: func(ctx context.Context, preview push.Plan) (push.Plan, error) {
-					return service.Revalidate(ctx, selection.Selection(), remote, preview)
+					return service.Revalidate(ctx, selection.Selection(), remote, upstream, preview)
 				},
 				render:   writePushPlan,
 				guard:    guard,
@@ -56,5 +60,19 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 	selection.registerScope(cmd, shape.ProjectScopes, shape.ScopeStack, scopeUsage("push", shape.ProjectScopes))
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
+	registerNoSetUpstream(cmd, &noSetUpstream)
 	return cmd
+}
+
+// registerNoSetUpstream declares the opt-out on every command that publishes,
+// so push, submit and land spell and explain it the same way.
+func registerNoSetUpstream(cmd *cobra.Command, into *bool) {
+	cmd.Flags().BoolVar(into, "no-set-upstream", false, "leave each pushed branch's upstream as it is instead of tracking the remote's copy")
+}
+
+func upstreamFor(noSetUpstream bool) localgit.Upstream {
+	if noSetUpstream {
+		return localgit.LeaveUpstream
+	}
+	return localgit.SetUpstream
 }

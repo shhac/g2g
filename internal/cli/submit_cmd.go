@@ -52,6 +52,7 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 	// merge, which is how g2g land merges each one.
 	cmd.Flags().BoolVar(&options.link, "link", false, "also link the pull requests as a GitHub native stack (g2g land refuses a linked stack)")
 	cmd.Flags().BoolVar(&options.noComment, "no-comment", false, "do not keep the stack comment on each pull request afterwards")
+	registerNoSetUpstream(cmd, &options.noSetUpstream)
 	return cmd
 }
 
@@ -62,6 +63,8 @@ type submitOptions struct {
 	comments  comment.Service
 	noComment bool
 	link      bool
+	// noSetUpstream leaves each pushed branch's upstream as it was.
+	noSetUpstream bool
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
 	guard      func(context.Context) error
@@ -102,7 +105,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	o.root = commandContext(cmd.Context(), cmd, applyMode(o.apply), o.selection.branch, o.selection.trunk)
 	ctx, cancel := o.budgets.discovery(o.root)
 	defer cancel()
-	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote)
+	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 	if err != nil {
 		return err
 	}
@@ -148,7 +151,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		// sequence still re-discovers through revalidate before mutating.
 		plan: func(context.Context) (submit.Plan, error) { return preview, nil },
 		revalidate: func(ctx context.Context, preview submit.Plan) (submit.Plan, error) {
-			return service.Revalidate(ctx, o.selection.Selection(), o.remote, preview)
+			return service.Revalidate(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream), preview)
 		},
 		blocked: submitBlocked,
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {

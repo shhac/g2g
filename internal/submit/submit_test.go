@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/stack"
@@ -116,12 +117,12 @@ func (f *fakeGit) Remote(context.Context, string) error { return f.remoteErr }
 
 // The fake Git also stands in for push. Publishing is push's, so what these
 // tests need of it is only whether it was asked to publish and what it said.
-func (f *fakeGit) Plan(_ context.Context, selection stack.Selection, remote string) (push.Plan, error) {
+func (f *fakeGit) Plan(_ context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (push.Plan, error) {
 	if f.remoteErr != nil {
 		return push.Plan{}, f.remoteErr
 	}
 	tips := testutil.RemoteTips(snapshot().Branches)
-	return push.Plan{Remote: remote, RemoteTips: tips, Blocked: f.pushBlocked}, nil
+	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Blocked: f.pushBlocked}, nil
 }
 
 func (f *fakeGit) Execute(_ context.Context, plan push.Plan) error {
@@ -194,7 +195,7 @@ func TestAPushThatWouldDropRemoteWorkBlocksTheSubmission(t *testing.T) {
 	github := &fakeGitHub{}
 	service, git := planService(github)
 	git.pushBlocked = "the remote has moved on synthetic/middle"
-	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}

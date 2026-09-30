@@ -17,7 +17,7 @@ type Git interface {
 	stack.Git
 	Remote(context.Context, string) error
 	RemoteTips(context.Context, string, []string) (map[string]string, error)
-	PushAtomic(context.Context, string, []localgit.Lease) error
+	PushAtomic(context.Context, string, []localgit.Lease, localgit.Upstream) error
 	// Resolve and Divergence are what turn the observed remote tips into a
 	// statement about what the push would do. Both read locally: the tips are
 	// already in hand from the one ls-remote, so saying what they mean costs
@@ -48,6 +48,10 @@ type Plan struct {
 	// lease the push asserts, so a branch that moved in between is rejected
 	// rather than overwritten.
 	RemoteTips map[string]string
+	// Upstream is whether the push records each branch as tracking what it
+	// publishes. It is part of the plan rather than of the call that executes
+	// it, so a preview and the apply it approves cannot disagree about it.
+	Upstream localgit.Upstream
 	// Publishing says what the push would do to each branch. The tips alone
 	// could not: the preview rendered the same three lines whether a branch was
 	// two commits ahead, already published, or behind a commit somebody else
@@ -78,12 +82,7 @@ func (p Plan) NothingToPublish() bool {
 // pushArgs is the exact invocation Execute makes, so a diagnostic never
 // advertises a command that differs from the one that runs.
 func (p Plan) pushArgs() []string {
-	args := []string{"push", "--atomic"}
-	for _, lease := range p.Leases() {
-		args = append(args, lease.Argument())
-	}
-	args = append(args, p.Remote)
-	return append(args, p.Branches...)
+	return localgit.PushArguments(p.Remote, p.Leases(), p.Upstream)
 }
 
 // Ready reports a service with everything it needs.
@@ -105,7 +104,7 @@ func (p Plan) Leases() []localgit.Lease {
 	return leases
 }
 
-func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string) (Plan, error) {
+func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("push service is not fully configured")
 	}
@@ -135,7 +134,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing)}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing)}
 	plan.Blocked = plan.Repair.Sentence()
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
@@ -181,8 +180,8 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 	}
 }
 
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, selection, remote)
+func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream, preview Plan) (Plan, error) {
+	plan, err := s.Plan(ctx, selection, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -206,7 +205,7 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")},
 		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
-	return s.Git.PushAtomic(ctx, plan.Remote, plan.Leases())
+	return s.Git.PushAtomic(ctx, plan.Remote, plan.Leases(), plan.Upstream)
 }
 
 // Equal compares every fact that changes what the push does, including the
@@ -217,6 +216,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Blocked == other.Blocked &&
 		maps.Equal(p.Publishing, other.Publishing) &&
 		p.Remote == other.Remote &&
+		p.Upstream == other.Upstream &&
 		maps.Equal(p.RemoteTips, other.RemoteTips)
 }
 

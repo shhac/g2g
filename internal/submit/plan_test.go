@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/stack"
@@ -28,11 +29,24 @@ func planService(github *fakeGitHub) (Service, *fakeGit) {
 func planFor(t *testing.T, prs []githubstack.PullRequest) Plan {
 	t.Helper()
 	service, _ := planService(&fakeGitHub{prs: prs})
-	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	return plan
+}
+
+// submit publishes through push, so leaving upstreams alone is push's to do
+// and submit's only job is to ask for it.
+func TestPlanAsksPushToLeaveUpstreamsAlone(t *testing.T) {
+	service, _ := planService(&fakeGitHub{})
+	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.LeaveUpstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Push.Upstream != localgit.LeaveUpstream {
+		t.Errorf("push planned with %v, want upstreams left alone", plan.Push.Upstream)
+	}
 }
 
 func TestPlanResolvesTheSelectedStackAndRemote(t *testing.T) {
@@ -129,7 +143,7 @@ func TestPlanExpectsEachBranchToSitOnItsPredecessor(t *testing.T) {
 func TestSupersededBranchIsSubmittedAgain(t *testing.T) {
 	github := &fakeGitHub{prs: []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "CLOSED", Number: 9}}}
 	service, git := planService(github)
-	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	plan, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +169,7 @@ func TestRevalidateRequiresACleanWorktreeBeforeReadingAnything(t *testing.T) {
 	service, git := planService(github)
 	git.cleanErr = errors.New("working tree is not clean")
 
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", Plan{}); err == nil {
+	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, Plan{}); err == nil {
 		t.Fatal("Revalidate() = nil, want error")
 	}
 	if github.inspections != 0 {
@@ -166,12 +180,12 @@ func TestRevalidateRequiresACleanWorktreeBeforeReadingAnything(t *testing.T) {
 func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 	github := &fakeGitHub{prs: []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11}}}
 	service, _ := planService(github)
-	preview, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	preview, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", preview); err != nil {
+	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, preview); err != nil {
 		t.Fatalf("Revalidate() error = %v", err)
 	}
 }
@@ -186,12 +200,12 @@ func TestRevalidateRejectsAPlanThatChangedUnderneath(t *testing.T) {
 		laterSet: true,
 	}
 	service, _ := planService(github)
-	preview, err := service.Plan(context.Background(), stack.Selection{}, "origin")
+	preview, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = service.Revalidate(context.Background(), stack.Selection{}, "origin", preview)
+	_, err = service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, preview)
 	if err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
 		t.Fatalf("Revalidate() error = %v, want a revalidation mismatch", err)
 	}
@@ -234,14 +248,14 @@ func TestPlanEqualComparesEveryFactThatAffectsTheMutation(t *testing.T) {
 }
 
 func TestPlanRejectsAnUnconfiguredServiceAndUnknownRemote(t *testing.T) {
-	if _, err := (Service{}).Plan(context.Background(), stack.Selection{}, "origin"); err == nil {
+	if _, err := (Service{}).Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream); err == nil {
 		t.Error("Plan() on an unconfigured service = nil, want error")
 	}
 
 	github := &fakeGitHub{}
 	service, git := planService(github)
 	git.remoteErr = errors.New("no such remote")
-	if _, err := service.Plan(context.Background(), stack.Selection{}, "synthetic"); err == nil {
+	if _, err := service.Plan(context.Background(), stack.Selection{}, "synthetic", localgit.SetUpstream); err == nil {
 		t.Error("Plan() with an unknown remote = nil, want error")
 	}
 	if github.inspections != 0 {

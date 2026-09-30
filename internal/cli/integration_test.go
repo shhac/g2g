@@ -266,7 +266,7 @@ func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing
 	if got := recorder.Count("gh pr create"); got != 1 {
 		t.Errorf("pr create invocations = %d, want 1:\n%s", got, strings.Join(recorder.Calls(), "\n"))
 	}
-	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create", "gh stack link")
+	recorder.AssertOrder("git push --atomic --set-upstream --force-with-lease=", "gh pr create", "gh stack link")
 	if !strings.Contains(stdout, "Applied") {
 		t.Errorf("submit did not confirm success:\n%s", stdout)
 	}
@@ -291,7 +291,7 @@ func TestSubmitDoesNotLinkUnlessAsked(t *testing.T) {
 	if strings.Contains(stdout, "GitHub stack") {
 		t.Errorf("submit said it would link:\n%s", stdout)
 	}
-	recorder.AssertOrder("git push --atomic --force-with-lease=", "gh pr create")
+	recorder.AssertOrder("git push --atomic --set-upstream --force-with-lease=", "gh pr create")
 	recorder.AssertNone("gh stack link")
 }
 

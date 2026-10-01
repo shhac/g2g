@@ -131,3 +131,36 @@ func TestAReviewersDeletionOnTheRemoteIsNotPublishedOver(t *testing.T) {
 		t.Errorf("synthetic-lower = %+v, want the plain replay still publishable", lower)
 	}
 }
+
+// Resolving a conflict changes patch identity even when the remote has not
+// moved. Without durable rewrite provenance this requires an explicit choice;
+// the safe escape hatch is a push pinned to what was observed, not a guess from
+// the original commit's subject or author.
+func TestAConflictResolvedReplayOffersAnObservedLeaseWithoutBlamingTheRemote(t *testing.T) {
+	repo := publishedStack(t)
+	oldLower, oldTop := repo.Revision("synthetic-lower"), repo.Revision("synthetic-top")
+	repo.Run("switch", "-q", "synthetic-main")
+	repo.Commit("synthetic trunk overlap", "lower.txt", "synthetic upstream content")
+	if err := repo.Try("rebase", "synthetic-main", "synthetic-lower"); err == nil {
+		t.Fatal("expected a real replay conflict")
+	}
+	repo.Write("lower.txt", "synthetic combined content")
+	repo.Run("add", "lower.txt")
+	repo.Run("-c", "core.editor=true", "rebase", "--continue")
+	repo.Run("rebase", "-q", "--onto", "synthetic-lower", oldLower, "synthetic-top")
+	if repo.Run("status", "--porcelain") != "" {
+		t.Fatal("resolved replay left a dirty tree")
+	}
+	plan := planPush(t, repo)
+	if plan.Blocked == "" || strings.Contains(plan.Blocked, "remote has moved") {
+		t.Fatalf("Blocked = %q, want neutral refusal", plan.Blocked)
+	}
+	if !strings.Contains(plan.Repair.Ways[0].Effect, "conflict-resolved replay") {
+		t.Fatalf("missing explanation: %+v", plan.Repair)
+	}
+	for branch, tip := range map[string]string{"synthetic-lower": oldLower, "synthetic-top": oldTop} {
+		if !strings.Contains(plan.Repair.Ways[1].Command, "--force-with-lease=refs/heads/"+branch+":"+tip) {
+			t.Fatalf("replacement lost observed lease: %s", plan.Repair.Ways[1].Command)
+		}
+	}
+}

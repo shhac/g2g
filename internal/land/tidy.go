@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/restack"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -35,6 +37,9 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]stri
 
 // advance fast-forwards the base and replays what is left onto it.
 func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
+	if plan.KeepTrunk {
+		return false, s.Git.FetchIsolated(ctx, plan.Options.Remote, []string{plan.Trunk})
+	}
 	// The top of what remains, always. A guard here read as a special case for
 	// the last step and was not one: where it held, index was already the last
 	// index, so both branches named the same branch.
@@ -86,6 +91,9 @@ func (s Service) replayableHere(ctx context.Context, plan Plan, replay restack.P
 // refusal never applies. The children keep their own fork points, which is
 // what keeps their replay ranges to their own commits.
 func (s Service) forget(ctx context.Context, plan Plan, landed string) error {
+	if plan.KeepTrunk {
+		return s.forgetFetched(ctx, plan, landed)
+	}
 	adopted, err := s.Graph.Store.Load(ctx)
 	if err != nil {
 		return err
@@ -139,7 +147,11 @@ func (s Service) remove(ctx context.Context, plan Plan, step Step) {
 	// git will not delete the branch that is checked out, and landing a whole
 	// stack from its top ends standing on the last one deleted.
 	if current, err := s.Git.CurrentBranch(ctx); err == nil && current == step.Branch {
-		if err := s.Git.SwitchBranch(ctx, plan.Trunk); err != nil {
+		switchAway := func() error { return s.Git.SwitchBranch(ctx, plan.Trunk) }
+		if plan.KeepTrunk {
+			switchAway = func() error { return s.Git.SwitchDetached(ctx, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk)) }
+		}
+		if err := switchAway(); err != nil {
 			diagnostic.Warn(ctx, "land.switch", fmt.Sprintf("could not move off %s to %s: %v", step.Branch, plan.Trunk, err))
 			return
 		}
@@ -147,4 +159,31 @@ func (s Service) remove(ctx context.Context, plan Plan, step Step) {
 	if err := s.Git.DeleteBranch(ctx, step.Branch); err != nil {
 		diagnostic.Warn(ctx, "land.delete_local", fmt.Sprintf("could not delete %s: %v", step.Branch, err))
 	}
+}
+
+// forgetFetched uses the shared landed check against the fetched trunk before
+// untracking a leaf. The local trunk is held elsewhere and deliberately stale;
+// the ordinary prune would therefore find nothing in it. The structural check
+// is repeated in case somebody recorded a child during the descent.
+func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) error {
+	recorded, err := s.Graph.Store.Load(ctx)
+	if err != nil {
+		return err
+	}
+	if note := declaredRefusal(recorded, branch); note.Reason != "" {
+		return fmt.Errorf("%s", note.Sentence())
+	}
+	limit := recorded.Edges[branch].ForkPoint
+	upstream, err := landed.Into(ctx, s.Git, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk), branch, limit)
+	if err != nil {
+		return err
+	}
+	if !upstream {
+		return fmt.Errorf("%s merged, but its work is not in the fetched %s · rerun g2g land", branch, plan.Trunk)
+	}
+	untrack, err := s.Graph.PlanUntrack(ctx, graph.Selection{Branch: branch, Scope: graph.ScopeBranch})
+	if err != nil {
+		return err
+	}
+	return s.Graph.ApplyUntrack(ctx, untrack)
 }

@@ -56,6 +56,10 @@ func landingGitHubStack(t *testing.T, remote string, branches ...string) string 
 // from #41, for shapes that are not one straight stack on main.
 func landingGitHubPulls(t *testing.T, remote string, pulls ...[2]string) string {
 	t.Helper()
+	// The fake creates clones and commits of its own. Those processes must
+	// ignore host signing and hooks just as the real-Git fixture helpers do.
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
 	state := t.TempDir()
 	for index, pull := range pulls {
 		number := fmt.Sprint(41 + index)
@@ -185,6 +189,12 @@ case "$1 $2" in
   ;;
 "pr merge")
   number="$3"
+  printf '%s\n' "$number" >> "$state_dir/merge-attempts"
+  if [ -f "$state_dir/base-modified-$number" ]; then
+    rm -f "$state_dir/base-modified-$number"
+    printf 'GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)\n' >&2
+    exit 1
+  fi
   # GitHub declining a merge -- a check that failed at the last moment -- is
   # arranged by a flag file, and happens once: the next attempt is accepted.
   if [ -f "$state_dir/refuse-merge-$number" ]; then
@@ -193,6 +203,16 @@ case "$1 $2" in
     exit 1
   fi
   branch=$(branch_for "$number")
+  expected_head=""
+  previous=""
+  for arg in "$@"; do
+    if [ "$previous" = "--match-head-commit" ]; then expected_head="$arg"; fi
+    previous="$arg"
+  done
+  if [ -z "$expected_head" ] || [ "$expected_head" != "$(head_oid "$branch")" ]; then
+    printf 'synthetic head mismatch\n' >&2
+    exit 1
+  fi
   base=$(read_state "pr-$number.base" main)
   work="$state_dir/work-$number"
   rm -rf "$work"

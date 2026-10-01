@@ -648,11 +648,11 @@ type failingSecondMerge struct {
 	states  map[int]githubstack.MergeState
 }
 
-func (f *failingSecondMerge) Merge(ctx context.Context, number int, method githubstack.Method, admin bool) error {
+func (f *failingSecondMerge) Merge(ctx context.Context, number int, method githubstack.Method, admin bool, head string) error {
 	if number == f.failFor {
 		return errors.New("synthetic merge refusal")
 	}
-	return f.fakeGitHub.Merge(ctx, number, method, admin)
+	return f.fakeGitHub.Merge(ctx, number, method, admin, head)
 }
 
 // The recipe a preview shows and the work an apply does are built from the same
@@ -1109,5 +1109,34 @@ func TestTheRecipeKeepsTheStackCommentsOnWhatRemains(t *testing.T) {
 		if strings.HasPrefix(command.Command, "g2g github comment") {
 			t.Errorf("--no-comment still keeps comments: %q", command.Command)
 		}
+	}
+}
+
+func TestALeafWithSurvivorsStillRefusesATrunkHeldElsewhere(t *testing.T) {
+	w := newWorld(t)
+	snapshot := w.service.Selector.(fakeSelector).snapshot
+	snapshot.Target = "synthetic-one"
+	snapshot.Branches = []string{"synthetic-one"}
+	snapshot.Ancestry = []string{"synthetic-main", "synthetic-one"}
+	snapshot.Scope = shape.ScopePath
+	w.service.Selector = fakeSelector{snapshot: snapshot}
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	plan := w.plan(t, Defaults())
+	if plan.Blocked == "" || plan.KeepTrunk {
+		t.Fatalf("plan = %+v, want survivors protected", plan)
+	}
+}
+
+func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
+	w := newWorld(t)
+	w.store.graph = w.store.graph.Untrack("synthetic-two")
+	snapshot := w.service.Selector.(fakeSelector).snapshot
+	snapshot.Target = "synthetic-one"
+	snapshot.Branches = []string{"synthetic-one"}
+	w.service.Selector = fakeSelector{snapshot: snapshot}
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true, "synthetic-one": true}}
+	plan := w.plan(t, Defaults())
+	if plan.Blocked == "" || plan.KeepTrunk {
+		t.Fatalf("plan = %+v, want held leaf protected", plan)
 	}
 }

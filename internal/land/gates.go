@@ -24,25 +24,28 @@ import (
 // refusal that reaches a plan from another one may carry only the sentence:
 // sync sets Blocked straight from the restack it delegates to, with no Repair
 // beside it. Reading the structure alone let exactly that refusal through.
-func (s Service) blockedBefore(ctx context.Context, plan Plan, recorded graph.Graph) (string, repair.Note) {
-	if sentence, note := structuralRefusal(plan, recorded); sentence != "" {
+func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.Graph) (string, repair.Note) {
+	if sentence, note := structuralRefusal(*plan, recorded); sentence != "" {
 		return sentence, note
 	}
 	discovery, options := plan.Discovery, plan.Options
 	if dirty := s.dirtyWhereItMatters(ctx, recorded, discovery.Target, discovery.Base); dirty.Reason != "" {
 		return dirty.Sentence(), dirty
 	}
-	if held := s.heldElsewhere(ctx, recorded, discovery.Target, discovery.Base); held.Reason != "" {
+	if held := s.heldElsewhere(ctx, recorded, plan); held.Reason != "" {
 		return held.Sentence(), held
 	}
 	// An error planning the push is not a refusal here: each cycle plans its
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
-	pushed, err := s.Pusher.Plan(ctx, pushSelection(plan), options.Remote, options.Upstream)
+	pushed, err := s.Pusher.Plan(ctx, pushSelection(*plan), options.Remote, options.Upstream)
 	if err == nil && pushed.Blocked != "" {
 		return pushed.Blocked, pushed.Repair
 	}
-	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, discovery.Target), options.Remote, syncer.TakeNothing)
+	if plan.KeepTrunk {
+		return "", repair.Note{}
+	}
+	synced, err := s.Syncer.Plan(ctx, syncSelection(*plan, discovery.Target), options.Remote, syncer.TakeNothing)
 	if err != nil && plan.declared() {
 		// Nothing about a base alone makes sync unable to answer, so a failure
 		// here is one the advance after the merge would meet too.
@@ -146,13 +149,14 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 // something to move — after the first merge, which does not come back. Asking
 // sync up front found nothing while the trunk was level, so a descent with the
 // trunk open in another worktree merged its bottom branch and then stopped.
-func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, target, base string) repair.Note {
+func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan *Plan) repair.Note {
 	if s.Holds == nil {
 		return repair.Note{}
 	}
 	cannotTell := func(err error) repair.Note {
 		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
 	}
+	target, base := plan.Target, plan.Trunk
 	branches, err := moving(recorded, target, base)
 	if err != nil {
 		return cannotTell(err)
@@ -163,6 +167,24 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, target
 	}
 	if held.Reason == "" {
 		return repair.Note{}
+	}
+	// A single branch can merge without advancing the trunk here, provided
+	// there is no survivor whose contents would need replaying afterwards.
+	if len(plan.Branches) == 1 && len(recorded.Children(target)) == 0 {
+		others := slices.DeleteFunc(slices.Clone(branches), func(branch string) bool { return branch == base })
+		note, err := s.Holds.HeldElsewhere(ctx, others)
+		if err != nil {
+			return cannotTell(err)
+		}
+		if note.Reason == "" {
+			current, err := s.Git.CurrentBranch(ctx)
+			if err != nil {
+				return cannotTell(err)
+			}
+			plan.KeepTrunk = true
+			plan.Detach = plan.Options.DeleteLocal && current == target
+			return repair.Note{}
+		}
 	}
 	// Narrowing the selection is no way out here: a descent moves the whole
 	// stack whatever was selected, because the replay after each merge takes

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Command is one line of the recipe: something a person could run, and what
@@ -119,6 +120,20 @@ func (p Plan) commentCommands() []Command {
 // step described a descent that ended with the trunk behind its remote.
 func (p Plan) cleanupCommands(step Step) []Command {
 	commands := make([]Command, 0, 4)
+	if p.KeepTrunk {
+		ref := localgit.IsolatedRef(p.Options.Remote, p.Trunk)
+		commands = append(commands, Command{
+			Command: repair.Command([]string{"git", "fetch", "--refmap=", "--no-write-fetch-head", p.Options.Remote, "+refs/heads/" + p.Trunk + ":" + ref}),
+			Effect:  "fetch the merge without moving the local trunk",
+		}, Command{
+			Command: repair.Command([]string{"g2g", "untrack", "--branch", step.Branch, "--apply"}),
+			Effect:  "forget it, after checking its work is in the fetched trunk",
+		})
+		if p.Detach {
+			commands = append(commands, Command{Command: repair.Command([]string{"git", "switch", "--detach", ref}), Effect: "move off the merged branch without checking out the held trunk"})
+		}
+		return append(commands, p.deletions(step)...)
+	}
 	if p.declared() {
 		commands = append(commands, p.declaredCleanup(step)...)
 		return append(commands, p.deletions(step)...)

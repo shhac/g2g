@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
@@ -90,6 +91,10 @@ func shortObject(object string) string {
 }
 
 func baseNote(plan syncer.Plan) string {
+	replay := "your stack is replayed onto it"
+	if plan.Restack.Discovery.Scope == shape.ScopeBranch {
+		replay = "no stack branches are replayed"
+	}
 	switch {
 	case plan.Supersede && len(plan.DiscardsBase) != 0:
 		// The other way a base is superseded: asked for with --take, where the
@@ -97,12 +102,12 @@ func baseNote(plan syncer.Plan) string {
 		// commits. Saying "already has everything here" of that -- which this
 		// did, while discardNote listed the commits it was about to lose --
 		// describes the opposite of what is happening.
-		return fmt.Sprintf("Replaces %s with %s/%s, which does not have everything here · your stack is replayed onto it.", plan.Base, plan.Remote, plan.Base)
+		return fmt.Sprintf("Replaces %s with %s/%s, which does not have everything here · %s.", plan.Base, plan.Remote, plan.Base, replay)
 	case plan.Supersede:
 		// Worth spelling out: this is the one place sync discards commits, and
 		// it only does so because the published trunk already has their content
 		// under different ids.
-		return fmt.Sprintf("Replaces %s with %s/%s, which was rewritten and already has everything here · your stack is replayed onto it.", plan.Base, plan.Remote, plan.Base)
+		return fmt.Sprintf("Replaces %s with %s/%s, which was rewritten and already has everything here · %s.", plan.Base, plan.Remote, plan.Base, replay)
 	case plan.Advance:
 		return fmt.Sprintf("Fast-forwards %s to %s · nothing is merged or rewritten.", plan.Base, plan.Remote)
 	}

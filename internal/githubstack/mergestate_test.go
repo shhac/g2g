@@ -75,7 +75,7 @@ func TestMergeNeverAsksGhToDeleteTheBranch(t *testing.T) {
 	t.Setenv("GH_ARGUMENTS", arguments)
 	testutil.WithFakeExecutables(t, map[string]string{"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"`})
 
-	if err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 41, MethodSquash, false); err != nil {
+	if err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 41, MethodSquash, false, "synthetic-head"); err != nil {
 		t.Fatalf("Merge() error = %v", err)
 	}
 
@@ -83,7 +83,7 @@ func TestMergeNeverAsksGhToDeleteTheBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(called)) != "pr merge 41 --squash" {
+	if strings.TrimSpace(string(called)) != "pr merge 41 --squash --match-head-commit synthetic-head" {
 		t.Errorf("gh call = %q, want exactly the squash merge", called)
 	}
 	for _, forbidden := range []string{"--delete-branch", "-d ", "--auto"} {
@@ -98,14 +98,14 @@ func TestMergeAddsAdminOnlyWhenItIsAsked(t *testing.T) {
 		admin bool
 		want  string
 	}{
-		{admin: false, want: "pr merge 42 --rebase"},
-		{admin: true, want: "pr merge 42 --rebase --admin"},
+		{admin: false, want: "pr merge 42 --rebase --match-head-commit synthetic-head"},
+		{admin: true, want: "pr merge 42 --rebase --match-head-commit synthetic-head --admin"},
 	} {
 		arguments := filepath.Join(t.TempDir(), "gh-arguments")
 		t.Setenv("GH_ARGUMENTS", arguments)
 		testutil.WithFakeExecutables(t, map[string]string{"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"`})
 
-		if err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 42, MethodRebase, testCase.admin); err != nil {
+		if err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 42, MethodRebase, testCase.admin, "synthetic-head"); err != nil {
 			t.Fatalf("Merge(admin=%t) error = %v", testCase.admin, err)
 		}
 		called, err := os.ReadFile(arguments)
@@ -120,7 +120,7 @@ func TestMergeAddsAdminOnlyWhenItIsAsked(t *testing.T) {
 
 func TestMergeRefusesAMethodItDoesNotKnow(t *testing.T) {
 	testutil.WithFakeExecutables(t, map[string]string{"gh": `exit 1`})
-	err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 41, Method("--admin"), false)
+	err := (Client{Runner: subprocess.ExecRunner{}}).Merge(context.Background(), 41, Method("--admin"), false, "synthetic-head")
 	if err == nil || !strings.Contains(err.Error(), "unsupported merge method") {
 		t.Fatalf("Merge() error = %v, want a refusal before anything ran", err)
 	}

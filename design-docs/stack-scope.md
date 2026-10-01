@@ -200,6 +200,14 @@ means anything: it advances the base and replays what sits on it, so replaying a
 subtree would leave the branches below it on the old base while the subtree's own
 fork point had not moved — a replay that does nothing.
 
+`pull --trunk-only` answers a different request: advance the evidenced trunk
+without collecting or replaying any stack branch. It resolves the recorded root
+of the selected branch, or accepts an explicitly selected default or declared
+trunk, and delegates to pull's existing base-only `ScopeBranch` path. This is
+not a narrower replay scope; it is mutually exclusive with `--scope`, `--take`,
+`--through`, and `--prune`. Unrecorded feature branches are refused rather than
+guessed to be trunks. Landing declared trunks uses the same base-only path.
+
 **`all` on anything that mutates.** It exists so a repository with several
 trunks can be seen whole, which is a reading problem. A rewrite acts on one
 trunk, so spanning them is not a wider version of the same request.

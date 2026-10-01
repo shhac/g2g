@@ -168,14 +168,21 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 		leases = append(leases, localgit.Lease{Branch: branch, Expected: tips[branch]})
 	}
 	replace := repair.Command(append([]string{"git"}, localgit.PushArguments(remote, leases, localgit.LeaveUpstream)...))
+	reconcile := "fetch and reconcile first"
+	for _, branch := range rejected {
+		if publishing[branch].Standing == Diverged {
+			reconcile += "; a conflict-resolved replay can also change the published patch, so check the differences before replacing it"
+			break
+		}
+	}
 	// Naming the command that does work matters more than the refusal. No g2g
 	// command republishes over a remote that has moved, and deliberately
 	// dropping a published commit is a real thing to want, so a preview that
 	// only says no leaves the reader with nowhere to go.
 	return repair.Note{
-		Reason: fmt.Sprintf("the remote has moved on %s", strings.Join(rejected, ", ")),
+		Reason: fmt.Sprintf("the published version differs on %s", strings.Join(rejected, ", ")),
 		Ways: []repair.Step{
-			{Effect: "fetch and reconcile first"},
+			{Effect: reconcile},
 			{
 				Command: replace,
 				Effect:  "replace what is published, dropping what the remote has",

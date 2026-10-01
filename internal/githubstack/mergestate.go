@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // Method is how a pull request is merged.
@@ -248,14 +249,20 @@ func parseMergeability(output []byte, numbers []int) (Mergeability, error) {
 // as the remote one, which would make deleting the published branch quietly
 // remove the user's own, outside this tool's own guarded ref handling and
 // without previewing it. The two deletions are separate acts and stay separate.
-func (c Client) Merge(ctx context.Context, number int, method Method, admin bool) error {
+func (c Client) Merge(ctx context.Context, number int, method Method, admin bool, head string) error {
 	if number <= 0 {
 		return fmt.Errorf("pull request number is required")
 	}
 	if _, err := ParseMethod(string(method)); err != nil {
 		return err
 	}
-	args := []string{"pr", "merge", strconv.Itoa(number), method.Flag()}
+	if head == "" {
+		return fmt.Errorf("the reviewed pull request head is required")
+	}
+	if err := subprocess.CheckArgument("gh", "head commit", head); err != nil {
+		return err
+	}
+	args := []string{"pr", "merge", strconv.Itoa(number), method.Flag(), "--match-head-commit", head}
 	if admin {
 		args = append(args, "--admin")
 	}

@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -647,6 +648,55 @@ func TestPlanFetchesOnlyWhatHasMoved(t *testing.T) {
 			}
 			if got := strings.Join(git.fetched, ","); got != test.want {
 				t.Errorf("fetched %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestPlanTrunkSelectsTheRecordedRootWithoutReplayingItsBranches(t *testing.T) {
+	git := behindGit()
+	restacker := &stubRestacker{}
+	service, _ := newService(git, restacker)
+	plan, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Base != "synthetic-trunk" || len(plan.Collect) != 0 || len(plan.Restack.Steps) != 0 {
+		t.Fatalf("plan = %+v, want the recorded trunk alone", plan)
+	}
+}
+
+func TestPlanTrunkDoesNotGuessAnUnrecordedFeatureBranchIsATrunk(t *testing.T) {
+	service, _ := newService(behindGit(), &stubRestacker{})
+	_, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-unknown"}, "origin")
+	if err == nil || !strings.Contains(err.Error(), "no recorded trunk") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRevalidateTrunkChecksTheTrunkAgainBeforeApplying(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		t.Run(fmt.Sprint("moved=", moved), func(t *testing.T) {
+			git := behindGit()
+			service, _ := newService(git, nil)
+			selection := graph.Selection{Branch: "synthetic-b"}
+			preview, err := service.PlanTrunk(context.Background(), selection, "origin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if moved {
+				git.objects["synthetic-trunk"] = "trunk-new"
+			}
+			current, err := service.RevalidateTrunk(context.Background(), selection, "origin", preview)
+			if moved {
+				if err == nil {
+					t.Fatal("accepted a trunk that moved after the preview")
+				}
+			} else if err != nil || !current.Equal(preview) {
+				t.Fatalf("unchanged trunk: plan = %+v, error = %v", current, err)
+			}
+			if len(git.fastForwards) != 0 {
+				t.Fatal("revalidation advanced the trunk")
 			}
 		})
 	}

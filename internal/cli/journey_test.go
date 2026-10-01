@@ -179,8 +179,8 @@ func TestJourneyAColleagueMovedYourBranch(t *testing.T) {
 	if err == nil {
 		t.Fatal("push overwrote a branch the remote had moved")
 	}
-	if !strings.Contains(stdout+err.Error(), "remote has moved") {
-		t.Errorf("refusal does not say the remote moved:\n%s\n%v", stdout, err)
+	if !strings.Contains(stdout+err.Error(), "the published version differs") {
+		t.Errorf("refusal does not describe the published difference:\n%s\n%v", stdout, err)
 	}
 	if now := w.tip(w.Remote, "synthetic-a"); now != theirs {
 		t.Errorf("the remote branch changed from %s to %s", theirs, now)

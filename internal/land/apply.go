@@ -163,16 +163,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	// asked GitHub for a merge it refuses, having been given --admin to pass.
 	// The plan's forecast still counts, so the merge is never less than the
 	// recipe said it would be.
-	now, err := s.recheck(ctx, plan, step)
-	if err != nil {
-		return false, err
-	}
-	diagnostic.Event(ctx, "land.merge",
-		diagnostic.Field{Key: "branch", Value: step.Branch},
-		diagnostic.Field{Key: "number", Value: fmt.Sprint(step.Number)},
-		diagnostic.Field{Key: "admin", Value: fmt.Sprintf("%t", now.Admin || step.Admin)},
-	)
-	if err := s.GitHub.Merge(ctx, step.Number, plan.Options.Method, now.Admin || step.Admin); err != nil {
+	if err := s.mergeReady(ctx, plan, step, tip); err != nil {
 		return false, err
 	}
 	return true, s.settleMerge(ctx, plan, step)
@@ -180,7 +171,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 
 // recheck decides this branch again against the world as it is now, and
 // answers with that decision.
-func (s Service) recheck(ctx context.Context, plan Plan, step Step) (Step, error) {
+func (s Service) recheck(ctx context.Context, plan Plan, step Step, expectedTip string) (Step, error) {
 	prs, err := s.GitHub.Inspect(ctx, []string{step.Branch})
 	if err != nil {
 		return Step{}, err
@@ -193,11 +184,17 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step) (Step, error
 	if err != nil {
 		return Step{}, err
 	}
+	if tip != expectedTip {
+		return Step{}, fmt.Errorf("%s changed locally before merging · rerun g2g land", step.Branch)
+	}
 	decided := step
 	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
 		now, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin})
 		if note.Reason != "" {
 			return Step{}, fmt.Errorf("%s", note.Sentence())
+		}
+		if now.Number != step.Number || now.Retargets() || state.HeadOID != tip || state.Base != step.Base {
+			return Step{}, fmt.Errorf("#%d changed its head or base before merging · rerun g2g land", step.Number)
 		}
 		decided = now
 	}

@@ -42,6 +42,12 @@ type Plan struct {
 	Protected []string
 	Blocked   string
 	Repair    repair.Note
+	// KeepTrunk leaves a trunk held by another worktree in place. This is
+	// possible only for one branch with nothing above it to replay.
+	KeepTrunk bool
+	// Detach moves this checkout onto the fetched merge before deleting its
+	// current branch, since the local trunk is unavailable for checkout.
+	Detach bool
 }
 
 // Republish is one branch above the descent, to publish once it is over.
@@ -83,6 +89,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
 		p.Declaration == other.Declaration &&
+		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
 		p.Blocked == other.Blocked &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above) &&
@@ -118,7 +125,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		options.Method = method
 		plan.Options = options
 	}
-	if sentence, note := s.blockedBefore(ctx, plan, recorded); sentence != "" {
+	if sentence, note := s.blockedBefore(ctx, &plan, recorded); sentence != "" {
 		return plan.refusedAs(sentence, note), nil
 	}
 

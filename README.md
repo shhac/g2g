@@ -628,6 +628,14 @@ This is `git switch main && git pull && git switch back && restack` in one
 command, and it needs no Graphite. It works on the stack as g2g's graph
 records it.
 
+To advance the trunk before starting another stack, use `g2g pull --trunk-only`
+and then add `--apply`. It selects the recorded trunk of the current branch,
+or of `--branch <branch>`, and fetches and advances that trunk alone. You can
+also name an existing default or declared trunk directly, even before recording
+a stack. It leaves stack branches, their records, and uncommitted work on an
+unrelated branch alone. It refuses a trunk held in another worktree and cannot
+be combined with `--scope`, `--take`, `--through`, or `--prune`.
+
 On its own it does not forget anything. Pruning is `g2g prune`, a separate
 command, because it answers a different question on the same boundary and
 edits the recorded graph rather than moving branches. `--prune` runs the two in
@@ -740,6 +748,13 @@ so a commit that is here under a new id is not mistaken for somebody else's.
 One the remote has that this checkout does not, by content, is refused rather
 than dropped. Unsupported atomic pushes and rejected leases fail without a
 non-atomic or unsafe-force fallback.
+
+Resolving a replay conflict can change a commit's patch, so even your own
+previously published commit may count as absent here. A subject or author match
+cannot prove that replacing it would preserve a reviewer's work. The refusal
+therefore says the published version differs, explains this possibility, and
+offers an atomic replacement command with leases pinned to the observed tips.
+Inspect the differences before choosing that replacement; it can drop work.
 
 Each pushed branch is set to track its copy on the remote, as
 `git push --set-upstream` does, so `git status`, a bare `git pull` and
@@ -1007,6 +1022,18 @@ branch below has merged and gone.
 It refuses the whole descent before merging anything. Discovering the fourth
 branch is a draft after the first three have merged is not a refusal, it is a
 half-landed stack.
+
+If GitHub refuses a merge because the base changed during the request, `land`
+retries at most twice, waiting for GitHub to recompute and checking readiness
+again before each attempt. Every merge is pinned to the head just published.
+Other failures stop immediately; repeated base changes name rerunning `g2g land`.
+
+A single branch with nothing above it can land even when another worktree has
+the trunk checked out. Its work is checked against the fetched trunk before
+forgetting it, and the local trunk stays at its old tip. If deleting the branch
+you stand on, the preview says the checkout will be detached at the fetched
+merge. `--no-delete-local` keeps the checkout on that branch. A stack needing
+replay still refuses a trunk held elsewhere.
 
 **On a protected repository you will need `--admin`.** Every branch above the
 first is force-pushed by its own replay, which restarts the required checks

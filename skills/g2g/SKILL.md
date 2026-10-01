@@ -79,6 +79,18 @@ description: |
 - `pull` has nothing to do with pull requests. It brings a stack up to date with
   its remote: fetch into g2g's own ref namespace, fast-forward the base or
   refuse if it has diverged, and replay. It never calls `gh`.
+- `pull --trunk-only` advances only the selected branch's evidenced trunk,
+  using the existing base-only path. It leaves stack branches and graph records
+  alone, works on default or declared trunks before a stack is recorded, and
+  refuses unknown feature branches. It is mutually exclusive with `--scope`,
+  `--take`, `--through`, and `--prune`.
+- `land` retries GitHub's explicit base-change refusal at most twice, checking
+  readiness again and pinning every merge with `--match-head-commit`. Other
+  errors stop. A single branch with no children can land while the trunk is
+  checked out elsewhere: it checks the merge in the fetched trunk and leaves
+  the local trunk untouched. Deleting the current branch detaches onto the
+  fetched merge, as previewed; survivors still require the ordinary replay and
+  refuse a held trunk.
 - `prune` forgets branches whose work has landed. It is its own command rather
   than pull's tail because it answers a different question on the same
   boundary, and it edits the recorded graph and deletes no branch. A child that

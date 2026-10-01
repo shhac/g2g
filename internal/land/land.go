@@ -35,6 +35,7 @@ type Git interface {
 	DeleteBranch(ctx context.Context, branch string) error
 	DeleteRemoteBranch(ctx context.Context, remote, branch string) error
 	SwitchBranch(ctx context.Context, branch string) error
+	SwitchDetached(ctx context.Context, revision string) error
 }
 
 // GitHub is what landing asks of gh: who the pull requests are, what their
@@ -42,7 +43,7 @@ type Git interface {
 type GitHub interface {
 	Inspect(ctx context.Context, branches []string) ([]githubstack.PullRequest, error)
 	Mergeability(ctx context.Context, numbers []int) (githubstack.Mergeability, error)
-	Merge(ctx context.Context, number int, method githubstack.Method, admin bool) error
+	Merge(ctx context.Context, number int, method githubstack.Method, admin bool, head string) error
 	Retarget(ctx context.Context, number int, base string) error
 }
 

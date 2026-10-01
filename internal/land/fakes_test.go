@@ -124,6 +124,15 @@ func (f *fakeGit) SwitchBranch(_ context.Context, branch string) error {
 	return nil
 }
 
+func (f *fakeGit) SwitchDetached(_ context.Context, revision string) error {
+	f.events.record("detach:" + revision)
+	if f.switchErr != nil {
+		return f.switchErr
+	}
+	f.current = ""
+	return nil
+}
+
 type fakeGitHub struct {
 	events *events
 	prs    []githubstack.PullRequest
@@ -158,7 +167,7 @@ func (f *fakeGitHub) Mergeability(_ context.Context, numbers []int) (githubstack
 	return githubstack.Mergeability{Allowed: f.allowed, States: states}, nil
 }
 
-func (f *fakeGitHub) Merge(_ context.Context, number int, method githubstack.Method, admin bool) error {
+func (f *fakeGitHub) Merge(_ context.Context, number int, method githubstack.Method, admin bool, head string) error {
 	f.events.record(fmt.Sprintf("merge:%d:%s:admin=%t", number, method, admin))
 	if f.mergeErr != nil {
 		return f.mergeErr

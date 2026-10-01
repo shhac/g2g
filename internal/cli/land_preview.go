@@ -23,6 +23,12 @@ func landView(plan land.Plan) stackView {
 		return view.refusing(plan.Blocked, plan.Repair)
 	}
 	view.Sequence = landSequence(plan)
+	if plan.KeepTrunk {
+		view = view.note(fmt.Sprintf("%s is checked out in another worktree and will be left at its current tip; the merge is checked against the fetched trunk.", plan.Trunk), severityNeutral)
+		if plan.Detach {
+			view = view.note("This checkout will be detached at the merged commit before its branch is deleted.", severityNeutral)
+		}
+	}
 	if note := declaredMethodNote(plan); note != "" {
 		view = view.note(note, severityNeutral)
 	}

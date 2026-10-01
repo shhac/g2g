@@ -196,3 +196,12 @@ func (c Client) SwitchBranch(ctx context.Context, branch string) error {
 	_, err := c.run(ctx, "switch", branch)
 	return err
 }
+
+// SwitchDetached moves off a branch without taking a branch held elsewhere.
+func (c Client) SwitchDetached(ctx context.Context, revision string) error {
+	if err := safeRef(revision); err != nil {
+		return err
+	}
+	_, err := c.run(ctx, "switch", "--detach", revision)
+	return err
+}

@@ -135,6 +135,14 @@ back from the same query that reports the merge, so this costs nothing extra.
 This is the first polling anything in g2g does. It asks before it waits,
 because the ordinary case is that GitHub already agrees.
 
+GitHub's explicit "Base branch was modified" refusal is retried twice at most.
+Each retry waits, asks GitHub to finish recomputing mergeability, and rechecks
+the pull request's identity, head, base, approval and protection. All merges
+pass `--match-head-commit` for the head published by this descent. A changed
+head cannot slip into the irreversible step after the check. Other failures
+are not retried, since a transport failure may already have applied the merge.
+Exhaustion preserves the external diagnostic and names rerunning `g2g land`.
+
 ## `--admin` is not an edge case
 
 On any repository with required status checks, **`land` without `--admin` will
@@ -216,6 +224,18 @@ work is refused only where it would be touched, and the refusal says which:
 It used to refuse any dirty tree, which stopped someone landing a lone branch
 while another held work in progress — and stashing is no answer when the stash
 is shared with other worktrees.
+
+## A trunk held in another worktree
+
+A single-branch descent with no recorded children can leave a trunk held in
+another worktree behind. It fetches the merge into g2g's private refs, checks
+the branch's own content there through `landed.Into`, and forgets it through
+the graph's untrack service. The checked-out trunk's ref, index and tree never
+move. Deleting the current branch detaches this checkout onto the fetched
+merge, which the preview says explicitly. Keeping the local branch leaves
+the checkout on it. Any descent with survivors still refuses the held trunk:
+those branches need the ordinary advance and replay, and skipping it would
+leave the stack carrying its parents' landed work.
 
 ## Cleanup cannot fail a descent
 

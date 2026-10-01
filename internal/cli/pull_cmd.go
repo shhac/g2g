@@ -17,7 +17,7 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	var selection graphOptions
 	var remote string
 	var take, through string
-	var apply, alsoPrune bool
+	var apply, alsoPrune, trunkOnly bool
 	cmd := &cobra.Command{
 		Use:     "pull",
 		GroupID: groupUpdate,
@@ -39,6 +39,18 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
 		pull := pullFlow(cmd, service, selection.Selection(), remote, chosen, guard, presentation, alsoPrune)
+		if trunkOnly {
+			pull.plan = func(ctx context.Context) (syncer.Plan, error) {
+				return service.PlanTrunk(ctx, selection.Selection(), remote)
+			}
+			pull.revalidate = func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
+				return service.RevalidateTrunk(ctx, selection.Selection(), remote, preview)
+			}
+			pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
+			pull.notices.noOp = "The trunk is already up to date."
+			pull.notices.changed = "The trunk is up to date; no stack branches were replayed."
+			pull.notices.suggestedNext = ""
+		}
 		if !alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 		}
@@ -73,6 +85,13 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
 	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("pull", shape.SyncScopes))
+	cmd.Flags().BoolVar(&trunkOnly, "trunk-only", false, "advance only the selected stack's trunk, without replaying or collecting stack branches")
+	cmd.MarkFlagsMutuallyExclusive("trunk-only", "scope")
+	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")
+	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
+	if pruner.Ready() {
+		cmd.MarkFlagsMutuallyExclusive("trunk-only", "prune")
+	}
 	return cmd
 }
 

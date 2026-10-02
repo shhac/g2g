@@ -227,9 +227,10 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   reading the offline view (`status`, once `graph`) has always taken of an
   already-landed branch. They used to be one string under one colour, which is
   how a line came to open with the word "aligned" and go on to describe a divergence,
-  in whichever colour the worse of them won. `stackNode.marked` renders `State`
-  and the worst `Severity` from the marks, so nothing downstream has to
-  understand them; do not set `State` beside them. Currency comes from
+  in whichever colour the worse of them won. Marks are the sole annotation
+  record: `stackNode.marked` replaces them, `withMarks` enriches them, and
+  `labeled` supplies a plain label. Machine state and worst severity are derived
+  when rendered; never cache them alongside the marks. Currency comes from
   `githubstack.PullRequest.HeadOID` — a field on a query already being made.
   `push` says the same thing from the other side, out of the `RemoteTips` it
   already reads for its leases. Both are local-only and add nothing over the

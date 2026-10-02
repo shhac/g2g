@@ -487,9 +487,10 @@ description: |
   requests for one branch is deliberately unadvised — a person must choose.
 - A branch's annotation is a list of `stackMark` — one axis each, one severity
   each: `base✓`/`base✗`, `head✗`, `pr✗`, and a subject-less mark for what is
-  about no axis. Build them and call `stackNode.marked`, which renders `State`
-  and the worst `Severity` from them; never set `State` alongside marks, and do
-  not fold two axes into one mark, which is the failure this replaced. A merged
+  about no axis. `stackNode.marked` replaces marks, `withMarks` enriches them,
+  and `labeled` supplies a plain label. Marks are the sole annotation record;
+  machine state and worst severity are derived when rendered, never cached
+  alongside them. Do not fold two axes into one mark. A merged
   pull request is `pr✓` and neutral, never grouped with a missing or closed
   one: it succeeded, and only the leftover branch is a problem.
 - Batch before parallelising, and do not reintroduce a call whose only purpose

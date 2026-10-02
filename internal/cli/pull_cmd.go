@@ -14,11 +14,7 @@ import (
 )
 
 func newPull(service syncer.Service, pruner prune.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
-	var selection graphOptions
-	var remote string
-	var take, through string
-	var apply, alsoPrune, trunkOnly bool
-	var cleanup prune.Options
+	options := pullOptions{}
 	cmd := &cobra.Command{
 		Use:     "pull",
 		GroupID: groupUpdate,
@@ -27,55 +23,31 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		if err := selection.validateScope(); err != nil {
-			return err
-		}
-		if (cleanup.DeleteBranches || cleanup.ForgetMissing) && !alsoPrune {
-			return errors.New("--delete-branches and --forget-missing require --prune")
-		}
-		chosen, err := syncer.ParseTake(take, through)
+		chosen, err := options.chosen(presentation)
 		if err != nil {
 			return err
 		}
-		// Machine output is one document, and this writes two reports.
-		if alsoPrune && presentation.machine() {
-			return errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")
+		ctx := commandContext(cmd.Context(), cmd, applyMode(options.apply), options.selection.branch, "")
+		pull := options.flow(cmd, service, chosen, guard, presentation)
+		if !options.alsoPrune {
+			return pull.run(cmd, ctx, newBudgets(cmd), presentation, options.apply)
 		}
-		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
-		pull := pullFlow(cmd, service, selection.Selection(), remote, chosen, guard, presentation, alsoPrune)
-		if trunkOnly {
-			pull.plan = func(ctx context.Context) (syncer.Plan, error) {
-				return service.PlanTrunk(ctx, selection.Selection(), remote)
-			}
-			pull.revalidate = func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
-				return service.RevalidateTrunk(ctx, selection.Selection(), remote, preview)
-			}
-			pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
-			pull.notices.noOp = "The trunk is already up to date."
-			pull.notices.changed = "The trunk is up to date; no stack branches were replayed."
-			pull.notices.suggestedNext = ""
-		}
-		if !alsoPrune {
-			return pull.run(cmd, ctx, newBudgets(cmd), presentation, apply)
-		}
-		if cleanup.DeleteBranches {
-			pull.notices.preview = "Rerun with --apply to pull, then preview and delete eligible local branches through prune."
-		}
-		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, selection.Selection(), guard, cmd, presentation, cleanup), presentation, apply)
+		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, options.selection.Selection(), guard, cmd, presentation, options.cleanup), presentation, options.apply)
 	}
-	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read from, as git remote names it")
+
+	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to read from, as git remote names it")
 	// Offered only where the build can prune, rather than offered and refused.
 	if pruner.Ready() {
-		cmd.Flags().BoolVar(&alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
-		cmd.Flags().BoolVar(&cleanup.DeleteBranches, "delete-branches", false, "with --prune, also delete eligible local branches")
-		cmd.Flags().BoolVar(&cleanup.ForgetMissing, "forget-missing", false, "with --prune, also forget records for missing local branches")
+		cmd.Flags().BoolVar(&options.alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
+		cmd.Flags().BoolVar(&options.cleanup.DeleteBranches, "delete-branches", false, "with --prune, also delete eligible local branches")
+		cmd.Flags().BoolVar(&options.cleanup.ForgetMissing, "forget-missing", false, "with --prune, also forget records for missing local branches")
 	}
-	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
+	cmd.Flags().BoolVar(&options.apply, "apply", false, "perform the sequence instead of previewing it")
 	// An enum rather than a boolean, because which side wins has more answers
 	// than the one implemented and naming the value leaves room for them. There
 	// is no "mine": pull moves toward this checkout and push moves toward the
 	// remote, so that choice is already made by which command you run.
-	cmd.Flags().StringVar(&take, "take", "", "resolve a divergence by taking one side: published, each branch as --remote holds it (discards local commits it does not have)")
+	cmd.Flags().StringVar(&options.take, "take", "", "resolve a divergence by taking one side: published, each branch as --remote holds it (discards local commits it does not have)")
 	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(func(context.Context, string) ([]string, error) {
 		values := make([]string, 0, len(syncer.Sides))
 		for _, value := range syncer.Sides {
@@ -87,14 +59,14 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	// you rebased elsewhere without being made for the part you did not.
 	// Everything above it keeps the default, which is to refuse rather than
 	// pick a side silently.
-	cmd.Flags().StringVar(&through, "through", "", "with --take, the last branch the chosen side applies to · above it a divergence is still refused")
+	cmd.Flags().StringVar(&options.through, "through", "", "with --take, the last branch the chosen side applies to · above it a divergence is still refused")
 	_ = cmd.RegisterFlagCompletionFunc("through", completionCallback(localBranchCompletions(service.Graph)))
-	selection.registerBranch(cmd, service.Graph)
+	options.selection.registerBranch(cmd, service.Graph)
 	// pull, as sync, was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
-	selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("pull", shape.SyncScopes))
-	cmd.Flags().BoolVar(&trunkOnly, "trunk-only", false, "advance only the selected stack's trunk, without replaying or collecting stack branches")
+	options.selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("pull", shape.SyncScopes))
+	cmd.Flags().BoolVar(&options.trunkOnly, "trunk-only", false, "advance only the selected stack's trunk, without replaying or collecting stack branches")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "scope")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
@@ -102,6 +74,54 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		cmd.MarkFlagsMutuallyExclusive("trunk-only", "prune")
 	}
 	return cmd
+}
+
+type pullOptions struct {
+	selection                   graphOptions
+	remote                      string
+	take, through               string
+	apply, alsoPrune, trunkOnly bool
+	cleanup                     prune.Options
+}
+
+// chosen validates flag combinations before any plan reads the repository.
+func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
+	if err := o.selection.validateScope(); err != nil {
+		return syncer.Take{}, err
+	}
+	if (o.cleanup.DeleteBranches || o.cleanup.ForgetMissing) && !o.alsoPrune {
+		return syncer.Take{}, errors.New("--delete-branches and --forget-missing require --prune")
+	}
+	chosen, err := syncer.ParseTake(o.take, o.through)
+	if err != nil {
+		return syncer.Take{}, err
+	}
+	// Machine output is one document, and this writes two reports.
+	if o.alsoPrune && presentation.machine() {
+		return syncer.Take{}, errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")
+	}
+	return chosen, nil
+}
+
+// flow chooses the trunk or stack plan and the promise its preview makes.
+func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
+	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, guard, presentation, o.alsoPrune)
+	if o.trunkOnly {
+		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
+			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote)
+		}
+		pull.revalidate = func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
+			return service.RevalidateTrunk(ctx, o.selection.Selection(), o.remote, preview)
+		}
+		pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
+		pull.notices.noOp = "The trunk is already up to date."
+		pull.notices.changed = "The trunk is up to date; no stack branches were replayed."
+		pull.notices.suggestedNext = ""
+	}
+	if o.alsoPrune && o.cleanup.DeleteBranches {
+		pull.notices.preview = "Rerun with --apply to pull, then preview and delete eligible local branches through prune."
+	}
+	return pull
 }
 
 // pullFlow is pull's safety sequence over one selection. thenPrune says a

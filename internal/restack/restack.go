@@ -7,20 +7,18 @@
 // to notice.
 //
 // The package is split by what the code is deciding. plan.go works out what
-// would be replayed and onto what, and touches nothing; this file performs it
-// and carries the resume verbs; journal.go is what survives between them.
+// would be replayed and onto what; this file coordinates the mutation.
+// replay.go and rebase.go drive the engines, checkout.go reconciles the working
+// tree, and structure.go records the result. resume.go carries recovery verbs;
+// journal.go is what survives between them.
 package restack
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
-	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 )
 
@@ -73,29 +71,6 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	return s.rebase(ctx, plan, standing)
 }
 
-// applyInPlace journals a rewrite that needs no working tree before it moves
-// anything, and forgets it once the rewrite is done or has been put back.
-//
-// The journal is what a failure that cannot be put back, or a process that
-// dies between two replays, leaves for --abort. Every other command refuses
-// while it exists, which is right while branches may have moved and wrong once
-// they are back where they were.
-func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout) error {
-	if _, err := s.begin(ctx, plan, standing); err != nil {
-		return err
-	}
-	if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
-		var back putBack
-		if errors.As(err, &back) {
-			if clearErr := s.Journal.Clear(ctx); clearErr != nil {
-				return errors.Join(err, clearErr)
-			}
-		}
-		return err
-	}
-	return s.Journal.Clear(ctx)
-}
-
 // begin persists both rollback state and the checkout's owner before any ref
 // moves. Worktree identity is optional for injected Git implementations.
 func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Record, error) {
@@ -142,50 +117,6 @@ func (s Service) record(plan Plan, standing checkout) Record {
 		}
 	}
 	return record
-}
-
-// standingOn records the branch the checkout is on and where it points.
-//
-// A detached HEAD has no branch for a rewrite to move underneath it, and an
-// unreadable one is not worth failing a rewrite for, so both answer with an
-// empty branch and nothing to reconcile later.
-func (s Service) standingOn(ctx context.Context) (checkout, error) {
-	branch, err := s.Git.CurrentBranch(ctx)
-	if err != nil || branch == "" {
-		return checkout{}, nil
-	}
-	tip, err := s.Git.Resolve(ctx, branch)
-	if err != nil {
-		return checkout{}, nil
-	}
-	return checkout{Branch: branch, Tip: tip}, nil
-}
-
-// checkout is where the working tree stood before a rewrite.
-type checkout struct {
-	Branch string
-	Tip    string
-}
-
-// resettle brings the index and working tree to the branch's new tip.
-//
-// The rebase engine checks out as it goes, so this is only for the paths that
-// move a ref without one: the replay engine, and a collapse, which is a bare
-// ref move and could strand the checkout just as easily.
-func (s Service) resettle(ctx context.Context, standing checkout) error {
-	if standing.Branch == "" {
-		return nil
-	}
-	tip, err := s.Git.Resolve(ctx, standing.Branch)
-	if err != nil || tip == standing.Tip {
-		return err
-	}
-	diagnostic.Event(ctx, "restack.resettle",
-		diagnostic.Field{Key: "branch", Value: standing.Branch},
-		diagnostic.Field{Key: "from", Value: standing.Tip},
-		diagnostic.Field{Key: "to", Value: tip},
-	)
-	return s.Git.SwitchTree(ctx, standing.Tip, tip)
 }
 
 // verify checks that the engine did what the plan said, rather than reporting
@@ -254,239 +185,4 @@ func (p Plan) inPlace() bool {
 // work -- asks this before applying rather than finding out from git.
 func (p Plan) NeedsWorkingTree() bool {
 	return len(p.Steps) != 0 && !p.Absorb && !p.inPlace()
-}
-
-// rewriteInPlace collapses and replays without touching the checkout until the
-// end, and is all or nothing.
-//
-// Independent roots are separate replays, and the engine's atomicity covers
-// one invocation, so a failure part-way would otherwise leave some roots moved
-// and others not, reported as "Not applied" over refs that had moved. So it
-// notes where every branch it may move points before it starts, and on any
-// failure before the checkout is touched puts them back and says so.
-func (s Service) rewriteInPlace(ctx context.Context, plan Plan, standing checkout) error {
-	before, err := s.tips(ctx, plan)
-	if err != nil {
-		return err
-	}
-	if err := s.replay(ctx, plan); err != nil {
-		return s.putBack(ctx, before, err)
-	}
-	// A replay or a collapse moves refs without touching the index, so a user
-	// standing on a rewritten branch would otherwise see changes they never
-	// made — and be unable to switch away, because git refuses to overwrite
-	// them.
-	if err := s.resettle(ctx, standing); err != nil {
-		return err
-	}
-	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
-}
-
-// replay collapses what has nothing left, then replays each independent root
-// onto its own base and checks the outcome.
-func (s Service) replay(ctx context.Context, plan Plan) error {
-	if err := s.collapse(ctx, plan); err != nil {
-		return err
-	}
-	groups := plan.groups()
-	if len(groups) == 0 {
-		return nil
-	}
-	diagnostic.Event(ctx, "restack.replay", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Replaying(), ",")})
-	for _, group := range groups {
-		if err := s.Git.Replay(ctx, group.onto(), group.ranges()); err != nil {
-			return err
-		}
-	}
-	return s.verify(ctx, plan)
-}
-
-// tips is where every branch a plan may move points now, which is what putting
-// them back restores. It is read at apply time rather than taken from the
-// plan, because a caller may have moved a branch in between: sync collects
-// before it replays, and undoing a failed replay must not undo that too.
-func (s Service) tips(ctx context.Context, plan Plan) (map[string]string, error) {
-	tips := make(map[string]string, len(plan.Steps))
-	for _, step := range plan.Steps {
-		tip, err := s.Git.Resolve(ctx, step.Branch)
-		if err != nil {
-			return nil, err
-		}
-		tips[step.Branch] = tip
-	}
-	return tips, nil
-}
-
-// putBack is a failed in-place rewrite that restored every branch it had
-// moved, so the repository is exactly as it was and saying so is true.
-type putBack struct{ cause error }
-
-func (p putBack) Error() string {
-	return p.cause.Error() + " · nothing was changed: every branch it had moved was put back"
-}
-
-func (p putBack) Unwrap() error { return p.cause }
-
-// putBack restores the tips an in-place rewrite started from. A restore that
-// fails is reported as such rather than as a put back, because then some
-// branches really have moved.
-func (s Service) putBack(ctx context.Context, before map[string]string, cause error) error {
-	diagnostic.Event(ctx, "restack.put_back", diagnostic.Field{Key: "branches", Value: strings.Join(slices.Sorted(maps.Keys(before)), ",")})
-	for _, branch := range slices.Sorted(maps.Keys(before)) {
-		now, err := s.Git.Resolve(ctx, branch)
-		if err == nil && now == before[branch] {
-			continue
-		}
-		if err == nil {
-			err = s.Git.UpdateBranch(ctx, branch, before[branch])
-		}
-		if err != nil {
-			return fmt.Errorf("%w · putting %s back at %s failed too, so branches may have moved: %v · run g2g restack --abort", cause, branch, before[branch], err)
-		}
-	}
-	return putBack{cause: cause}
-}
-
-// rebase runs the resumable engine and journals enough to undo the whole
-// operation, which git cannot do because it only restores the invocation it is
-// running.
-//
-// The journal comes first: a collapse moves refs too, and a branch moved with
-// no record of where it was is one --abort cannot put back.
-func (s Service) rebase(ctx context.Context, plan Plan, standing checkout) error {
-	record, err := s.begin(ctx, plan, standing)
-	if err != nil {
-		return err
-	}
-	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	if err := s.collapseAndRebase(ctx, plan, standing); err != nil {
-		return err
-	}
-	return s.finish(ctx, record)
-}
-
-// collapseAndRebase moves what has nothing left, brings the checkout along,
-// and rebases the rest.
-//
-// The resumable engine checks out as it goes, and it refuses to start over an
-// index describing a commit its branch no longer points at -- which is exactly
-// what collapsing the checked-out branch leaves. Running it straight after the
-// collapse stopped every such restack on "your index contains uncommitted
-// changes", with the phantom changes staged and the journal left behind.
-func (s Service) collapseAndRebase(ctx context.Context, plan Plan, standing checkout) error {
-	if err := s.collapse(ctx, plan); err != nil {
-		return err
-	}
-	if err := s.resettle(ctx, standing); err != nil {
-		return err
-	}
-	return s.rebaseEach(ctx, plan)
-}
-
-// rebaseEach replays one branch at a time, bottom-up.
-//
-// The engines model the work differently and are given it differently. Replay
-// takes a root and everything above it at once and needs one shared origin.
-// Rebase moves a
-// single line of descent, so each branch is rebased onto the parent it now
-// has, re-resolved after that parent has itself moved. Handing rebase the
-// whole chain and asking --update-refs to carry the intermediate branches
-// works on some versions and not others, and buys nothing that sequencing
-// does not.
-//
-// Stopping part-way is the expected outcome, not a failure: the journal is
-// already written and --continue re-derives what is left.
-func (s Service) rebaseEach(ctx context.Context, plan Plan) error {
-	for _, step := range plan.rewriting() {
-		base, err := s.Git.Resolve(ctx, step.Parent)
-		if err != nil {
-			return err
-		}
-		if err := s.Git.Rebase(ctx, base, localgit.Range{From: step.ForkPoint, To: step.Branch}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// recordStructure writes back what the rewrite actually produced: any branch
-// it reparented, and where every branch now forks.
-//
-// Reparenting has to be recorded here rather than by the caller. A rewrite
-// with --onto moves a fragment onto a different base, and leaving the recorded
-// parent naming the old one would make the graph describe a structure that no
-// longer exists — which every later command, including the next restack, would
-// then measure against.
-//
-// It walks the whole selection rather than the plan's steps. Once a rewrite
-// succeeds the re-derived plan has no steps left, so recording only those
-// would record nothing at all and leave every fork point describing the world
-// before the rewrite.
-//
-// A branch that is not actually built on its parent is skipped: writing its
-// parent's tip as a fork point would assert a range that does not exist.
-func (s Service) recordStructure(ctx context.Context, branches []string, reparent map[string]string) error {
-	adopted, err := s.Graph.Store.Load(ctx)
-	if err != nil {
-		return err
-	}
-	updated, err := reparentStructure(adopted, reparent)
-	if err != nil {
-		return err
-	}
-	if err := s.refreshForkPoints(ctx, updated, branches); err != nil {
-		return err
-	}
-	return s.Graph.Store.Save(ctx, updated)
-}
-
-// reparentStructure updates only the declared parent relationships. Keeping it
-// separate from fork-point refresh makes the two records a restack repairs
-// independently visible at their natural seams.
-func reparentStructure(adopted graph.Graph, reparent map[string]string) (graph.Graph, error) {
-	updated := adopted.Clone()
-	for _, branch := range slices.Sorted(maps.Keys(reparent)) {
-		parent := reparent[branch]
-		edge, tracked := updated.Edges[branch]
-		if !tracked || edge.Parent == parent {
-			continue
-		}
-		edge.Parent = parent
-		// Adopt keeps the trunk set true on both sides: a new base that nothing
-		// else hangs from becomes a root, and a branch that has just gained one
-		// stops being one.
-		adoptedGraph, _, err := updated.Adopt(branch, edge)
-		if err != nil {
-			return graph.Graph{}, err
-		}
-		updated = adoptedGraph
-	}
-	return updated, nil
-}
-
-// refreshForkPoints records the parent tips that describe each replay range.
-func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, branches []string) error {
-	for _, branch := range branches {
-		edge, tracked := updated.Edges[branch]
-		if !tracked {
-			continue
-		}
-		built, err := s.Git.IsAncestor(ctx, edge.Parent, branch)
-		if err != nil {
-			return err
-		}
-		if !built {
-			continue
-		}
-		forkPoint, err := s.Git.Resolve(ctx, edge.Parent)
-		if err != nil {
-			return err
-		}
-		edge.ForkPoint = forkPoint
-		updated.Edges[branch] = edge
-		if err := s.Git.PinForkPoint(ctx, branch, forkPoint); err != nil {
-			return err
-		}
-	}
-	return nil
 }

@@ -10,12 +10,12 @@ import (
 )
 
 // pruneView marks what would be forgotten inside the graph it belongs to, so a
-// reader sees the branches in context rather than as a bare list. Nothing is
-// deleted, and the note says so: forgetting a branch and removing someone's
-// work are different acts and must not read alike.
+// reader sees the branches in context rather than as a bare list. Record removal
+// and explicit local branch deletion are listed separately, so the preview says
+// exactly which acts were requested.
 func pruneView(plan prune.Plan) stackView {
 	forgetting := make(map[string]bool, len(plan.Landed))
-	for _, branch := range plan.Landed {
+	for _, branch := range plan.Forgotten() {
 		forgetting[branch] = true
 	}
 
@@ -23,10 +23,15 @@ func pruneView(plan prune.Plan) stackView {
 	for index, node := range view.Nodes {
 		if forgetting[node.Branch] {
 			view.Nodes[index].State, view.Nodes[index].Severity = forgetState(plan, node.Branch), severityWarn
+			if _, deleting := plan.Delete[node.Branch]; deleting {
+				view.Nodes[index].State += " · delete local branch"
+			}
 		}
 	}
-	for _, branch := range plan.Missing {
-		view = view.note(branch+" is recorded and no longer a local branch · run "+runnable("g2g untrack --branch "+branch)+" to forget it", severityWarn)
+	if !plan.Options.ForgetMissing {
+		for _, note := range missingNotes(plan.Discovery) {
+			view = view.note(note, severityWarn)
+		}
 	}
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)
@@ -37,13 +42,20 @@ func pruneView(plan prune.Plan) stackView {
 	for _, child := range slices.Sorted(maps.Keys(plan.Rehome)) {
 		view = view.note("Records "+child+" on "+plan.Rehome[child].Parent+", where it already sits.", severityOK)
 	}
-	return view.note("Forgets "+branchList(plan.Landed)+" from the recorded graph. No branch is deleted.", severityWarn)
+	view = view.note("Forgets "+branchList(plan.Forgotten())+" from the recorded graph.", severityWarn)
+	if len(plan.Delete) != 0 {
+		return view.note("Deletes local branches "+branchList(plan.Deleted())+". Remote branches are untouched.", severityWarn)
+	}
+	return view.note("No branch is deleted.", severityNeutral)
 }
 
 // forgetState says why a branch is forgotten in the words status uses for it. A
 // branch with no commits of its own is not called landed: it may be one nobody
 // has committed to yet, and the two are identical from the recorded state.
 func forgetState(plan prune.Plan, branch string) string {
+	if plan.Discovery.States[branch] == graph.StateBranchMissing {
+		return "branch missing · forget record"
+	}
 	if plan.Discovery.States[branch] == graph.StateEmpty {
 		return "no commits of its own · forget"
 	}

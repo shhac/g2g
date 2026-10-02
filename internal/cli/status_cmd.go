@@ -7,13 +7,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
-func newStatus(service graph.Service, selector stack.PathSelector, published push.Known, presentation Presentation) *cobra.Command {
+func newStatus(service graph.Service, selector stack.PathSelector, published push.Known, presentation Presentation, observations githubstack.ObservationReader) *cobra.Command {
 	var selection graphOptions
 	var from, remote string
 	cmd := &cobra.Command{Use: "status", GroupID: groupLook, Short: "Show the stack you are on and where each branch stands (read-only, offline)", Args: cobra.NoArgs}
@@ -38,7 +39,9 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 		if err != nil {
 			return err
 		}
-		return writeGraphView(cmd.OutOrStdout(), markPublished(statusView(discovery), remote, publishing), discovery, presentation)
+		view := markPublished(statusView(discovery), remote, publishing)
+		view = rememberedPRs(ctx, view, discovery, observations)
+		return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
 	}
 	cmd.Flags().StringVar(&remote, "remote", "origin", "the remote whose last-known branches each one is compared with")
 	// Only the records that need no network. Reading a pull request base means

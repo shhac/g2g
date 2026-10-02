@@ -21,7 +21,7 @@ func (c Client) WorktreeDir(ctx context.Context) (string, error) {
 // worktree's index and working tree still describe the old commit, and its next
 // git status reports staged changes nobody made.
 func (c Client) CheckedOutElsewhere(ctx context.Context) (map[string]string, error) {
-	output, err := c.run(ctx, "worktree", "list", "--porcelain")
+	holders, err := c.BranchHolders(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,22 @@ func (c Client) CheckedOutElsewhere(ctx context.Context) (map[string]string, err
 	}
 	here := strings.TrimSpace(string(current))
 
-	elsewhere := map[string]string{}
+	for branch, path := range holders {
+		if path == here {
+			delete(holders, branch)
+		}
+	}
+	return holders, nil
+}
+
+// BranchHolders includes this worktree too. A deletion, unlike a rewrite,
+// must refuse every checked-out branch, including the current one.
+func (c Client) BranchHolders(ctx context.Context) (map[string]string, error) {
+	output, err := c.run(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	holders := map[string]string{}
 	var path string
 	for _, line := range outputLines(output) {
 		switch {
@@ -41,10 +56,10 @@ func (c Client) CheckedOutElsewhere(ctx context.Context) (map[string]string, err
 			// A detached worktree emits no branch line, so it cannot conflict:
 			// there is no ref for a rewrite to move underneath it.
 			branch := strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
-			if path != "" && path != here && branch != "" {
-				elsewhere[branch] = path
+			if path != "" && branch != "" {
+				holders[branch] = path
 			}
 		}
 	}
-	return elsewhere, nil
+	return holders, nil
 }

@@ -38,8 +38,12 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
 	}
 	absent := map[string]bool{}
+	resolutions := githubstack.ResolveHeads(plan.PullRequests)
 	for _, branch := range plan.Snapshot.Absent {
 		absent[branch] = true
+	}
+	if absent[plan.Base] && plan.Source == stack.SourceG2G {
+		view.Nodes[0] = view.Nodes[0].marked(stackMark{Detail: "local branch missing", Severity: severityWarn})
 	}
 	for _, branch := range plan.Branches {
 		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
@@ -47,7 +51,25 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		// act, so it is marked as what it is rather than as a blocked branch:
 		// nothing here is wrong with it, and no command will touch it.
 		if absent[branch] {
-			view.Nodes = append(view.Nodes, node.marked(stackMark{Detail: "on remote only", Severity: severityNeutral}))
+			label := "on remote only"
+			if plan.Source == stack.SourceG2G {
+				label = "local branch missing"
+			}
+			marks := []stackMark{{Detail: label, Severity: severityNeutral}}
+			resolution := resolutions[branch]
+			pr := resolution.Latest
+			if resolution.Open != nil {
+				pr = resolution.Open
+			}
+			if pr != nil {
+				node.PRNumber, node.PRURL = pr.Number, pr.URL
+			}
+			if issue, exists := issues[branch]; exists {
+				marks = append(marks, issueMark(issue))
+			} else if pr != nil {
+				marks = append(marks, stackMark{Subject: "pr", OK: true, Detail: "open", Severity: severityNeutral})
+			}
+			view.Nodes = append(view.Nodes, node.marked(marks...))
 			continue
 		}
 		if issue, blocked := issues[branch]; blocked {
@@ -78,7 +100,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 
 func githubStatusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "github status")
-	if len(plan.Issues) != 0 {
+	if len(plan.Issues) != 0 || (len(plan.Absent) != 0 && plan.Source == stack.SourceG2G) {
 		// The same reason every mutating command refuses on, under the heading
 		// a read-only report gives it. The heading used to be concatenated in
 		// here and string-replaced back out elsewhere, which is why it is a

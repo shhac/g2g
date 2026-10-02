@@ -133,7 +133,6 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	}{
 		{graph.StateMovedOffParent, "No longer built on the recorded parent: ", "to record where it sits now, before restacking"},
 		{graph.StateForkUnresolvable, "Recorded fork point is gone for ", "to record it again"},
-		{graph.StateBranchMissing, "Recorded but no longer a local branch: ", "to forget it"},
 		{graph.StateParentMissing, "Recorded parent is no longer a local branch for ", "to choose where it sits now"},
 	} {
 		advice := recordedStates[each.state]
@@ -142,8 +141,13 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 			view = view.note(each.prefix+branch+" · run "+runnable(advice.repair(branch, parent))+" "+each.then+".", advice.severity)
 		}
 	}
+	for _, note := range missingNotes(discovery) {
+		view = view.note(note, severityWarn)
+	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
-		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable("g2g prune")+" to forget them.", severityNeutral)
+		command := "g2g prune --branch " + discovery.Target + " --scope " + string(discovery.Scope)
+		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable(command)+" to forget them.", severityNeutral)
+		view = view.note("Cleanup preview: "+runnable(command+" --delete-branches --forget-missing")+" · also removes eligible local branches and missing records in this selection.", severityNeutral)
 	}
 	if empty := discovery.InState(graph.StateEmpty); len(empty) != 0 {
 		view = view.note("Nothing of their own on "+branchList(empty)+" · either finished, or not started yet.", severityNeutral)
@@ -152,4 +156,37 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 		view = view.note("No tracked parent for "+orphan+" · run "+runnable(orphanRepair(orphan))+" to choose one.", severityWarn)
 	}
 	return view
+}
+
+// missingNotes groups a wholly missing, wholly selected subtree. Looking at
+// the entire subtree matters: a narrower status must not suggest forgetting a
+// surviving child, or a record the user did not ask about.
+func missingNotes(discovery graph.Discovery) []string {
+	selected := map[string]bool{}
+	for _, branch := range discovery.Branches {
+		selected[branch] = true
+	}
+	covered := map[string]bool{}
+	notes := []string{}
+	for _, branch := range discovery.InState(graph.StateBranchMissing) {
+		if covered[branch] {
+			continue
+		}
+		subtree := discovery.Graph.Subtree(branch)
+		whole := len(subtree) > 1
+		for _, child := range subtree {
+			whole = whole && selected[child] && discovery.States[child] == graph.StateBranchMissing
+		}
+		command := "g2g untrack --branch " + branch
+		branches := []string{branch}
+		if whole {
+			branches = subtree
+			command += " --scope subtree"
+		}
+		for _, child := range branches {
+			covered[child] = true
+		}
+		notes = append(notes, "Recorded but no longer local: "+branchList(branches)+" · run "+runnable(command)+" to forget "+pick(len(branches), "it", "them")+".")
+	}
+	return notes
 }

@@ -226,6 +226,17 @@ own command: it answers a different question on the same boundary, and being a
 tail cost it both a scope and a test. `pull --prune` runs the two in order when
 asked. See [stack scope](stack-scope.md).
 
+Prune remains graph-only by default. Explicit `--delete-branches` adds local
+deletion under assessed-tip leases; `--forget-missing` removes selected stale
+records, without claiming their work landed. Both choices can be passed through
+`pull --prune`. Neither changes source precedence.
+
+The g2g selector normally refuses missing local branches. Only the read-only
+`github status` opts into retaining them as `Snapshot.Absent`, so the existing
+batched GitHub query can answer whether their PRs are open, closed, or merged.
+Content and currency checks skip absent refs. Mutations retain the refusal.
+Offline observations are supplemental annotations, never another source.
+
 ## Scope
 
 How much of a stack a command means is its own question, answered the same way

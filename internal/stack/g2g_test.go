@@ -66,6 +66,30 @@ func TestSelectorReturnsTheRootAsTheBase(t *testing.T) {
 	}
 }
 
+func TestSelectorAllowsAbsentRefsOnlyForAnExplicitRead(t *testing.T) {
+	for _, missing := range []string{"synthetic-a", "synthetic-b", "synthetic-trunk"} {
+		t.Run(missing, func(t *testing.T) {
+			selector := selectorService(chain())
+			ancestry := selector.Service.Git.(g2gAncestry)
+			ancestry.local = slices.DeleteFunc(slices.Clone(ancestry.local), func(branch string) bool { return branch == missing })
+			selector.Service.Git = ancestry
+			selection := Selection{Branch: "synthetic-b", Scope: ScopeStack}
+			if _, err := selector.Select(context.Background(), selection, "g2g submit"); err == nil {
+				t.Fatal("ordinary selection accepted a missing ref")
+			}
+			selection.AllowAbsent = true
+			snapshot, err := selector.Select(context.Background(), selection, "g2g github status")
+			if err != nil || !slices.Equal(snapshot.Absent, []string{missing}) {
+				t.Fatalf("explicit read: %+v, %v", snapshot, err)
+			}
+			snapshot.Source = SourceG2G
+			if err := snapshot.RequireActionable("g2g submit"); err == nil || !strings.Contains(err.Error(), "the g2g graph") {
+				t.Fatalf("missing-ref mutation guard = %v", err)
+			}
+		})
+	}
+}
+
 // A branch with nothing recorded under it has no base to sit on, which is the
 // same refusal a Graphite path with no ancestor gets.
 func TestSelectorRefusesABranchWithNoRecordedParent(t *testing.T) {

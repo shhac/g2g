@@ -71,7 +71,8 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if err := s.requireLocal(ctx, discovery.Graph, append(slices.Clone(discovery.Branches), hangsFrom)); err != nil {
+	absent, err := s.localSelection(ctx, discovery.Graph, append(slices.Clone(discovery.Branches), hangsFrom), selection.AllowAbsent)
+	if err != nil {
 		return Snapshot{}, err
 	}
 	// The whole line of descent, not just the selection: revalidation compares
@@ -93,6 +94,7 @@ func (s G2GSelector) Select(ctx context.Context, selection Selection, command st
 		branches = branches[1:]
 	}
 	return Snapshot{
+		Absent:       absent,
 		Target:       discovery.Target,
 		TargetSource: discovery.TargetSource,
 		Ancestry:     ancestry,
@@ -118,7 +120,8 @@ func (s G2GSelector) declaredTrunk(ctx context.Context, discovery graph.Discover
 	if !lands || (scope != shape.ScopePath && scope != shape.ScopeBranch) {
 		return Snapshot{}, trunkUndescribed(target, declaration, command)
 	}
-	if err := s.requireLocal(ctx, discovery.Graph, []string{target, declaration.Into}); err != nil {
+	absent, err := s.localSelection(ctx, discovery.Graph, []string{target, declaration.Into}, selection.AllowAbsent)
+	if err != nil {
 		return Snapshot{}, err
 	}
 	base, baseSource, err := selectBase(declaration.Into, target, selection.Trunk)
@@ -126,6 +129,7 @@ func (s G2GSelector) declaredTrunk(ctx context.Context, discovery graph.Discover
 		return Snapshot{}, err
 	}
 	return Snapshot{
+		Absent:       absent,
 		Target:       target,
 		TargetSource: discovery.TargetSource,
 		Ancestry:     []string{declaration.Into, target},
@@ -154,7 +158,8 @@ func trunkUndescribed(branch string, declaration graph.Declaration, command stri
 	return Undescribed{Branch: branch, Trunk: true, remedy: note}
 }
 
-// requireLocal refuses a selection naming a branch this checkout no longer has.
+// localSelection keeps absent branches for an explicit read, and refuses
+// them for every ordinary mutation selection.
 //
 // The store outlives a branch deleted or renamed with plain Git, and every
 // command that selects through here goes on to ask Git about what it selected.
@@ -163,22 +168,29 @@ func trunkUndescribed(branch string, declaration graph.Declaration, command stri
 // pull request for a branch that does not exist. The two cases are repaired
 // differently, which is why they are told apart: a stale edge is forgotten, and
 // a stack left standing on a vanished parent is given a new one.
-func (s G2GSelector) requireLocal(ctx context.Context, adopted graph.Graph, branches []string) error {
+func (s G2GSelector) localSelection(ctx context.Context, adopted graph.Graph, branches []string, allowAbsent bool) ([]string, error) {
 	local, err := s.Service.Git.LocalBranches(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	present := branchSet(local)
+	absent := []string{}
 	for _, branch := range branches {
 		if present[branch] {
 			continue
 		}
-		if adopted.Tracked(branch) {
-			return fmt.Errorf("selected branch %q is recorded in the g2g graph but is no longer a local branch · run g2g untrack --branch %s to forget it", branch, branch)
+		if allowAbsent {
+			if !slices.Contains(absent, branch) {
+				absent = append(absent, branch)
+			}
+			continue
 		}
-		return fmt.Errorf("the g2g graph records a stack on %q, which is no longer a local branch · record a new parent for what sits on it with g2g track --parent", branch)
+		if adopted.Tracked(branch) {
+			return nil, fmt.Errorf("selected branch %q is recorded in the g2g graph but is no longer a local branch · run g2g untrack --branch %s to forget it", branch, branch)
+		}
+		return nil, fmt.Errorf("the g2g graph records a stack on %q, which is no longer a local branch · record a new parent for what sits on it with g2g track --parent", branch)
 	}
-	return nil
+	return absent, nil
 }
 
 // selectBase applies --trunk to a recorded path. A path has exactly one root,

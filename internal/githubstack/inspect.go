@@ -43,6 +43,7 @@ func (c Client) Inspect(ctx context.Context, branches []string) ([]PullRequest, 
 			diagnostic.Field{Key: "stack_position", Value: strconv.Itoa(pr.StackPosition)},
 		)
 	}
+	c.remember(ctx, prs)
 	return prs, nil
 }
 

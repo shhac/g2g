@@ -18,6 +18,7 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 	var remote string
 	var take, through string
 	var apply, alsoPrune, trunkOnly bool
+	var cleanup prune.Options
 	cmd := &cobra.Command{
 		Use:     "pull",
 		GroupID: groupUpdate,
@@ -28,6 +29,9 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		presentation := presentation.resolve(cmd)
 		if err := selection.validateScope(); err != nil {
 			return err
+		}
+		if (cleanup.DeleteBranches || cleanup.ForgetMissing) && !alsoPrune {
+			return errors.New("--delete-branches and --forget-missing require --prune")
 		}
 		chosen, err := syncer.ParseTake(take, through)
 		if err != nil {
@@ -54,12 +58,17 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		if !alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 		}
-		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, selection.Selection(), guard), presentation, apply)
+		if cleanup.DeleteBranches {
+			pull.notices.preview = "Rerun with --apply to pull, then preview and delete eligible local branches through prune."
+		}
+		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, selection.Selection(), guard, cmd, presentation, cleanup), presentation, apply)
 	}
 	cmd.Flags().StringVar(&remote, "remote", "origin", "Git remote to read from, as git remote names it")
 	// Offered only where the build can prune, rather than offered and refused.
 	if pruner.Ready() {
 		cmd.Flags().BoolVar(&alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
+		cmd.Flags().BoolVar(&cleanup.DeleteBranches, "delete-branches", false, "with --prune, also delete eligible local branches")
+		cmd.Flags().BoolVar(&cleanup.ForgetMissing, "forget-missing", false, "with --prune, also forget records for missing local branches")
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the sequence instead of previewing it")
 	// An enum rather than a boolean, because which side wins has more answers
@@ -166,6 +175,10 @@ func pullThenPrune(cmd *cobra.Command, ctx context.Context, pull applyFlow[synce
 // page, once: a refusal the prune's own flow has already printed is not said
 // again, and a failure before it could print anything is.
 func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
+	var cleanup *prune.Stopped
+	if errors.As(cause, &cleanup) {
+		return writeWhatStands(cmd.OutOrStdout(), p, "The pull stands; cleanup stopped part-way as reported above.", cause)
+	}
 	if !toldNotApplied(cause) {
 		if err := prose(cmd.OutOrStdout(), p, p.problem("The prune could not run: "+cause.Error())); err != nil {
 			return err

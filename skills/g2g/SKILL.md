@@ -93,7 +93,13 @@ description: |
   refuse a held trunk.
 - `prune` forgets branches whose work has landed. It is its own command rather
   than pull's tail because it answers a different question on the same
-  boundary, and it edits the recorded graph and deletes no branch. A child that
+  boundary. By default it edits the recorded graph and deletes no branch.
+  `--delete-branches` opts into local deletion; `--forget-missing` also removes
+  selected records whose refs are gone. Preview lists both acts separately.
+  Deletion is content-based, refuses every checked-out branch, rechecks heads
+  and bases, and removes refs under an expected-tip lease. Partial cleanup
+  exits `3` with completed work and a scoped retry. Remote branches are untouched.
+  A child that
   forgetting would strand is recorded on the branch below **only where Git shows
   that branch is an ancestor of the child** — what a pull leaves — with the
   same check and fork point `track` uses; that is recording where it already
@@ -106,6 +112,8 @@ description: |
   known once the base moves. A prune that refuses after the pull happened is a
   stop part-way (`3`), not a failure. `--json`/`--porcelain` refuse `--prune`,
   since it is two reports and those formats are one document.
+  `--delete-branches` and `--forget-missing` require `--prune` on `pull` and
+  carry the same choices through to prune after the pull.
 - `status` is offline. It draws the stack from g2g's graph (or `--from
   graphite`) and marks each branch against what the remote last held here,
   from local refs alone — `refs/remotes/<remote>/<branch>` and
@@ -117,6 +125,14 @@ description: |
   `diverged · N here, M there`, `on a commit not here`, `not on origin`, counted
   by content like `push`. The default remote missing draws no marks; a
   `--remote` named on purpose that does not exist is an error.
+  It also reads local PR observations, labelled "last seen" and dated, from
+  `g2g/pull-requests.json` in the Git common directory. No observation means
+  "PR history unknown", never "never submitted". Read
+  `design-docs/pr-observations.md` before changing this cache: it is separate
+  from graph authority and can never justify branch deletion. `submit`, `land`
+  and GitHub reads share the client's observer without extra network calls;
+  a merge request is not a confirmed merge. Cache write failure warns without
+  turning a successful remote action into failure.
 - `doctor` reads every recorded stack offline and reports only what is not as
   it should be, each with its command: `restack --continue`,
   `restack --branch`, `track --branch` (moved off, parent gone, no tracked
@@ -335,7 +351,8 @@ description: |
   `stack`
   because reading is free, `restack` to `subtree` because rewriting is not, and
   `all` is offered only where nothing is rewritten: the read-only commands, and
-  `prune`, which edits the record and forgets only what has landed. `ParseScope` takes both the accepted
+  `prune`, which forgets landed records and, with `--forget-missing`, absent
+  selected records. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
 - Projection is a capability, not a scope. `github link`, `submit`, `push` and
   `github retarget` take `stack|path` and refuse a forked selection through
@@ -374,8 +391,8 @@ description: |
   replay. It forgets nothing unless asked with `--prune`: `gt sync` prunes as
   its tail and this does not by default, because forgetting a landed branch is
   a different question on the same boundary and belongs to `prune`.
-- A diverged base is reported, never merged or reset. Pruning edits the graph
-  and never deletes a branch.
+- A diverged base is reported, never merged or reset. Pruning edits the graph;
+  local branch deletion requires explicit `--delete-branches`.
 
 - `github comment` keeps one marked comment per pull request listing its stack. Read
   `design-docs/stack-comment.md` before changing it. It always keeps the whole
@@ -387,12 +404,14 @@ description: |
   the stack and data line, never the footer — matches what this run would
   write; do not go back to comparing text, which depends on GitHub returning
   the body byte for byte. Merged history lives in the comments' own data line because
-  nothing local remembers a pruned branch; keep only what GitHub says merged,
+  another clone cannot read local PR observations; keep only what GitHub says merged,
   never create a comment on a merged pull request, never edit a comment without
   the marker, and leave alone one the viewer cannot edit or a pull request
   carrying two, and believe records only from comments the viewer can edit.
   Writes are `addComment`/`updateIssueComment` by node id with the body as a
-  raw `-f` field; errors must not echo the body. `submit` and `land` keep the
+  raw `-f` field; errors must not echo the body. Local PR observations are
+  supplemental history, never authority for rewriting these comments.
+  `submit` and `land` keep the
   comments as their last act through `comment.Service.Keep` unless
   `--no-comment` — `submit` after opening them, `land` on the branches
   above what it landed (`land.Plan.Above`, the last recipe step) — and a
@@ -496,7 +515,11 @@ description: |
   renders one selected path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the
   healthy case to one compact summary line and annotate only
-  missing/conflicting nodes. `github unlink` is the deliberate inverse of
+  missing/conflicting nodes.
+  `github status` may select missing g2g-recorded branches to check their PRs
+  online, and skips Git content/currency questions for absent refs. Every
+  mutation retains the default missing-branch refusal.
+  `github unlink` is the deliberate inverse of
   `github link`: it
   discovers the GitHub stack number from the selected path and refuses rather
   than guesses when that path is unlinked or spans several stacks, accepts

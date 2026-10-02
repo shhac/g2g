@@ -146,7 +146,11 @@ func (c Client) Mergeability(ctx context.Context, numbers []int) (Mergeability, 
 	if err != nil {
 		return Mergeability{}, repositoryError(err, output)
 	}
-	return parseMergeability(output, numbers)
+	result, err := parseMergeability(output, numbers)
+	if err == nil && c.Observations != nil {
+		c.observationError(ctx, c.Observations.ObserveStates(ctx, result.States))
+	}
+	return result, err
 }
 
 // mergeabilityQuery batches one aliased lookup per pull request number.
@@ -272,5 +276,8 @@ func (c Client) Merge(ctx context.Context, number int, method Method, admin bool
 		diagnostic.Field{Key: "admin", Value: strconv.FormatBool(admin)},
 	)
 	_, err := c.run(ctx, args...)
+	if err == nil && c.Observations != nil {
+		c.observationError(ctx, c.Observations.MergeRequested(ctx, number, head))
+	}
 	return err
 }

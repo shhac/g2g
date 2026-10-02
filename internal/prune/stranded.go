@@ -17,6 +17,7 @@ import (
 type placement struct {
 	child, parent, onto string
 	selected            bool
+	missing             bool
 }
 
 // placements names each child that survives a landed parent, once each.
@@ -36,6 +37,7 @@ func placements(discovery graph.Discovery, landed []string) []placement {
 				parent:   branch,
 				onto:     survivor(discovery.Graph, branch, forgetting),
 				selected: slices.Contains(discovery.Branches, child),
+				missing:  discovery.States[child] == graph.StateBranchMissing,
 			})
 		}
 	}
@@ -76,7 +78,7 @@ func (s Service) rehome(ctx context.Context, placed []placement) (map[string]gra
 
 // sits reports a selected child Git shows already built on where it belongs.
 func (s Service) sits(ctx context.Context, each placement) (bool, error) {
-	if !each.selected || s.Graph.Git == nil {
+	if !each.selected || each.missing || s.Graph.Git == nil {
 		return false, nil
 	}
 	return s.Graph.Git.IsAncestor(ctx, each.onto, each.child)

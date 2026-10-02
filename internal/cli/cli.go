@@ -54,8 +54,8 @@ type Options struct {
 	Restack restack.Service
 	// Sync brings a stack up to date with its remote by composing the others.
 	Sync syncer.Service
-	// Prune forgets branches whose work has landed. It edits the graph and
-	// deletes nothing, which is why it is not the tail of sync.
+	// Prune forgets branches whose work has landed and offers explicit local
+	// deletion. It is composed by pull only when requested.
 	Prune prune.Service
 	// Retarget reconciles GitHub's pull request bases with the resolved stack.
 	// It is the only command that changes what a merge will do.
@@ -86,6 +86,8 @@ type Options struct {
 	// Published says how each branch stands against what the remote last held,
 	// from local refs. It is optional: without it status draws no remote marks.
 	Published push.Known
+	// Observations supplies remembered PR state without reaching GitHub.
+	Observations githubstack.ObservationReader
 
 	// Unstacker performs unlink's mutation. When nil it is taken from Link's
 	// GitHub client if that client provides it.
@@ -108,8 +110,9 @@ func New(version string, stdout, stderr io.Writer) *cobra.Command {
 // This keeps generated shell completions correct for a package-manager alias.
 func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Command {
 	runner := subprocess.ObservingRunner{Runner: subprocess.ExecRunner{}}
-	githubClient := githubstack.Client{Runner: runner}
 	gitClient := localgit.Client{Runner: runner}
+	observations := &githubstack.FileObservations{Git: gitClient}
+	githubClient := githubstack.Client{Runner: runner, Observations: observations}
 	graphiteClient := graphite.Client{Runner: runner}
 	graphService := graph.Service{Git: gitClient, Store: graph.FileStore{Git: gitClient}, Refs: gitClient, Trunks: gitClient}
 	// Precedence is declared here and nowhere else. Adopting a branch into
@@ -142,7 +145,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 	}
 	pushService := push.Service{Git: gitClient, Selector: selector}
 	syncService := syncer.Service{Git: gitClient, Graph: graphService, Restack: restackService}
-	pruneService := prune.Service{Git: gitClient, Graph: graphService}
+	pruneService := prune.Service{Git: gitClient, Graph: graphService, Cleaner: gitClient}
 	return NewWithOptions(Options{
 		Version:     version,
 		CommandName: commandName,
@@ -171,6 +174,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 			Pusher: &pushService, Syncer: &syncService, Pruner: &pruneService, Holds: restackService,
 		},
 		Published:          push.Known{Git: gitClient},
+		Observations:       observations,
 		Create:             create.Service{Git: gitClient, Graph: graphService},
 		Reshape:            reshape.Service{Git: gitClient, Graph: graphService},
 		Navigate:           navigate.Service{Selector: selector, Git: gitClient, Trunks: recordedChildren{service: graphService}},
@@ -229,7 +233,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	// under its own condition — and a namespace only when something is in it.
 	var github, graphite []*cobra.Command
 	if options.Graph.Ready() {
-		root.AddCommand(newStatus(options.Graph, options.Link.Selector, options.Published, presentation))
+		root.AddCommand(newStatus(options.Graph, options.Link.Selector, options.Published, presentation, options.Observations))
 		root.AddCommand(newDoctor(options.Graph, options.Restack, options.Published, presentation))
 		root.AddCommand(newTrack(options.Graph, guard, options.GraphiteConfigured, presentation))
 		root.AddCommand(newAdopt(options.Graph, guard, presentation))

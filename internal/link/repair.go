@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shhac/g2g/internal/githubstack"
+
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -22,6 +24,29 @@ import (
 // come first because a pull request opened or retargeted for work already in
 // the trunk is the wrong next step, whatever else is also true.
 func (p Plan) Repair() (repair.Note, []IssueKind) {
+	if len(p.Absent) != 0 && p.Source == stack.SourceG2G {
+		ways := []repair.Step{}
+		root := p.Base
+		if len(p.Ancestry) != 0 {
+			root = p.Ancestry[0]
+		}
+		missingRecords := false
+		resolutions := githubstack.ResolveHeads(p.PullRequests)
+		for _, branch := range p.Absent {
+			if branch == root {
+				ways = append(ways, repair.Step{Effect: "restore " + root + " locally, or use g2g track to record a surviving parent for its children"})
+			} else {
+				missingRecords = true
+			}
+			if pr := resolutions[branch].Open; pr != nil {
+				ways = append(ways, repair.Step{Command: fmt.Sprintf("gh pr view %d", pr.Number), Effect: "inspect the open pull request before forgetting its local record"})
+			}
+		}
+		if missingRecords {
+			ways = append(ways, repair.Step{Command: "g2g prune --branch " + p.Target + " --scope " + string(p.Scope) + " --forget-missing", Effect: "preview cleanup of missing records; forgetting a record does not close its pull request"})
+		}
+		return repair.Note{Reason: "missing locally: " + sentenceList(p.Absent), Ways: ways}, nil
+	}
 	if len(p.Issues) == 0 {
 		return repair.Note{}, nil
 	}

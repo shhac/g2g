@@ -288,8 +288,9 @@ g2g status --from graphite                           # Graphite's record, in thi
 `g2g status` draws the stack you are on from g2g's own graph and says where
 each branch stands, the way `git status` does for one branch. It asks nothing
 of the network — not GitHub, not Graphite, not the remote — so it is the command
-to run before deciding whether anything else needs to happen. Pull requests are
-`g2g github status`'s business, because reading one invokes `gh`.
+to run before deciding whether anything else needs to happen. It can show PR
+knowledge remembered by earlier GitHub commands; a current check is
+`g2g github status`, because reading a pull request invokes `gh`.
 
 It renders a fork with connectors and a chain as the same flat column every
 other command uses, because a chain has no structure that indentation would
@@ -330,6 +331,18 @@ which to pull. A branch that was not compared says nothing rather than reading
 as up to date. `--remote` picks the remote and defaults to `origin`; a
 repository with no `origin` is ordinary and simply draws no marks, while a
 remote you name that does not exist is an error.
+
+PR annotations say **last seen open, closed, or merged**, with the observation
+time and PR link. `submit` remembers the PR it creates; `land` remembers a merge
+request separately from a confirmed merge. Successful GitHub reads refresh this
+knowledge, including merges or closures done through the UI or `gh`. A missing
+branch with no observation says **PR history unknown**: absence does not prove
+it was never submitted. Remembered PR state never decides whether work has
+landed or a branch can be deleted. See [PR observations](design-docs/pr-observations.md).
+
+Cleanup hints preserve the selected branch and scope. A wholly missing,
+selected subtree gets one `untrack --scope subtree` hint instead of one per
+branch. Landed branches also get a preview command for explicit local cleanup.
 
 #### doctor
 
@@ -638,7 +651,7 @@ be combined with `--scope`, `--take`, `--through`, or `--prune`.
 
 On its own it does not forget anything. Pruning is `g2g prune`, a separate
 command, because it answers a different question on the same boundary and
-edits the recorded graph rather than moving branches. `--prune` runs the two in
+edits the recorded graph by default. `--prune` runs the two in
 order over the same selection, since after a squash merge upstream the usual
 thing to want is both. The preview says it will prune without saying what:
 what has landed is only known once the base has moved, and the base does not
@@ -646,6 +659,13 @@ move in a preview. If the prune then refuses, the pull has already happened
 and stays happened, so the command stops part-way and exits `3`. `--json` and
 `--porcelain` refuse `--prune`, because it produces two reports and those
 formats are one document.
+
+With `--prune`, `--delete-branches` and `--forget-missing` pass the same explicit
+cleanup choices to prune. For example, preview
+`g2g pull --prune --delete-branches`, then add `--apply`. The pull happens first;
+prune then assesses the updated local stack and refuses deletion of a branch
+checked out in any worktree. Repository-wide cleanup, including stale records
+that prevent a pull, is available through `g2g prune --scope all`.
 
 The fetch writes only into `refs/g2g/remotes/`, so your own remote-tracking
 refs, `FETCH_HEAD`, and ahead/behind counts are untouched. The base is
@@ -699,12 +719,22 @@ g2g pull --remote upstream --take published --apply
 ```sh
 g2g prune
 g2g prune --apply
+g2g prune --scope all --delete-branches --forget-missing
 ```
 
 Pruning forgets a landed branch in the recorded graph, asking Git by content —
-a squash merge included — whether its work is already in the trunk. It never
-deletes a branch: that is a separate, deliberate act, not the tail of another
-command.
+a squash merge included — whether its work is already upstream. By default it
+deletes no branch. `--delete-branches` also deletes the listed local branches;
+`--forget-missing` also forgets selected records whose local branches are gone.
+These are independent choices, and the preview lists record removal and local
+deletion separately. Add `--apply` after reviewing it. Remote branches are
+untouched, and branches already forgotten from the graph are outside its scope.
+
+Deletion uses Git's content assessment, never a cached PR verdict. It refuses
+branches checked out in this or another worktree, rechecks the assessed heads
+and bases before applying, and deletes each ref only at its assessed tip. Work
+added after a merge stays. A failure after deletion reports what changed, exits
+`3`, and offers a scoped retry with `--forget-missing` for any stale records.
 
 Forgetting a branch can leave a child recorded under something that is no
 longer there. Where Git shows the branch below is an ancestor of that child —
@@ -891,6 +921,13 @@ parent** rather than whichever sibling sorts first, and says which record
 described it. A branch no source describes is
 rendered as such rather than refused: "nothing is stacked here" answers what
 was asked.
+
+A g2g-recorded branch deleted locally can still be checked by name:
+`g2g github status --branch synthetic-work`. The command reports **local branch
+missing** alongside GitHub's actual PR state and refreshes the offline
+observation. It skips local content and currency checks for absent refs and
+offers record cleanup rather than submitting a nonexistent branch. Mutating
+commands continue to refuse missing local branches.
 
 The same bounded GitHub PR read reports native stack number, size, and position
 for each selected PR, without a checkout or a second graph, and marks the

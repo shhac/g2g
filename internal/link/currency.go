@@ -3,6 +3,7 @@ package link
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/parallel"
@@ -85,6 +86,9 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 	// each pull request is on.
 	asking := make([]string, 0, 2*len(plan.Branches))
 	for _, branch := range plan.Branches {
+		if slices.Contains(plan.Absent, branch) || slices.Contains(plan.Absent, plan.SitsOn(branch)) {
+			continue
+		}
 		if pr, published := open[branch]; published && pr.HeadOID != "" {
 			asking = append(asking, branch, pr.HeadOID)
 		}
@@ -99,6 +103,9 @@ func (s Service) currency(ctx context.Context, plan Plan) (map[string]Currency, 
 	// in a slice sized first, which is what makes that safe without a lock.
 	states := make([]*Currency, len(plan.Branches))
 	err = parallel.Each(ctx, plan.Branches, func(ctx context.Context, index int, branch string) error {
+		if slices.Contains(plan.Absent, branch) || slices.Contains(plan.Absent, plan.SitsOn(branch)) {
+			return nil
+		}
 		pr, published := open[branch]
 		if !published || pr.HeadOID == "" {
 			return nil

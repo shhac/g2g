@@ -157,6 +157,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   and `2` when it could not tell — the `diff`/`grep` convention, so a script
   can ask. Keep the split: `status` is the full overview, `doctor` only the
   unexpected. A branch with no commits of its own is not a finding.
+- PR observations live separately from the graph, in
+  `g2g/pull-requests.json` under the Git common directory. Read
+  `design-docs/pr-observations.md` before changing them. The shared GitHub
+  client remembers existing query answers and successful PR creation; `land`
+  distinguishes a merge request from an observed merge. Offline `status`
+  dates this knowledge and never infers "never submitted" from its absence.
+  Cached PR state is never evidence for deleting a local branch.
 - `internal/graph` must depend on Git alone. Importing Graphite or GitHub into
   it, or making any of `status`/`doctor`/`adopt`/`track`/`untrack` need a
   network, removes the only reason the package exists. The scope vocabulary and the forest traversal
@@ -390,6 +397,16 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `g2g pull --prune` and then one `g2g track --branch <child> --parent
   <branch>` per child. Do not relax the check into a guess; `untrack` still
   never reparents, and `delete` remains the one command that does on request.
+- `prune` remains graph-only by default. `--delete-branches` explicitly adds
+  local deletion at assessed tips, refuses branches held by any worktree, and
+  rechecks the heads and bases before mutation. `--forget-missing` explicitly
+  removes absent selected records without claiming their work landed. Both
+  flags compose through `pull --prune`. Deletion precedes graph removal so a
+  partial failure leaves recoverable records; report completed work and exit
+  `3`. Keep the real-Git lease, squash-merge, followup, and worktree tests.
+  A live child of a missing parent can be the last ref carrying inherited
+  unlanded work: assess the whole range above the first surviving ancestor,
+  rather than only the child's own commits, before deleting it.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

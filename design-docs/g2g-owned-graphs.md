@@ -161,6 +161,10 @@ A branch's own tip is deliberately **not** stored. It moves with every
 ordinary commit, so recording it would make routine work look like the graph
 had changed.
 
+PR observations live in a separate file and never affect graph authority,
+selection, or landed classification. Offline status can display that dated
+knowledge; see [PR observations](pr-observations.md).
+
 The **fork point** is stored, and the distinction matters. An edge records the
 parent's tip at the moment the edge was written:
 

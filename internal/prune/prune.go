@@ -8,7 +8,8 @@
 // It is a separate command because it answers a different question. sync asks
 // what the remote has that this stack does not; prune asks what this stack has
 // that the trunk already contains. They share a boundary and nothing else: one
-// moves branches, the other edits the record and deletes nothing.
+// advances branches, the other edits the record and optionally deletes local
+// branches whose assessed work is already upstream.
 package prune
 
 import (
@@ -42,10 +43,24 @@ type Git interface {
 	Absorbed(ctx context.Context, base, branch string) (bool, error)
 }
 
-// Service reads the recorded graph and Git, and writes only the graph.
+// Service reads the recorded graph and Git. It writes the graph and, only
+// when explicitly asked, deletes assessed local branch tips.
 type Service struct {
 	Git   Git
 	Graph graph.Service
+	// Cleaner is required only for explicit local branch deletion.
+	Cleaner Cleaner
+}
+
+type Cleaner interface {
+	ResolveAll(context.Context, []string) (map[string]string, error)
+	BranchHolders(context.Context) (map[string]string, error)
+	DeleteBranchAt(context.Context, string, string) error
+}
+
+type Options struct {
+	DeleteBranches bool
+	ForgetMissing  bool
 }
 
 // Plan is what a prune would forget.
@@ -56,8 +71,14 @@ type Plan struct {
 	Landed []string
 	// Missing are recorded branches that are no longer local: deleted or
 	// renamed with plain Git. Nothing can be asked of Git about them, so they
-	// are not judged landed; untrack is what forgets a stale edge.
+	// are not judged landed; --forget-missing or untrack forgets a stale edge.
 	Missing []string
+	Options Options
+	// Delete pins each deletion to the tip whose content was assessed.
+	Delete map[string]string
+	// Tips also pins the bases whose content justified each deletion.
+	Tips             map[string]string
+	ForgottenMissing []string
 	// Rehome is the edge each surviving child of a forgotten branch is
 	// recorded with instead, keyed by the child. Only a child Git already shows
 	// sitting on the branch below is in it: see rehome.
@@ -69,11 +90,13 @@ type Plan struct {
 }
 
 // Nothing reports a plan with no branch to forget.
-func (p Plan) Nothing() bool { return len(p.Landed) == 0 }
+func (p Plan) Nothing() bool { return len(p.Landed) == 0 && len(p.ForgottenMissing) == 0 }
 
 // Equal compares every fact that changes what the prune does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
+		p.Options == other.Options && maps.Equal(p.Delete, other.Delete) && maps.Equal(p.Tips, other.Tips) &&
+		slices.Equal(p.ForgottenMissing, other.ForgottenMissing) &&
 		p.Blocked == other.Blocked &&
 		slices.Equal(p.Landed, other.Landed) &&
 		slices.Equal(p.Missing, other.Missing) &&
@@ -95,6 +118,10 @@ func (s Service) Ready() bool {
 
 // Plan works out what has landed without changing anything.
 func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, error) {
+	return s.PlanWithOptions(ctx, selection, Options{})
+}
+
+func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection, options Options) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("prune service is not fully configured")
 	}
@@ -102,18 +129,63 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Discovery: discovery, Landed: make([]string, 0), Missing: make([]string, 0)}
+	plan := Plan{Discovery: discovery, Options: options, Landed: make([]string, 0), Missing: make([]string, 0)}
+	local, err := s.Graph.Git.LocalBranches(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
+	comparisons := map[string]graph.Edge{}
 	for _, branch := range discovery.Branches {
-		edge, tracked := discovery.Graph.Edges[branch]
+		if edge, ok := comparisonEdge(discovery.Graph, branch, local); ok {
+			comparisons[branch] = edge
+		}
+	}
+	var assessed map[string]string
+	if options.DeleteBranches {
+		if s.Cleaner == nil {
+			return Plan{}, fmt.Errorf("local branch deletion is not configured")
+		}
+		needed := map[string]bool{}
+		for _, branch := range discovery.Branches {
+			if slices.Contains(local, branch) {
+				needed[branch] = true
+			}
+			if edge, comparable := comparisons[branch]; comparable {
+				needed[edge.Parent] = true
+			}
+		}
+		assessed, err = s.Cleaner.ResolveAll(ctx, slices.Sorted(maps.Keys(needed)))
+		if err != nil {
+			return Plan{}, err
+		}
+		plan.Tips = assessed
+	}
+	for _, branch := range discovery.Branches {
+		_, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
 			// A trunk is not a branch with work to land.
 			continue
 		}
 		if discovery.States[branch] == graph.StateBranchMissing {
 			plan.Missing = append(plan.Missing, branch)
+			if options.ForgetMissing {
+				plan.ForgottenMissing = append(plan.ForgottenMissing, branch)
+			}
 			continue
 		}
-		landed, err := s.landed(ctx, branch, edge)
+		edge, comparable := comparisons[branch]
+		if !comparable {
+			continue
+		}
+		head := branch
+		if options.DeleteBranches {
+			head = assessed[branch]
+			edge.Parent = assessed[edge.Parent]
+			if head == "" || edge.Parent == "" {
+				return Plan{}, fmt.Errorf("a branch disappeared before cleanup · preview again")
+			}
+		}
+		landed, err := s.landed(ctx, head, edge)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -125,7 +197,8 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
 	// the same reason.
-	rehome, left, err := s.rehome(ctx, placements(discovery, plan.Landed))
+	forgotten := append(slices.Clone(plan.Landed), plan.ForgottenMissing...)
+	rehome, left, err := s.rehome(ctx, placements(discovery, forgotten))
 	if err != nil {
 		return Plan{}, err
 	}
@@ -133,6 +206,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection) (Plan, err
 	if len(left) != 0 {
 		plan.Repair = strandedNote(left)
 		plan.Blocked = plan.Repair.Sentence()
+	}
+	if options.DeleteBranches && plan.Blocked == "" {
+		if err := s.planDeletions(ctx, &plan, assessed); err != nil {
+			return Plan{}, err
+		}
 	}
 	diagnostic.Event(ctx, "prune.plan",
 		diagnostic.Field{Key: "selected", Value: strings.Join(discovery.Branches, ",")},
@@ -157,10 +235,36 @@ func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bo
 	return landed.Into(ctx, s.Git, edge.Parent, branch, edge.ForkPoint)
 }
 
+// comparisonEdge includes inherited work when a parent disappeared. Limiting
+// to this child's own commits could delete the only surviving ref carrying its
+// missing parent's unlanded work. The first edge above a live ancestor bounds
+// the whole range that would disappear, without counting that base's commits.
+func comparisonEdge(recorded graph.Graph, branch string, local []string) (graph.Edge, bool) {
+	edge, tracked := recorded.Edges[branch]
+	if !tracked || !slices.Contains(local, branch) {
+		return graph.Edge{}, false
+	}
+	if slices.Contains(local, edge.Parent) {
+		return edge, true
+	}
+	path, err := recorded.Path(branch)
+	if err != nil {
+		return graph.Edge{}, false
+	}
+	for index := len(path) - 2; index >= 0; index-- {
+		if slices.Contains(local, path[index]) {
+			edge.Parent = path[index]
+			edge.ForkPoint = recorded.Edges[path[index+1]].ForkPoint
+			return edge, true
+		}
+	}
+	return graph.Edge{}, false
+}
+
 // Revalidate repeats discovery immediately before the write and refuses if the
 // answer moved.
 func (s Service) Revalidate(ctx context.Context, selection graph.Selection, preview Plan) (Plan, error) {
-	current, err := s.Plan(ctx, selection)
+	current, err := s.PlanWithOptions(ctx, selection, preview.Options)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -170,10 +274,8 @@ func (s Service) Revalidate(ctx context.Context, selection graph.Selection, prev
 	return current, nil
 }
 
-// Apply forgets the landed branches, recording each child it rehomes on the
-// branch below first. It edits the recorded graph and never deletes a branch:
-// removing someone's local work is not something to do as the tail of another
-// command, or as this one.
+// Apply forgets the selected records, recording each evidenced surviving child
+// on the branch below. Explicit local deletion uses the assessed tips as leases.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("%s", plan.Blocked)
@@ -188,28 +290,57 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if err != nil {
 		return err
 	}
+	if !adopted.Equal(plan.Discovery.Graph) {
+		return fmt.Errorf("the graph changed before pruning · preview again")
+	}
+	if len(plan.Delete) != 0 {
+		if s.Cleaner == nil {
+			return fmt.Errorf("local branch deletion is not configured")
+		}
+		now, err := s.Cleaner.ResolveAll(ctx, slices.Sorted(maps.Keys(plan.Tips)))
+		if err != nil {
+			return err
+		}
+		if !maps.Equal(now, plan.Tips) {
+			return fmt.Errorf("branches or their bases changed before cleanup · preview again")
+		}
+	}
 	diagnostic.Event(ctx, "prune.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Landed, ",")})
 	for _, child := range slices.Sorted(maps.Keys(plan.Rehome)) {
 		if adopted, err = adopted.Track(child, plan.Rehome[child]); err != nil {
 			return err
 		}
 	}
-	if err := s.Graph.Store.Save(ctx, adopted.Untrack(plan.Landed...)); err != nil {
-		return err
+	// Delete first, while the graph still records the branches. A failure
+	// leaves a record that --forget-missing can recover, rather than hiding
+	// a surviving local branch from the next cleanup.
+	deleted := []string{}
+	for _, branch := range slices.Sorted(maps.Keys(plan.Delete)) {
+		if s.Cleaner == nil {
+			return fmt.Errorf("local branch deletion is not configured")
+		}
+		if err := s.Cleaner.DeleteBranchAt(ctx, branch, plan.Delete[branch]); err != nil {
+			return partial(plan, deleted, nil, err)
+		}
+		deleted = append(deleted, branch)
+	}
+	forgotten := append(slices.Clone(plan.Landed), plan.ForgottenMissing...)
+	if err := s.Graph.Store.Save(ctx, adopted.Untrack(forgotten...)); err != nil {
+		return partial(plan, deleted, nil, err)
 	}
 	if s.Graph.Refs == nil {
 		return nil
 	}
 	for _, child := range slices.Sorted(maps.Keys(plan.Rehome)) {
 		if err := s.Graph.Refs.PinForkPoint(ctx, child, plan.Rehome[child].ForkPoint); err != nil {
-			return err
+			return partial(plan, deleted, forgotten, err)
 		}
 	}
 	// A fork point outlives the edge it belonged to unless it is released, and
 	// a stale pin keeps objects reachable that nothing refers to any more.
-	for _, branch := range plan.Landed {
+	for _, branch := range forgotten {
 		if err := s.Graph.Refs.UnpinForkPoint(ctx, branch); err != nil {
-			return err
+			return partial(plan, deleted, forgotten, err)
 		}
 	}
 	return nil

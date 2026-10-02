@@ -31,7 +31,8 @@ type PullRequest struct {
 
 // Client invokes gh. Inspect is read-only; Link is only called by --apply.
 type Client struct {
-	Runner subprocess.Runner
+	Runner       subprocess.Runner
+	Observations Observer
 }
 
 // run invokes gh and reports a failure as the command that produced it.
@@ -90,7 +91,14 @@ func (c Client) Create(ctx context.Context, branch, base, title, body string, dr
 		args = append(args, "--reviewer", reviewer)
 	}
 	diagnostic.Event(ctx, "github.pr_create", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "base", Value: base}, diagnostic.Field{Key: "draft", Value: strconv.FormatBool(draft)})
-	_, err = c.runAs(ctx, "gh "+strings.Join(args[:6], " ")+" …", args...)
+	output, err := c.runAs(ctx, "gh "+strings.Join(args[:6], " ")+" …", args...)
+	if err == nil && c.Observations != nil {
+		if pr, ok := createdPullRequest(output, branch, base); ok {
+			c.remember(ctx, []PullRequest{pr})
+		} else {
+			diagnostic.Warn(ctx, "github.observations", "pull request created, but its URL could not be remembered locally")
+		}
+	}
 	return err
 }
 

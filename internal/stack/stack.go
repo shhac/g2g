@@ -115,8 +115,11 @@ func discover(ctx context.Context, selector PathSelector, github GitHub, selecti
 
 // Selection captures every no-checkout path selector shared by stack commands.
 type Selection struct {
-	Branch string
-	Trunk  string
+	// AllowAbsent is an internal read capability, used by github status.
+	// Missing refs remain in Snapshot.Absent; mutations must refuse them.
+	AllowAbsent bool
+	Branch      string
+	Trunk       string
 	// Scope is how much of the structure to select. Empty means the whole
 	// stack: the trunk beneath the target, the target, and everything above it.
 	Scope Scope
@@ -155,8 +158,8 @@ type Snapshot struct {
 	// Scope is what was actually selected, so a renderer can say how much of
 	// the structure it is showing.
 	Scope Scope
-	// Absent are selected branches that are not on this machine. Only the pull
-	// request source produces them: a stack published from another checkout can
+	// Absent are selected branches that are not on this machine. A stack
+	// published from another checkout can
 	// join two local subtrees through a branch nobody here has, and dropping
 	// that edge makes the two look unrelated.
 	//
@@ -327,8 +330,12 @@ func (s Snapshot) RequireActionable(command string) error {
 	if len(s.Absent) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%s cannot act on %s: not %s on this machine · the structure came from pull request bases, which describe branches this checkout does not have",
-		command, strings.Join(s.Absent, ", "), pluralBranches(len(s.Absent)))
+	record := "pull request bases, which describe"
+	if s.Source == SourceG2G {
+		record = "the g2g graph, which describes"
+	}
+	return fmt.Errorf("%s cannot act on %s: not %s on this machine · the structure came from %s branches this checkout does not have",
+		command, strings.Join(s.Absent, ", "), pluralBranches(len(s.Absent)), record)
 }
 
 func pluralBranches(count int) string {

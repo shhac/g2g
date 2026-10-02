@@ -23,6 +23,11 @@ come.
 
 `land` is that sequence, previewed before it runs.
 
+The shared GitHub client remembers PR observations for offline status. A
+successful merge request is recorded as pending confirmation; the existing
+merge-state reads record `MERGED` only when GitHub reports it. This adds no
+network calls and survives graph pruning. See [PR observations](pr-observations.md).
+
 ## It owns no rules
 
 Every refusal `land` needs already exists in a service that previews and is

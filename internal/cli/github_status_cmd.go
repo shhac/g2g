@@ -20,7 +20,9 @@ func newGitHubStatus(service link.Service, completions stack.Completions, presen
 		}
 		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", selection.branch, selection.trunk))
 		defer cancel()
-		plan, err := service.Plan(ctx, selection.Selection())
+		selected := selection.Selection()
+		selected.AllowAbsent = true
+		plan, err := service.Plan(ctx, selected)
 		if err != nil {
 			// "Nothing is stacked here" is an answer to what status was asked,
 			// not a failure to answer it. Refusing meant the read-only triage

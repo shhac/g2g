@@ -15,14 +15,8 @@ import (
 // It recomputes rather than replaying a stored queue, so a user who ran git
 // rebase --continue or --abort themselves simply changes what work remains.
 func (s Service) Continue(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
+	record, err := s.ownedRecord(ctx)
 	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	if err := s.requireOwner(ctx, record); err != nil {
 		return err
 	}
 	inProgress, err := s.Git.RebaseInProgress(ctx)
@@ -41,14 +35,8 @@ func (s Service) Continue(ctx context.Context) error {
 
 // Skip abandons the commit an interrupted rebase stopped on.
 func (s Service) Skip(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
+	record, err := s.ownedRecord(ctx)
 	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	if err := s.requireOwner(ctx, record); err != nil {
 		return err
 	}
 	if err := s.Git.RebaseSkip(ctx); err != nil {
@@ -175,14 +163,8 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 // Abort restores every branch to the tip it had when the operation began,
 // including paths that already completed.
 func (s Service) Abort(ctx context.Context) error {
-	record, found, err := s.Journal.Load(ctx)
+	record, err := s.ownedRecord(ctx)
 	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no restack is in progress")
-	}
-	if err := s.requireOwner(ctx, record); err != nil {
 		return err
 	}
 	// Refuse before aborting Git's current invocation or restoring any tip.
@@ -291,4 +273,19 @@ func (s Service) InProgress(ctx context.Context) (bool, error) {
 	}
 	_, found, err := s.Journal.Load(ctx)
 	return found, err
+}
+
+// ownedRecord is the common gate before any recovery command touches Git.
+func (s Service) ownedRecord(ctx context.Context) (Record, error) {
+	record, found, err := s.Journal.Load(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	if !found {
+		return Record{}, fmt.Errorf("no restack is in progress")
+	}
+	if err := s.requireOwner(ctx, record); err != nil {
+		return Record{}, err
+	}
+	return record, nil
 }

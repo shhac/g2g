@@ -73,7 +73,7 @@ func doctorView(discovery graph.Discovery, findings []finding) stackView {
 	view := stackView{Operation: "doctor", Target: "every recorded stack", TargetSource: "repository"}
 	for _, found := range findings {
 		if found.Branch != "" {
-			view.Nodes = append(view.Nodes, stackNode{Branch: found.Branch, State: found.Problem, Severity: found.Severity})
+			view.Nodes = append(view.Nodes, stackNode{Branch: found.Branch}.labeled(found.Problem, found.Severity))
 		}
 	}
 	for _, found := range findings {

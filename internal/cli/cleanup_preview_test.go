@@ -61,13 +61,13 @@ func TestOfflinePRKnowledgeIsDatedAndDoesNotDuplicateMarks(t *testing.T) {
 	seen := observationFixture{"synthetic-auth": {PullRequest: githubstack.PullRequest{Number: 41, URL: "https://example.test/synthetic/repo/pull/41", State: "MERGED"}, ObservedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}}
 	view := markPublished(statusView(d), "origin", map[string]push.Publication{"synthetic-auth": {Standing: push.Current}})
 	view = rememberedPRs(context.Background(), view, d, seen)
-	if strings.Count(view.Nodes[0].State, "origin✓") != 1 || len(view.Nodes[0].Marks) != 2 {
+	if strings.Count(view.Nodes[0].state(), "origin✓") != 1 || len(view.Nodes[0].Marks) != 2 {
 		t.Fatalf("repeated marks: %+v", view.Nodes[0])
 	}
-	if !strings.Contains(view.Nodes[0].State, "last seen merged 2026-01-01T12:00:00Z") || strings.Contains(view.Nodes[0].State, "pr✗") {
+	if !strings.Contains(view.Nodes[0].state(), "last seen merged 2026-01-01T12:00:00Z") || strings.Contains(view.Nodes[0].state(), "pr✗") {
 		t.Fatalf("misleading PR state: %+v", view.Nodes[0])
 	}
-	if !strings.Contains(view.Nodes[1].State, "PR history unknown") || strings.Contains(view.Nodes[1].State, "never submitted") {
+	if !strings.Contains(view.Nodes[1].state(), "PR history unknown") || strings.Contains(view.Nodes[1].state(), "never submitted") {
 		t.Fatalf("invented PR history: %+v", view.Nodes[1])
 	}
 }

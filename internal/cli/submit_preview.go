@@ -23,18 +23,20 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		Nodes:        []stackNode{{Branch: plan.Snapshot.Base, Trunk: true}},
 	}
 	for _, branch := range plan.Snapshot.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, State: "create " + openAs(draft)}
+		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target}
+		state, level := "create "+openAs(draft), severity("")
 		previous, replaced := plan.Superseded[branch]
 		existing := existingNumber(plan, branch)
 		switch {
 		case plan.Issues[branch] != "":
-			node.State, node.Severity = "blocked: "+plan.Issues[branch], severityBad
+			state, level = "blocked: "+plan.Issues[branch], severityBad
 		case existing != 0:
-			node.PRNumber, node.State, node.Severity = existing, "existing", severityOK
+			node.PRNumber = existing
+			state, level = "existing", severityOK
 		case replaced:
-			node.State = fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State))
+			state = fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State))
 		}
-		view.Nodes = append(view.Nodes, node)
+		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
 
 	if template != "" {

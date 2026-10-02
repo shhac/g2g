@@ -29,8 +29,8 @@ func graphNodes(discovery graph.Discovery) []stackNode {
 			// being asked about, so a single-node view has no trunk.
 			Trunk: discovery.Graph.IsTrunk(branch) || (index == 0 && len(discovery.Branches) > 1 && !discovery.Graph.Tracked(branch)),
 		}
-		node.State, node.Severity = nodeState(discovery, branch)
-		nodes = append(nodes, node)
+		state, level := nodeState(discovery, branch)
+		nodes = append(nodes, node.labeled(state, level))
 	}
 	return nodes
 }

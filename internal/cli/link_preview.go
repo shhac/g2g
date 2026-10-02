@@ -23,7 +23,8 @@ func linkView(plan link.Plan) stackView {
 		// The marker keeps an unresolved node self-describing without colour,
 		// so redirected output still says why a branch cannot be linked.
 		if reason := issues[branch]; reason != "" {
-			node.PRNumber, node.State, node.Severity = 0, "unresolved: "+reason, severityBad
+			node.PRNumber = 0
+			node = node.labeled("unresolved: "+reason, severityBad)
 		}
 		view.Nodes = append(view.Nodes, node)
 	}

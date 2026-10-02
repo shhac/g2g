@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -24,7 +23,7 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		seen, known := observed[node.Branch]
 		if !known {
 			if discovery.States[node.Branch] == graph.StateBranchMissing {
-				view.Nodes[index] = appendObservationMark(node, stackMark{Detail: "PR history unknown", Severity: severityNeutral})
+				view.Nodes[index] = node.withMarks(stackMark{Detail: "PR history unknown", Severity: severityNeutral})
 			}
 			continue
 		}
@@ -41,7 +40,7 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		if !seen.MergeRequestedAt.IsZero() {
 			detail += " · merge requested, confirmation pending"
 		}
-		view.Nodes[index] = appendObservationMark(node, stackMark{Detail: "PR " + detail, Severity: level})
+		view.Nodes[index] = node.withMarks(stackMark{Detail: "PR " + detail, Severity: level})
 	}
 	if shown {
 		if discovery.Scope == graph.ScopeAll || !discovery.Graph.Tracked(discovery.Target) {
@@ -51,13 +50,4 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		}
 	}
 	return view
-}
-
-func appendObservationMark(node stackNode, mark stackMark) stackNode {
-	marks := slices.Clone(node.Marks)
-	if len(marks) == 0 && node.State != "" {
-		marks = append(marks, stackMark{Detail: node.State, Severity: node.Severity})
-	}
-	node.Marks = nil
-	return node.marked(append(marks, mark)...)
 }

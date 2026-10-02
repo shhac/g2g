@@ -22,10 +22,11 @@ func pruneView(plan prune.Plan) stackView {
 	view := graphView(plan.Discovery, "prune")
 	for index, node := range view.Nodes {
 		if forgetting[node.Branch] {
-			view.Nodes[index].State, view.Nodes[index].Severity = forgetState(plan, node.Branch), severityWarn
+			state := forgetState(plan, node.Branch)
 			if _, deleting := plan.Delete[node.Branch]; deleting {
-				view.Nodes[index].State += " · delete local branch"
+				state += " · delete local branch"
 			}
+			view.Nodes[index] = node.labeled(state, severityWarn)
 		}
 	}
 	if !plan.Options.ForgetMissing {

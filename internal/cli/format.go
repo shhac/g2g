@@ -137,8 +137,8 @@ func (v stackView) document() jsonDocument {
 			Target:      node.Target,
 			PullRequest: node.PRNumber,
 			URL:         node.PRURL,
-			State:       node.State,
-			Severity:    string(node.Severity),
+			State:       node.state(),
+			Severity:    string(node.severity()),
 		})
 	}
 	for _, step := range v.Sequence {

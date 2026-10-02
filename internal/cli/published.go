@@ -87,11 +87,12 @@ func markPublished(view stackView, remote string, publishing map[string]push.Pub
 		}
 		// Being a trunk is said by the line itself, so a trunk's own mark is
 		// only how it stands against the remote.
-		said := stackMark{Detail: node.State, Severity: node.Severity}
+		mark := publishedMark(remote, publication)
 		if node.Trunk {
-			said = stackMark{}
+			view.Nodes[index] = node.marked(mark)
+		} else {
+			view.Nodes[index] = node.withMarks(mark)
 		}
-		view.Nodes[index] = node.marked(said, publishedMark(remote, publication))
 	}
 	return publishedNotes(view, remote, publishing)
 }

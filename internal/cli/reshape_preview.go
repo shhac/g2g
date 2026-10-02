@@ -34,15 +34,15 @@ func removalNodes(plan reshape.Plan, nodes []stackNode) []stackNode {
 	for index, node := range nodes {
 		switch {
 		case node.Branch == plan.Branch && plan.Operation == reshape.Fold:
-			node.State, node.Severity = "folds into "+plan.Parent, severityWarn
+			node = node.labeled("folds into "+plan.Parent, severityWarn)
 		case node.Branch == plan.Branch:
-			node.State, node.Severity = "deleted", severityBad
+			node = node.labeled("deleted", severityBad)
 		case slices.Contains(plan.Children, node.Branch) && plan.Operation == reshape.Fold:
-			node.State, node.Severity = "moves onto "+plan.Parent, severityOK
+			node = node.labeled("moves onto "+plan.Parent, severityOK)
 		case slices.Contains(plan.Children, node.Branch):
-			node.State, node.Severity = "moves onto "+plan.Parent+" · needs restack", severityWarn
+			node = node.labeled("moves onto "+plan.Parent+" · needs restack", severityWarn)
 		case slices.Contains(plan.Siblings, node.Branch):
-			node.State, node.Severity = "needs restack", severityWarn
+			node = node.labeled("needs restack", severityWarn)
 		default:
 			continue
 		}
@@ -134,7 +134,7 @@ func renameView(plan reshape.RenamePlan) stackView {
 	}
 	for index, node := range view.Nodes {
 		if node.Branch == plan.From {
-			view.Nodes[index].State, view.Nodes[index].Severity = "becomes "+plan.To, severityOK
+			view.Nodes[index] = node.labeled("becomes "+plan.To, severityOK)
 		}
 	}
 	view = view.note(fmt.Sprintf("Renames %s to %s with git branch -m, which carries its configuration and reflog.", plan.From, plan.To), severityOK)

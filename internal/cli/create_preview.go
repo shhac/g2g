@@ -23,12 +23,13 @@ func createView(plan create.Plan) stackView {
 		node.Target = false
 		if node.Branch == plan.NewTrunk {
 			// It becomes a root by this write, which is what it is drawn as.
-			node.Trunk, node.State, node.Severity = true, "", severityNeutral
+			node.Trunk = true
+			node = node.marked()
 		}
 		view.Nodes = append(view.Nodes, node)
 	}
 	if plan.At != "" {
-		view.Nodes = append(view.Nodes, stackNode{Branch: plan.Name, Parent: plan.Parent, Target: true, State: "new", Severity: severityOK})
+		view.Nodes = append(view.Nodes, stackNode{Branch: plan.Name, Parent: plan.Parent, Target: true}.labeled("new", severityOK))
 	}
 	if plan.Blocked != "" {
 		return view.refusing(plan.Blocked, plan.Repair)

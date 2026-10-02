@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/repair"
@@ -95,12 +96,9 @@ type stackNode struct {
 	Target   bool
 	PRNumber int
 	PRURL    string
-	// State and Severity are what this branch's annotation says, as one string
-	// and one worst-case colour. Marks is the same thing said one axis at a
-	// time, and State is rendered from it wherever a command sets it.
-	State    string
-	Severity severity
-	Marks    []stackMark
+	// Marks are the sole annotation record. Renderers derive the combined
+	// state and worst severity rather than keeping parallel cached fields.
+	Marks []stackMark
 	// Parent and Depth describe a forked graph. The linear commands leave both
 	// zero, so their rendering is unchanged: a stack whose every node has one
 	// child is a tree that happens to look like a list.
@@ -127,6 +125,9 @@ type stackMark struct {
 	// that is where it belongs has nothing to add.
 	Detail   string
 	Severity severity
+	// Plain labels stay hidden on trunks, whose glyph already names the role.
+	// Supplemental marks are visible beside it.
+	hideOnTrunk bool
 }
 
 // The mark and its inverse. A symbol carries further than a word at the right
@@ -152,20 +153,50 @@ func (m stackMark) text() string {
 	return said + " " + m.Detail
 }
 
-// marked sets the annotation from its parts. State stays the one string a
-// machine reads and the worst severity stays the one colour it switches on, so
-// nothing downstream has to understand marks to keep working; both are
-// rendered here rather than typed out beside them.
+// labeled replaces the annotation with a plain label. Even an empty label
+// retains an explicitly supplied severity for the machine formats.
+func (n stackNode) labeled(text string, level severity) stackNode {
+	n.Marks = []stackMark{{Detail: text, Severity: level, hideOnTrunk: true}}
+	return n
+}
+
+// marked replaces the annotation with explicit axis or supplemental marks.
 func (n stackNode) marked(marks ...stackMark) stackNode {
-	said := make([]string, 0, len(marks))
+	n.Marks = make([]stackMark, 0, len(marks))
 	for _, mark := range marks {
-		if text := mark.text(); text != "" {
-			said = append(said, text)
+		if mark.text() != "" {
 			n.Marks = append(n.Marks, mark)
 		}
 	}
-	n.State, n.Severity = strings.Join(said, "  "), worstOf(n.Marks)
 	return n
+}
+
+// withMarks enriches an annotation without sharing its mutable slice. Existing
+// labels become visible as part of the supplemental annotation, including on
+// trunks; publication explicitly replaces a trunk's plain label instead.
+func (n stackNode) withMarks(added ...stackMark) stackNode {
+	marks := slices.Clone(n.Marks)
+	for index := range marks {
+		marks[index].hideOnTrunk = false
+	}
+	return n.marked(append(marks, added...)...)
+}
+
+func (n stackNode) state() string {
+	said := make([]string, 0, len(n.Marks))
+	for _, mark := range n.Marks {
+		if text := mark.text(); text != "" {
+			said = append(said, text)
+		}
+	}
+	return strings.Join(said, "  ")
+}
+
+func (n stackNode) severity() severity {
+	if n.Marks == nil {
+		return ""
+	}
+	return worstOf(n.Marks)
 }
 
 // worstOf is the colour a reader switching on one severity should get: the

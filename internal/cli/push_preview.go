@@ -21,7 +21,7 @@ func pushView(plan push.Plan) stackView {
 		// A branch missing from the map reads as Uncompared, never as the
 		// reassuring answer.
 		state, level := publicationState(plan.Publishing[branch])
-		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target, State: state, Severity: level})
+		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target}.labeled(state, level))
 	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked != "" {

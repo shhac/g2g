@@ -128,7 +128,9 @@ func annotation(node stackNode, repository string, p Presentation) string {
 		// replace it.
 		parts := []string{p.subdued("trunk")}
 		for _, mark := range node.Marks {
-			parts = append(parts, styleBySeverity(p, mark.Severity, mark.text()))
+			if !mark.hideOnTrunk && mark.text() != "" {
+				parts = append(parts, styleBySeverity(p, mark.Severity, mark.text()))
+			}
 		}
 		return strings.Join(parts, "  ")
 	}
@@ -138,13 +140,10 @@ func annotation(node stackNode, repository string, p Presentation) string {
 		url := pullRequestURL(pullRequestRef{Number: node.PRNumber, URL: node.PRURL, Repository: repository})
 		parts = append(parts, p.hyperlink(url, number))
 	}
-	switch {
-	case len(node.Marks) != 0:
-		for _, mark := range node.Marks {
-			parts = append(parts, styleBySeverity(p, mark.Severity, mark.text()))
+	for _, mark := range node.Marks {
+		if text := mark.text(); text != "" {
+			parts = append(parts, styleBySeverity(p, mark.Severity, text))
 		}
-	case node.State != "":
-		parts = append(parts, styleBySeverity(p, node.Severity, node.State))
 	}
 	if node.Target {
 		parts = append(parts, p.subdued("← target"))

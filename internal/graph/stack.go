@@ -8,6 +8,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -188,12 +189,22 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 	// Git again on every pass was work proportional to passes rather than to
 	// branches.
 	roots := s.knownRoots(adopted)
-	candidatesFor := make(map[string][]Candidate, len(local))
 	below, err := s.mergedBelow(ctx, trunk, selected)
 	if err != nil {
 		return nil, err
 	}
 
+	candidatesFor, err := s.warmCandidates(ctx, local, roots, chosen, below)
+	if err != nil {
+		return nil, err
+	}
+	return attachBranches(local, selected, chosen, candidatesFor)
+}
+
+// warmCandidates acquires each branch's ancestry answer once, with independent
+// reads writing to distinct elements before the map is assembled.
+func (s Service) warmCandidates(ctx context.Context, local, roots []string, chosen, below map[string]bool) (map[string][]Candidate, error) {
+	candidatesFor := make(map[string][]Candidate, len(local))
 	// Every branch the loop will consult, asked together. It consults all of
 	// them on its first pass anyway, so this is the same work; asking for it
 	// at once is what stops a repository's worth of independent process spawns
@@ -225,6 +236,14 @@ func (s Service) branches(ctx context.Context, spine []string, trunk string, ado
 		}
 	}
 
+	return candidatesFor, nil
+}
+
+// attachBranches grows the selection from candidate answers without reading
+// Git. The working membership and order belong to this walk alone.
+func attachBranches(local, selected []string, chosen map[string]bool, candidatesFor map[string][]Candidate) ([]Adoption, error) {
+	selected = slices.Clone(selected)
+	chosen = maps.Clone(chosen)
 	edges := make([]Adoption, 0)
 	for grew := true; grew; {
 		grew = false

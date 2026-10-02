@@ -184,6 +184,32 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 			if head == "" || edge.Parent == "" {
 				return Plan{}, fmt.Errorf("a branch disappeared before cleanup · preview again")
 			}
+			// A manual reset or rebase can leave the stored range pointing
+			// beyond this head. Cherry would then exclude work it must assess.
+			if edge.ForkPoint != "" {
+				intact, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, head)
+				if err != nil {
+					return Plan{}, err
+				}
+				if !intact {
+					continue
+				}
+				// A live parent can have been rewound too. The child's own
+				// range says nothing about inherited work below its fork.
+				retained, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, edge.Parent)
+				if err != nil {
+					return Plan{}, err
+				}
+				if !retained {
+					retained, err = s.Git.Absorbed(ctx, edge.Parent, edge.ForkPoint)
+					if err != nil {
+						return Plan{}, err
+					}
+					if !retained {
+						continue
+					}
+				}
+			}
 		}
 		landed, err := s.landed(ctx, head, edge)
 		if err != nil {

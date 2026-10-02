@@ -56,7 +56,11 @@ recorded branches only and never removes remote refs.
 Deletion asks Git by content, using both per-commit equivalence and whole-branch
 absorption for squash merges. It captures heads and bases before assessment,
 rechecks them before mutation, refuses any checked-out candidate, and deletes
-each ref under an expected-tip lease. A followup commit after a merge remains.
+each ref under an expected-tip lease. A recorded fork point must still be an
+ancestor of the assessed head, so a manual reset cannot exclude unlanded work
+from the deletion check. Its inherited work must also remain in the live base,
+by ancestry or whole-branch absorption, so a parent rewind cannot leave that
+work solely on a branch about to be deleted. A followup commit after a merge remains.
 When a parent is missing, the comparison includes its inherited work from the
 first fork above a surviving recorded ancestor. Counting only the child's own
 commits could delete the last ref carrying a parent's unlanded work.

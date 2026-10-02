@@ -53,6 +53,7 @@ func pruneFlow(service prune.Service, selection graph.Selection, guard func(cont
 		notices.noOp = "No landed branches or missing records to clean up."
 	}
 	if cleanup.DeleteBranches {
+		notices.noOp = "No eligible local branches or records to clean up."
 		notices.preview = "Rerun with --apply to forget the records and delete the listed local branches."
 		notices.changed = "The listed cleanup is complete. Remote branches were untouched."
 	}

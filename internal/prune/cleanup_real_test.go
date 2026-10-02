@@ -218,3 +218,51 @@ func TestCleanupKeepsInheritedWorkWhenADeletedParentNeverLanded(t *testing.T) {
 		})
 	}
 }
+
+func TestCleanupKeepsInheritedWorkWhenRecordedRangesDrift(t *testing.T) {
+	for _, resetChild := range []bool{false, true} {
+		t.Run(map[bool]string{false: "parent rewound", true: "child reset below fork"}[resetChild], func(t *testing.T) {
+			repo := testutil.NewGitRepo(t, "synthetic-main")
+			repo.Commit("synthetic root", "root.txt", "root")
+			repo.Commit("synthetic inherited work", "inherited.txt", "inherited")
+			inherited := strings.TrimSpace(repo.Run("rev-parse", "HEAD"))
+			repo.Commit("synthetic later work", "later.txt", "later")
+			repo.Run("switch", "-qc", "synthetic-work")
+			t.Chdir(repo.Dir)
+			client := git.Client{Runner: subprocess.ExecRunner{}}
+			graphs := graph.Service{Git: client, Store: graph.FileStore{Git: client}, Refs: client}
+			ctx := context.Background()
+			track, err := graphs.PlanTrack(ctx, graph.Selection{Branch: "synthetic-work"}, "synthetic-main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := graphs.ApplyTrack(ctx, track); err != nil {
+				t.Fatal(err)
+			}
+			// The base no longer has the inherited work. Whether the child
+			// stayed at its fork or moved below it, its own range is empty.
+			repo.Run("switch", "-q", "synthetic-main")
+			repo.Run("reset", "-q", "--hard", "HEAD~2")
+			if resetChild {
+				repo.Run("switch", "-q", "synthetic-work")
+				repo.Run("reset", "-q", "--hard", inherited)
+				repo.Run("switch", "-q", "synthetic-main")
+			}
+			service := Service{Git: client, Graph: graphs, Cleaner: client}
+			plan, err := service.PlanWithOptions(ctx, graph.Selection{Branch: "synthetic-main", Scope: graph.ScopeAll}, Options{DeleteBranches: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Delete) != 0 || !plan.Nothing() {
+				t.Fatalf("stale range excluded unlanded work: %+v", plan)
+			}
+			if err := service.Apply(ctx, plan); err != nil {
+				t.Fatal(err)
+			}
+			repo.Run("cat-file", "-e", "synthetic-work:inherited.txt")
+			if got := repo.Run("status", "--porcelain"); got != "" {
+				t.Fatalf("tree dirty: %s", got)
+			}
+		})
+	}
+}

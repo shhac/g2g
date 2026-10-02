@@ -15,14 +15,7 @@ import (
 )
 
 func newLand(service land.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
-	var selection stackOptions
-	var options = land.Defaults()
-	var method string
-	var apply bool
-	// The three cleanups are on, and each is declared as its own negative flag
-	// rather than a default-true boolean with a second --no- spelling beside
-	// it. One flag, one spelling, and the help line says what passing it does.
-	var noDeleteRemote, noDeleteLocal, noForget, noComment, noSetUpstream bool
+	flags := landOptions{options: land.Defaults()}
 
 	cmd := &cobra.Command{
 		Use:     "land",
@@ -32,90 +25,113 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		if err := selection.validate(); err != nil {
-			return err
-		}
-		chosen, err := githubstack.ParseMethod(method)
+		options, err := flags.chosen(cmd, comments)
 		if err != nil {
 			return err
 		}
-		options.Method, options.MethodChosen = chosen, cmd.Flags().Changed("method")
-		options.DeleteRemote, options.DeleteLocal = !noDeleteRemote, !noDeleteLocal
-		options.Comment = !noComment && comments.Ready()
-		options.Upstream = upstreamFor(noSetUpstream)
-		if noForget {
-			// A branch left recorded under one that has merged and been
-			// deleted makes every later status and every later replay measure
-			// against a structure that is not there.
-			return fmt.Errorf("--no-forget would leave the branches above each landed one recorded under a branch that no longer exists · drop the flag, or land them one at a time")
-		}
-		root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
-		flow := applyFlow[land.Plan]{
-			plan: func(ctx context.Context) (land.Plan, error) {
-				return service.Plan(ctx, selection.Selection(), options)
-			},
-			revalidate: func(ctx context.Context, preview land.Plan) (land.Plan, error) {
-				return service.Revalidate(ctx, selection.Selection(), options, preview)
-			},
-			render: writeLandPlan,
-			guard:  guard,
-			execute: func(ctx context.Context, plan land.Plan) error {
-				if err := service.Apply(ctx, plan); err != nil {
-					return err
-				}
-				selections := make([]stack.Selection, 0, len(plan.Above))
-				for _, above := range plan.Above {
-					selections = append(selections, stack.Selection{Branch: above})
-				}
-				return keepComments(ctx, comments, plan.KeepsComments(), selections...)
-			},
-			branches: func(plan land.Plan) int { return plan.Landing() },
-			// Landing waits on GitHub between its calls, so the ordinary
-			// per-branch ceiling would cut a merge off mid-flight.
-			budget:  budgets.landing,
-			noOp:    land.Plan.Nothing,
-			blocked: func(plan land.Plan) string { return plan.Blocked },
-			// A descent that stops part-way has landed everything below where
-			// it stopped, and those merges stay. Reporting it as "not applied"
-			// would be wrong about the thing that matters most. One that
-			// stopped before changing anything is exactly "not applied", and
-			// exits as the failure it is.
-			interrupted: func(_ context.Context, err error) (bool, error) {
-				return landInterrupted(cmd, err, presentation)
-			},
-			notices: flowNotices{
-				preview:       "Rerun with --apply to land this stack.",
-				noOp:          "Every branch here has already landed. Nothing to do.",
-				applied:       "Landed.",
-				changed:       "Pull requests were merged and branches removed.",
-				recovery:      "Some branches may already have merged · run g2g github status to see which.",
-				suggestedNext: "g2g github status",
-			},
-		}
-		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
+		root := commandContext(cmd.Context(), cmd, applyMode(flags.apply), flags.selection.branch, flags.selection.trunk)
+		flow := landFlow(cmd, service, comments, flags.selection.Selection(), options, guard, presentation)
+		return flow.run(cmd, root, newBudgets(cmd), presentation, flags.apply)
 	}
 
-	selection.register(cmd, completions, stack.ReadableSources, "branch to land up to (defaults to current branch)", "trunk to land onto")
+	flags.selection.register(cmd, completions, stack.ReadableSources, "branch to land up to (defaults to current branch)", "trunk to land onto")
 	// path is the default rather than stack: standing in the middle of a stack
 	// and typing land means "take it down as far as here", and stack would
 	// merge everything above you as well.
-	selection.registerScope(cmd, shape.ProjectScopes, shape.ScopePath, scopeUsage("land", shape.ProjectScopes))
-	cmd.Flags().StringVar(&method, "method", string(githubstack.MethodSquash), "how to merge each pull request: "+methodNames())
+	flags.selection.registerScope(cmd, shape.ProjectScopes, shape.ScopePath, scopeUsage("land", shape.ProjectScopes))
+	cmd.Flags().StringVar(&flags.method, "method", string(githubstack.MethodSquash), "how to merge each pull request: "+methodNames())
 	_ = cmd.RegisterFlagCompletionFunc("method", completionCallback(methodCompletions()))
-	cmd.Flags().StringVar(&options.Remote, "remote", "origin", "Git remote the branches are published to")
-	cmd.Flags().BoolVar(&options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
-	cmd.Flags().BoolVar(&noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
-	cmd.Flags().BoolVar(&noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
-	registerNoSetUpstream(cmd, &noSetUpstream)
+	cmd.Flags().StringVar(&flags.options.Remote, "remote", "origin", "Git remote the branches are published to")
+	cmd.Flags().BoolVar(&flags.options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
+	cmd.Flags().BoolVar(&flags.noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
+	cmd.Flags().BoolVar(&flags.noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
+	registerNoSetUpstream(cmd, &flags.noSetUpstream)
 	// Registered only so that asking for it is answered with why not: a
 	// branch left recorded under a landed, deleted one breaks every later
 	// replay. It is hidden because a help line offering it would be offering
 	// something that always refuses.
-	cmd.Flags().BoolVar(&noForget, "no-forget", false, "refused: the branches above a landed one must be reparented")
-	cmd.Flags().BoolVar(&noComment, "no-comment", false, "do not keep the stack comments on what remains afterwards")
+	cmd.Flags().BoolVar(&flags.noForget, "no-forget", false, "refused: the branches above a landed one must be reparented")
+	cmd.Flags().BoolVar(&flags.noComment, "no-comment", false, "do not keep the stack comments on what remains afterwards")
 	_ = cmd.Flags().MarkHidden("no-forget")
-	cmd.Flags().BoolVar(&apply, "apply", false, "merge the stack instead of previewing the descent")
+	cmd.Flags().BoolVar(&flags.apply, "apply", false, "merge the stack instead of previewing the descent")
 	return cmd
+}
+
+type landOptions struct {
+	selection stackOptions
+	options   land.Options
+	method    string
+	apply     bool
+	// Cleanups default to on; each flag names the cleanup to leave out.
+	noDeleteRemote, noDeleteLocal, noForget, noComment, noSetUpstream bool
+}
+
+// chosen normalizes the parsed flags without mutating their defaults.
+func (o landOptions) chosen(cmd *cobra.Command, comments comment.Service) (land.Options, error) {
+	if err := o.selection.validate(); err != nil {
+		return land.Options{}, err
+	}
+	method, err := githubstack.ParseMethod(o.method)
+	if err != nil {
+		return land.Options{}, err
+	}
+	options := o.options
+	options.Method, options.MethodChosen = method, cmd.Flags().Changed("method")
+	options.DeleteRemote, options.DeleteLocal = !o.noDeleteRemote, !o.noDeleteLocal
+	options.Comment = !o.noComment && comments.Ready()
+	options.Upstream = upstreamFor(o.noSetUpstream)
+	if o.noForget {
+		// A branch recorded under one that has merged and been deleted makes
+		// later status and replay measure against a structure that is gone.
+		return land.Options{}, fmt.Errorf("--no-forget would leave the branches above each landed one recorded under a branch that no longer exists · drop the flag, or land them one at a time")
+	}
+	return options, nil
+}
+
+// landFlow composes landing and comment upkeep through the shared apply sequence.
+func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service, selection stack.Selection, options land.Options, guard func(context.Context) error, presentation Presentation) applyFlow[land.Plan] {
+	return applyFlow[land.Plan]{
+		plan: func(ctx context.Context) (land.Plan, error) {
+			return service.Plan(ctx, selection, options)
+		},
+		revalidate: func(ctx context.Context, preview land.Plan) (land.Plan, error) {
+			return service.Revalidate(ctx, selection, options, preview)
+		},
+		render: writeLandPlan,
+		guard:  guard,
+		execute: func(ctx context.Context, plan land.Plan) error {
+			if err := service.Apply(ctx, plan); err != nil {
+				return err
+			}
+			selections := make([]stack.Selection, 0, len(plan.Above))
+			for _, above := range plan.Above {
+				selections = append(selections, stack.Selection{Branch: above})
+			}
+			return keepComments(ctx, comments, plan.KeepsComments(), selections...)
+		},
+		branches: func(plan land.Plan) int { return plan.Landing() },
+		// Landing waits on GitHub between its calls, so the ordinary
+		// per-branch ceiling would cut a merge off mid-flight.
+		budget:  budgets.landing,
+		noOp:    land.Plan.Nothing,
+		blocked: func(plan land.Plan) string { return plan.Blocked },
+		// A descent that stops part-way has landed everything below where
+		// it stopped, and those merges stay. Reporting it as "not applied"
+		// would be wrong about the thing that matters most. One that
+		// stopped before changing anything is exactly "not applied", and
+		// exits as the failure it is.
+		interrupted: func(_ context.Context, err error) (bool, error) {
+			return landInterrupted(cmd, err, presentation)
+		},
+		notices: flowNotices{
+			preview:       "Rerun with --apply to land this stack.",
+			noOp:          "Every branch here has already landed. Nothing to do.",
+			applied:       "Landed.",
+			changed:       "Pull requests were merged and branches removed.",
+			recovery:      "Some branches may already have merged · run g2g github status to see which.",
+			suggestedNext: "g2g github status",
+		},
+	}
 }
 
 // landInterrupted claims a descent that stopped having changed something, and

@@ -159,6 +159,90 @@ func (f failingCleanupStore) Save(context.Context, graph.Graph) error {
 	return errors.New("synthetic store failure")
 }
 
+type failingBranchCleaner struct {
+	Cleaner
+	branch string
+	err    error
+}
+
+func (f failingBranchCleaner) DeleteBranchAt(ctx context.Context, branch, tip string) error {
+	if branch == f.branch {
+		return f.err
+	}
+	return f.Cleaner.DeleteBranchAt(ctx, branch, tip)
+}
+
+func TestCleanupRetriesAfterDeletingOnlyPartOfTheSelection(t *testing.T) {
+	repo, service := cleanupRepository(t)
+	ctx := context.Background()
+	repo.Run("switch", "-qc", "synthetic-work-two")
+	repo.Commit("synthetic third change", "third.txt", "third")
+	track, err := service.Graph.PlanTrack(ctx, graph.Selection{Branch: "synthetic-work-two"}, "synthetic-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Graph.ApplyTrack(ctx, track); err != nil {
+		t.Fatal(err)
+	}
+	repo.Run("switch", "-q", "synthetic-main")
+	repo.Run("merge", "-q", "--squash", "synthetic-work-two")
+	repo.Run("commit", "-qm", "synthetic second squash")
+	selection := graph.Selection{Branch: "synthetic-main", Scope: graph.ScopeAll}
+	plan, err := service.PlanWithOptions(ctx, selection, Options{DeleteBranches: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(plan.Deleted(), []string{"synthetic-work", "synthetic-work-two"}) {
+		t.Fatalf("deletions = %v", plan.Deleted())
+	}
+	assertClean := func() {
+		t.Helper()
+		if got := repo.Run("status", "--porcelain"); got != "" {
+			t.Fatalf("cleanup dirtied the tree: %s", got)
+		}
+	}
+	assertClean()
+	cleaner := service.Cleaner
+	cause := errors.New("synthetic second deletion failure")
+	service.Cleaner = failingBranchCleaner{Cleaner: cleaner, branch: "synthetic-work-two", err: cause}
+	var stopped *Stopped
+	err = service.Apply(ctx, plan)
+	if !errors.As(err, &stopped) || !errors.Is(err, cause) || !slices.Equal(stopped.Deleted, []string{"synthetic-work"}) || len(stopped.Forgotten) != 0 {
+		t.Fatalf("partial cleanup = %v", err)
+	}
+	if stopped.Retry != "g2g prune --branch synthetic-main --scope all --forget-missing --delete-branches" {
+		t.Fatalf("retry = %q", stopped.Retry)
+	}
+	if repo.Run("branch", "--list", "synthetic-work") != "" || repo.Run("branch", "--list", "synthetic-work-two") == "" {
+		t.Fatal("partial cleanup did not preserve the surviving ref")
+	}
+	stored, err := service.Graph.Store.Load(ctx)
+	if err != nil || !stored.Tracked("synthetic-work") || !stored.Tracked("synthetic-work-two") {
+		t.Fatalf("partial cleanup hid recoverable records: %+v, %v", stored, err)
+	}
+	assertClean()
+	service.Cleaner = cleaner
+	retry, err := service.PlanWithOptions(ctx, selection, Options{DeleteBranches: true, ForgetMissing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validated, err := service.Revalidate(ctx, selection, retry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Apply(ctx, validated); err != nil {
+		t.Fatal(err)
+	}
+	if repo.Run("branch", "--list", "synthetic-work*") != "" {
+		t.Fatal("retry left an eligible branch")
+	}
+	stored, err = service.Graph.Store.Load(ctx)
+	if err != nil || stored.Tracked("synthetic-work") || stored.Tracked("synthetic-work-two") {
+		t.Fatalf("retry left stale records: %+v, %v", stored, err)
+	}
+	assertClean()
+}
+
 func TestCleanupReportsDeletionBeforeAFailedGraphWriteAsPartWay(t *testing.T) {
 	_, service := cleanupRepository(t)
 	plan, err := service.PlanWithOptions(context.Background(), graph.Selection{Branch: "synthetic-main", Scope: graph.ScopeAll}, Options{DeleteBranches: true})

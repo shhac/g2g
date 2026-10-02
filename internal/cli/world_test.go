@@ -169,3 +169,29 @@ func (w *world) readStructure() map[string]string {
 	}
 	return structure
 }
+
+func mustRun(t *testing.T, args ...string) string {
+	t.Helper()
+	stdout, stderr, err := run(t, args...)
+	if err != nil {
+		t.Fatalf("g2g %s: %v\n%s%s", strings.Join(args, " "), err, stdout, stderr)
+	}
+	return stdout
+}
+
+// fakeGitHub gives the world a GitHub without a network. Git stays real: only
+// gh is answered from a table, because there is no local stand-in for a
+// service and every claim about refs is still made against real Git.
+func (w *world) fakeGitHub(pullRequests string) *testutil.Recorder {
+	w.t.Helper()
+	return testutil.FakeCLIs(w.t, map[string][]testutil.Route{
+		"gh": {
+			{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+			{Prefix: "api graphql", Output: pullRequests},
+			{Prefix: "pr create"},
+			{Prefix: "stack link"},
+		},
+	})
+}
+
+const noPullRequests = `{"data":{"repository":{"pr0":{"nodes":[]},"pr1":{"nodes":[]},"pr2":{"nodes":[]},"pr3":{"nodes":[]}}}}`

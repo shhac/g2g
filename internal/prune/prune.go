@@ -134,31 +134,12 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	if err != nil {
 		return Plan{}, err
 	}
-	comparisons := map[string]graph.Edge{}
-	for _, branch := range discovery.Branches {
-		if edge, ok := comparisonEdge(discovery.Graph, branch, local); ok {
-			comparisons[branch] = edge
-		}
-	}
-	var assessed map[string]string
+	comparisons := comparisonEdges(discovery, local)
 	if options.DeleteBranches {
-		if s.Cleaner == nil {
-			return Plan{}, fmt.Errorf("local branch deletion is not configured")
-		}
-		needed := map[string]bool{}
-		for _, branch := range discovery.Branches {
-			if slices.Contains(local, branch) {
-				needed[branch] = true
-			}
-			if edge, comparable := comparisons[branch]; comparable {
-				needed[edge.Parent] = true
-			}
-		}
-		assessed, err = s.Cleaner.ResolveAll(ctx, slices.Sorted(maps.Keys(needed)))
+		plan.Tips, err = s.captureTips(ctx, discovery.Branches, local, comparisons)
 		if err != nil {
 			return Plan{}, err
 		}
-		plan.Tips = assessed
 	}
 	for _, branch := range discovery.Branches {
 		_, tracked := discovery.Graph.Edges[branch]
@@ -177,41 +158,7 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 		if !comparable {
 			continue
 		}
-		head := branch
-		if options.DeleteBranches {
-			head = assessed[branch]
-			edge.Parent = assessed[edge.Parent]
-			if head == "" || edge.Parent == "" {
-				return Plan{}, fmt.Errorf("a branch disappeared before cleanup · preview again")
-			}
-			// A manual reset or rebase can leave the stored range pointing
-			// beyond this head. Cherry would then exclude work it must assess.
-			if edge.ForkPoint != "" {
-				intact, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, head)
-				if err != nil {
-					return Plan{}, err
-				}
-				if !intact {
-					continue
-				}
-				// A live parent can have been rewound too. The child's own
-				// range says nothing about inherited work below its fork.
-				retained, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, edge.Parent)
-				if err != nil {
-					return Plan{}, err
-				}
-				if !retained {
-					retained, err = s.Git.Absorbed(ctx, edge.Parent, edge.ForkPoint)
-					if err != nil {
-						return Plan{}, err
-					}
-					if !retained {
-						continue
-					}
-				}
-			}
-		}
-		landed, err := s.landed(ctx, head, edge)
+		landed, err := s.assessBranch(ctx, branch, edge, options.DeleteBranches, plan.Tips)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -234,7 +181,7 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 		plan.Blocked = plan.Repair.Sentence()
 	}
 	if options.DeleteBranches && plan.Blocked == "" {
-		if err := s.planDeletions(ctx, &plan, assessed); err != nil {
+		if err := s.planDeletions(ctx, &plan, plan.Tips); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -244,6 +191,73 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 		diagnostic.Field{Key: "blocked", Value: plan.Blocked},
 	)
 	return plan, nil
+}
+
+// comparisonEdges bounds each assessment at its first surviving parent.
+func comparisonEdges(discovery graph.Discovery, local []string) map[string]graph.Edge {
+	comparisons := map[string]graph.Edge{}
+	for _, branch := range discovery.Branches {
+		if edge, ok := comparisonEdge(discovery.Graph, branch, local); ok {
+			comparisons[branch] = edge
+		}
+	}
+	return comparisons
+}
+
+// captureTips pins both sides before any content assessment for local deletion.
+func (s Service) captureTips(ctx context.Context, branches, local []string, comparisons map[string]graph.Edge) (map[string]string, error) {
+	if s.Cleaner == nil {
+		return nil, fmt.Errorf("local branch deletion is not configured")
+	}
+	needed := map[string]bool{}
+	for _, branch := range branches {
+		if slices.Contains(local, branch) {
+			needed[branch] = true
+		}
+		if edge, comparable := comparisons[branch]; comparable {
+			needed[edge.Parent] = true
+		}
+	}
+	return s.Cleaner.ResolveAll(ctx, slices.Sorted(maps.Keys(needed)))
+}
+
+// assessBranch uses names for graph-only pruning and captured objects for
+// deletion. A stale range can never justify removing a local branch.
+func (s Service) assessBranch(ctx context.Context, branch string, edge graph.Edge, deleting bool, tips map[string]string) (bool, error) {
+	if !deleting {
+		return s.landed(ctx, branch, edge)
+	}
+	head := tips[branch]
+	edge.Parent = tips[edge.Parent]
+	if head == "" || edge.Parent == "" {
+		return false, fmt.Errorf("a branch disappeared before cleanup · preview again")
+	}
+	retained, err := s.retainsRange(ctx, head, edge)
+	if err != nil || !retained {
+		return false, err
+	}
+	return s.landed(ctx, head, edge)
+}
+
+// retainsRange proves both that the range belongs to this head and that work
+// inherited below it still exists in the base. Cherry alone cannot prove either.
+func (s Service) retainsRange(ctx context.Context, head string, edge graph.Edge) (bool, error) {
+	if edge.ForkPoint == "" {
+		return true, nil
+	}
+	// A manual reset or rebase can leave the stored range pointing beyond
+	// this head. Cherry would then exclude work it must assess.
+	intact, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, head)
+	if err != nil || !intact {
+		return false, err
+	}
+	// A live parent can have been rewound too. The child's own range says
+	// nothing about inherited work below its fork.
+	retained, err := s.Graph.Git.IsAncestor(ctx, edge.ForkPoint, edge.Parent)
+	if err != nil || retained {
+		return retained, err
+	}
+	return s.Git.Absorbed(ctx, edge.Parent, edge.ForkPoint)
 }
 
 // landed reports a branch with nothing left to contribute to its parent.

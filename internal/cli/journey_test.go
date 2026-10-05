@@ -15,6 +15,31 @@ import (
 	"testing"
 )
 
+// Tracking against a trunk that advanced must produce a usable replay range.
+func TestJourneyTrackingAnOldBranchOnAnAdvancedTrunkThenPulling(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	w.commit(w.Other, "main", "advanced.txt", "synthetic trunk work")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "main")
+	w.git(w.Local, "pull", "--ff-only", "origin", "main")
+	w.git(w.Local, "switch", "synthetic-b")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.assertClean(w.Local)
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	w.assertClean(w.Local)
+	mustRun(t, "pull", "--apply")
+	w.assertClean(w.Local)
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		if !w.contains(w.Local, "main", branch) {
+			t.Errorf("%s not replayed onto advanced trunk", branch)
+		}
+		w.assertHas(w.Local, branch, "a.txt")
+	}
+	w.assertHas(w.Local, "synthetic-b", "b.txt")
+}
+
 // The ordinary day: work on a stack, the trunk moves upstream, bring it up to
 // date. Nothing exotic, and it had never been run end to end — sync's only
 // tests were injected fakes.

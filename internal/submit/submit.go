@@ -12,6 +12,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -84,6 +85,47 @@ func (p Plan) Blocked() string {
 	return p.Push.Blocked
 }
 
+// LinkBlocked keeps base agreement a requirement of explicit GitHub linking,
+// rather than of publishing commits to pull requests with intentional bases.
+func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
+
+func (p Plan) LinkRepair() repair.Note {
+	for step := range githubstack.Along(p.Snapshot.Base, p.Snapshot.Branches, p.Existing) {
+		if step.Classify() == githubstack.StepBaseMismatch {
+			scope := p.Snapshot.Scope
+			if scope == "" {
+				scope = stack.ScopeStack
+			}
+			command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", p.Snapshot.Target, scope)
+			if p.Snapshot.Source != "" {
+				command += " --from " + string(p.Snapshot.Source)
+			}
+			return repair.Note{
+				Reason: fmt.Sprintf("linking requires PR base %s for %s, found %s", step.ExpectedBase, step.Branch, step.Resolution.Open.Base),
+				Ways: []repair.Step{
+					{Command: command, Effect: "align the PR bases with the selected stack"},
+					{Effect: "drop --link to preserve existing bases"},
+				},
+			}
+		}
+	}
+	return repair.Note{}
+}
+
+// ExistingSpec needs no new PR text: every selected branch already has an open
+// pull request. The titles are placeholders for validation and are never sent.
+func (p Plan) ExistingSpec() (Spec, bool) {
+	spec := NewSpec(p.Snapshot.Branches, "")
+	resolutions := githubstack.ResolveHeads(p.Existing)
+	for i, branch := range p.Snapshot.Branches {
+		if resolutions[branch].Open == nil || resolutions[branch].OpenCount != 1 {
+			return Spec{}, false
+		}
+		spec.Pulls[i].Title = branch
+	}
+	return spec, true
+}
+
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("submit service is not fully configured")
@@ -147,6 +189,9 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remo
 func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) error {
 	if blocked := plan.Blocked(); blocked != "" {
 		return fmt.Errorf("submission is blocked by %s", blocked)
+	}
+	if link && plan.LinkBlocked() != "" {
+		return fmt.Errorf("submission is blocked by %s", plan.LinkBlocked())
 	}
 	if err := plan.Snapshot.RequireActionable("g2g submit"); err != nil {
 		return err
@@ -213,6 +258,7 @@ func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) e
 // requests are all closed or merged is not blocked: re-submitting a stack
 // whose branch names were used before is the recovery this command exists for,
 // so that history is recorded as superseded and a new pull request is created.
+// Existing bases are preserved; only explicit linking requires agreement.
 func assessExisting(prs []githubstack.PullRequest, base string, branches []string) (map[string]string, map[string]githubstack.PullRequest) {
 	issues := map[string]string{}
 	superseded := map[string]githubstack.PullRequest{}
@@ -222,8 +268,6 @@ func assessExisting(prs []githubstack.PullRequest, base string, branches []strin
 		switch step.Classify() {
 		case githubstack.StepAmbiguous:
 			issues[step.Branch] = fmt.Sprintf("%d open pull requests", step.Resolution.OpenCount)
-		case githubstack.StepBaseMismatch:
-			issues[step.Branch] = "PR base " + step.Resolution.Open.Base + ", want " + step.ExpectedBase
 		case githubstack.StepSuperseded:
 			superseded[step.Branch] = *step.Resolution.Latest
 		}

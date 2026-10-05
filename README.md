@@ -809,6 +809,14 @@ linked pull request through `gh pr merge`, which is how `land` merges each one;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
+When every selected branch already has an open PR, `g2g submit --apply`
+publishes new commits without a spec. Existing PR bases are preserved even when
+they differ from local stack parents (for example, when every PR targets the
+trunk). Explicit `--link` requires matching bases and otherwise names
+`g2g github retarget`, or offers dropping `--link` to preserve them. Missing PRs
+still require a completed spec; `--apply` without one fails with the command
+to create it.
+
 Generate a reusable spec outside the repository, fill in each title, validate,
 then apply it:
 

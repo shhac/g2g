@@ -34,6 +34,10 @@ type graphGit struct {
 
 func (g graphGit) CurrentBranch(context.Context) (string, error) { return g.current, nil }
 
+func (g graphGit) MergeBase(context.Context, string, string) (string, error) {
+	return "synthetic-fork", nil
+}
+
 func (g graphGit) LocalBranches(context.Context) ([]string, error) { return g.local, nil }
 
 func (g graphGit) AncestorBranches(_ context.Context, target string) ([]string, error) {

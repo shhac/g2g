@@ -63,8 +63,8 @@ func TestPlanResolvesTheSelectedStackAndRemote(t *testing.T) {
 	}
 }
 
-// assessExisting decides what blocks a submission. Only an ambiguous or
-// wrongly-based open pull request does; closed and merged history on a reused
+// assessExisting blocks ambiguous open pull requests; intentional bases are
+// preserved. Closed and merged history on a reused
 // branch name is recorded as superseded so a replacement is created.
 func TestPlanAssessesExistingPullRequests(t *testing.T) {
 	tests := []struct {
@@ -78,9 +78,8 @@ func TestPlanAssessesExistingPullRequests(t *testing.T) {
 			prs:  []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11}},
 		},
 		{
-			name:      "open pull request on the wrong base",
-			prs:       []githubstack.PullRequest{{Head: "synthetic/lower", Base: "synthetic/other", State: "OPEN", Number: 11}},
-			wantIssue: "PR base synthetic/other, want main",
+			name: "open pull request with an intentional base",
+			prs:  []githubstack.PullRequest{{Head: "synthetic/lower", Base: "synthetic/other", State: "OPEN", Number: 11}},
 		},
 		{
 			name:      "two open pull requests are ambiguous",
@@ -121,19 +120,22 @@ func TestPlanAssessesExistingPullRequests(t *testing.T) {
 	}
 }
 
-// The expected base walks up the stack, so a branch is judged against its
-// predecessor rather than against the trunk.
-func TestPlanExpectsEachBranchToSitOnItsPredecessor(t *testing.T) {
+// Local stack parents need not be the existing pull requests' intended bases.
+func TestPlanPreservesExistingBasesUnlessLinkingIsRequested(t *testing.T) {
 	plan := planFor(t, []githubstack.PullRequest{
 		{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11},
 		{Head: "synthetic/middle", Base: "main", State: "OPEN", Number: 12},
 	})
-
-	if plan.Issues["synthetic/lower"] != "" {
-		t.Errorf("bottom branch blocked: %q", plan.Issues["synthetic/lower"])
+	if plan.Blocked() != "" {
+		t.Fatalf("publishing blocked: %s", plan.Blocked())
 	}
-	if got, want := plan.Issues["synthetic/middle"], "PR base main, want synthetic/lower"; got != want {
-		t.Errorf("issue = %q, want %q", got, want)
+	if !strings.Contains(plan.LinkBlocked(), "drop --link") {
+		t.Fatalf("linking did not require matching bases: %s", plan.LinkBlocked())
+	}
+	plan.Snapshot.Scope = stack.ScopePath
+	plan.Snapshot.Source = stack.SourceGraphite
+	if command := plan.LinkRepair().Ways[0].Command; !strings.Contains(command, "--scope path --from graphite") {
+		t.Fatalf("link repair lost its selection: %s", command)
 	}
 }
 

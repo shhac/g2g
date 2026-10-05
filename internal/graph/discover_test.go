@@ -47,6 +47,10 @@ func (f fakeAncestry) Resolve(_ context.Context, revision string) (string, error
 
 func (f fakeAncestry) CurrentBranch(context.Context) (string, error) { return f.current, f.err }
 
+func (f fakeAncestry) MergeBase(_ context.Context, parent, target string) (string, error) {
+	return "synthetic-fork", f.err
+}
+
 func (f fakeAncestry) LocalBranches(context.Context) ([]string, error) { return f.local, f.err }
 
 func (f fakeAncestry) AncestorBranches(_ context.Context, target string) ([]string, error) {

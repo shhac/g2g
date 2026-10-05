@@ -79,11 +79,11 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		plan.Updated, plan.NewTrunk = plan.Updated.Rooted(parent)
 		return plan, nil
 	}
-	forkPoint, err := s.Git.Resolve(ctx, parent)
+	origin, err := s.ancestryOf(ctx, parent, discovery.Target)
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	origin, err := s.ancestryOf(ctx, parent, discovery.Target)
+	forkPoint, err := s.trackFork(ctx, parent, discovery.Target, origin)
 	if err != nil {
 		return TrackPlan{}, err
 	}
@@ -121,9 +121,9 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 // this is how to say so. It was a no-op, so the repair doctor names for both
 // states changed nothing and doctor named it again.
 //
-// Only a parent whose tip is in the branch is refreshed. Anything else could
-// be a branch now built on something else entirely, and where it leaves the
-// recorded parent would be a guess.
+// A trunk that advanced still has an evidenced merge base. A rewritten feature
+// parent is different: its former work cannot be distinguished from the child's
+// by a merge base, so refreshing still requires its tip in the child.
 func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (TrackPlan, error) {
 	switch plan.States[plan.Target] {
 	case StateMovedOffParent, StateForkUnresolvable:
@@ -134,18 +134,38 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	if !built {
+	if !built && !plan.Graph.IsTrunk(recorded.Parent) && plan.DefaultTrunk != recorded.Parent {
 		plan.Blocked = fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)
 		return plan, nil
 	}
-	forkPoint, err := s.Git.Resolve(ctx, recorded.Parent)
+	origin := OriginUser
+	if built {
+		origin = OriginAncestry
+	}
+	forkPoint, err := s.trackFork(ctx, recorded.Parent, plan.Target, origin)
 	if err != nil {
 		return TrackPlan{}, err
 	}
 	updated := plan.Graph.Clone()
-	updated.Edges[plan.Target] = Edge{Parent: recorded.Parent, Origin: OriginAncestry, ForkPoint: forkPoint}
+	updated.Edges[plan.Target] = Edge{Parent: recorded.Parent, Origin: origin, ForkPoint: forkPoint}
 	plan.Updated, plan.Refreshed = updated, true
 	return plan, nil
+}
+
+// trackFork keeps the replay boundary inside the branch even when its named
+// parent has advanced. Readers without merge-base support must refuse that
+// case rather than record a parent's unreachable tip.
+func (s Service) trackFork(ctx context.Context, parent, target string, origin Origin) (string, error) {
+	if origin == OriginAncestry {
+		return s.Git.Resolve(ctx, parent)
+	}
+	forks, ok := s.Git.(interface {
+		MergeBase(context.Context, string, string) (string, error)
+	})
+	if !ok {
+		return "", fmt.Errorf("cannot determine where %s leaves %s: Git reader does not support merge bases", target, parent)
+	}
+	return forks.MergeBase(ctx, parent, target)
 }
 
 // originOf records whether Git already agrees with the edge. A parent that is

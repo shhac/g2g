@@ -35,8 +35,9 @@ already upstream in a different shape. It must be:
 git rebase --onto <new parent tip> <fork point> <branch>
 ```
 
-so only the branch's own commits are replayed. The fork point is the parent's
-tip at the time the edge was recorded — see the storage note in
+so only the branch's own commits are replayed. The fork point is the branch's
+merge base with its parent when the edge was recorded (the parent's tip when
+it is an ancestor) — see the storage note in
 [g2g-owned-graphs.md](g2g-owned-graphs.md). This is why the fork point is
 stored rather than derived: after a merged parent is deleted there is nothing
 left to derive it from.

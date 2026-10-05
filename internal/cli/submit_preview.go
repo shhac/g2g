@@ -45,12 +45,18 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	if len(plan.Issues) != 0 {
 		return view.blockedBy("repair the marked existing pull requests first.")
 	}
+	if link && plan.LinkBlocked() != "" {
+		return view.refusing(plan.LinkRepair().SentenceWith(runnable), plan.LinkRepair())
+	}
 	// Publishing is push's, refusals included, so its reason and ways out are
 	// the ones push itself would show.
 	if plan.Push.Blocked != "" {
 		return view.refusing(plan.Push.Repair.SentenceWith(runnable), plan.Push.Repair)
 	}
-	view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
+	view = view.note("Publishes the selected branches through one atomic, lease-protected push; existing PR bases are preserved.", severityNeutral)
+	if _, existingOnly := plan.ExistingSpec(); !existingOnly {
+		view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
+	}
 	if link && len(plan.Snapshot.Branches) > 1 {
 		view = view.note("Then links them as a GitHub stack · g2g land refuses a linked stack until it is unlinked.", severityNeutral)
 	}

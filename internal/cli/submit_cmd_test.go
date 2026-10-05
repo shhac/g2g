@@ -27,6 +27,24 @@ func TestSubmitPreviewWithoutSpecExplainsHowToMakeOne(t *testing.T) {
 	}
 }
 
+func TestSubmitApplyWithoutSpecRefusesWhenPullRequestsAreMissing(t *testing.T) {
+	recorder := fakeRepository(t, "")
+	stdout, _, err := run(t, "submit", "--apply")
+	if err == nil || !strings.Contains(err.Error(), "--write-spec") {
+		t.Fatalf("missing spec did not fail with a repair: %v\n%s", err, stdout)
+	}
+	recorder.AssertNone("git push", "gh pr create")
+}
+
+func TestSubmitApplyWithoutSpecPreservesAmbiguousPRRefusal(t *testing.T) {
+	recorder := fakeRepository(t, openTopPullRequest+","+`{"number":103,"headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}`)
+	stdout, _, err := run(t, "submit", "--apply")
+	if err == nil || !strings.Contains(stdout+err.Error(), "2 open pull requests") {
+		t.Fatalf("ambiguous PRs were reported as needing a spec: %v\n%s", err, stdout)
+	}
+	recorder.AssertNone("git push", "gh pr create")
+}
+
 func TestSubmitRejectsAnIncompleteSpecWithRepairSteps(t *testing.T) {
 	fakeRepository(t, "")
 	specDir := t.TempDir()

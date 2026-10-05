@@ -29,8 +29,10 @@ type RefUpdate struct {
 // Branch strips the refs/heads/ prefix a ref update carries.
 func (u RefUpdate) Branch() string { return strings.TrimPrefix(u.Ref, "refs/heads/") }
 
-// replayMinorVersion is the first Git minor release with git replay.
-const replayMinorVersion = 44
+// replayMinorVersion is the verified baseline for --ref-action=print and
+// replay that updates refs. Earlier Git stays on rebase instead of failing
+// a preview on unsupported options.
+const replayMinorVersion = 55
 
 // SupportsReplay reports whether this Git can replay commits without a
 // checkout, which is the difference between a rewrite that leaves the working
@@ -85,7 +87,7 @@ func parseGitVersion(output []byte) (major, minor int, err error) {
 func (c Client) PreviewReplay(ctx context.Context, onto string, ranges []Range) (updates []RefUpdate, clean bool, err error) {
 	output, err := c.replay(ctx, onto, ranges, "--ref-action=print")
 	if err != nil {
-		if _, exited := subprocess.ExitCode(err); exited {
+		if code, exited := subprocess.ExitCode(err); exited && code == 1 {
 			return nil, false, nil
 		}
 		return nil, false, err

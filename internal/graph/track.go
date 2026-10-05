@@ -83,7 +83,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	forkPoint, err := s.trackFork(ctx, parent, discovery.Target, origin)
+	forkPoint, err := s.trackFork(ctx, parent, discovery.Target, origin, !discovery.Graph.Tracked(parent))
 	if err != nil {
 		return TrackPlan{}, err
 	}
@@ -114,9 +114,9 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 
 // refresh answers a track naming the parent already recorded.
 //
-// Where the recorded fork point still holds, that is nothing to do: writing the
-// parent's tip over it would hide a parent that has moved, which is what a
-// restack needs to see. Where it does not — the branch was rewritten by hand,
+// Where the recorded fork point still holds, it is preserved unless upstream
+// ancestry proves it includes trunk commits. Writing a feature parent's new
+// tip over it would hide a parent that moved, which restack needs to see. Where it does not — the branch was rewritten by hand,
 // or the commit is gone — the parent is right and the fork point is wrong, and
 // this is how to say so. It was a no-op, so the repair doctor names for both
 // states changed nothing and doctor named it again.
@@ -128,6 +128,27 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	switch plan.States[plan.Target] {
 	case StateMovedOffParent, StateForkUnresolvable:
 	default:
+		// A valid boundary can still include trunk commits when the local
+		// trunk was stale at tracking time. Advance it only on upstream
+		// ancestry evidence; feature-parent boundaries remain unchanged.
+		if !plan.Graph.IsTrunk(recorded.Parent) {
+			return plan, nil
+		}
+		fork, err := s.trackFork(ctx, recorded.Parent, plan.Target, recorded.Origin, true)
+		if err != nil {
+			return TrackPlan{}, err
+		}
+		if fork == recorded.ForkPoint {
+			return plan, nil
+		}
+		forward, err := s.Git.IsAncestor(ctx, recorded.ForkPoint, fork)
+		if err != nil || !forward {
+			return plan, err
+		}
+		updated := plan.Graph.Clone()
+		recorded.ForkPoint = fork
+		updated.Edges[plan.Target] = recorded
+		plan.Updated, plan.Refreshed = updated, true
 		return plan, nil
 	}
 	built, err := s.Git.IsAncestor(ctx, recorded.Parent, plan.Target)
@@ -142,7 +163,7 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	if built {
 		origin = OriginAncestry
 	}
-	forkPoint, err := s.trackFork(ctx, recorded.Parent, plan.Target, origin)
+	forkPoint, err := s.trackFork(ctx, recorded.Parent, plan.Target, origin, plan.Graph.IsTrunk(recorded.Parent))
 	if err != nil {
 		return TrackPlan{}, err
 	}
@@ -155,17 +176,48 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 // trackFork keeps the replay boundary inside the branch even when its named
 // parent has advanced. Readers without merge-base support must refuse that
 // case rather than record a parent's unreachable tip.
-func (s Service) trackFork(ctx context.Context, parent, target string, origin Origin) (string, error) {
-	if origin == OriginAncestry {
-		return s.Git.Resolve(ctx, parent)
-	}
-	forks, ok := s.Git.(interface {
+func (s Service) trackFork(ctx context.Context, parent, target string, origin Origin, trunk bool) (string, error) {
+	var fork string
+	var err error
+	forks, canMerge := s.Git.(interface {
 		MergeBase(context.Context, string, string) (string, error)
 	})
-	if !ok {
+	if origin == OriginAncestry {
+		fork, err = s.Git.Resolve(ctx, parent)
+	} else if canMerge {
+		fork, err = forks.MergeBase(ctx, parent, target)
+	} else {
 		return "", fmt.Errorf("cannot determine where %s leaves %s: Git reader does not support merge bases", target, parent)
 	}
-	return forks.MergeBase(ctx, parent, target)
+	if err != nil || !trunk || !canMerge {
+		return fork, err
+	}
+	known, ok := s.Git.(interface {
+		KnownParent(context.Context, string) (string, error)
+	})
+	if !ok {
+		return fork, nil
+	}
+	// Local knowledge only: tracking must never fetch or need a network.
+	tip, err := known.KnownParent(ctx, parent)
+	if err != nil || tip == "" {
+		return fork, err
+	}
+	// A rewritten or divergent upstream is not evidence that the local
+	// trunk merely lagged. Never replace a boundary on that basis.
+	forward, err := s.Git.IsAncestor(ctx, parent, tip)
+	if err != nil || !forward {
+		return fork, err
+	}
+	shared, err := forks.MergeBase(ctx, tip, target)
+	if err != nil {
+		return "", err
+	}
+	forward, err = s.Git.IsAncestor(ctx, fork, shared)
+	if err != nil || !forward {
+		return fork, err
+	}
+	return shared, nil
 }
 
 // originOf records whether Git already agrees with the edge. A parent that is

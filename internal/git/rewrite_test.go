@@ -126,7 +126,9 @@ func TestParseGitVersionReadsTheMatrix(t *testing.T) {
 // and exit handling are what a fake CLI does prove.
 func TestSupportsReplayGatesOnTheVersionItParses(t *testing.T) {
 	for version, want := range map[string]bool{
-		"git version 2.44.0": true,
+		"git version 2.55.0": true,
+		"git version 2.54.0": false,
+		"git version 2.44.0": false,
 		"git version 2.43.9": false,
 	} {
 		t.Run(version, func(t *testing.T) {
@@ -166,6 +168,67 @@ func TestPreviewReplayReportsUpdatesWithoutMovingAnything(t *testing.T) {
 	}
 	if after, _ := client.Resolve(ctx, "synthetic-b"); after != tips["b"] {
 		t.Errorf("PreviewReplay moved synthetic-b to %s", after)
+	}
+}
+
+// Print mode leaves refs alone but still writes merge/commit objects. An
+// unwritable object store is a failed preview, not a predicted patch conflict.
+func TestPreviewReplayCannotWriteObjects(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic initial", "base.txt", "base")
+	fork := repo.Revision("HEAD")
+	repo.Run("switch", "-qc", "synthetic-child")
+	repo.Commit("synthetic child", "child.txt", "child")
+	before := repo.Revision("HEAD")
+	repo.Run("switch", "synthetic-trunk")
+	repo.Commit("synthetic parent followup", "parent.txt", "parent")
+	t.Chdir(repo.Dir)
+	client := Client{Runner: subprocess.ExecRunner{}}
+	requireReplay(t, client)
+	objects, err := filepath.Abs(filepath.Join(".git", "objects"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(objects, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(objects, 0o700) })
+	// Git may need an existing fanout directory too, so deny every directory.
+	err = filepath.WalkDir(objects, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if err := os.Chmod(path, 0o500); err != nil {
+				return err
+			}
+			t.Cleanup(func() { _ = os.Chmod(path, 0o700) })
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := filepath.Join(objects, "synthetic-permission-probe")
+	if err := os.WriteFile(probe, []byte("probe"), 0o600); err == nil {
+		_ = os.Remove(probe)
+		t.Skip("this user can write despite directory permissions")
+	}
+	_, clean, err := client.PreviewReplay(context.Background(), "synthetic-trunk", []Range{{From: fork, To: "synthetic-child"}})
+	if err == nil {
+		t.Fatal("unwritable object store did not fail preview")
+	}
+	if clean {
+		t.Fatal("failed preview reported clean")
+	}
+	if code, exited := subprocess.ExitCode(err); !exited || code == 1 {
+		t.Fatalf("wanted operational exit, got %v", err)
+	}
+	if after, _ := client.Resolve(context.Background(), "synthetic-child"); after != before {
+		t.Fatal("failed preview moved branch")
+	}
+	if err := client.Clean(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 

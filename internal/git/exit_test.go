@@ -37,3 +37,12 @@ func TestExitStatusesAreAnswersForAnInjectedRunner(t *testing.T) {
 		t.Errorf("PreviewReplay on a conflicting replay = %v, %t, %v; want a conflict, not an error", updates, clean, err)
 	}
 }
+
+func TestPreviewReplayOperationalFailureIsNotAConflict(t *testing.T) {
+	for _, code := range []int{2, 128, -1} {
+		_, clean, err := (Client{Runner: exitingRunner{code: code}}).PreviewReplay(context.Background(), "synthetic-trunk", []Range{{From: "synthetic-fork", To: "synthetic-top"}})
+		if clean || err == nil {
+			t.Errorf("PreviewReplay on exit %d = clean %t, error %v; want an operational error", code, clean, err)
+		}
+	}
+}

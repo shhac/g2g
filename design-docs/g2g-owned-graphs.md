@@ -167,7 +167,12 @@ knowledge; see [PR observations](pr-observations.md).
 
 The **fork point** is stored, and the distinction matters. An edge records the
 merge base of the branch and its named parent at the moment the edge was written.
-When the parent is already an ancestor, this is its tip:
+When the parent is already an ancestor, this is its tip. A trunk's local tip
+can lag the upstream commit the branch was created from. For trunks, `track`
+also reads origin's locally known tip (remote-tracking and g2g isolated refs)
+and uses its merge base with the branch when the upstream descends from the
+local trunk and the boundary advances by ancestry. It never fetches, moves
+those refs, or applies this rule to a tracked feature parent:
 
 ```json
 "synthetic-login": { "parent": "synthetic-auth", "forkPoint": "1005ca4…" }
@@ -222,9 +227,11 @@ refused — that is how a stack looks before a restack — but never silently.
 The fork point comes from their shared ancestry, so an advanced trunk's current
 tip never becomes a replay boundary outside the branch. Histories with no merge
 base refuse before writing. Naming the same parent repairs an invalid fork
-point against an advanced trunk; a valid old boundary is preserved. A rewritten
-feature parent still requires its tip in the child before refreshing, because
-a merge base cannot separate its old work from the child's.
+point against an advanced trunk. It also advances an old trunk boundary on
+the local upstream evidence above; without that evidence a valid boundary is
+preserved. A rewritten feature parent still requires its tip in the child
+before refreshing, because a merge base cannot separate its old work from
+the child's.
 
 Recording a branch under a parent that is not itself tracked also records that
 parent as a root. Without it the next branch up the stack could not find the

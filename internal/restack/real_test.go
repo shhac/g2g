@@ -536,3 +536,40 @@ func TestARestackThroughTheRebaseEngineEndsWhereItStarted(t *testing.T) {
 		})
 	}
 }
+
+func TestRestackRepairsStaleTrunkBoundaryWhenBranchAlreadyContainsNewTrunk(t *testing.T) {
+	r := newRealStack(t)
+	stale := r.Revision("synthetic-main")
+	r.Commit("synthetic trunk first", "trunk.txt", "first")
+	r.Commit("synthetic trunk second", "trunk.txt", "second")
+	base := r.Revision("synthetic-main")
+	r.branch("synthetic-feature", "synthetic-main", "feature.txt", "feature")
+	ctx := context.Background()
+	g, err := r.store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge := g.Edges["synthetic-feature"]
+	edge.ForkPoint = stale
+	g.Edges["synthetic-feature"] = edge
+	if err := r.store.Save(ctx, g); err != nil {
+		t.Fatal(err)
+	}
+	plan := r.plan(graph.Selection{Branch: "synthetic-feature", Scope: graph.ScopeSubtree})
+	if len(plan.Steps) != 1 || plan.Steps[0].ForkPoint != base {
+		t.Fatalf("stale range retained: %+v", plan.Steps)
+	}
+	r.assertClean()
+	if err := r.service.Apply(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+	r.builtOn("synthetic-main", "synthetic-feature")
+	g, err = r.store.Load(ctx)
+	if err != nil || g.Edges["synthetic-feature"].ForkPoint != base {
+		t.Fatalf("boundary not repaired: %+v, %v", g, err)
+	}
+	if next := r.plan(graph.Selection{Branch: "synthetic-feature"}); len(next.Steps) != 0 {
+		t.Fatalf("repaired branch still needs restack: %+v", next.Steps)
+	}
+}

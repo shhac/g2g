@@ -42,6 +42,14 @@ it is an ancestor) — see the storage note in
 stored rather than derived: after a merged parent is deleted there is nothing
 left to derive it from.
 
+A recorded trunk boundary can be reachable but too early: a branch created
+from a newer upstream trunk was tracked against a stale local trunk. Before
+replay onto the recorded trunk (including pull's fetched location), the plan
+advances that boundary to the branch's merge base with the new trunk only
+when it descends from the recorded fork point. Shared trunk commits then stay
+outside the replay range. Feature-parent boundaries and explicit `--onto`
+reparenting retain their recorded ranges.
+
 **Children reparent onto the merged branch's recorded parent**, never onto "the
 trunk". Those coincide in a simple linear stack and diverge everywhere else —
 a branch rooted on `release-2x` must go back to `release-2x`, and a stack with
@@ -138,8 +146,10 @@ result without mutating anything.
 | Resolvable | no `--continue` | `--continue` / `--abort` |
 | Preview without mutating | `--ref-action=print` | — |
 
-`git replay` is EXPERIMENTAL (Git 2.44+), so it is gated the same way the
-Graphite CLI is.
+`git replay` is EXPERIMENTAL, so it is gated the same way the Graphite CLI
+is. The verified baseline is Git 2.55+, with explicit print mode for previews
+and ref updates on apply. Older Git takes the resumable rebase engine rather
+than interpreting unsupported replay options as conflict predictions.
 
 Where it is unavailable there is no prediction at all, and that is reported as
 such: "we could not look" and "we looked and it will conflict" lead a reader to
@@ -233,10 +243,13 @@ plan, rather than inferred from a preview that some versions cannot produce.
 line rather than the first.
 
 **Preview** uses `git replay --ref-action=print`, which yields the exact
-resulting object ids and mutates nothing. Its exit status also predicts a
-conflict *before* anything is touched, so the preview can say which branch will
-conflict and that applying will take over the working tree. That is informed
-consent, and it is only possible because replay has no side effects.
+resulting object ids without moving refs or the checkout. Exit status 1 predicts a
+conflict *before* anything is touched. Other nonzero statuses fail the preview
+with Git's bounded diagnostic instead of predicting a conflict. Print mode
+still writes Git objects, so object-store permission failures are operational
+errors even though no ref or checkout is moved. A conflict prediction tells
+the user that applying will take over the working tree before they authorize
+it.
 
 **Apply, no conflict predicted** uses `git replay`. Nothing is checked out,
 HEAD never moves, and the existing safety story is fully preserved. If HEAD is

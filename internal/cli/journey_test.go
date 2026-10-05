@@ -15,6 +15,57 @@ import (
 	"testing"
 )
 
+// A branch made from the remote trunk must not replay that trunk's commits
+// just because the local trunk was behind when its edge was recorded.
+func TestJourneyTrackingWhileLocalTrunkLagsThenPulling(t *testing.T) {
+	for _, known := range []bool{true, false} {
+		t.Run(map[bool]string{true: "known-upstream", false: "upstream-not-fetched"}[known], func(t *testing.T) {
+			w := newWorld(t)
+			stale := w.tip(w.Local, "main")
+			w.commit(w.Other, "main", "trunk.txt", "synthetic upstream first")
+			w.commit(w.Other, "main", "trunk.txt", "synthetic upstream second")
+			w.git(w.Other, "push", "-q", "origin", "main")
+			w.git(w.Local, "fetch", "-q", "origin")
+			fork := w.tip(w.Local, "origin/main")
+			w.git(w.Local, "switch", "-qc", "synthetic-a", "origin/main")
+			w.commit(w.Local, "synthetic-a", "a.txt", "synthetic feature work")
+			if !known {
+				// The commits are here but the upstream ref no longer provides
+				// evidence. Pull must also repair an older recorded boundary.
+				w.git(w.Local, "update-ref", "refs/remotes/origin/main", stale)
+			}
+			mustRun(t, "track", "--parent", "main", "--apply")
+			w.assertClean(w.Local)
+			want := stale
+			if known {
+				want = fork
+			}
+			if got := w.tip(w.Local, "refs/g2g/forkpoints/synthetic-a"); got != want {
+				t.Fatalf("fork = %s, want %s", got, want)
+			}
+			w.commit(w.Other, "main", "trunk.txt", "synthetic upstream latest")
+			w.git(w.Other, "push", "-q", "origin", "main")
+			remote := w.tip(w.Remote, "main")
+			mustRun(t, "pull")
+			w.assertClean(w.Local)
+			if w.tip(w.Local, "main") != stale {
+				t.Fatal("preview advanced trunk")
+			}
+			mustRun(t, "pull", "--apply")
+			w.assertClean(w.Local)
+			if w.tip(w.Local, "main") != remote || !w.contains(w.Local, "main", "synthetic-a") {
+				t.Fatal("pull did not place feature on remote trunk")
+			}
+			if got := w.git(w.Local, "rev-list", "--count", "main..synthetic-a"); got != "1" {
+				t.Fatalf("feature has %s commits, want only its own", got)
+			}
+			w.assertHas(w.Local, "synthetic-a", "a.txt")
+			mustRun(t, "pull", "--apply")
+			w.assertClean(w.Local)
+		})
+	}
+}
+
 // Tracking against a trunk that advanced must produce a usable replay range.
 func TestJourneyTrackingAnOldBranchOnAnAdvancedTrunkThenPulling(t *testing.T) {
 	w := newWorld(t)

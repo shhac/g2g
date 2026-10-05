@@ -48,7 +48,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
-	steps, err := s.steps(ctx, discovery, onto.Object, pending)
+	steps, err := s.steps(ctx, discovery, onto, pending)
 	var unmeasurable unmeasured
 	if errors.As(err, &unmeasurable) {
 		plan.Repair = unmeasurable.note()
@@ -190,7 +190,7 @@ func ontoOneRoot(roots []string, parent string) repair.Note {
 
 // steps builds the ordered rewrite, parents before children so each child is
 // measured against the base its parent will actually have.
-func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto string, pending Pending) ([]Step, error) {
+func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending) ([]Step, error) {
 	steps := make([]Step, 0, len(discovery.Branches))
 	// A branch whose parent is being rewritten has to be rewritten too, even
 	// though it still sits exactly where its fork point says. Judging each
@@ -208,10 +208,10 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 			continue
 		}
 		parent := edge.Parent
-		if onto != "" && slices.Contains(roots, branch) {
+		if onto.Object != "" && slices.Contains(roots, branch) {
 			// Only the selection's roots move; everything above them keeps the
 			// structure that is already recorded.
-			parent = onto
+			parent = onto.Object
 		}
 		base, resolvedFork, tip, err := s.resolveStep(ctx, branch, parent, edge.ForkPoint, pending)
 		if err != nil {
@@ -223,7 +223,29 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto stri
 				return nil, err
 			}
 		}
-		if resolvedFork == base && !rewriting[parent] {
+		beforeTrunk := resolvedFork
+		// Old records can start below trunk commits the branch already
+		// contains. Those commits belong to the trunk, even if its local ref
+		// was stale when tracked. This also covers upstream refs unavailable
+		// at track time: pull has fetched the new base by the time we plan.
+		if !onto.Reparents() && discovery.Graph.IsTrunk(edge.Parent) {
+			if forks, ok := s.Git.(interface {
+				MergeBase(context.Context, string, string) (string, error)
+			}); ok {
+				shared, err := forks.MergeBase(ctx, base, head)
+				if err != nil {
+					return nil, err
+				}
+				forward, err := s.Git.IsAncestor(ctx, resolvedFork, shared)
+				if err != nil {
+					return nil, err
+				}
+				if forward {
+					resolvedFork = shared
+				}
+			}
+		}
+		if resolvedFork == base && !rewriting[parent] && resolvedFork == beforeTrunk {
 			// Sitting where it belongs, under a parent that is not moving.
 			continue
 		}

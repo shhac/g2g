@@ -19,7 +19,7 @@ import (
 const Marker = "<!-- g2g:stack-comment"
 
 // The data line records every pull request the stack has listed, each with the
-// pull request it sat on: `11,12>11,13>12`. It is what lets a merged pull
+// pull request it sat on: `v=1 prs=11,12>11,13>12`. It is what lets a merged pull
 // request go on being listed after its branch is pruned and deleted, when
 // nothing local remembers it and GitHub has no idea it was ever part of a
 // stack; the parent is what tells a comment about this stack from one a pull
@@ -27,9 +27,15 @@ const Marker = "<!-- g2g:stack-comment"
 //
 // Only numbers go inside it, so nothing a branch name or a title contains can
 // close the HTML comment and spill into what GitHub renders.
+//
+// Its fields are read by name, and `v` says which format the rest is in. A
+// comment in a format this g2g does not know is left alone rather than
+// rewritten, which would drop the history it could not read. A line with no
+// `v` is from 0.43.0 or earlier: the bare list, read by legacyEntries.
 const (
-	dataOpen  = "<!-- g2g:stack-prs "
-	dataClose = " -->"
+	dataOpen    = "<!-- g2g:stack-prs "
+	dataClose   = " -->"
+	dataVersion = "1"
 )
 
 // recordedLimit bounds how many pull requests one comment may hand the next
@@ -75,7 +81,7 @@ func (v view) body() string {
 	for _, entry := range v.Lines {
 		stack.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
-	data := dataOpen + encode(v.Recorded) + dataClose + "\n"
+	data := dataOpen + "v=" + dataVersion + " prs=" + encode(v.Recorded) + dataClose + "\n"
 	footer := "\n<sub>This comment is managed by [g2g](" + homepage + ") and updates automatically when the stack changes" + v.lastUpdated() + "</sub>\n"
 	return Marker + " rev=" + rev(stack.String()+data) + v.versionField() + " -->\n" + stack.String() + footer + data
 }
@@ -193,18 +199,58 @@ func encode(entries []entry) string {
 // the pull request, and a stray character is no reason to stop keeping the
 // rest of it.
 func recordedIn(body string) []entry {
+	said, ok := dataIn(body)
+	if !ok {
+		return nil
+	}
+	fields := fieldsOf(said)
+	version, versioned := fields["v"]
+	switch {
+	case !versioned:
+		return legacyEntries(said)
+	case version == dataVersion:
+		return entriesIn(fields["prs"])
+	default:
+		return nil
+	}
+}
+
+// readable reports whether this g2g knows the format a comment's data line is
+// in. One with no data line has nothing to lose by being rewritten.
+func readable(body string) bool {
+	said, ok := dataIn(body)
+	if !ok {
+		return true
+	}
+	version, versioned := fieldsOf(said)["v"]
+	return !versioned || version == dataVersion
+}
+
+// dataIn is what a comment's data line says between its opener and its close.
+func dataIn(body string) (string, bool) {
 	start := strings.Index(body, dataOpen)
 	if start < 0 {
-		return nil
+		return "", false
 	}
 	rest := body[start+len(dataOpen):]
 	end := strings.Index(rest, dataClose)
 	if end < 0 {
-		return nil
+		return "", false
 	}
+	return rest[:end], true
+}
+
+// legacyEntries reads a data line written before it had fields, which was the
+// list alone. Remove it once the comments 0.43.0 and earlier wrote have been
+// rewritten: any still unread then loses its history.
+func legacyEntries(said string) []entry {
+	return entriesIn(said)
+}
+
+func entriesIn(list string) []entry {
 	entries := make([]entry, 0)
 	seen := map[int]bool{}
-	for _, field := range strings.Split(rest[:end], ",") {
+	for _, field := range strings.Split(list, ",") {
 		number, parent, ok := parseEntry(strings.TrimSpace(field))
 		if !ok || seen[number] {
 			continue
@@ -272,8 +318,14 @@ func markerFields(body string) map[string]string {
 	if !ok || (inner != "" && !strings.HasPrefix(inner, " ")) {
 		return nil
 	}
+	return fieldsOf(inner)
+}
+
+// fieldsOf reads `key=value` fields separated by spaces, skipping anything
+// that is not one.
+func fieldsOf(said string) map[string]string {
 	fields := map[string]string{}
-	for _, field := range strings.Fields(inner) {
+	for _, field := range strings.Fields(said) {
 		if key, value, ok := strings.Cut(field, "="); ok {
 			fields[key] = value
 		}

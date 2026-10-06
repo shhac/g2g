@@ -406,8 +406,10 @@ description: |
   the body byte for byte. Merged history lives in the comments' own data line because
   another clone cannot read local PR observations; keep only what GitHub says merged,
   never create a comment on a merged pull request, never edit a comment without
-  the marker, and leave alone one the viewer cannot edit or a pull request
-  carrying two, and believe records only from comments the viewer can edit.
+  the marker, and leave alone one the viewer cannot edit, a pull request
+  carrying two, or one whose data line `v=` this g2g does not know, and believe
+  records only from comments the viewer can edit. Marker and data line fields
+  are read by name; a data line with no `v=` is the bare list 0.43.0 and earlier wrote.
   Writes are `addComment`/`updateIssueComment` by node id with the body as a
   raw `-f` field; errors must not echo the body. Local PR observations are
   supplemental history, never authority for rewriting these comments.

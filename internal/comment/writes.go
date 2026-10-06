@@ -102,6 +102,9 @@ func decide(conversation githubstack.Conversation, branch, body string, create b
 	case !existing.Editable:
 		write.Action = ActionSkip
 		write.Reason = fmt.Sprintf("the stack comment on #%d was written by %s and you cannot edit it", number, author(existing))
+	case !readable(existing.Body):
+		write.Action = ActionSkip
+		write.Reason = fmt.Sprintf("the stack comment on #%d was written by %s · upgrade g2g to keep it", number, writer(existing.Body))
 	case same(existing.Body, body):
 		write.Action, write.Comment = ActionCurrent, existing.ID
 	default:
@@ -122,6 +125,16 @@ func decideNew(conversation githubstack.Conversation, write Write, create bool) 
 	}
 	write.Action = ActionCreate
 	return write, true
+}
+
+// writer names the g2g a comment says wrote it, as far as it can be trusted to
+// say: anyone who can edit the comment can change the field.
+func writer(body string) string {
+	version := markerFields(body)["version"]
+	if !versionShape.MatchString(version) {
+		return "a newer g2g"
+	}
+	return "g2g@" + version + ", a newer g2g"
 }
 
 func author(found githubstack.Comment) string {

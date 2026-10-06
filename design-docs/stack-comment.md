@@ -17,7 +17,7 @@ four in a stack of five means reading bases one at a time.
 - #13 `synthetic-three`
 
 <sub>This comment is managed by [g2g](https://g2g.foo) and updates automatically when the stack changes · last updated by [g2g@0.38.0](https://github.com/shhac/g2g/releases/tag/v0.38.0)</sub>
-<!-- g2g:stack-prs 10,11,12>11,13>12,14>11,15>14 -->
+<!-- g2g:stack-prs v=1 prs=10,11,12>11,13>12,14>11,15>14 -->
 ```
 
 It previews by default. `--apply` revalidates and then writes.
@@ -174,6 +174,16 @@ have found every comment changed and rewritten it. A comment from before revs
 has none and is rewritten once. A comment edited by hand keeps its rev, so it
 stands until the stack changes; the marker says it is this tool's, and it is
 overwritten then.
+
+The data line's fields are read by name too, and its `v` says which format the
+rest is in. A comment whose `v` this g2g does not know is skipped, naming the
+g2g its marker says wrote it, rather than rewritten: the data line is the only
+record of what merged out of the stack once the branches are gone, and a
+rewrite by a reader that could not read it would lose that history for good. A
+data line with no `v` is from 0.43.0 or earlier, when it was the bare list, and
+is read that way for now. That fallback is temporary: once the comments those
+releases wrote have been rewritten it goes, and one still unread then is
+rewritten without its history.
 
 ## The GitHub seam
 

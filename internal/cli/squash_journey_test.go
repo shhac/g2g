@@ -304,13 +304,28 @@ func TestJourneyPullPruneForgetsASquashedParent(t *testing.T) {
 // there itself rather than refusing and sending the reader to track.
 func TestJourneyPruneAfterAPullRecordsTheChildWhereItSits(t *testing.T) {
 	w := squashedParent(t)
-	mustRun(t, "pull", "--apply")
+	pulled := mustRun(t, "pull", "--apply")
+	// The pull found the parent landed, so forgetting it comes before
+	// publishing anything; pushing first would publish a branch that has
+	// landed.
+	if !strings.Contains(pulled, "Suggested next step: g2g prune\n") {
+		t.Errorf("pull does not suggest forgetting what landed:\n%s", pulled)
+	}
 
 	preview := mustRun(t, "prune", "--scope", "trunk")
 	if !strings.Contains(preview, "Records synthetic-b on main, where it already sits.") {
 		t.Fatalf("prune does not say where it records the child:\n%s", preview)
 	}
 	mustRun(t, "prune", "--scope", "trunk", "--apply")
+	w.assertLanded(t)
+}
+
+// The prune a pull suggests is the command as offered, with no flags added: it
+// has to select what the pull found landed.
+func TestJourneyThePruneAPullSuggestsForgetsWhatLanded(t *testing.T) {
+	w := squashedParent(t)
+	mustRun(t, "pull", "--apply")
+	mustRun(t, "prune", "--apply")
 	w.assertLanded(t)
 }
 

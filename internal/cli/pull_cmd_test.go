@@ -67,6 +67,9 @@ func (g *syncCLIGit) IsAncestor(context.Context, string, string) (bool, error) {
 // matters here is that it is asked at all, and exactly once.
 type syncCLIRestack struct {
 	steps []string
+	// collapses are steps whose work is already in the base, so their refs
+	// only move: what a pull finds of a branch that has landed.
+	collapses []string
 	// applyErr is what the replay fails with, and stopped reports whether it
 	// left a resumable rewrite behind rather than simply failing.
 	applyErr error
@@ -89,6 +92,10 @@ func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto
 		r.reparented = true
 	}
 	plan := restack.Plan{Onto: onto}
+	plan.Discovery.Scope = selection.Scope
+	for _, branch := range r.collapses {
+		plan.Steps = append(plan.Steps, restack.Step{Branch: branch, Parent: "synthetic-main", Base: "base-local", ForkPoint: "fork", Tip: "tip", Collapses: true})
+	}
 	for _, branch := range r.steps {
 		plan.Steps = append(plan.Steps, restack.Step{Branch: branch, Parent: "synthetic-main", Base: "base-local", ForkPoint: "fork", Tip: "tip"})
 	}
@@ -184,6 +191,46 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	}
 	if !strings.Contains(out, "Suggested next step: g2g push") {
 		t.Errorf("successful sync does not suggest publishing what it replayed:\n%s", out)
+	}
+}
+
+// What follows a pull depends on what it did. A branch it found already in
+// the base is forgotten before anything is published; a replay alone leaves
+// branches to publish; a pull that only moved the base leaves nothing to do.
+func TestPullSuggestsWhatItsOutcomeCallsFor(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		args      []string
+		steps     []string
+		collapses []string
+		want      string
+	}{
+		{name: "replayed", steps: []string{"synthetic-login"}, want: "g2g push"},
+		{name: "landed", steps: []string{"synthetic-login"}, collapses: []string{"synthetic-auth"}, want: "g2g prune"},
+		{name: "landed from the trunk", args: []string{"--scope", "trunk"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --scope trunk"},
+		{name: "base only"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+			replay := &syncCLIRestack{steps: test.steps, collapses: test.collapses}
+			args := append([]string{"pull", "--branch", "synthetic-login", "--apply"}, test.args...)
+
+			out, err := runSync(t, git, replay, args...)
+			if err != nil {
+				t.Fatalf("pull --apply error = %v\n%s", err, out)
+			}
+			if !strings.Contains(out, "Pulled.") {
+				t.Fatalf("output does not report the pull:\n%s", out)
+			}
+			_, suggested, found := strings.Cut(out, "Suggested next step: ")
+			suggested, _, _ = strings.Cut(suggested, "\n")
+			if test.want == "" && found {
+				t.Errorf("suggested %q after a pull that left nothing to do:\n%s", suggested, out)
+			}
+			if test.want != "" && suggested != test.want {
+				t.Errorf("suggested %q, want %q:\n%s", suggested, test.want, out)
+			}
+		})
 	}
 }
 

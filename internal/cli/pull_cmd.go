@@ -116,7 +116,7 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 		pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
 		pull.notices.noOp = "The trunk is already up to date."
 		pull.notices.changed = "The trunk is up to date; no stack branches were replayed."
-		pull.notices.suggestedNext = ""
+		pull.suggest = nil
 	}
 	if o.alsoPrune && o.cleanup.DeleteBranches {
 		pull.notices.preview = "Rerun with --apply to pull, then preview and delete eligible local branches through prune."
@@ -133,15 +133,13 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		applied:  "Pulled.",
 		changed:  "The stack sits on the current base.",
 		recovery: "The base may already have been advanced; rerunning is safe.",
-		// A replay leaves the published branches behind their local ones;
-		// push previews what publishing them would do.
-		suggestedNext: "g2g push",
 	}
+	suggest := pullNext
 	if thenPrune {
 		// What has landed is only known once the base has moved, so a
 		// preview cannot show the prune it would do; it says it will do one.
 		notices.preview = "Rerun with --apply to bring the stack up to date and then forget what has landed."
-		notices.suggestedNext = ""
+		suggest = nil
 	}
 	return applyFlow[syncer.Plan]{
 		guard: guard,
@@ -156,6 +154,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		branches: func(plan syncer.Plan) int { return len(plan.Restack.Steps) + 1 },
 		noOp:     func(plan syncer.Plan) bool { return plan.Nothing() },
 		blocked:  func(plan syncer.Plan) string { return plan.Blocked },
+		suggest:  suggest,
 		// A pull is a sequence, so it can stop between steps. It deliberately
 		// does not unwind: the fetch and the fast-forward are wanted
 		// regardless, and the replay is resumable through the command that
@@ -171,6 +170,25 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 			return true, stoppedAfterMoving(cmd, moved, p)
 		},
 		notices: notices,
+	}
+}
+
+// pullNext follows a pull from what it did. A branch whose work it found
+// already in the base is forgotten first, because publishing would push a
+// branch that has landed; prune also records what sat on it where it now sits.
+// Otherwise a replay leaves the published branches behind their local ones,
+// and push previews what publishing them would do. A pull that only moved the
+// base leaves nothing to follow.
+func pullNext(plan syncer.Plan) string {
+	switch {
+	case len(plan.Restack.Emptied()) != 0 && plan.Restack.Scope == shape.ScopeTrunk:
+		return "g2g prune --scope trunk"
+	case len(plan.Restack.Emptied()) != 0:
+		return "g2g prune"
+	case len(plan.Restack.Replaying()) != 0:
+		return "g2g push"
+	default:
+		return ""
 	}
 }
 

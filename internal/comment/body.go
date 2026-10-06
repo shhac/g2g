@@ -12,7 +12,10 @@ import (
 // Marker opens the comment this command keeps, and is how one is recognised.
 // It begins an HTML comment, so GitHub renders nothing for it, and it is the
 // only thing that makes a comment this tool's to edit: a comment without it is
-// somebody's words. The line it opens goes on to carry the comment's rev.
+// somebody's words. The line it opens goes on to carry the comment's fields,
+// `rev=` and `version=`, which a reader takes by name and ignores the rest of:
+// a g2g that knew only the fields it wrote would take a newer one's comment
+// for one it could not read, and rewrite it.
 const Marker = "<!-- g2g:stack-comment"
 
 // The data line records every pull request the stack has listed, each with the
@@ -73,9 +76,40 @@ func (v view) body() string {
 		stack.WriteString(strings.Repeat("  ", entry.Depth) + "- " + v.item(entry) + "\n")
 	}
 	data := dataOpen + encode(v.Recorded) + dataClose + "\n"
-	footer := fmt.Sprintf("\n<sub>Kept up to date by [%s](%s), which edits this comment when the stack changes.</sub>\n", strings.TrimSpace("g2g "+v.Version), homepage)
-	return Marker + " rev=" + rev(stack.String()+data) + " -->\n" + stack.String() + footer + data
+	footer := "\n<sub>This comment is managed by [g2g](" + homepage + ") and updates automatically when the stack changes" + v.lastUpdated() + "</sub>\n"
+	return Marker + " rev=" + rev(stack.String()+data) + v.versionField() + " -->\n" + stack.String() + footer + data
 }
+
+// lastUpdated names the g2g that wrote the comment, which is not necessarily
+// the one managing it now: the footer is left out of the rev, so a newer g2g
+// leaves a comment alone until the stack changes. A release links to its own
+// notes, and a build that is not one to the homepage.
+func (v view) lastUpdated() string {
+	if !versionShape.MatchString(v.Version) {
+		return ""
+	}
+	link := homepage
+	if releaseShape.MatchString(v.Version) {
+		link = releases + v.Version
+	}
+	return " · last updated by [g2g@" + v.Version + "](" + link + ")"
+}
+
+// versionField names the g2g that last wrote a comment, for g2g as the footer
+// does for a reader. It is left out of the rev with the footer, and out of the
+// comment entirely for a version that could end the HTML comment it sits in or
+// run into the field after it.
+func (v view) versionField() string {
+	if !versionShape.MatchString(v.Version) {
+		return ""
+	}
+	return " version=" + v.Version
+}
+
+var (
+	versionShape = regexp.MustCompile(`^[0-9A-Za-z.+_-]+$`)
+	releaseShape = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+)
 
 // rev names what a comment says: the stack it draws and what it records for
 // the next run, and not the footer, so a newer g2g or a changed link is not a
@@ -216,15 +250,40 @@ func same(existing, rendered string) bool {
 
 // revIn reads the rev from a comment's first line, empty when it has none.
 func revIn(body string) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(body), "\n")
-	found := revLine.FindStringSubmatch(strings.TrimSpace(first))
-	if found == nil {
+	found := markerFields(body)["rev"]
+	if !revShape.MatchString(found) {
 		return ""
 	}
-	return found[1]
+	return found
 }
 
-var revLine = regexp.MustCompile(`^` + regexp.QuoteMeta(Marker) + ` rev=([0-9a-f]{16}) -->$`)
+var revShape = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-// homepage is where the footer's naming of g2g links to.
-const homepage = "https://g2g.foo"
+// markerFields reads the `key=value` fields of a comment's first line by name,
+// whichever g2g wrote them and in whatever order, nil when that line is not
+// this tool's marker.
+func markerFields(body string) map[string]string {
+	first, _, _ := strings.Cut(strings.TrimSpace(body), "\n")
+	rest, ok := strings.CutPrefix(strings.TrimSpace(first), Marker)
+	if !ok {
+		return nil
+	}
+	inner, ok := strings.CutSuffix(rest, "-->")
+	if !ok || (inner != "" && !strings.HasPrefix(inner, " ")) {
+		return nil
+	}
+	fields := map[string]string{}
+	for _, field := range strings.Fields(inner) {
+		if key, value, ok := strings.Cut(field, "="); ok {
+			fields[key] = value
+		}
+	}
+	return fields
+}
+
+// homepage is where the footer's naming of g2g links to, and releases where a
+// released version's does, by its tag.
+const (
+	homepage = "https://g2g.foo"
+	releases = "https://github.com/shhac/g2g/releases/tag/v"
+)

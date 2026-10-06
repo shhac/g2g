@@ -296,7 +296,7 @@ func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
 		return planned
 	}
 	first := versioned("1.0.0", chainGitHub())
-	if body := bodyFor(t, first, 12); !strings.Contains(body, "Kept up to date by [g2g 1.0.0](https://g2g.foo), which edits") {
+	if body := bodyFor(t, first, 12); !strings.Contains(body, "<sub>This comment is managed by [g2g](https://g2g.foo) and updates automatically when the stack changes · last updated by [g2g@1.0.0](https://github.com/shhac/g2g/releases/tag/v1.0.0)</sub>") {
 		t.Fatalf("the footer does not name the version:\n%s", body)
 	}
 	github := chainGitHub()
@@ -309,7 +309,7 @@ func TestTheFooterNamesTheVersionWithoutMakingItAChange(t *testing.T) {
 	// Nor does a comment written before the footer named or linked g2g.
 	github = chainGitHub()
 	for number, head := range map[int]string{11: "synthetic-one", 12: "synthetic-two", 13: "synthetic-three"} {
-		older := strings.Replace(bodyFor(t, first, number), "[g2g 1.0.0](https://g2g.foo)", "g2g", 1)
+		older := strings.Replace(bodyFor(t, first, number), "[g2g@1.0.0](https://github.com/shhac/g2g/releases/tag/v1.0.0)", "g2g", 1)
 		github.conversations[number] = conversation(number, head, "OPEN", older)
 	}
 	if got := versioned("2.0.0", github); actions(got) != "#11:current #12:current #13:current" {

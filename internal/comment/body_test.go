@@ -83,3 +83,69 @@ func TestBodyKeepsBranchNamesOutOfItsHTMLComments(t *testing.T) {
 		t.Errorf("body does not open with the marker and its rev:\n%s", body)
 	}
 }
+
+// The version sits beside the rev without being part of it, and nothing a
+// build calls itself can close the HTML comment or run into the next field.
+func TestBodyRecordsTheVersionBesideTheRev(t *testing.T) {
+	written := func(version string) string {
+		return view{
+			Lines:   []line{{Branch: "synthetic-trunk", Trunk: true}, {Branch: "synthetic-one", Number: 5, State: StateOpen}},
+			Here:    5,
+			Version: version,
+		}.body()
+	}
+	body := written("1.0.0")
+	if got := markerFields(body)["version"]; got != "1.0.0" {
+		t.Errorf("version = %q, want 1.0.0:\n%s", got, body)
+	}
+	if revIn(body) == "" || revIn(body) != revIn(written("2.0.0")) {
+		t.Errorf("the version reached the rev:\n%s", body)
+	}
+	for _, version := range []string{"", "synthetic-->", "synthetic version", "synthetic rev=0000000000000000"} {
+		body := written(version)
+		if fields := markerFields(body); fields["version"] != "" || !revShape.MatchString(fields["rev"]) {
+			t.Errorf("version %q: fields = %v:\n%s", version, fields, body)
+		}
+	}
+}
+
+// The marker is read by the fields it names, so a comment from a g2g that
+// writes fields this one has never heard of, or in another order, is still
+// one whose rev it can read.
+func TestRevIsReadByNameFromTheMarker(t *testing.T) {
+	const r = "0123456789abcdef"
+	for first, want := range map[string]string{
+		Marker + " rev=" + r + " -->":                           r,
+		Marker + " rev=" + r + " version=1.0.0 -->":             r,
+		Marker + " version=1.0.0 synthetic=x rev=" + r + " -->": r,
+		Marker + " synthetic rev=" + r + "-->":                  r,
+		"  " + Marker + "  rev=" + r + "   -->  ":               r,
+		Marker + " -->":                                    "",
+		Marker + " rev=" + r:                               "",
+		Marker + " rev=0123 -->":                           "",
+		Marker + " rev=" + r + "0 -->":                     "",
+		Marker + "x rev=" + r + " -->":                     "",
+		"synthetic words " + Marker + " rev=" + r + " -->": "",
+	} {
+		if got := revIn(first + "\n**Stack**\n"); got != want {
+			t.Errorf("revIn(%q) = %q, want %q", first, got, want)
+		}
+	}
+}
+
+// Only a release has notes to link to; any other build links to the homepage,
+// and one with no version says nothing about who last updated the comment.
+func TestFooterLinksTheVersionThatWroteIt(t *testing.T) {
+	for version, want := range map[string]string{
+		"1.2.3":       " · last updated by [g2g@1.2.3](https://github.com/shhac/g2g/releases/tag/v1.2.3)</sub>",
+		"dev":         " · last updated by [g2g@dev](https://g2g.foo)</sub>",
+		"1.2.3-rc.1":  " · last updated by [g2g@1.2.3-rc.1](https://g2g.foo)</sub>",
+		"":            "when the stack changes</sub>",
+		"synthetic](": "when the stack changes</sub>",
+	} {
+		body := view{Lines: []line{{Branch: "synthetic-trunk", Trunk: true}}, Version: version}.body()
+		if !strings.Contains(body, want) {
+			t.Errorf("version %q: footer does not end %q:\n%s", version, want, body)
+		}
+	}
+}

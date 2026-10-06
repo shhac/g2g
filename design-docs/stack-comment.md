@@ -6,7 +6,7 @@ does not otherwise have: GitHub shows a pull request in isolation, and finding t
 four in a stack of five means reading bases one at a time.
 
 ```
-<!-- g2g:stack-comment rev=3f1c9a0b7d2e4c65 -->
+<!-- g2g:stack-comment rev=3f1c9a0b7d2e4c65 version=0.38.0 -->
 **Stack**
 
 - base `synthetic-main`
@@ -16,7 +16,7 @@ four in a stack of five means reading bases one at a time.
 - **#12 `synthetic-two`** 👈 this pull request
 - #13 `synthetic-three`
 
-<sub>Kept up to date by [g2g 0.38.0](https://g2g.foo), which edits this comment when the stack changes.</sub>
+<sub>This comment is managed by [g2g](https://g2g.foo) and updates automatically when the stack changes · last updated by [g2g@0.38.0](https://github.com/shhac/g2g/releases/tag/v0.38.0)</sub>
 <!-- g2g:stack-prs 10,11,12>11,13>12,14>11,15>14 -->
 ```
 
@@ -43,9 +43,18 @@ Every line names its branch. GitHub draws a pull request number with its title
 and state, which is why the merged marker is light, but never the branch,
 which is what a reviewer matches against their own checkout.
 
-The footer names the g2g that wrote it and links to its homepage. It is left
-out of the comment's rev (below), so an upgrade alone does not edit every
-comment in every stack; it catches up the next time the stack changes.
+The footer says g2g manages the comment, linking its homepage, and names the
+release that last wrote it, linking that release's notes. It is left out of the
+comment's rev (below), so an upgrade alone does not edit every comment in every
+stack; it catches up the next time the stack changes. The version is also
+recorded for g2g as the marker's `version=` field, under the same rule.
+
+The marker's fields are read by name, and any a reader does not know are
+ignored. A g2g that knew only the fields it wrote would take a newer one's
+comment for one with no rev, and rewrite it on every run. Releases up to
+0.43.0 read the marker that way, which is why adding `version=` was a
+breaking change: one of them rewrites every comment a newer g2g wrote, without
+the field, whenever it runs.
 
 ## Which comments a run keeps
 

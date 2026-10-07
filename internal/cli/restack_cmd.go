@@ -183,6 +183,7 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 		// replay and a new parent to record, and skipping Apply left the old one.
 		noOp:    func(plan restack.Plan) bool { return plan.Nothing() },
 		blocked: func(plan restack.Plan) string { return plan.Blocked },
+		suggest: replayNext,
 		// A rewrite that stops on a conflict is half applied and resumable, so
 		// "no changes were made" would be a lie. This is the case the whole
 		// hook exists for.
@@ -199,9 +200,6 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			applied:  "Replayed.",
 			changed:  "Branch contents now match the recorded structure.",
 			recovery: "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
-			// Replayed branches are not what their pull requests hold until
-			// they are published, and push previews before it does anything.
-			suggestedNext: "g2g push",
 		},
 	}
 	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)

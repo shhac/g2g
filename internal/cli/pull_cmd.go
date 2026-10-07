@@ -173,24 +173,8 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 	}
 }
 
-// pullNext follows a pull from what it did. A branch whose work it found
-// already in the base is forgotten first, because publishing would push a
-// branch that has landed; prune also records what sat on it where it now sits.
-// Otherwise a replay leaves the published branches behind their local ones,
-// and push previews what publishing them would do. A pull that only moved the
-// base leaves nothing to follow.
-func pullNext(plan syncer.Plan) string {
-	switch {
-	case len(plan.Restack.Emptied()) != 0 && plan.Restack.Scope == shape.ScopeTrunk:
-		return "g2g prune --scope trunk"
-	case len(plan.Restack.Emptied()) != 0:
-		return "g2g prune"
-	case len(plan.Restack.Replaying()) != 0:
-		return "g2g push"
-	default:
-		return ""
-	}
-}
+// pullNext follows a pull by what its replay did.
+func pullNext(plan syncer.Plan) string { return replayNext(plan.Restack) }
 
 // pullThenPrune runs the pull and, once it has happened, the prune over the
 // same selection. A preview is the pull's alone.

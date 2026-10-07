@@ -348,3 +348,19 @@ func TestJourneyPullPrunePreviewsWithoutForgetting(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// restack finds a landed parent the way pull does, by content, and moves its
+// ref onto the trunk rather than replaying it. What follows is forgetting it,
+// as after a pull; pushing would publish a branch that has landed.
+func TestJourneyRestackOverALandedParentSuggestsPrune(t *testing.T) {
+	w := squashedParent(t)
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "pull", "-q", "--ff-only", "origin", "main")
+	w.git(w.Local, "switch", "-q", "synthetic-b")
+
+	restacked := mustRun(t, "restack", "--scope", "stack", "--apply")
+	if !strings.Contains(restacked, "Suggested next step: g2g prune\n") {
+		t.Errorf("restack does not suggest forgetting what landed:\n%s", restacked)
+	}
+	w.assertClean(w.Local)
+}

@@ -77,3 +77,29 @@ func TestAChildOfALandedParentWithWorkLeftIsNotLanded(t *testing.T) {
 		t.Errorf("child = %s, want aligned: its own work is not in the trunk", states["synthetic-child"])
 	}
 }
+
+// A branch found landed lets the one under it be asked in turn: a whole chain
+// squash-merged together lands whole.
+func TestAChainSquashedTogetherReadsAsLandedAllTheWayDown(t *testing.T) {
+	repo, service := stackedPair(t)
+	repo.Run("switch", "-q", "synthetic-child")
+	repo.Run("switch", "-qc", "synthetic-grandchild")
+	repo.Commit("synthetic grandchild work", "grandchild.txt", "grandchild")
+	plan, err := service.PlanTrack(context.Background(), graph.Selection{Branch: "synthetic-grandchild"}, "synthetic-child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyTrack(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	repo.Run("switch", "-q", "synthetic-main")
+	repo.Run("merge", "-q", "--squash", "synthetic-grandchild")
+	repo.Run("commit", "-qm", "synthetic squash of the whole chain")
+
+	states := statesOf(t, service)
+	for _, branch := range []string{"synthetic-parent", "synthetic-child", "synthetic-grandchild"} {
+		if states[branch] != graph.StateLanded {
+			t.Errorf("%s = %s, want landed", branch, states[branch])
+		}
+	}
+}

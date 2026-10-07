@@ -101,3 +101,21 @@ func TestAChildWithWorkLeftStillBlocksForgettingItsParent(t *testing.T) {
 		t.Fatalf("Landed = %v, Blocked = %q; want the child kept and the parent refused", plan.Landed, plan.Blocked())
 	}
 }
+
+// A branch found landed through a forgotten parent lets the one above it be
+// asked in turn, past both.
+func TestAChainSquashedTogetherIsForgottenWhole(t *testing.T) {
+	repo, service := stackedRepository(t,
+		[2]string{"synthetic-parent", "synthetic-main"},
+		[2]string{"synthetic-child", "synthetic-parent"},
+		[2]string{"synthetic-grandchild", "synthetic-child"})
+	squashInto(repo, "synthetic-grandchild")
+
+	plan, err := service.PlanWithOptions(context.Background(), wholeStack, Options{DeleteBranches: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Blocked() != "" || !slices.Equal(plan.Landed, []string{"synthetic-parent", "synthetic-child", "synthetic-grandchild"}) {
+		t.Fatalf("Landed = %v, Blocked = %q; want the whole chain forgotten", plan.Landed, plan.Blocked())
+	}
+}

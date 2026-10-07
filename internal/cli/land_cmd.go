@@ -138,7 +138,8 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 // landInterrupted claims a descent that stopped having changed something, and
 // leaves one that changed nothing to the ordinary failure path.
 func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error) {
-	if handled, report := commentsNotKept(cmd, err, p); handled {
+	// Not aimed: the branch it was asked to land may have merged and gone.
+	if handled, report := commentsNotKept(cmd, err, "g2g github comment --apply", p); handled {
 		return true, report
 	}
 	var stopped *land.Stopped

@@ -49,6 +49,8 @@ var (
 	pullCommand         = suggestable{command: "g2g pull", accepted: shape.SyncScopes, fallback: shape.ScopeStack, remote: true}
 	githubStatusCommand = suggestable{command: "g2g github status", accepted: shape.Scopes, fallback: shape.ScopeStack}
 	retargetCommand     = suggestable{command: "g2g github retarget", accepted: shape.ProjectScopes, fallback: shape.ScopeStack}
+	// commentCommand takes no scope: it keeps the whole stack a branch is in.
+	commentCommand = suggestable{command: "g2g github comment"}
 )
 
 // selected is what a command acted on: the branch, whether it was named, how

@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/comment"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -48,8 +49,9 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 			blocked:  comment.Plan.Blocked,
 			// Comments already written stay written, so a run that fails on
 			// the third is not "not applied".
-			interrupted: func(_ context.Context, _ comment.Plan, err error) (bool, error) {
-				return claim(err, func(stopped *comment.Stopped) error { return stoppedMidComment(cmd, stopped, presentation) })
+			interrupted: func(_ context.Context, plan comment.Plan, err error) (bool, error) {
+				retry := selected{branch: plan.Requested, named: plan.RequestedSource == shape.TargetNamed}.aimedOr(commentCommand) + " --apply"
+				return claim(err, func(stopped *comment.Stopped) error { return stoppedMidComment(cmd, stopped, retry, presentation) })
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to write these comments.",
@@ -67,10 +69,10 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 }
 
 // stoppedMidComment says which comments were written before the run failed.
-func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, p Presentation) error {
+func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, retry string, p Presentation) error {
 	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
 	return writeStoppedPartWay(cmd, p,
 		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err),
-		written+" Rerun "+runnable("g2g github comment --apply")+" to finish; it edits rather than adds.",
+		written+" Rerun "+runnable(retry)+" to finish; it edits rather than adds.",
 		stopped)
 }

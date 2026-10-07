@@ -215,8 +215,9 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		// to their comments, so a failure there is not the submission failing.
 		// A failure after the push, or after a pull request opened, leaves
 		// those standing, so it is not "not applied" either.
-		interrupted: func(_ context.Context, _ submit.Plan, err error) (bool, error) {
-			if handled, report := commentsNotKept(cmd, err, p); handled {
+		interrupted: func(_ context.Context, plan submit.Plan, err error) (bool, error) {
+			comments := selected{branch: plan.Snapshot.Target, named: plan.Snapshot.TargetSource == shape.TargetNamed}.aimedOr(commentCommand) + " --apply"
+			if handled, report := commentsNotKept(cmd, err, comments, p); handled {
 				return true, report
 			}
 			return claim(err, func(stopped *submit.Stopped) error { return stoppedMidSubmit(cmd, stopped, o.remote, retry, p) })

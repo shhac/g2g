@@ -33,11 +33,14 @@ func keepComments(ctx context.Context, service comment.Service, keep bool, selec
 // commentsNotKept reports a command whose own work stands and whose comments
 // could not be kept, and marks it as stopped part-way: the work is not coming
 // back, and the comments still need keeping.
-func commentsNotKept(cmd *cobra.Command, err error, p Presentation) (bool, error) {
+//
+// retry is the comment run that finishes the job, aimed at the stack the
+// command acted on where it still exists.
+func commentsNotKept(cmd *cobra.Command, err error, retry string, p Presentation) (bool, error) {
 	return claim(err, func(notKept *comment.NotKept) error {
 		if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); err != nil {
 			return err
 		}
-		return writeWhatStands(cmd, p, "Everything else stands. Run "+runnable("g2g github comment --apply")+" to keep them.", notKept)
+		return writeWhatStands(cmd, p, "Everything else stands. Run "+runnable(retry)+" to keep them.", notKept)
 	})
 }

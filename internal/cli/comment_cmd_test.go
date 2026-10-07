@@ -142,7 +142,7 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 	}
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, second)
 
-	stdout, stderr, err := run(t, "github", "comment", "--apply")
+	stdout, stderr, err := run(t, "github", "comment", "--branch", "synthetic-top", "--apply")
 	if err == nil {
 		t.Fatalf("comment --apply succeeded with a failing write:\n%s", stdout)
 	}
@@ -153,7 +153,9 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 	if strings.Contains(stdout, "Not applied") {
 		t.Errorf("a run that wrote a comment says nothing was applied:\n%s", stdout)
 	}
-	for _, want := range []string{"Stopped part-way at #202", "Wrote the comment on #201"} {
+	// The retry keeps the stack the run was aimed at; a bare one would keep
+	// whichever stack the checkout is on.
+	for _, want := range []string{"Stopped part-way at #202", "Wrote the comment on #201", "Rerun g2g github comment --branch synthetic-top --apply"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("report missing %q:\n%s", want, stdout)
 		}

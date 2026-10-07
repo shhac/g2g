@@ -57,6 +57,12 @@ func (o *scopeOptions) registerScope(cmd *cobra.Command, scopes []shape.Scope, f
 	_ = cmd.RegisterFlagCompletionFunc("scope", completionCallback(staticCompletions(scopes)))
 }
 
+// registerScopeOf registers the scope flag a suggestable command declares, so
+// the flag and every suggestion that names the command read one value.
+func (o *scopeOptions) registerScopeOf(cmd *cobra.Command, target suggestable, verb string) {
+	o.registerScope(cmd, target.accepted, target.fallback, scopeUsage(verb, target.accepted))
+}
+
 // staticCompletions offers exactly the values a command registered, which is
 // what keeps completion from proposing a scope the same command would refuse.
 func staticCompletions(scopes []shape.Scope) func(context.Context, string) ([]string, error) {

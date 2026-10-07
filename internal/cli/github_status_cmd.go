@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/link"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -43,6 +42,6 @@ func newGitHubStatus(service link.Service, completions stack.Completions, presen
 	// and where the target sits between them. It stops short of all, because a
 	// repository's other trunks are not what someone triaging this one asked
 	// about.
-	selection.registerScope(cmd, shape.Scopes, shape.ScopeStack, scopeUsage("show", shape.Scopes))
+	selection.registerScopeOf(cmd, githubStatusCommand, "show")
 	return cmd
 }

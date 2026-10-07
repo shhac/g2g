@@ -3,7 +3,6 @@ package cli
 import (
 	"testing"
 
-	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -24,12 +23,12 @@ func TestSuggestionsAimAtWhatWasSelected(t *testing.T) {
 		{name: "wider, named", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeTrunk}, want: "g2g status --branch synthetic-a --scope trunk"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.acted.next("g2g push", shape.ProjectScopes, shape.ScopeStack); got != test.want {
+			if got := test.acted.next(pushCommand); got != test.want {
 				t.Errorf("next = %q, want %q", got, test.want)
 			}
 		})
 	}
-	if got := (selected{branch: "synthetic-a", scope: shape.ScopeTrunk}).next("g2g prune", shape.ReadScopes, graph.ScopeStack); got != "g2g prune --scope trunk" {
+	if got := (selected{branch: "synthetic-a", scope: shape.ScopeTrunk}).next(pruneCommand); got != "g2g prune --scope trunk" {
 		t.Errorf("prune over a trunk = %q, want it to name the scope it offers", got)
 	}
 }

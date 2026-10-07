@@ -11,7 +11,6 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -59,7 +58,7 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 		return matches, nil
 	}))
 	selection.registerBranch(cmd, service)
-	selection.registerScope(cmd, shape.ReadScopes, graph.ScopeStack, scopeUsage("show", shape.ReadScopes))
+	selection.registerScopeOf(cmd, statusCommand, "show")
 	return cmd
 }
 

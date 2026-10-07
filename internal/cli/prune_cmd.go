@@ -12,7 +12,6 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
-	"github.com/shhac/g2g/internal/shape"
 )
 
 func newPrune(service prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -41,7 +40,7 @@ func newPrune(service prune.Service, published push.Known, guard func(context.Co
 	// the stack being worked on, which is the boundary
 	// sync uses, because "what has landed" is asked about a stack rather than
 	// about a repository.
-	selection.registerScope(cmd, shape.ReadScopes, graph.ScopeStack, scopeUsage("forget", shape.ReadScopes))
+	selection.registerScopeOf(cmd, pruneCommand, "forget")
 	return cmd
 }
 
@@ -132,13 +131,12 @@ func keepsUnpublished(ctx context.Context, published push.Known, remote string, 
 // pruneNext is push when the prune kept something to publish, aimed at what
 // it selected, and status over the same selection otherwise.
 func pruneNext(plan prunePlan) string {
-	acted := selectedIn(plan.Discovery)
 	if !plan.unpublished {
-		return acted.next("g2g status", shape.ReadScopes, graph.ScopeStack)
+		return statusNext(plan.Discovery)
 	}
-	command := "g2g push"
+	target := pushCommand
 	if plan.remote != localgit.DefaultRemote {
-		command += " --remote " + plan.remote
+		target.command += " --remote " + plan.remote
 	}
-	return acted.next(command, shape.ProjectScopes, shape.ScopeStack)
+	return selectedIn(plan.Discovery).next(target)
 }

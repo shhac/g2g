@@ -33,7 +33,6 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 			plan: func(ctx context.Context) (retarget.Plan, error) {
 				return service.Plan(ctx, selection.Selection())
 			},
-			same:         retarget.Plan.Equal,
 			revalidation: revalidation{"retarget", "retarget plan"},
 			render: func(writer io.Writer, plan retarget.Plan, p Presentation) error {
 				return writeStackView(writer, retargetView(plan), p)

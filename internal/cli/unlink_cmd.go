@@ -41,9 +41,6 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 				}
 				return newUnlinkPlan(number, plan)
 			},
-			// The number is resolved again from the re-discovered plan, so the
-			// one rendered immediately before the mutation is that plan's own.
-			same:         func(preview, current unlinkPlan) bool { return preview.Plan.Equal(current.Plan) },
 			revalidation: revalidation{"link", "link plan"},
 			precheck:     service.RequireClean,
 			render: func(w io.Writer, p unlinkPlan, presentation Presentation) error {
@@ -115,6 +112,10 @@ type unlinkPlan struct {
 	Number int
 	Source string
 }
+
+// Equal compares the discovery the number is resolved from, so a number
+// resolved again from an equal one is that plan's own.
+func (p unlinkPlan) Equal(other unlinkPlan) bool { return p.Plan.Equal(other.Plan) }
 
 // newUnlinkPlan resolves the stack number as part of planning: it reads the
 // same discovery, and an unresolvable one must stop the command before anything

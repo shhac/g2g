@@ -95,7 +95,6 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		plan: func(ctx context.Context) (land.Plan, error) {
 			return service.Plan(ctx, selection, options)
 		},
-		same:         land.Plan.Equal,
 		revalidation: revalidation{"land", "land plan"},
 		render:       writeLandPlan,
 		guard:        guard,

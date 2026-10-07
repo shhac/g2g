@@ -50,7 +50,6 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 				plan, err := service.PlanTrack(ctx, selection.Selection(), parent)
 				return trackPlan{plan, describedElsewhere(ctx, describesElsewhere)}, err
 			},
-			same:         func(preview, current trackPlan) bool { return preview.TrackPlan.Equal(current.TrackPlan) },
 			revalidation: revalidation{"graph.track", "graph"},
 			render: func(writer io.Writer, plan trackPlan, p Presentation) error {
 				return writeGraphView(writer, trackView(plan.TrackPlan, plan.elsewhere), plan.Discovery, p)
@@ -85,6 +84,10 @@ type trackPlan struct {
 	graph.TrackPlan
 	elsewhere bool
 }
+
+// Equal compares what the write does. Whether another record describes the
+// repository changes only a suggestion.
+func (p trackPlan) Equal(other trackPlan) bool { return p.TrackPlan.Equal(other.TrackPlan) }
 
 // describedElsewhere asks whether another record describes this repository. A
 // failure to answer is not worth reporting: the consequence is one missing
@@ -141,7 +144,6 @@ func declareFlow(service graph.Service, selection graphOptions, declaration grap
 		plan: func(ctx context.Context) (graph.DeclarePlan, error) {
 			return service.PlanDeclare(ctx, selection.Selection(), declaration)
 		},
-		same:         graph.DeclarePlan.Equal,
 		revalidation: revalidation{"graph.declare", "graph"},
 		render: func(writer io.Writer, plan graph.DeclarePlan, p Presentation) error {
 			return writeGraphView(writer, declareView(plan), plan.Discovery, p)

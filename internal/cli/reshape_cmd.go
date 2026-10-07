@@ -78,7 +78,6 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 			plan: func(ctx context.Context) (reshape.Plan, error) {
 				return service.Plan(ctx, operation, branch)
 			},
-			same:         reshape.Plan.Equal,
 			revalidation: revalidation{string(operation), "the branch and the stack around it"},
 			render:       writeRemovalPlan,
 			guard:        guard,
@@ -117,7 +116,6 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 			plan: func(ctx context.Context) (reshape.RenamePlan, error) {
 				return service.PlanRename(ctx, branch, name)
 			},
-			same:         reshape.RenamePlan.Equal,
 			revalidation: revalidation{"rename", "the branch and the stack around it"},
 			render:       writeRenamePlan,
 			guard:        guard,

@@ -11,11 +11,18 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/prune"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 // interruptedFlow drives applyFlow's failure branch directly, which is the only
 // way to reach the interrupted hook without standing up a whole command.
 type interruptedPlan struct{ name string }
+
+func (p interruptedPlan) Equal(other interruptedPlan) bool { return p == other }
 
 func interruptedFlow(t *testing.T, claim bool) (string, error) {
 	t.Helper()
@@ -26,7 +33,6 @@ func interruptedFlow(t *testing.T, claim bool) (string, error) {
 	reported := false
 	flow := applyFlow[interruptedPlan]{
 		plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{name: "synthetic"}, nil },
-		same: func(preview, current interruptedPlan) bool { return preview == current },
 		render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
 			_, err := fmt.Fprintln(w, "synthetic plan")
 			return err
@@ -143,7 +149,6 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 			cmd.SetOut(&out)
 			flow := applyFlow[interruptedPlan]{
 				plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{}, nil },
-				same: func(preview, current interruptedPlan) bool { return preview == current },
 				render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
 					_, err := fmt.Fprintln(w, "synthetic plan")
 					return err
@@ -190,7 +195,6 @@ func sequencedFlow(calls *[]string, names ...string) applyFlow[interruptedPlan] 
 			planned++
 			return interruptedPlan{name: name}, nil
 		},
-		same:         func(preview, current interruptedPlan) bool { return preview == current },
 		revalidation: revalidation{"synthetic", "synthetic plan"},
 		render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
 			_, err := fmt.Fprintln(w, "synthetic plan")
@@ -238,20 +242,6 @@ func TestAnApplyOfAnUnchangedPlanExecutesTheSecondAnswer(t *testing.T) {
 	}
 	if got := strings.Join(calls, ","); got != "plan,plan,execute same" {
 		t.Errorf("calls = %s", got)
-	}
-}
-
-// A flow that says nothing about how to compare cannot apply: the safe answer
-// to "did anything move" when nobody can tell is yes.
-func TestAFlowWithNoComparisonRefusesToApply(t *testing.T) {
-	var calls []string
-	flow := sequencedFlow(&calls, "same")
-	flow.same = nil
-	if _, err := runSequenced(t, flow, true); err == nil {
-		t.Fatal("a flow with no comparison applied")
-	}
-	if slices.Contains(calls, "execute same") {
-		t.Error("executed without comparing")
 	}
 }
 
@@ -328,5 +318,28 @@ func TestADiscoveredPlanIsStillReplannedBeforeMutating(t *testing.T) {
 	}
 	if got := strings.Join(calls, ","); got != "plan" {
 		t.Errorf("calls = %s, want exactly the one re-plan", got)
+	}
+}
+
+// A wrapper plan's Equal is what an apply compares, so it must see a change
+// in the plan it wraps and ignore what only shapes a suggestion or a label.
+func TestWrapperPlansCompareTheWrappedPlanAlone(t *testing.T) {
+	landed := prune.Plan{Landed: []string{"synthetic-a"}}
+	if !(prunePlan{Plan: landed, remote: "origin"}).Equal(prunePlan{Plan: landed, remote: "synthetic-remote", unpublished: true}) {
+		t.Error("prunePlan compared what only its suggestion reads")
+	}
+	if (prunePlan{Plan: landed}).Equal(prunePlan{Plan: prune.Plan{Landed: []string{"synthetic-b"}}}) {
+		t.Error("prunePlan missed a change in what it forgets")
+	}
+	parent := graph.TrackPlan{Parent: "synthetic-main"}
+	if !(trackPlan{parent, false}).Equal(trackPlan{parent, true}) {
+		t.Error("trackPlan compared whether another record describes the repository")
+	}
+	if (trackPlan{TrackPlan: parent}).Equal(trackPlan{TrackPlan: graph.TrackPlan{Parent: "synthetic-other"}}) {
+		t.Error("trackPlan missed a change of parent")
+	}
+	linked := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Branches: []string{"synthetic-a"}}}}
+	if (unlinkPlan{Plan: linked}).Equal(unlinkPlan{Plan: link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Branches: []string{"synthetic-b"}}}}}) {
+		t.Error("unlinkPlan missed a change in the discovery its number comes from")
 	}
 }

@@ -30,7 +30,6 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				plan: func(ctx context.Context) (push.Plan, error) {
 					return service.Plan(ctx, selection.Selection(), remote, upstream)
 				},
-				same:         push.Plan.Equal,
 				revalidation: revalidation{"push", "push plan"},
 				render:       writePushPlan,
 				guard:        guard,

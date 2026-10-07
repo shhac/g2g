@@ -25,7 +25,6 @@ func adoptFromFlow(service align.Service, guard func(context.Context) error) app
 		// blocked plans their own refusal path.
 		noOp:    func(plan align.AdoptPlan) bool { return len(plan.Adopt) == 0 },
 		blocked: align.AdoptPlan.Blocked,
-		same:    align.AdoptPlan.Equal,
 	}
 }
 

@@ -546,13 +546,16 @@ property the original had.
   making that safe was link's revalidation refusing any inequality two files
   away.
 - Revalidation belongs to `applyFlow`, not to the services. An apply asks the
-  flow's `plan` again and refuses unless `same` finds the answer equal to the
-  preview; `revalidation` names the event and the refusal. `precheck` runs
+  flow's `plan` again and refuses unless the answer `Equal`s the preview — the
+  flow's type parameter requires the method, so a command cannot leave the
+  comparison out, and a wrapper plan (`prunePlan`, `trackPlan`, `unlinkPlan`)
+  says on its own `Equal` which of its fields count. `revalidation` names the
+  event and the refusal. `precheck` runs
   before the second plan (a clean working tree for restack, submit, link and
   unlink) and `settle` after the comparison (link's unresolved mappings,
   prune's publication facts), both only on apply. Twenty services each carried
   a `Revalidate` that re-planned and compared, and unlink was clean-checked only
-  because it borrowed link's. A flow without `same` cannot apply.
+  because it borrowed link's.
 - Preview/apply sequencing is a safety contract, not just presentation. When a
   command can mutate, preserve its re-discovery/revalidation and final
   render/write/flush-before-mutation tests; command-family coverage lives under

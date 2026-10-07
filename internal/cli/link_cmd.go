@@ -32,7 +32,6 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 				plan: func(ctx context.Context) (link.Plan, error) {
 					return linkable(service.Plan(ctx, selection.Selection()))
 				},
-				same:         link.Plan.Equal,
 				revalidation: revalidation{"link", "link plan"},
 				precheck:     service.RequireClean,
 				settle: func(_ context.Context, plan link.Plan) (link.Plan, error) {

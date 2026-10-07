@@ -49,7 +49,6 @@ func adoptFlow(service graph.Service, selection graphOptions, trunk string, guar
 		plan: func(ctx context.Context) (graph.StackPlan, error) {
 			return service.PlanStack(ctx, selection.Selection(), trunk)
 		},
-		same:         graph.StackPlan.Equal,
 		revalidation: revalidation{"track.stack", "graph"},
 		render: func(writer io.Writer, plan graph.StackPlan, p Presentation) error {
 			return writeGraphView(writer, gitAdoptView(plan), plan.Discovery, p)

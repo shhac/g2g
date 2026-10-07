@@ -36,7 +36,6 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			plan: func(ctx context.Context) (create.Plan, error) {
 				return service.Plan(ctx, request)
 			},
-			same:         create.Plan.Equal,
 			revalidation: revalidation{"create", "the branch to create"},
 			render:       writeCreatePlan,
 			guard:        guard,

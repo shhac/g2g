@@ -173,7 +173,6 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		plan: func(ctx context.Context) (submit.Plan, error) {
 			return service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 		},
-		same:         submit.Plan.Equal,
 		revalidation: revalidation{"submit", "submit plan"},
 		precheck:     service.RequireClean,
 		suggest:      func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },

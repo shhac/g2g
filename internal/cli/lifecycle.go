@@ -19,15 +19,14 @@ import (
 // copies could drift apart — and they had, in spacing and in which of them
 // short-circuited a no-op. Here it is stated once, and a command supplies only
 // what genuinely differs.
-type applyFlow[P any] struct {
-	// plan discovers. An apply asks it again immediately before mutating and
-	// refuses unless same finds the second answer equal to the first, so a
-	// command supplies the comparison and the flow does the asking. Each
-	// service used to carry its own Revalidate doing exactly this, some twenty
-	// copies, and a command was free to hand the flow one that compared
-	// nothing.
+//
+// A plan compares itself: an apply asks plan again immediately before mutating
+// and refuses unless the second answer Equals the first. Each service used to
+// carry its own Revalidate doing exactly this, some twenty copies, and then
+// the comparison was a closure a command could leave out.
+type applyFlow[P interface{ Equal(P) bool }] struct {
+	// plan discovers, and is asked again by an apply.
 	plan    func(context.Context) (P, error)
-	same    func(P, P) bool
 	render  func(io.Writer, P, Presentation) error
 	execute func(context.Context, P) error
 	// revalidation names the comparison: event in the diagnostic stream, and
@@ -205,7 +204,7 @@ func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	if err != nil {
 		return none, err
 	}
-	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, f.same != nil && f.same(preview, current)); err != nil {
+	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, preview.Equal(current)); err != nil {
 		return none, err
 	}
 	if f.settle == nil {

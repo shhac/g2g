@@ -23,7 +23,6 @@ func newUntrack(service graph.Service, guard func(context.Context) error, presen
 			plan: func(ctx context.Context) (graph.UntrackPlan, error) {
 				return service.PlanUntrack(ctx, selection.Selection())
 			},
-			same:         graph.UntrackPlan.Equal,
 			revalidation: revalidation{"graph.untrack", "graph"},
 			render: func(writer io.Writer, plan graph.UntrackPlan, p Presentation) error {
 				return writeGraphView(writer, untrackView(plan), plan.Discovery, p)

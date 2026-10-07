@@ -65,7 +65,6 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 			plan, err := service.PlanWithOptions(ctx, selection, cleanup)
 			return prunePlan{Plan: plan, remote: remote}, err
 		},
-		same:         func(preview, current prunePlan) bool { return preview.Plan.Equal(current.Plan) },
 		revalidation: revalidation{"prune", "plan"},
 		// Only the plan an apply carries out is asked how what it keeps is
 		// published, since only it is followed by a suggestion.
@@ -102,6 +101,10 @@ type prunePlan struct {
 	remote      string
 	unpublished bool
 }
+
+// Equal compares what the prune does. The remote and what is published there
+// change only the suggestion that follows it.
+func (p prunePlan) Equal(other prunePlan) bool { return p.Plan.Equal(other.Plan) }
 
 // keepsUnpublished reports whether a branch the prune keeps is not on the
 // remote as it is here, by the comparison status makes from local refs alone.

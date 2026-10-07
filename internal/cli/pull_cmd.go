@@ -144,7 +144,6 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		plan: func(ctx context.Context) (syncer.Plan, error) {
 			return service.Plan(ctx, selection, remote, chosen)
 		},
-		same:         syncer.Plan.Equal,
 		revalidation: revalidation{"sync", "plan"},
 		render:       func(w io.Writer, plan syncer.Plan, p Presentation) error { return writeStackView(w, pullView(plan), p) },
 		execute:      service.Apply,

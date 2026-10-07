@@ -98,32 +98,9 @@ func (s Service) conclude(ctx context.Context, record Record) error {
 // planning because a successful rewrite has moved refs beyond the graph's old
 // fork points; planning against those stale points would see false drift.
 func (s Service) finishPass(ctx context.Context, record *Record, pass int) (finishOutcome, error) {
-	discovery, err := s.Graph.Discover(ctx, record.Selection())
+	plan, err := s.resumable(ctx, *record)
 	if err != nil {
 		return finishComplete, err
-	}
-	if missing := discovery.InState(graph.StateBranchMissing); len(missing) > 0 {
-		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", deletedMidway(missing).Sentence())
-	}
-	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
-		return finishComplete, err
-	}
-	// No pending: a resume runs after whatever the caller was going to
-	// move has already moved.
-	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, nil)
-	if err != nil {
-		return finishComplete, err
-	}
-	if plan.Held {
-		// Narrowing the selection is not a way out mid-resume: what is left
-		// to rewrite was decided when the restack started.
-		return finishComplete, fmt.Errorf("the restack cannot carry on: %s · switch that worktree to another branch, or close it, then run g2g restack --continue", plan.Repair.Reason)
-	}
-	if plan.Blocked() != "" {
-		// The work is not done, so the journal stays and --abort can still
-		// undo it. Reading a refusal as completion reported "Restack complete"
-		// and deleted the journal over a stack that was half rewritten.
-		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", plan.Blocked())
 	}
 	if len(plan.Steps) == 0 {
 		// Reparenting is held by the durable record: after a rewrite, the fresh
@@ -163,6 +140,39 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 		return finishComplete, err
 	}
 	return finishAgain, nil
+}
+
+// resumable records what the rewrite has done so far and plans what is left,
+// or says why the restack cannot carry on. Every refusal leaves the journal,
+// so --abort can still undo the work.
+func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
+	discovery, err := s.Graph.Discover(ctx, record.Selection())
+	if err != nil {
+		return Plan{}, err
+	}
+	if missing := discovery.InState(graph.StateBranchMissing); len(missing) > 0 {
+		return Plan{}, fmt.Errorf("the restack cannot carry on: %s", deletedMidway(missing).Sentence())
+	}
+	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
+		return Plan{}, err
+	}
+	// No pending: a resume runs after whatever the caller was going to
+	// move has already moved.
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, nil)
+	if err != nil {
+		return Plan{}, err
+	}
+	if plan.Held {
+		// Narrowing the selection is not a way out mid-resume: what is left
+		// to rewrite was decided when the restack started.
+		return Plan{}, fmt.Errorf("the restack cannot carry on: %s · switch that worktree to another branch, or close it, then run g2g restack --continue", plan.Repair.Reason)
+	}
+	if plan.Blocked() != "" {
+		// Reading a refusal as completion reported "Restack complete" and
+		// deleted the journal over a stack that was half rewritten.
+		return Plan{}, fmt.Errorf("the restack cannot carry on: %s", plan.Blocked())
+	}
+	return plan, nil
 }
 
 // deletedMidway refuses a resume after a selected branch was deleted with

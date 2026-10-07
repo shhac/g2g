@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -588,5 +589,57 @@ func TestFastForwardOfTheCheckedOutBranchRefusesBeforeMovingIt(t *testing.T) {
 	}
 	if edited, err := os.ReadFile(filepath.Join(dir, "ahead.txt")); err != nil || string(edited) != "a local edit" {
 		t.Errorf("the local change was lost: %q, %v", edited, err)
+	}
+}
+
+// The checkout moves before the ref does, so a ref that then cannot move has to
+// take the checkout back with it: otherwise a refusal leaves the working tree
+// describing a commit the branch is not on, reported as changes nobody made.
+func TestAMoveWhoseRefCannotUpdatePutsTheCheckoutBack(t *testing.T) {
+	for name, move := range map[string]func(Client) error{
+		"fast-forward": func(c Client) error { return c.FastForward(context.Background(), "synthetic-trunk", "synthetic-ahead") },
+		"reset":        func(c Client) error { return c.ResetBranch(context.Background(), "synthetic-trunk", "synthetic-ahead") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, client := fastForwardRepo(t)
+			t.Chdir(dir)
+			before := revisionOf(t, "synthetic-trunk")
+			// Git refuses to update a ref whose lock another process holds.
+			lock := filepath.Join(dir, ".git", "refs", "heads", "synthetic-trunk.lock")
+			if err := os.WriteFile(lock, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := move(client); err == nil {
+				t.Fatal("the move succeeded although the ref was locked")
+			}
+			if after := revisionOf(t, "synthetic-trunk"); after != before {
+				t.Errorf("synthetic-trunk moved to %s", after)
+			}
+			if status := gitExec(t, "status", "--porcelain"); status != "" {
+				t.Errorf("the checkout was left describing another commit:\n%s", status)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "ahead.txt")); !os.IsNotExist(err) {
+				t.Errorf("the target's file is still in the working tree: %v", err)
+			}
+		})
+	}
+}
+
+// ResolveAll asks for everything in one process and falls back to asking one at
+// a time when the batch cannot say which revision failed. The answer must still
+// pair each name with its own commit and leave out the one that does not exist:
+// it supplies the leases a deletion is pinned to.
+func TestResolveAllAnswersOnlyTheRevisionsThatExist(t *testing.T) {
+	dir, client := fastForwardRepo(t)
+	t.Chdir(dir)
+
+	resolved, err := client.ResolveAll(context.Background(), []string{"synthetic-trunk", "synthetic-missing", "synthetic-ahead", "synthetic-trunk"})
+	if err != nil {
+		t.Fatalf("ResolveAll() error = %v", err)
+	}
+	want := map[string]string{"synthetic-trunk": revisionOf(t, "synthetic-trunk"), "synthetic-ahead": revisionOf(t, "synthetic-ahead")}
+	if !maps.Equal(resolved, want) {
+		t.Errorf("ResolveAll() = %v, want %v", resolved, want)
 	}
 }

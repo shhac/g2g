@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // glyphs distinguish the trunk from the branches stacked on it. A projection
@@ -51,7 +53,7 @@ func writeStackView(writer io.Writer, view stackView, p Presentation) error {
 		lines = append(lines, "", p.problem(view.BlockedHeading+": "+view.Blocked))
 	}
 	if len(view.Action) != 0 {
-		lines = append(lines, "", p.accent(view.commandHeading()), commandLine(commandText(view.Action), p))
+		lines = append(lines, "", p.accent(view.commandHeading()), commandLine(repair.Command(view.Action), p))
 	}
 	lines = append(lines, sequenceLines(view, p)...)
 	if len(view.Notes) != 0 {

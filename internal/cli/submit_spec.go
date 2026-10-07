@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/submit"
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -111,5 +112,5 @@ func (o submitOptions) retryCommand(tail ...string) string {
 			args = append(args, flag.name)
 		}
 	}
-	return commandText(append(args, tail...))
+	return repair.Command(append(args, tail...))
 }

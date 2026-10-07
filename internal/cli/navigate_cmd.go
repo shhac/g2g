@@ -12,6 +12,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/navigate"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -152,7 +153,7 @@ func writeMove(writer io.Writer, move navigate.Move, dryRun bool, p Presentation
 	if err := prose(writer, p, p.accent("Would switch to ")+p.branch(move.Destination)+"  "+p.subdued("· "+describeMove(move))); err != nil {
 		return err
 	}
-	return prose(writer, p, commandLine(commandText(switchCommand(move)), p))
+	return prose(writer, p, commandLine(repair.Command(switchCommand(move)), p))
 }
 
 func switchCommand(move navigate.Move) []string {

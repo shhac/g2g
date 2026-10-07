@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/create"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // stagedShown is how many staged paths are named before the rest are counted.
@@ -55,11 +56,11 @@ func createView(plan create.Plan) stackView {
 // `track --parent` writes, so that is the command named for it.
 func createSequence(plan create.Plan) []stackStep {
 	steps := []stackStep{
-		{Command: commandText([]string{"git", "switch", "-c", plan.Name, plan.Parent}), Effect: "start " + plan.Name + " at " + plan.Parent + " and check it out"},
-		{Command: commandText([]string{"g2g", "track", "--branch", plan.Name, "--parent", plan.Parent, "--apply"}), Effect: "record it under " + plan.Parent},
+		{Command: repair.Command([]string{"git", "switch", "-c", plan.Name, plan.Parent}), Effect: "start " + plan.Name + " at " + plan.Parent + " and check it out"},
+		{Command: repair.Command([]string{"g2g", "track", "--branch", plan.Name, "--parent", plan.Parent, "--apply"}), Effect: "record it under " + plan.Parent},
 	}
 	if plan.Commit {
-		steps = append(steps, stackStep{Command: commandText([]string{"git", "commit", "-m", plan.Message}), Effect: "commit what is staged"})
+		steps = append(steps, stackStep{Command: repair.Command([]string{"git", "commit", "-m", plan.Message}), Effect: "commit what is staged"})
 	}
 	return steps
 }

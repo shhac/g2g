@@ -16,6 +16,13 @@ func Command(args []string) string {
 	return strings.Join(parts, " ")
 }
 
+// Quote is one argument as Command renders it, for a name spliced into a
+// command that also holds something the shell must see as written, such as a
+// <branch> placeholder the reader fills in.
+func Quote(argument string) string {
+	return Command([]string{argument})
+}
+
 func shellSafe(r rune) bool {
 	switch {
 	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':

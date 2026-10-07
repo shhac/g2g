@@ -5,6 +5,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
@@ -82,7 +83,7 @@ func (s selected) from(remote string) selected {
 func (s selected) aim(target suggestable) (string, bool) {
 	command := target.command
 	if s.named {
-		command += " --branch " + shellQuote(s.branch)
+		command += " --branch " + repair.Quote(s.branch)
 	}
 	switch {
 	case s.scope == "" || s.scope.Within(target.fallback):
@@ -92,7 +93,7 @@ func (s selected) aim(target suggestable) (string, bool) {
 		return "", false
 	}
 	if target.remote && s.remote != "" && s.remote != localgit.DefaultRemote {
-		command += " --remote " + shellQuote(s.remote)
+		command += " --remote " + repair.Quote(s.remote)
 	}
 	return command, true
 }

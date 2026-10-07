@@ -79,10 +79,7 @@ func stoppedMidRetarget(cmd *cobra.Command, stopped *retarget.Stopped, retry str
 		numbers = append(numbers, change.Number)
 	}
 	moved := "Moved the base of " + pullRequestList(numbers) + ", and " + pick(len(numbers), "it stays", "they stay") + " moved."
-	// A stop part-way prints nothing on stderr, so this is the only place
-	// what gh said can be shown.
-	writeDiagnostic(cmd.ErrOrStderr(), stopped)
-	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+	return writeStoppedPartWay(cmd, p,
 		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed.Number, stopped.Err),
 		moved+" Rerun "+runnable(retry)+" to finish; it moves only the bases still wrong.",
 		stopped)

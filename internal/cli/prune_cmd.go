@@ -86,7 +86,7 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 			if !errors.As(cause, &stopped) {
 				return false, nil
 			}
-			return true, writeStoppedPartWay(cmd.OutOrStdout(), p, "Cleanup stopped part-way: "+stopped.Err.Error(), stopped.WhatStands()+" Preview "+runnable(stopped.Retry)+" to see what remains.", stopped)
+			return true, writeStoppedPartWay(cmd, p, "Cleanup stopped part-way: "+stopped.Err.Error(), stopped.WhatStands()+" Preview "+runnable(stopped.Retry)+" to see what remains.", stopped)
 		},
 		notices: notices,
 	}

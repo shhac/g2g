@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -50,7 +49,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 				if !errors.As(err, &partial) {
 					return false, nil
 				}
-				return true, stoppedMidCreate(cmd.OutOrStdout(), partial, presentation)
+				return true, stoppedMidCreate(cmd, partial, presentation)
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to create it.",
@@ -73,8 +72,8 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 // stoppedMidCreate reports a branch that was created and recorded and then
 // could not be committed to. What it says is exactly what is true: the branch
 // exists, it is checked out, it is recorded, and the changes are still staged.
-func stoppedMidCreate(writer io.Writer, partial *create.Partial, p Presentation) error {
-	return writeStoppedPartWay(writer, p,
+func stoppedMidCreate(cmd *cobra.Command, partial *create.Partial, p Presentation) error {
+	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: the commit failed: "+partial.Err.Error(),
 		partial.Branch+" is created, checked out and recorded under "+partial.Parent+", and what was staged is still staged · commit it with "+runnable("git commit")+".",
 		partial)

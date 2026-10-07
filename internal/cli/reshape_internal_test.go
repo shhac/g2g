@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/reshape"
+	"github.com/spf13/cobra"
 )
 
 // A removal that finished and could not tidy up, and a rollback that could not
@@ -31,7 +32,9 @@ func TestReshapeClaimsOnlyWhatIsLeftPartWay(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
-			handled, err := reshapeInterrupted[reshape.Plan](&out, Presentation{})(context.Background(), reshape.Plan{}, test.err)
+			cmd := &cobra.Command{}
+			cmd.SetOut(&out)
+			handled, err := reshapeInterrupted[reshape.Plan](cmd, Presentation{})(context.Background(), reshape.Plan{}, test.err)
 
 			if handled != test.stopped || wasStopped(err) != test.stopped {
 				t.Fatalf("handled %v stopped %v, want %v", handled, wasStopped(err), test.stopped)

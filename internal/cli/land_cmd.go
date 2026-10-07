@@ -154,7 +154,6 @@ func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error
 // context it is handed is the mutation budget, and when the reason it stopped
 // is that budget expiring, it has already expired.
 func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) error {
-	writer := cmd.OutOrStdout()
 	landed := "Nothing merged."
 	if len(stopped.Landed) != 0 {
 		landed = "Merged " + branchList(stopped.Landed) + ", and they stay merged."
@@ -167,13 +166,10 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	if len(stopped.Tidied) != 0 {
 		landed += " Cleaned up after " + branchList(stopped.Tidied) + ", which had already landed."
 	}
-	// A stop part-way prints nothing on stderr, so this is the only place
-	// what gh said can be shown.
-	writeDiagnostic(cmd.ErrOrStderr(), stopped)
 	// The merges that happened are permanent, so this is not a failure to
 	// retry — but it is not what was asked for either, and a script reading
 	// only the status had no way to tell the two apart.
-	return writeStoppedPartWay(writer, p,
+	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error(),
 		landed+" Rerun "+runnable("g2g land")+" to see what is left.",
 		stopped)

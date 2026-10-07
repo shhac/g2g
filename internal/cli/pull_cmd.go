@@ -192,20 +192,20 @@ func pullThenPrune(cmd *cobra.Command, ctx context.Context, pull applyFlow[synce
 func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
 	var cleanup *prune.Stopped
 	if errors.As(cause, &cleanup) {
-		return writeWhatStands(cmd.OutOrStdout(), p, "The pull stands; cleanup stopped part-way as reported above.", cause)
+		return writeWhatStands(cmd, p, "The pull stands; cleanup stopped part-way as reported above.", cause)
 	}
 	if !toldNotApplied(cause) {
 		if err := prose(cmd.OutOrStdout(), p, p.problem("The prune could not run: "+cause.Error())); err != nil {
 			return err
 		}
 	}
-	return writeWhatStands(cmd.OutOrStdout(), p, "The pull stands and nothing was forgotten · run "+runnable("g2g prune")+" once that is resolved.", cause)
+	return writeWhatStands(cmd, p, "The pull stands and nothing was forgotten · run "+runnable("g2g prune")+" once that is resolved.", cause)
 }
 
 // stoppedAfterMoving reports a sync that brought some branches down and then
 // failed without leaving a replay to resume.
 func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentation) error {
-	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: "+stopped.Err.Error(),
 		"Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.",
 		stopped)
@@ -221,7 +221,7 @@ func stoppedMidSync(cmd *cobra.Command, p Presentation) error {
 	if err := prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way.")); err != nil {
 		return err
 	}
-	return writeWhatStands(cmd.OutOrStdout(), p,
+	return writeWhatStands(cmd, p,
 		"The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+".",
 		errors.New("the replay stopped part-way"))
 }

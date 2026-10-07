@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -45,17 +47,22 @@ func stoppedPartWay(err error) error { return stoppedError{err} }
 
 // writeStoppedPartWay reports a stop part-way: what stopped it, set apart from
 // what came before, then what stands and how to go on.
-func writeStoppedPartWay(w io.Writer, p Presentation, problem, detail string, cause error) error {
-	if err := prose(w, p, "\n"+p.problem(problem)); err != nil {
+func writeStoppedPartWay(cmd *cobra.Command, p Presentation, problem, detail string, cause error) error {
+	if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem(problem)); err != nil {
 		return err
 	}
-	return writeWhatStands(w, p, detail, cause)
+	return writeWhatStands(cmd, p, detail, cause)
 }
 
 // writeWhatStands closes a stop part-way whose problem line is already on the
 // page, for the reports that say it differently or not at all.
-func writeWhatStands(w io.Writer, p Presentation, detail string, cause error) error {
-	if err := prose(w, p, p.subdued(detail)); err != nil {
+//
+// It also writes what gh said, on stderr. A stop part-way prints nothing
+// further there, so this is the only place it can be shown, and each report
+// writing it itself had already been forgotten by two of them.
+func writeWhatStands(cmd *cobra.Command, p Presentation, detail string, cause error) error {
+	writeDiagnostic(cmd.ErrOrStderr(), cause)
+	if err := prose(cmd.OutOrStdout(), p, p.subdued(detail)); err != nil {
 		return err
 	}
 	return stoppedPartWay(cause)

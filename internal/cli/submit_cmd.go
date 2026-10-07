@@ -258,10 +258,7 @@ func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry
 	if len(stopped.Opened) != 0 {
 		done += "Opened " + pick(len(stopped.Opened), "a pull request", "pull requests") + " for " + branchList(stopped.Opened) + ". "
 	}
-	// A stop part-way prints nothing on stderr, so this is the only place
-	// what gh said can be shown.
-	writeDiagnostic(cmd.ErrOrStderr(), stopped)
-	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: "+stopped.Err.Error(),
 		done+"That stands. Rerun "+runnable(retry)+" to finish; it keeps the pull requests that exist and opens only the missing ones.",
 		stopped)

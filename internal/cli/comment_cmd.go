@@ -74,10 +74,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 // stoppedMidComment says which comments were written before the run failed.
 func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, p Presentation) error {
 	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
-	// A stop part-way prints nothing on stderr, so this is the only place
-	// what gh said can be shown.
-	writeDiagnostic(cmd.ErrOrStderr(), stopped)
-	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+	return writeStoppedPartWay(cmd, p,
 		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err),
 		written+" Rerun "+runnable("g2g github comment --apply")+" to finish; it edits rather than adds.",
 		stopped)

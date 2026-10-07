@@ -149,10 +149,10 @@ func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter
 		if cause != nil {
 			_ = prose(cmd.OutOrStdout(), p, p.subdued(cause.Error()))
 		}
-		return writeWhatStands(cmd.OutOrStdout(), p, "Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo.", cause)
+		return writeWhatStands(cmd, p, "Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo.", cause)
 	}
 	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+branchList(paths)+"."))
-	return writeWhatStands(cmd.OutOrStdout(), p, "Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo.", cause)
+	return writeWhatStands(cmd, p, "Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo.", cause)
 }
 
 // runRestack is the preview/apply sequence, driven by applyFlow like every

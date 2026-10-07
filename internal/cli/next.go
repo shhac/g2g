@@ -9,10 +9,6 @@ import (
 	"github.com/shhac/g2g/internal/stack"
 )
 
-// defaultRemote is the remote a command reads and publishes to when none is
-// named, and so the one a suggestion need not name.
-const defaultRemote = "origin"
-
 // replayNext follows a rewrite, pull's or restack's, from what it did. A
 // branch whose work it found already in its base is forgotten first, because
 // publishing would push a branch that has landed; prune also records what sat

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
@@ -81,7 +82,7 @@ func TestCleanupReportsCompletedDeletionAndScopedRetryAsPartWay(t *testing.T) {
 		Deleted: []string{"synthetic-work"}, Err: errors.New("synthetic graph write failure"),
 		Retry: "g2g prune --branch synthetic-main --scope all --forget-missing --delete-branches",
 	}
-	flow := pruneFlow(prune.Service{}, push.Known{}, defaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
+	flow := pruneFlow(prune.Service{}, push.Known{}, localgit.DefaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
 	flow.plan = func(context.Context) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
 	flow.revalidate = func(context.Context, prunePlan) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
 	flow.execute = func(context.Context, prunePlan) error { return stopped }

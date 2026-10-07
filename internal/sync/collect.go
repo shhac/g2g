@@ -279,7 +279,7 @@ func divergenceWays(selection graph.Selection, remote string, take Take, parents
 	if selection.Scope == graph.ScopeTrunk {
 		command += " --scope " + string(graph.ScopeTrunk)
 	}
-	if remote != "" && remote != "origin" {
+	if remote != "" && remote != localgit.DefaultRemote {
 		command += " --remote " + remote
 	}
 	command += " --take " + string(SidePublished)
@@ -296,7 +296,7 @@ func divergenceWays(selection graph.Selection, remote string, take Take, parents
 // caller that never chose one means, which is origin.
 func remoteName(remote string) string {
 	if remote == "" {
-		return "origin"
+		return localgit.DefaultRemote
 	}
 	return remote
 }

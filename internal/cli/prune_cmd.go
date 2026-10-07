@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
@@ -30,7 +31,7 @@ func newPrune(service prune.Service, published push.Known, guard func(context.Co
 			return err
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
-		return pruneFlow(service, published, defaultRemote, selection.Selection(), guard, cmd, presentation, cleanup).run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		return pruneFlow(service, published, localgit.DefaultRemote, selection.Selection(), guard, cmd, presentation, cleanup).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the listed cleanup instead of previewing the change")
 	cmd.Flags().BoolVar(&cleanup.DeleteBranches, "delete-branches", false, "also delete the local branches whose work is already upstream (refuses checked-out branches)")
@@ -136,7 +137,7 @@ func pruneNext(plan prunePlan) string {
 		return acted.next("g2g status", shape.ReadScopes, graph.ScopeStack)
 	}
 	command := "g2g push"
-	if plan.remote != defaultRemote {
+	if plan.remote != localgit.DefaultRemote {
 		command += " --remote " + plan.remote
 	}
 	return acted.next(command, shape.ProjectScopes, shape.ScopeStack)

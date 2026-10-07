@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/comment"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/land"
 	"github.com/shhac/g2g/internal/shape"
@@ -41,7 +42,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	flags.selection.registerScope(cmd, shape.ProjectScopes, shape.ScopePath, scopeUsage("land", shape.ProjectScopes))
 	cmd.Flags().StringVar(&flags.method, "method", string(githubstack.MethodSquash), "how to merge each pull request: "+methodNames())
 	_ = cmd.RegisterFlagCompletionFunc("method", completionCallback(methodCompletions()))
-	cmd.Flags().StringVar(&flags.options.Remote, "remote", "origin", "Git remote the branches are published to")
+	cmd.Flags().StringVar(&flags.options.Remote, "remote", localgit.DefaultRemote, "Git remote the branches are published to")
 	cmd.Flags().BoolVar(&flags.options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
 	cmd.Flags().BoolVar(&flags.noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
 	cmd.Flags().BoolVar(&flags.noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")

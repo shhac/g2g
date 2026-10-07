@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/restack"
@@ -62,7 +63,7 @@ func newDoctor(service graph.Service, restacker restack.Service, published push.
 		}
 		return nil
 	}
-	cmd.Flags().StringVar(&remote, "remote", "origin", "the remote whose last-known branches each one is compared with")
+	cmd.Flags().StringVar(&remote, "remote", localgit.DefaultRemote, "the remote whose last-known branches each one is compared with")
 	return cmd
 }
 

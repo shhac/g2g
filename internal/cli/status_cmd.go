@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
@@ -43,7 +44,7 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 		view = rememberedPRs(ctx, view, discovery, observations)
 		return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
 	}
-	cmd.Flags().StringVar(&remote, "remote", "origin", "the remote whose last-known branches each one is compared with")
+	cmd.Flags().StringVar(&remote, "remote", localgit.DefaultRemote, "the remote whose last-known branches each one is compared with")
 	// Only the records that need no network. Reading a pull request base means
 	// invoking gh, and this command answering without one is the whole reason
 	// it exists separately from github status.

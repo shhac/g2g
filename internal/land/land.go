@@ -117,7 +117,7 @@ type Options struct {
 
 // Defaults are the options a bare invocation means.
 func Defaults() Options {
-	return Options{Remote: "origin", Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Comment: true}
+	return Options{Remote: localgit.DefaultRemote, Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Comment: true}
 }
 
 // Ready reports a service with everything it needs.

@@ -126,7 +126,7 @@ func (c Client) IsolatedTips(ctx context.Context, remote string) (map[string]str
 // KnownParent reports the default remote's locally known parent tip for
 // offline tracking. A repository without that remote has no evidence to add.
 func (c Client) KnownParent(ctx context.Context, parent string) (string, error) {
-	tips, err := c.KnownTips(ctx, defaultRemote, []string{parent})
+	tips, err := c.KnownTips(ctx, DefaultRemote, []string{parent})
 	if errors.Is(err, ErrNoSuchRemote) {
 		return "", nil
 	}

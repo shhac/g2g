@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/comment"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
@@ -31,7 +32,7 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 	// A GitHub native stack is linear, so these are the two scopes that can
 	// produce one. stack still refuses when it forks, naming the remedy.
 	options.selection.registerScope(cmd, shape.ProjectScopes, shape.ScopeStack, scopeUsage("submit", shape.ProjectScopes))
-	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to push to")
+	cmd.Flags().StringVar(&options.remote, "remote", localgit.DefaultRemote, "Git remote to push to")
 	cmd.Flags().StringVar(&options.specPath, "spec", "", "submission JSON spec to validate or apply")
 	cmd.Flags().StringVar(&options.writeSpec, "write-spec", "", "write a draft spec in a private temporary directory, without applying")
 	cmd.Flags().BoolVar(&options.edit, "edit", false, "create and edit one temporary submission spec document")

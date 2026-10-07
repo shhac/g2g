@@ -7,9 +7,11 @@ import (
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
-// defaultRemote is where a repository's default branch is looked up when a
-// caller has no opinion. It is the same default push uses, stated once.
-const defaultRemote = "origin"
+// DefaultRemote is the remote every command reads from and publishes to when
+// none is named, and so the one advice can leave unnamed. It is stated once
+// because a suggestion that omits --remote is only right while the command it
+// suggests defaults to the same remote.
+const DefaultRemote = "origin"
 
 // DefaultBranch reports the branch the remote considers its default, from
 // refs/remotes/<remote>/HEAD.
@@ -24,7 +26,7 @@ const defaultRemote = "origin"
 // answers with an empty string rather than an error.
 func (c Client) DefaultBranch(ctx context.Context, remote string) (string, error) {
 	if remote == "" {
-		remote = defaultRemote
+		remote = DefaultRemote
 	}
 	if err := subprocess.CheckArgument("git", "remote name", remote); err != nil {
 		return "", err

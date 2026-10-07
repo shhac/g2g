@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
@@ -36,7 +37,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, published, options.remote, options.selection.Selection(), guard, cmd, presentation, options.cleanup), presentation, options.apply)
 	}
 
-	cmd.Flags().StringVar(&options.remote, "remote", defaultRemote, "Git remote to read from, as git remote names it")
+	cmd.Flags().StringVar(&options.remote, "remote", localgit.DefaultRemote, "Git remote to read from, as git remote names it")
 	// Offered only where the build can prune, rather than offered and refused.
 	if pruner.Ready() {
 		cmd.Flags().BoolVar(&options.alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")

@@ -1,5 +1,6 @@
 // Package stack resolves the read-only picture every stack-oriented command
-// starts from: a safe, local Graphite path and the GitHub pull requests on it.
+// starts from: a safe, local path, from whichever record describes it, and the
+// GitHub pull requests on it.
 //
 // This lives here rather than in any one command's package so that link, sync,
 // status, unlink and submit can share it without depending on each other.
@@ -15,7 +16,6 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/shape"
 
 	"github.com/shhac/g2g/internal/subprocess"
@@ -27,29 +27,20 @@ type Git interface {
 	LocalBranches(context.Context) ([]string, error)
 }
 
-// Graphite reads declared structure without checking out a branch.
-//
-// One read, because there is one question: what does Graphite declare. How much
-// of that a command acts on is a scope, applied here, rather than a shape
-// Graphite is asked to produce.
-type Graphite interface {
-	ReadForest(context.Context) (graphite.Forest, error)
-}
-
 // GitHub reads the pull requests on a discovered path. Inspect is read-only.
 type GitHub interface {
 	Inspect(context.Context, []string) ([]githubstack.PullRequest, error)
 }
 
-// Discovery is the complete read-only picture: the Graphite-declared path plus
-// the GitHub pull requests on it. Commands add their own policy on top; none
+// Discovery is the complete read-only picture: the selected path plus the
+// GitHub pull requests on it. Commands add their own policy on top; none
 // of them need to re-derive these facts.
 type Discovery struct {
 	Snapshot
 	PullRequests []githubstack.PullRequest
 }
 
-// Equal reports whether two snapshots describe the same Graphite path.
+// Equal reports whether two snapshots describe the same path.
 // Revalidation compares this immediately before a mutation, so every fact that
 // could change what the command does belongs here — including the declared
 // ancestry above the base, which can move without altering Branches.
@@ -254,8 +245,8 @@ func (s Snapshot) forkedAt() string {
 	return forks[0]
 }
 
-// Resolve selects a local Graphite path without checkout. command names the
-// consumer's action in an option-like branch safety error.
+// errNotConfigured is a selector asked to read without the clients it reads
+// through.
 var errNotConfigured = fmt.Errorf("stack resolver is not fully configured")
 
 // EffectiveScope is the scope this selection means.

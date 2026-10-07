@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/shhac/g2g/internal/graphite"
 )
 
 // This file is the Graphite source: everything that turns what Graphite
@@ -16,6 +18,15 @@ import (
 // shares, because Graphite was the original source and the siblings grew up
 // around it — so the one file named for the package was the one file describing
 // a particular record.
+
+// Graphite reads declared structure without checking out a branch.
+//
+// One read, because there is one question: what does Graphite declare. How much
+// of that a command acts on is a scope, applied here, rather than a shape
+// Graphite is asked to produce.
+type Graphite interface {
+	ReadForest(context.Context) (graphite.Forest, error)
+}
 
 // GraphiteSelector describes branches Graphite declares.
 type GraphiteSelector struct {

@@ -24,7 +24,6 @@ func (s Service) planDeletions(ctx context.Context, plan *Plan, assessed map[str
 	for _, branch := range plan.Landed {
 		if path, held := holders[branch]; held {
 			plan.Repair = repair.Note{Reason: branch + " is checked out in " + path, Ways: []repair.Step{{Effect: "switch that worktree to another branch, then preview the prune again"}}}
-			plan.Blocked = plan.Repair.Sentence()
 			return nil
 		}
 	}

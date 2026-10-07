@@ -13,8 +13,8 @@ import (
 // Apply forgets the selected records, recording each evidenced surviving child
 // on the branch below. Explicit local deletion uses the assessed tips as leases.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("%s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("%s", plan.Blocked())
 	}
 	if plan.Nothing() {
 		return nil

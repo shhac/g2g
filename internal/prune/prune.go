@@ -79,11 +79,14 @@ type Plan struct {
 	// recorded with instead, keyed by the child. Only a child Git already shows
 	// sitting on the branch below is in it: see rehome.
 	Rehome map[string]graph.Edge
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
-	// Repair is Blocked in the shape a caller can lay out.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // Nothing reports a plan with no branch to forget.
 func (p Plan) Nothing() bool { return len(p.Landed) == 0 && len(p.ForgottenMissing) == 0 }
@@ -93,7 +96,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options && maps.Equal(p.Delete, other.Delete) && maps.Equal(p.Tips, other.Tips) &&
 		slices.Equal(p.ForgottenMissing, other.ForgottenMissing) &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Landed, other.Landed) &&
 		slices.Equal(p.Missing, other.Missing) &&
 		maps.Equal(p.Rehome, other.Rehome)

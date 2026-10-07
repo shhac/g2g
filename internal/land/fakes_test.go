@@ -294,7 +294,7 @@ type fakePruner struct {
 }
 
 func (f *fakePruner) Plan(_ context.Context, selection graph.Selection) (prune.Plan, error) {
-	plan := prune.Plan{Landed: []string{selection.Branch}, Blocked: f.blocked}
+	plan := prune.Plan{Landed: []string{selection.Branch}, Repair: repair.Note{Reason: f.blocked}}
 	if f.nothing {
 		plan.Landed = nil
 	}

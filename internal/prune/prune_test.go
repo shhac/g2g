@@ -162,8 +162,8 @@ func TestApplyForgetsTheBranchAndReleasesItsForkPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q; forgetting a tip strands nothing", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q; forgetting a tip strands nothing", plan.Blocked())
 	}
 	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -189,11 +189,11 @@ func TestPlanRefusesToStrandABranchRecordedUnderALandedOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = \"\"; forgetting synthetic-a alone would strand synthetic-b")
 	}
-	if !strings.Contains(plan.Blocked, "strand") {
-		t.Errorf("refusal does not say what it protects: %q", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "strand") {
+		t.Errorf("refusal does not say what it protects: %q", plan.Blocked())
 	}
 }
 
@@ -250,8 +250,8 @@ func TestAChildAlreadyOnTheBranchBelowIsRecordedThere(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q; synthetic-b already sits on the trunk", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q; synthetic-b already sits on the trunk", plan.Blocked())
 	}
 	want := graph.Edge{Parent: "synthetic-trunk", ForkPoint: "synthetic-trunk-tip", Origin: graph.OriginAncestry}
 	if got := plan.Rehome["synthetic-b"]; got != want || len(plan.Rehome) != 1 {
@@ -293,7 +293,7 @@ func TestOnlyTheChildGitCannotPlaceIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = \"\"; synthetic-d does not sit on the trunk")
 	}
 	named := ""
@@ -315,8 +315,8 @@ func TestAChildOutsideTheSelectionIsNeverRehomed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" || len(plan.Rehome) != 0 {
-		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b left to the refusal", plan.Blocked, plan.Rehome)
+	if plan.Blocked() == "" || len(plan.Rehome) != 0 {
+		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b left to the refusal", plan.Blocked(), plan.Rehome)
 	}
 }
 

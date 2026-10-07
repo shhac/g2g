@@ -81,7 +81,7 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		// Forgetting a branch while something recorded under it survives is
 		// a refusal, so it belongs before the ready banner rather than
 		// after it, in Apply.
-		blocked: func(plan prunePlan) string { return plan.Blocked },
+		blocked: func(plan prunePlan) string { return plan.Blocked() },
 		suggest: pruneNext,
 		interrupted: func(_ context.Context, _ prunePlan, cause error) (bool, error) {
 			var stopped *prune.Stopped

@@ -143,8 +143,8 @@ func TestCleanupRefusesEveryCheckedOutBranch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(plan.Blocked, "checked out") {
-				t.Fatalf("refusal = %q", plan.Blocked)
+			if !strings.Contains(plan.Blocked(), "checked out") {
+				t.Fatalf("refusal = %q", plan.Blocked())
 			}
 			if err := service.Apply(context.Background(), plan); err == nil {
 				t.Fatal("applied a refused cleanup")

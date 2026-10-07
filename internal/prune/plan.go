@@ -69,9 +69,8 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	plan.Rehome = rehome
 	if len(left) != 0 {
 		plan.Repair = strandedNote(left)
-		plan.Blocked = plan.Repair.Sentence()
 	}
-	if options.DeleteBranches && plan.Blocked == "" {
+	if options.DeleteBranches && plan.Blocked() == "" {
 		if err := s.planDeletions(ctx, &plan, plan.Tips); err != nil {
 			return Plan{}, err
 		}
@@ -79,7 +78,7 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	diagnostic.Event(ctx, "prune.plan",
 		diagnostic.Field{Key: "selected", Value: strings.Join(discovery.Branches, ",")},
 		diagnostic.Field{Key: "landed", Value: strings.Join(plan.Landed, ",")},
-		diagnostic.Field{Key: "blocked", Value: plan.Blocked},
+		diagnostic.Field{Key: "blocked", Value: plan.Blocked()},
 	)
 	return plan, nil
 }

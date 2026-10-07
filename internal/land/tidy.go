@@ -120,8 +120,8 @@ func (s Service) forget(ctx context.Context, plan Plan, landed string) error {
 	// A prune that will not forget it stops here, before its refs are
 	// deleted. Carrying on left the graph recording a branch that no longer
 	// existed, found only later by doctor as "branch missing".
-	if pruned.Blocked != "" {
-		return fmt.Errorf("%s merged, and cannot be forgotten: %s", landed, pruned.Blocked)
+	if pruned.Blocked() != "" {
+		return fmt.Errorf("%s merged, and cannot be forgotten: %s", landed, pruned.Blocked())
 	}
 	if pruned.Nothing() {
 		return fmt.Errorf("%s merged, but git does not find its work in %s by content, so it is left recorded · run g2g status to see why", landed, edge.Parent)

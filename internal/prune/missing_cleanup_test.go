@@ -23,7 +23,7 @@ func TestForgetMissingRequiresEvidenceForASurvivingChild(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (plan.Blocked == "") != sits {
+			if (plan.Blocked() == "") != sits {
 				t.Fatalf("unsafe missing cleanup: %+v", plan)
 			}
 			if !sits {

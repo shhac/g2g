@@ -2,6 +2,7 @@ package align
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -284,7 +285,7 @@ func TestRevalidateAdoptRefusesAChangedGraph(t *testing.T) {
 		Trunks: []string{"synthetic-trunk"},
 	}
 
-	if _, err := testutil.Replan(preview)(svc.PlanAdopt(context.Background())); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanAdopt(context.Background())); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateAdopt() error = nil after the graph moved")
 	}
 }
@@ -410,7 +411,7 @@ func TestRevalidateAdoptCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-lower": "synthetic-top",
 	}, "synthetic-top")
 
-	if _, err := testutil.Replan(preview)(svc.PlanAdopt(context.Background())); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanAdopt(context.Background())); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateAdopt() error = nil when the parent moved at an unchanged adoption count")
 	}
 }

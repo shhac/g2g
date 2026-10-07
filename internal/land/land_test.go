@@ -419,7 +419,7 @@ func TestRevalidationRefusesAMoveAboveTheDescent(t *testing.T) {
 	preview := w.plan(t, Defaults())
 	w.git.tips["synthetic-two"] = "synthetic-reviewer-tip"
 
-	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), stack.Selection{Scope: shape.ScopeStack}, Defaults())); err == nil {
+	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), stack.Selection{Scope: shape.ScopeStack}, Defaults())); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() = nil, want the moved branch above to refuse the descent")
 	}
 	if merges := w.events.only("merge:"); len(merges) != 0 {

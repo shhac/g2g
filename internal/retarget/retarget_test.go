@@ -221,7 +221,7 @@ func TestRevalidateRefusesAChangedPlan(t *testing.T) {
 		open(2, "synthetic-top", "synthetic-lower"),
 	}
 
-	if _, err := testutil.Replan(preview)(svc.Plan(context.Background(), stack.Selection{})); err == nil {
+	if _, err := testutil.Replan(preview)(svc.Plan(context.Background(), stack.Selection{})); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("Replan() error = nil after the bases moved underneath")
 	}
 }

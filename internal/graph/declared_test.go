@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -291,7 +292,7 @@ func TestPlanDeclare(t *testing.T) {
 		service, store := newService(t, stackGit(), forest())
 		preview, _ := service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain)
 		store.graph = store.graph.Untrack("synthetic-billing")
-		if _, err := testutil.Replan(preview)(service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain)); err == nil {
+		if _, err := testutil.Replan(preview)(service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain)); !errors.Is(err, testutil.ErrReplanned) {
 			t.Error("RevalidateDeclare() error = nil after the graph moved")
 		}
 	})

@@ -2,6 +2,7 @@ package prune
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -396,7 +397,7 @@ func TestRevalidateRefusesWhenWhatHasLandedChangedUnderneath(t *testing.T) {
 	// previewed and what an apply would forget has changed.
 	git.landed["synthetic-b"] = true
 
-	if _, err := testutil.Replan(preview)(service.PlanWithOptions(context.Background(), selection, preview.Options)); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanWithOptions(context.Background(), selection, preview.Options)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil, want a refusal")
 	} else if !strings.Contains(err.Error(), "changed during revalidation") {
 		t.Errorf("Replan() error = %v, want it to name the change", err)

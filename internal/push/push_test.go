@@ -99,7 +99,7 @@ func TestRevalidateRefusesAChangedPushPlanBeforeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatalf("Replan() error = %v", err)
 	}
 	if git.pushes != 0 {
@@ -273,7 +273,7 @@ func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
 	}
 
 	git.tips = map[string]string{"alpha": "aaa111", "beta": "ccc333"}
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil after a remote tip moved")
 	}
 }

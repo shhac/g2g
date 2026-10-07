@@ -359,7 +359,7 @@ func TestRevalidationRefusesAParentThatMoved(t *testing.T) {
 	}
 	git.tips["synthetic-lower"] = "moved-tip"
 
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), request)); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), request)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() = nil after the parent moved")
 	}
 }

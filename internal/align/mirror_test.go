@@ -2,6 +2,7 @@ package align
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -326,7 +327,7 @@ func TestRevalidateRefusesAChangedGraph(t *testing.T) {
 	}
 	store.graph = graph.Graph{Edges: map[string]graph.Edge{"synthetic-lower": {Parent: "synthetic-trunk"}}, Trunks: []string{"synthetic-trunk"}}
 
-	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateMirror() error = nil after the graph moved")
 	}
 }
@@ -479,7 +480,7 @@ func TestRevalidateMirrorCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-top":   "synthetic-lower",
 	}, "synthetic-trunk")
 
-	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateMirror() error = nil when a write changed at an unchanged count")
 	}
 }

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -191,7 +192,7 @@ func TestRevalidateStackRefusesAChangedGraph(t *testing.T) {
 	}
 	store.graph = moved
 
-	if _, err := testutil.Replan(preview)(service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateStack() error = nil after the graph moved")
 	}
 }

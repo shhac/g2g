@@ -222,7 +222,7 @@ func TestRevalidationRefusesANameTakenSincePreview(t *testing.T) {
 	}
 	w.git.local = append(w.git.local, "synthetic-renamed")
 
-	if _, err := testutil.Replan(preview)(service.PlanRename(context.Background(), "synthetic-middle", "synthetic-renamed")); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanRename(context.Background(), "synthetic-middle", "synthetic-renamed")); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("RevalidateRename() = nil after the name was taken")
 	}
 }

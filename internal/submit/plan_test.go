@@ -212,7 +212,7 @@ func TestRevalidateRejectsAPlanThatChangedUnderneath(t *testing.T) {
 	}
 
 	_, err = testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream))
-	if err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatalf("Replan() error = %v, want a revalidation mismatch", err)
 	}
 }

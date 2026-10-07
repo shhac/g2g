@@ -2,6 +2,7 @@ package align
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -297,7 +298,7 @@ func TestRevalidateAdoptFromGitHubRereadsThePullRequests(t *testing.T) {
 		"synthetic-lower": "synthetic-trunk",
 		"synthetic-top":   "synthetic-trunk",
 	}
-	if _, err := testutil.Replan(preview)(fixture.svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{})); err == nil {
+	if _, err := testutil.Replan(preview)(fixture.svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{})); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("RevalidateAdoptFromGitHub() error = nil after a base was retargeted")
 	}
 	if len(fixture.prs.asked) <= rounds {

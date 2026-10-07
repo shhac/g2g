@@ -294,7 +294,7 @@ func TestRevalidationRefusesStructureAndNotReadiness(t *testing.T) {
 	}
 
 	w.git.tips["synthetic-two"] = "two-reviewed"
-	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), selection, options)); err == nil {
+	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), selection, options)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Error("Replan() accepted a branch the remote moved on since the preview")
 	}
 }

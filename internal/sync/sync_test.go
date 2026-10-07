@@ -538,7 +538,7 @@ func TestRevalidateRefusesAPlanThatMovedUnderneath(t *testing.T) {
 	// there now replays a different one.
 	restacker.plan = restack.Plan{Steps: []restack.Step{{Branch: "synthetic-c"}}}
 
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil for a plan that changed underneath")
 	}
 }

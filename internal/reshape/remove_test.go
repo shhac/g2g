@@ -373,7 +373,7 @@ func TestRevalidationRefusesABranchThatMoved(t *testing.T) {
 	}
 	w.git.tips["synthetic-middle"] = "moved-tip"
 
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), Fold, "synthetic-middle")); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), Fold, "synthetic-middle")); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() = nil after the branch moved")
 	}
 }

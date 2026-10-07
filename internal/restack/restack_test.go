@@ -431,7 +431,7 @@ func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 	}
 
 	git.objects["synthetic-b"] = "b-moved"
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), selection(), Onto{}, false, nil)); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), selection(), Onto{}, false, nil)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil after a branch moved")
 	}
 }

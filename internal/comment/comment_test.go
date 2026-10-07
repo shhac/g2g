@@ -631,7 +631,7 @@ func TestRevalidateRefusesACommentThatChangedUnderneath(t *testing.T) {
 		t.Fatalf("Replan() of an unchanged world = %v", err)
 	}
 	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" someone else's")
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{})); err == nil {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{})); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() accepted a comment added since the preview")
 	}
 }

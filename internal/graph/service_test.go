@@ -344,7 +344,7 @@ func TestRevalidateRefusesWhenTheGraphMovedUnderneath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := testutil.Replan(preview)(service.PlanTrack(ctx, Selection{Branch: "synthetic-session"}, "synthetic-billing")); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanTrack(ctx, Selection{Branch: "synthetic-session"}, "synthetic-billing")); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("RevalidateTrack() error = nil after the graph changed")
 	}
 }

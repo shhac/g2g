@@ -112,7 +112,7 @@ func TestApplyRejectsPlanChangedDuringRevalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if err := applyPlan(t, service, Selection{Branch: ""}, preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+	if err := applyPlan(t, service, Selection{Branch: ""}, preview); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatalf("Apply() error = %v, want plan-change error", err)
 	}
 	if github.links != 0 {

@@ -203,7 +203,7 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 // RequireClean refuses an apply over a working tree with changes, before
 // anything is re-discovered. A preview does not need it.
 func (s Service) RequireClean(ctx context.Context) error {
-	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
+	if !s.Ready() {
 		return fmt.Errorf("link service is not fully configured")
 	}
 	return s.Git.Clean(ctx)

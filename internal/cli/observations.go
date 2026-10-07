@@ -37,18 +37,7 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		}
 		shown = true
 		node.PRNumber, node.PRURL = seen.PullRequest.Number, seen.PullRequest.URL
-		detail := "last seen " + strings.ToLower(seen.PullRequest.State) + " " + seen.ObservedAt.UTC().Format(time.RFC3339)
-		if seen.OpenCount > 1 {
-			detail = fmt.Sprintf("%d PRs last seen open %s", seen.OpenCount, seen.ObservedAt.UTC().Format(time.RFC3339))
-		}
-		level := severityNeutral
-		if discovery.States[node.Branch] == graph.StateBranchMissing && seen.PullRequest.State == "OPEN" {
-			level = severityWarn
-		}
-		if !seen.MergeRequestedAt.IsZero() {
-			detail += " · merge requested, confirmation pending"
-		}
-		view.Nodes[index] = node.withMarks(stackMark{Detail: "PR " + detail, Severity: level})
+		view.Nodes[index] = node.withMarks(rememberedMark(seen, discovery.States[node.Branch] == graph.StateBranchMissing))
 	}
 	if shown {
 		if discovery.Scope == graph.ScopeAll || !discovery.Graph.Tracked(discovery.Target) {
@@ -58,4 +47,23 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		}
 	}
 	return view
+}
+
+// rememberedMark is what a branch's remembered pull request says about it. One
+// still open on a branch that has gone is a warning: the pull request outlived
+// the branch it was opened from.
+func rememberedMark(seen githubstack.Observation, branchGone bool) stackMark {
+	at := seen.ObservedAt.UTC().Format(time.RFC3339)
+	detail := "last seen " + strings.ToLower(seen.PullRequest.State) + " " + at
+	if seen.OpenCount > 1 {
+		detail = fmt.Sprintf("%d PRs last seen open %s", seen.OpenCount, at)
+	}
+	if !seen.MergeRequestedAt.IsZero() {
+		detail += " · merge requested, confirmation pending"
+	}
+	level := severityNeutral
+	if branchGone && seen.PullRequest.State == "OPEN" {
+		level = severityWarn
+	}
+	return stackMark{Detail: "PR " + detail, Severity: level}
 }

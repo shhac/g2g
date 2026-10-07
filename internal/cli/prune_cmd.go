@@ -65,14 +65,13 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 			plan, err := service.PlanWithOptions(ctx, selection, cleanup)
 			return prunePlan{Plan: plan, remote: remote}, err
 		},
+		same:         func(preview, current prunePlan) bool { return preview.Plan.Equal(current.Plan) },
+		revalidation: revalidation{"prune", "plan"},
 		// Only the plan an apply carries out is asked how what it keeps is
 		// published, since only it is followed by a suggestion.
-		revalidate: func(ctx context.Context, preview prunePlan) (prunePlan, error) {
-			plan, err := service.Revalidate(ctx, selection, preview.Plan)
-			if err != nil {
-				return prunePlan{}, err
-			}
-			return prunePlan{Plan: plan, remote: remote, unpublished: keepsUnpublished(ctx, published, remote, plan)}, nil
+		settle: func(ctx context.Context, plan prunePlan) (prunePlan, error) {
+			plan.unpublished = keepsUnpublished(ctx, published, remote, plan.Plan)
+			return plan, nil
 		},
 		render:   func(w io.Writer, plan prunePlan, p Presentation) error { return writePrunePlan(w, plan.Plan, p) },
 		execute:  func(ctx context.Context, plan prunePlan) error { return service.Apply(ctx, plan.Plan) },

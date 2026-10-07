@@ -38,9 +38,8 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 			plan: func(ctx context.Context) (comment.Plan, error) {
 				return service.Plan(ctx, selection.Selection())
 			},
-			revalidate: func(ctx context.Context, preview comment.Plan) (comment.Plan, error) {
-				return service.Revalidate(ctx, selection.Selection(), preview)
-			},
+			same:         comment.Plan.Equal,
+			revalidation: revalidation{"comment", "comment plan"},
 			render: func(writer io.Writer, plan comment.Plan, p Presentation) error {
 				return writeStackView(writer, commentView(plan), p)
 			},

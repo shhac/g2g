@@ -130,15 +130,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	return plan, nil
 }
 
-// Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, selection)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "retarget", "retarget plan", plan.Equal(preview))
-}
-
 // Stopped is a retarget that failed after moving at least one base. Those
 // moves are on GitHub and stay, so the run is neither a failure to retry from
 // scratch nor a success.

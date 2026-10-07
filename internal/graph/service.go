@@ -216,10 +216,6 @@ func (s Service) target(ctx context.Context, requested string) (string, string, 
 	return current, shape.TargetCurrent, nil
 }
 
-func matched(ctx context.Context, event string, equal bool) error {
-	return diagnostic.Revalidated(ctx, event, "graph", equal)
-}
-
 // rollbackGraph returns an apply failure after restoring the graph that was
 // current when its plan was made. A pin is auxiliary durability state; it must
 // not leave an adopted edge behind when it cannot be created.

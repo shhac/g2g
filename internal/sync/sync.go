@@ -146,24 +146,6 @@ func lineWays(lines []string) []repair.Step {
 	return ways
 }
 
-// Revalidate repeats the whole discovery immediately before the mutation and
-// refuses if anything moved underneath.
-//
-// sync had none. It was the one mutating command that wrote its own
-// preview-and-apply sequence instead of using the shared flow, and the copy
-// left this step out — so it could fetch, advance a base and replay against a
-// plan the reader had approved some time earlier.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, remote string, take Take, preview Plan) (Plan, error) {
-	current, err := s.Plan(ctx, selection, remote, take)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "sync", "plan", current.Equal(preview)); err != nil {
-		return Plan{}, err
-	}
-	return current, nil
-}
-
 // requireBase refuses a selection with no base to bring up to date. A selection
 // of one is the branch itself with nothing recorded under it — unless the base
 // alone is what was asked for, and then it must be one.

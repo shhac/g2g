@@ -255,15 +255,6 @@ func refuseCommit(plan Plan) Plan {
 	return plan
 }
 
-// Revalidate plans again and refuses if anything moved since the preview.
-func (s Service) Revalidate(ctx context.Context, request Request, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, request)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "create", "the branch to create", plan.Equal(preview))
-}
-
 // Partial is an apply that created and recorded the branch and then could not
 // commit. Both of those stay: the branch is where the user asked for it and
 // recorded where they said, and the staged changes are still staged on it.

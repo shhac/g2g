@@ -200,29 +200,13 @@ func (s Service) Plan(ctx context.Context, selection Selection) (Plan, error) {
 	return plan, nil
 }
 
-// Revalidate repeats all discovery and local state checks immediately before
-// a mutation, and refuses if the result differs from the preview the caller
-// already rendered. Callers run Execute themselves: the CLI interposes the
-// ready-to-apply render and its flush between the two, so composing them here
-// would describe a sequence production never performs.
-func (s Service) Revalidate(ctx context.Context, selection Selection, preview Plan) (Plan, error) {
+// RequireClean refuses an apply over a working tree with changes, before
+// anything is re-discovered. A preview does not need it.
+func (s Service) RequireClean(ctx context.Context) error {
 	if s.Git == nil || s.Selector == nil || s.GitHub == nil {
-		return Plan{}, fmt.Errorf("link service is not fully configured")
+		return fmt.Errorf("link service is not fully configured")
 	}
-	if err := s.Git.Clean(ctx); err != nil {
-		return Plan{}, err
-	}
-	plan, err := s.Plan(ctx, selection)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "link", "link plan", plan.Equal(preview)); err != nil {
-		return Plan{}, err
-	}
-	if len(plan.Issues) != 0 {
-		return Plan{}, fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
-	}
-	return plan, nil
+	return s.Git.Clean(ctx)
 }
 
 // Execute invokes the sole GitHub mutation for a revalidated, apply-eligible

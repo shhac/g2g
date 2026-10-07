@@ -79,7 +79,7 @@ func TestApplyRevalidatesThenMakesOneAtomicLeasePush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := service.Revalidate(context.Background(), selection, "origin", localgit.SetUpstream, preview)
+	validated, err := testutil.Replan(preview)(service.Plan(context.Background(), selection, "origin", localgit.SetUpstream))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +99,8 @@ func TestRevalidateRefusesAChangedPushPlanBeforeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
-		t.Fatalf("Revalidate() error = %v", err)
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+		t.Fatalf("Replan() error = %v", err)
 	}
 	if git.pushes != 0 {
 		t.Errorf("pushes=%d, want 0", git.pushes)
@@ -129,7 +129,7 @@ func TestApplyRefusesChangedPlanAndRemoteOrPushFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			validated, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview)
+			validated, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,8 +273,8 @@ func TestRevalidateRefusesWhenARemoteTipMoved(t *testing.T) {
 	}
 
 	git.tips = map[string]string{"alpha": "aaa111", "beta": "ccc333"}
-	if _, err := service.Revalidate(context.Background(), link.Selection{}, "origin", localgit.SetUpstream, preview); err == nil {
-		t.Fatal("Revalidate() error = nil after a remote tip moved")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)); err == nil {
+		t.Fatal("Replan() error = nil after a remote tip moved")
 	}
 }
 

@@ -538,8 +538,8 @@ func TestRevalidateRefusesAPlanThatMovedUnderneath(t *testing.T) {
 	// there now replays a different one.
 	restacker.plan = restack.Plan{Steps: []restack.Step{{Branch: "synthetic-c"}}}
 
-	if _, err := service.Revalidate(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, preview); err == nil {
-		t.Fatal("Revalidate() error = nil for a plan that changed underneath")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)); err == nil {
+		t.Fatal("Replan() error = nil for a plan that changed underneath")
 	}
 }
 
@@ -554,9 +554,9 @@ func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	validated, err := service.Revalidate(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, preview)
+	validated, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing))
 	if err != nil {
-		t.Fatalf("Revalidate() error = %v", err)
+		t.Fatalf("Replan() error = %v", err)
 	}
 	if !validated.Equal(preview) {
 		t.Error("an unchanged repository revalidated to a different plan")
@@ -686,7 +686,7 @@ func TestRevalidateTrunkChecksTheTrunkAgainBeforeApplying(t *testing.T) {
 			if moved {
 				git.objects["synthetic-trunk"] = "trunk-new"
 			}
-			current, err := service.RevalidateTrunk(context.Background(), selection, "origin", preview)
+			current, err := testutil.Replan(preview)(service.PlanTrunk(context.Background(), selection, "origin"))
 			if moved {
 				if err == nil {
 					t.Fatal("accepted a trunk that moved after the preview")

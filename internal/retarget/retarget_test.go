@@ -9,6 +9,8 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 type fakeGit struct{}
@@ -219,8 +221,8 @@ func TestRevalidateRefusesAChangedPlan(t *testing.T) {
 		open(2, "synthetic-top", "synthetic-lower"),
 	}
 
-	if _, err := svc.Revalidate(context.Background(), stack.Selection{}, preview); err == nil {
-		t.Error("Revalidate() error = nil after the bases moved underneath")
+	if _, err := testutil.Replan(preview)(svc.Plan(context.Background(), stack.Selection{})); err == nil {
+		t.Error("Replan() error = nil after the bases moved underneath")
 	}
 }
 

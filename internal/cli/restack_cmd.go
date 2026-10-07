@@ -171,9 +171,9 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 		plan: func(ctx context.Context) (restack.Plan, error) {
 			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb, nil)
 		},
-		revalidate: func(ctx context.Context, preview restack.Plan) (restack.Plan, error) {
-			return service.Revalidate(ctx, selection, restack.ToBranch(options.onto), options.absorb, nil, preview)
-		},
+		same:         restack.Plan.Equal,
+		revalidation: revalidation{"restack", "restack plan"},
+		precheck:     service.RequireClean,
 		render: func(w io.Writer, plan restack.Plan, p Presentation) error {
 			return writeStackView(w, restackView(plan), p)
 		},

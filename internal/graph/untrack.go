@@ -75,15 +75,6 @@ func (s Service) PlanUntrack(ctx context.Context, selection Selection) (UntrackP
 	return UntrackPlan{Discovery: discovery, Removed: removed, Undeclared: undeclared, Dependents: dependents, Orphaned: orphaned, Updated: updated}, nil
 }
 
-// RevalidateUntrack re-reads the world and refuses if anything moved.
-func (s Service) RevalidateUntrack(ctx context.Context, selection Selection, preview UntrackPlan) (UntrackPlan, error) {
-	plan, err := s.PlanUntrack(ctx, selection)
-	if err != nil {
-		return UntrackPlan{}, err
-	}
-	return plan, matched(ctx, "graph.untrack", plan.Equal(preview))
-}
-
 // ApplyUntrack writes the adopted graph.
 func (s Service) ApplyUntrack(ctx context.Context, plan UntrackPlan) error {
 	if plan.NoOp() {

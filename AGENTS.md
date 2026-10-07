@@ -500,7 +500,7 @@ property the original had.
 - `diagnostic.BoundedOutput` — bounding *and redacting* a failed command's
   output.
 - `diagnostic.Revalidated` — the preview/apply revalidation check and its
-  diagnostic event. `graph`'s `matched` delegates to it.
+  diagnostic event. `applyFlow` is its one caller.
 - `githubstack.PathStep.Classify` — what one branch's pull request is.
   `github link` and `submit` apply different policy to the same answer; only the policy
   differs.
@@ -537,7 +537,16 @@ property the original had.
   the pattern — rather than capturing a variable the closures share. `unlink`
   did the latter, so the stack number rendered immediately before the mutation
   came from the preview rather than the revalidated plan, and the only thing
-  making that safe was `link.Revalidate` refusing any inequality two files away.
+  making that safe was link's revalidation refusing any inequality two files
+  away.
+- Revalidation belongs to `applyFlow`, not to the services. An apply asks the
+  flow's `plan` again and refuses unless `same` finds the answer equal to the
+  preview; `revalidation` names the event and the refusal. `precheck` runs
+  before the second plan (a clean working tree for restack, submit, link and
+  unlink) and `settle` after the comparison (link's unresolved mappings,
+  prune's publication facts), both only on apply. Twenty services each carried
+  a `Revalidate` that re-planned and compared, and unlink was clean-checked only
+  because it borrowed link's. A flow without `same` cannot apply.
 - Preview/apply sequencing is a safety contract, not just presentation. When a
   command can mutate, preserve its re-discovery/revalidation and final
   render/write/flush-before-mutation tests; command-family coverage lives under

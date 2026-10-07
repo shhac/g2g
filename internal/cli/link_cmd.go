@@ -32,8 +32,11 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 				plan: func(ctx context.Context) (link.Plan, error) {
 					return linkable(service.Plan(ctx, selection.Selection()))
 				},
-				revalidate: func(ctx context.Context, preview link.Plan) (link.Plan, error) {
-					return service.Revalidate(ctx, selection.Selection(), preview)
+				same:         link.Plan.Equal,
+				revalidation: revalidation{"link", "link plan"},
+				precheck:     service.RequireClean,
+				settle: func(_ context.Context, plan link.Plan) (link.Plan, error) {
+					return plan, linkSettled(plan)
 				},
 				render:   writeLinkPlan,
 				guard:    guard,
@@ -74,6 +77,16 @@ func linkable(plan link.Plan, err error) (link.Plan, error) {
 		return link.Plan{}, err
 	}
 	return plan, plan.Snapshot.RequireLinear("link")
+}
+
+// linkSettled refuses a revalidated plan whose pull requests do not resolve
+// one to a branch. It follows the comparison rather than preceding it, so a
+// mapping that changed underneath is reported as the plan having changed.
+func linkSettled(plan link.Plan) error {
+	if len(plan.Issues) != 0 {
+		return fmt.Errorf("link preview has unresolved GitHub PR mappings; fix them and rerun before --apply")
+	}
+	return nil
 }
 
 func writeLinkPlan(writer io.Writer, plan link.Plan, presentation Presentation) error {

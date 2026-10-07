@@ -148,19 +148,6 @@ func (s Service) ApplyMirror(ctx context.Context, plan MirrorPlan) error {
 	return nil
 }
 
-// RevalidateMirror recomputes immediately before the write, so a graph that
-// moved between preview and apply is caught rather than acted on.
-func (s Service) RevalidateMirror(ctx context.Context, prune bool, preview MirrorPlan) (MirrorPlan, error) {
-	current, err := s.PlanMirror(ctx, prune)
-	if err != nil {
-		return MirrorPlan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "mirror", "the graphs", current.Equal(preview)); err != nil {
-		return MirrorPlan{}, err
-	}
-	return current, nil
-}
-
 // Equal compares everything that changes what the write does.
 func (p MirrorPlan) Equal(other MirrorPlan) bool {
 	if !p.Repair.Equal(other.Repair) || len(p.Writes) != len(other.Writes) {

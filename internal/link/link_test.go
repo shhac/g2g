@@ -14,6 +14,8 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/testutil/forest"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestPlanUsesCurrentBranchAndSelectedForkPath(t *testing.T) {
@@ -85,10 +87,14 @@ func TestApplyNoopsForOneFullyMappedPullRequest(t *testing.T) {
 func TestApplyStopsBeforeMutationWhenDirty(t *testing.T) {
 	github := &fakeGitHub{}
 	service := fakeService()
-	service.Git = fakeGit{dirty: errors.New("dirty")}
 	service.GitHub = github
-	if err := applyPlan(t, service, Selection{Branch: "beta-two"}, Plan{}); err == nil {
-		t.Fatal("Apply() error = nil")
+	preview, err := service.Plan(context.Background(), Selection{Branch: "beta-two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Git = fakeGit{dirty: errors.New("dirty")}
+	if err := applyPlan(t, service, Selection{Branch: "beta-two"}, preview); err == nil || !strings.Contains(err.Error(), "dirty") {
+		t.Fatalf("Apply() error = %v, want the dirty tree refused", err)
 	}
 	if github.links != 0 {
 		t.Errorf("Link calls = %d, want 0", github.links)
@@ -411,13 +417,16 @@ func TestAssessedIssuesCarryTheirKind(t *testing.T) {
 	}
 }
 
-// applyPlan drives the sequence production actually performs: revalidate, then
-// execute. The service deliberately no longer composes the two, because the
-// CLI interposes the ready-to-apply render and its flush between them, so a
-// composite here would describe a sequence nothing runs.
+// applyPlan drives the sequence production actually performs: refuse a dirty
+// tree, plan again and compare, then execute. The CLI's flow does the asking
+// and interposes the ready-to-apply render and its flush, so the service
+// composes none of it.
 func applyPlan(t *testing.T, service Service, selection Selection, preview Plan) error {
 	t.Helper()
-	validated, err := service.Revalidate(context.Background(), selection, preview)
+	if err := service.RequireClean(context.Background()); err != nil {
+		return err
+	}
+	validated, err := testutil.Replan(preview)(service.Plan(context.Background(), selection))
 	if err != nil {
 		return err
 	}

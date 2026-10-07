@@ -41,15 +41,11 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 				}
 				return newUnlinkPlan(number, plan)
 			},
-			revalidate: func(ctx context.Context, preview unlinkPlan) (unlinkPlan, error) {
-				plan, err := service.Revalidate(ctx, selection.Selection(), preview.Plan)
-				if err != nil {
-					return unlinkPlan{}, err
-				}
-				// Resolved again from the revalidated discovery, so the number
-				// rendered immediately before the mutation is that plan's own.
-				return newUnlinkPlan(number, plan)
-			},
+			// The number is resolved again from the re-discovered plan, so the
+			// one rendered immediately before the mutation is that plan's own.
+			same:         func(preview, current unlinkPlan) bool { return preview.Plan.Equal(current.Plan) },
+			revalidation: revalidation{"link", "link plan"},
+			precheck:     service.RequireClean,
 			render: func(w io.Writer, p unlinkPlan, presentation Presentation) error {
 				return writeUnlinkPlan(w, p.Plan, p.Number, p.Source, presentation)
 			},
@@ -111,9 +107,9 @@ func writeUnlinkPlan(w io.Writer, plan link.Plan, number int, source string, p P
 // The number used to live in two variables the closures captured, so render was
 // not a function of the plan it was handed and the number printed immediately
 // before the mutation was the *preview's*, not the revalidated plan's. That
-// held only because link.Revalidate refuses any inequality — a safety property
-// asserted two files away rather than visible here. Carrying it on the plan
-// makes it structural, and every other applyFlow user keeps render pure over P.
+// held only because revalidation refused any inequality — a safety property
+// asserted elsewhere rather than visible here. Carrying it on the plan makes it
+// structural, and every other applyFlow user keeps render pure over P.
 type unlinkPlan struct {
 	link.Plan
 	Number int

@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,9 +26,7 @@ func interruptedFlow(t *testing.T, claim bool) (string, error) {
 	reported := false
 	flow := applyFlow[interruptedPlan]{
 		plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{name: "synthetic"}, nil },
-		revalidate: func(_ context.Context, plan interruptedPlan) (interruptedPlan, error) {
-			return plan, nil
-		},
+		same: func(preview, current interruptedPlan) bool { return preview == current },
 		render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
 			_, err := fmt.Fprintln(w, "synthetic plan")
 			return err
@@ -143,9 +143,7 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 			cmd.SetOut(&out)
 			flow := applyFlow[interruptedPlan]{
 				plan: func(context.Context) (interruptedPlan, error) { return interruptedPlan{}, nil },
-				revalidate: func(_ context.Context, plan interruptedPlan) (interruptedPlan, error) {
-					return plan, nil
-				},
+				same: func(preview, current interruptedPlan) bool { return preview == current },
 				render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
 					_, err := fmt.Fprintln(w, "synthetic plan")
 					return err
@@ -178,5 +176,157 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// sequencedFlow records the order the flow asks its hooks in. Each plan call
+// answers the next name, so a test chooses whether the world moved.
+func sequencedFlow(calls *[]string, names ...string) applyFlow[interruptedPlan] {
+	planned := 0
+	return applyFlow[interruptedPlan]{
+		plan: func(context.Context) (interruptedPlan, error) {
+			*calls = append(*calls, "plan")
+			name := names[min(planned, len(names)-1)]
+			planned++
+			return interruptedPlan{name: name}, nil
+		},
+		same:         func(preview, current interruptedPlan) bool { return preview == current },
+		revalidation: revalidation{"synthetic", "synthetic plan"},
+		render: func(w io.Writer, _ interruptedPlan, _ Presentation) error {
+			_, err := fmt.Fprintln(w, "synthetic plan")
+			return err
+		},
+		execute: func(_ context.Context, plan interruptedPlan) error {
+			*calls = append(*calls, "execute "+plan.name)
+			return nil
+		},
+		notices: flowNotices{applied: "Applied.", changed: "Changed."},
+	}
+}
+
+func runSequenced(t *testing.T, flow applyFlow[interruptedPlan], apply bool) (string, error) {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	err := flow.run(cmd, context.Background(), newBudgets(cmd), Presentation{}, apply)
+	return out.String(), err
+}
+
+// The flow asks plan again immediately before mutating and refuses an answer
+// that differs from the preview. Each service used to do this itself, and a
+// command was free to hand the flow a revalidation that compared nothing.
+func TestAnApplyReplansAndRefusesWhatMovedUnderneath(t *testing.T) {
+	var calls []string
+	out, err := runSequenced(t, sequencedFlow(&calls, "before", "after"), true)
+
+	if err == nil || !strings.Contains(err.Error(), "synthetic plan changed during revalidation") {
+		t.Fatalf("error = %v, want the revalidation refusal", err)
+	}
+	if !strings.Contains(out, "Not applied") {
+		t.Errorf("the refusal was not reported:\n%s", out)
+	}
+	if got := strings.Join(calls, ","); got != "plan,plan" {
+		t.Errorf("calls = %s, want two plans and no execute", got)
+	}
+}
+
+func TestAnApplyOfAnUnchangedPlanExecutesTheSecondAnswer(t *testing.T) {
+	var calls []string
+	if _, err := runSequenced(t, sequencedFlow(&calls, "same"), true); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, ","); got != "plan,plan,execute same" {
+		t.Errorf("calls = %s", got)
+	}
+}
+
+// A flow that says nothing about how to compare cannot apply: the safe answer
+// to "did anything move" when nobody can tell is yes.
+func TestAFlowWithNoComparisonRefusesToApply(t *testing.T) {
+	var calls []string
+	flow := sequencedFlow(&calls, "same")
+	flow.same = nil
+	if _, err := runSequenced(t, flow, true); err == nil {
+		t.Fatal("a flow with no comparison applied")
+	}
+	if slices.Contains(calls, "execute same") {
+		t.Error("executed without comparing")
+	}
+}
+
+// precheck refuses before anything is re-discovered: a dirty tree must not
+// cost a round trip to GitHub, or reach one at all. A preview never asks it.
+func TestPrecheckRunsBeforeReplanningAndOnlyOnApply(t *testing.T) {
+	var calls []string
+	flow := sequencedFlow(&calls, "same")
+	flow.precheck = func(context.Context) error {
+		calls = append(calls, "precheck")
+		return errors.New("synthetic dirty tree")
+	}
+	if _, err := runSequenced(t, flow, true); err == nil || !strings.Contains(err.Error(), "synthetic dirty tree") {
+		t.Fatalf("error = %v, want the precheck's", err)
+	}
+	if got := strings.Join(calls, ","); got != "plan,precheck" {
+		t.Errorf("apply calls = %s, want the precheck before any second plan", got)
+	}
+
+	calls = nil
+	if _, err := runSequenced(t, flow, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, ","); got != "plan" {
+		t.Errorf("preview calls = %s, want no precheck", got)
+	}
+}
+
+// settle follows the comparison, so a plan that moved is reported as moved
+// rather than as whatever settle would refuse, and what it adds reaches the
+// mutation. A preview never asks it.
+func TestSettleFollowsTheComparisonAndOnlyOnApply(t *testing.T) {
+	var calls []string
+	flow := sequencedFlow(&calls, "same")
+	flow.settle = func(_ context.Context, plan interruptedPlan) (interruptedPlan, error) {
+		calls = append(calls, "settle")
+		plan.name += " settled"
+		return plan, nil
+	}
+	if _, err := runSequenced(t, flow, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, ","); got != "plan,plan,settle,execute same settled" {
+		t.Errorf("apply calls = %s", got)
+	}
+
+	calls = nil
+	if _, err := runSequenced(t, flow, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(calls, ","); got != "plan" {
+		t.Errorf("preview calls = %s, want no settle", got)
+	}
+
+	calls = nil
+	moved := sequencedFlow(&calls, "before", "after")
+	moved.settle = flow.settle
+	if _, err := runSequenced(t, moved, true); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+		t.Fatalf("error = %v, want the comparison to refuse first", err)
+	}
+	if slices.Contains(calls, "settle") {
+		t.Error("settle ran for a plan that moved")
+	}
+}
+
+// A plan the command already discovered stands in for the first ask, and an
+// apply still asks again before mutating.
+func TestADiscoveredPlanIsStillReplannedBeforeMutating(t *testing.T) {
+	var calls []string
+	flow := sequencedFlow(&calls, "after")
+	flow.discovered = &interruptedPlan{name: "before"}
+	if _, err := runSequenced(t, flow, true); err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
+		t.Fatalf("error = %v, want the discovered plan compared with a fresh one", err)
+	}
+	if got := strings.Join(calls, ","); got != "plan" {
+		t.Errorf("calls = %s, want exactly the one re-plan", got)
 	}
 }

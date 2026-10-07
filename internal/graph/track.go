@@ -274,15 +274,6 @@ func (s Service) validateParent(ctx context.Context, target, parent string) erro
 	return nil
 }
 
-// Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) RevalidateTrack(ctx context.Context, selection Selection, parent string, preview TrackPlan) (TrackPlan, error) {
-	plan, err := s.PlanTrack(ctx, selection, parent)
-	if err != nil {
-		return TrackPlan{}, err
-	}
-	return plan, matched(ctx, "graph.track", plan.Equal(preview))
-}
-
 // ApplyTrack writes the adopted graph. It refuses a blocked plan rather than
 // writing a structure the preview said it would not.
 func (s Service) ApplyTrack(ctx context.Context, plan TrackPlan) error {

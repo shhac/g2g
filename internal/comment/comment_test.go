@@ -12,6 +12,8 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // fakeSelector answers a selection from a forest the way a real selector does,
@@ -625,12 +627,12 @@ func TestRevalidateRefusesACommentThatChangedUnderneath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, preview); err != nil {
-		t.Fatalf("Revalidate() of an unchanged world = %v", err)
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{})); err != nil {
+		t.Fatalf("Replan() of an unchanged world = %v", err)
 	}
 	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" someone else's")
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, preview); err == nil {
-		t.Fatal("Revalidate() accepted a comment added since the preview")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{})); err == nil {
+		t.Fatal("Replan() accepted a comment added since the preview")
 	}
 }
 

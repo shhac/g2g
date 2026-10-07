@@ -344,15 +344,6 @@ func (s Service) record(ctx context.Context, adopted Graph, adoptions []Adoption
 	return updated, promoted, nil
 }
 
-// RevalidateStack recomputes immediately before the write.
-func (s Service) RevalidateStack(ctx context.Context, selection Selection, trunk string, preview StackPlan) (StackPlan, error) {
-	current, err := s.PlanStack(ctx, selection, trunk)
-	if err != nil {
-		return StackPlan{}, err
-	}
-	return current, matched(ctx, "track.stack", current.Equal(preview))
-}
-
 // ApplyStack writes the recorded chain and pins each fork point.
 func (s Service) ApplyStack(ctx context.Context, plan StackPlan) error {
 	if plan.Blocked() != "" {

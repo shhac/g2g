@@ -128,16 +128,6 @@ func (s Service) PlanRename(ctx context.Context, from, name string) (RenamePlan,
 	return plan, nil
 }
 
-// RevalidateRename plans again and refuses if anything moved since the
-// preview.
-func (s Service) RevalidateRename(ctx context.Context, from, name string, preview RenamePlan) (RenamePlan, error) {
-	plan, err := s.PlanRename(ctx, from, name)
-	if err != nil {
-		return RenamePlan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "rename", "the branch and the stack around it", plan.Equal(preview))
-}
-
 // ApplyRename renames the branch, then the record, then the fork-point pin.
 //
 // The branch goes first because git refuses a rename that would clobber

@@ -168,16 +168,9 @@ func (p Plan) Equal(other Plan) bool {
 		p.Push.Equal(other.Push)
 }
 
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream, preview Plan) (Plan, error) {
-	if err := s.Git.Clean(ctx); err != nil {
-		return Plan{}, err
-	}
-	plan, err := s.Plan(ctx, selection, remote, upstream)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "submit", "submit plan", plan.Equal(preview))
-}
+// RequireClean refuses a submission over a working tree with changes, before
+// anything is re-discovered or read from GitHub. A preview does not need it.
+func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ctx) }
 
 // Apply publishes all refs atomically, creates only branches with no PR, then
 // links the resulting complete stack when asked to. Existing PRs are never

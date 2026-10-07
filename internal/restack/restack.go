@@ -19,20 +19,11 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
-	"github.com/shhac/g2g/internal/graph"
 )
 
-// Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, pending Pending, preview Plan) (Plan, error) {
-	if err := s.Git.Clean(ctx); err != nil {
-		return Plan{}, err
-	}
-	plan, err := s.Plan(ctx, selection, onto, absorb, pending)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "restack", "restack plan", plan.Equal(preview))
-}
+// RequireClean refuses a rewrite over a working tree with changes, before
+// anything is re-discovered. A preview does not need it.
+func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ctx) }
 
 // Apply performs the rewrite. A plan the preview said applies cleanly is
 // replayed without touching the checkout; anything else takes the resumable

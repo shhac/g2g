@@ -69,7 +69,7 @@ exit 9`,
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := service.Revalidate(ctx, selection, "origin", localgit.SetUpstream, preview)
+	validated, err := testutil.Replan(preview)(service.Plan(ctx, selection, "origin", localgit.SetUpstream))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ exit 9`,
 	}
 	for _, expected := range []string{
 		"event=graphite.forest", "scope=\"stack\"", "event=push.plan",
-		"event=push.revalidation match=\"true\"", "event=push.apply",
+		"event=push.apply",
 		"command=\"git push --atomic --set-upstream --force-with-lease=refs/heads/alpha:1111111111111111111111111111111111111111 --force-with-lease=refs/heads/beta:2222222222222222222222222222222222222222 --force-with-lease=refs/heads/beta-top:0000000000000000000000000000000000000000 --force-with-lease=refs/heads/beta-side:0000000000000000000000000000000000000000 origin alpha beta beta-top beta-side\"",
 		"event=subprocess.end command=\"git push --atomic --set-upstream --force-with-lease=refs/heads/alpha:1111111111111111111111111111111111111111 --force-with-lease=refs/heads/beta:2222222222222222222222222222222222222222 --force-with-lease=refs/heads/beta-top:0000000000000000000000000000000000000000 --force-with-lease=refs/heads/beta-side:0000000000000000000000000000000000000000 origin alpha beta beta-top beta-side\"",
 		"status=\"ok\"",

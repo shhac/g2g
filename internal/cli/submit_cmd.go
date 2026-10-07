@@ -167,13 +167,16 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		retry = o.retryCommand("--spec", o.specPath, "--apply")
 	}
 	flow := applyFlow[submit.Plan]{
-		// The preview is already in hand, so planning is a pass-through; the
-		// sequence still re-discovers through revalidate before mutating.
-		plan: func(context.Context) (submit.Plan, error) { return preview, nil },
-		revalidate: func(ctx context.Context, preview submit.Plan) (submit.Plan, error) {
-			return service.Revalidate(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream), preview)
+		// The preview is already in hand, so the flow starts from it; an apply
+		// still re-discovers through plan before mutating.
+		discovered: &preview,
+		plan: func(ctx context.Context) (submit.Plan, error) {
+			return service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 		},
-		suggest: func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
+		same:         submit.Plan.Equal,
+		revalidation: revalidation{"submit", "submit plan"},
+		precheck:     service.RequireClean,
+		suggest:      func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
 		blocked: func(plan submit.Plan) string {
 			if blocked := submitBlocked(plan); blocked != "" {
 				return blocked

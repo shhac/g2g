@@ -235,15 +235,6 @@ func (s Service) PlanDeclare(ctx context.Context, selection Selection, declarati
 	return plan, nil
 }
 
-// RevalidateDeclare re-reads the world and refuses if anything moved.
-func (s Service) RevalidateDeclare(ctx context.Context, selection Selection, declaration Declaration, preview DeclarePlan) (DeclarePlan, error) {
-	plan, err := s.PlanDeclare(ctx, selection, declaration)
-	if err != nil {
-		return DeclarePlan{}, err
-	}
-	return plan, matched(ctx, "graph.declare", plan.Equal(preview))
-}
-
 // ApplyDeclare writes the declaration, and drops the fork-point pin of the edge
 // it replaced: a trunk has no range to replay, so nothing needs the commit kept.
 func (s Service) ApplyDeclare(ctx context.Context, plan DeclarePlan) error {

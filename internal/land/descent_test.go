@@ -11,6 +11,8 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // threeHigh is the world with synthetic-three on top of synthetic-two, as #43.
@@ -287,12 +289,12 @@ func TestRevalidationRefusesStructureAndNotReadiness(t *testing.T) {
 		t.Fatalf("preview step = %+v, want a merge that needs protection bypassed", preview.Steps[0])
 	}
 	w.github.states[41] = githubstack.MergeState{Number: 41, HeadOID: "one-tip", Base: "synthetic-main", State: "OPEN", Mergeable: "MERGEABLE", StateStatus: "CLEAN"}
-	if _, err := w.service.Revalidate(context.Background(), selection, options, preview); err != nil {
-		t.Errorf("Revalidate() refused checks passing: %v", err)
+	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), selection, options)); err != nil {
+		t.Errorf("Replan() refused checks passing: %v", err)
 	}
 
 	w.git.tips["synthetic-two"] = "two-reviewed"
-	if _, err := w.service.Revalidate(context.Background(), selection, options, preview); err == nil {
-		t.Error("Revalidate() accepted a branch the remote moved on since the preview")
+	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), selection, options)); err == nil {
+		t.Error("Replan() accepted a branch the remote moved on since the preview")
 	}
 }

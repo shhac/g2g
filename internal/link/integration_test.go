@@ -78,9 +78,9 @@ esac`,
 	}
 
 	// Drive the production sequence: revalidate, then execute.
-	validated, err := service.Revalidate(context.Background(), link.Selection{Branch: "gamma-deep"}, plan)
+	validated, err := testutil.Replan(plan)(service.Plan(context.Background(), link.Selection{Branch: "gamma-deep"}))
 	if err != nil {
-		t.Fatalf("Revalidate() error = %v", err)
+		t.Fatalf("Replan() error = %v", err)
 	}
 	if err := service.Execute(context.Background(), validated); err != nil {
 		t.Fatalf("Execute() error = %v", err)

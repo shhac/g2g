@@ -14,6 +14,8 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // world is main <- one <- two, both published, both with an open pull request
@@ -417,8 +419,8 @@ func TestRevalidationRefusesAMoveAboveTheDescent(t *testing.T) {
 	preview := w.plan(t, Defaults())
 	w.git.tips["synthetic-two"] = "synthetic-reviewer-tip"
 
-	if _, err := w.service.Revalidate(context.Background(), stack.Selection{Scope: shape.ScopeStack}, Defaults(), preview); err == nil {
-		t.Fatal("Revalidate() = nil, want the moved branch above to refuse the descent")
+	if _, err := testutil.Replan(preview)(w.service.Plan(context.Background(), stack.Selection{Scope: shape.ScopeStack}, Defaults())); err == nil {
+		t.Fatal("Replan() = nil, want the moved branch above to refuse the descent")
 	}
 	if merges := w.events.only("merge:"); len(merges) != 0 {
 		t.Errorf("merged %v", merges)

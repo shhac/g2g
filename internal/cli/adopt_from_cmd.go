@@ -25,6 +25,7 @@ func adoptFromFlow(service align.Service, guard func(context.Context) error) app
 		// blocked plans their own refusal path.
 		noOp:    func(plan align.AdoptPlan) bool { return len(plan.Adopt) == 0 },
 		blocked: align.AdoptPlan.Blocked,
+		same:    align.AdoptPlan.Equal,
 	}
 }
 
@@ -45,7 +46,7 @@ func newGraphiteAdopt(service align.Service, guard func(context.Context) error, 
 		presentation := presentation.resolve(cmd)
 		flow := adoptFromFlow(service, guard)
 		flow.plan = service.PlanAdopt
-		flow.revalidate = service.RevalidateAdopt
+		flow.revalidation = revalidation{"adopt", "the graphs"}
 		flow.notices = flowNotices{
 			preview:  "Rerun with --apply to adopt them.",
 			noOp:     "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
@@ -85,9 +86,7 @@ func newGitHubAdopt(service align.Service, completions stack.Completions, guard 
 		flow.plan = func(ctx context.Context) (align.AdoptPlan, error) {
 			return service.PlanAdoptFromGitHub(ctx, read)
 		}
-		flow.revalidate = func(ctx context.Context, preview align.AdoptPlan) (align.AdoptPlan, error) {
-			return service.RevalidateAdoptFromGitHub(ctx, read, preview)
-		}
+		flow.revalidation = revalidation{"adopt", "the pull requests and the g2g graph"}
 		flow.notices = flowNotices{
 			preview:  "Rerun with --apply to adopt them.",
 			noOp:     "The pull requests declare nothing the g2g graph does not already record. Nothing to do.",

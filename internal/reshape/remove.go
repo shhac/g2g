@@ -262,15 +262,6 @@ func (s Service) unique(ctx context.Context, plan Plan) ([]git.Commit, error) {
 	return unique, nil
 }
 
-// Revalidate plans again and refuses if anything moved since the preview.
-func (s Service) Revalidate(ctx context.Context, operation Operation, branch string, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, operation, branch)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, string(operation), "the branch and the stack around it", plan.Equal(preview))
-}
-
 // Apply removes the branch, in an order chosen so that everything up to the
 // last step can be put back.
 //

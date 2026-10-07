@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // landing is the landing-branch shape recorded as an ordinary stack:
@@ -289,7 +291,7 @@ func TestPlanDeclare(t *testing.T) {
 		service, store := newService(t, stackGit(), forest())
 		preview, _ := service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain)
 		store.graph = store.graph.Untrack("synthetic-billing")
-		if _, err := service.RevalidateDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain, preview); err == nil {
+		if _, err := testutil.Replan(preview)(service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, landsIntoMain)); err == nil {
 			t.Error("RevalidateDeclare() error = nil after the graph moved")
 		}
 	})

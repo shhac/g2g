@@ -193,14 +193,6 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 	}
 }
 
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, selection, remote, upstream)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "push", "push plan", plan.Equal(preview))
-}
-
 func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if s.Git == nil {
 		return fmt.Errorf("push service is not fully configured")

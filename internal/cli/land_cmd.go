@@ -95,11 +95,10 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		plan: func(ctx context.Context) (land.Plan, error) {
 			return service.Plan(ctx, selection, options)
 		},
-		revalidate: func(ctx context.Context, preview land.Plan) (land.Plan, error) {
-			return service.Revalidate(ctx, selection, options, preview)
-		},
-		render: writeLandPlan,
-		guard:  guard,
+		same:         land.Plan.Equal,
+		revalidation: revalidation{"land", "land plan"},
+		render:       writeLandPlan,
+		guard:        guard,
 		execute: func(ctx context.Context, plan land.Plan) error {
 			if err := service.Apply(ctx, plan); err != nil {
 				return err

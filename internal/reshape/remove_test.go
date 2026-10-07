@@ -9,6 +9,8 @@ import (
 
 	"github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestPlanDecidesWhetherABranchCanBeRemoved(t *testing.T) {
@@ -371,7 +373,7 @@ func TestRevalidationRefusesABranchThatMoved(t *testing.T) {
 	}
 	w.git.tips["synthetic-middle"] = "moved-tip"
 
-	if _, err := service.Revalidate(context.Background(), Fold, "synthetic-middle", preview); err == nil {
-		t.Fatal("Revalidate() = nil after the branch moved")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), Fold, "synthetic-middle")); err == nil {
+		t.Fatal("Replan() = nil after the branch moved")
 	}
 }

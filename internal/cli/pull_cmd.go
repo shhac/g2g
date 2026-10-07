@@ -111,9 +111,6 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
 			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote)
 		}
-		pull.revalidate = func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
-			return service.RevalidateTrunk(ctx, o.selection.Selection(), o.remote, preview)
-		}
 		pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
 		pull.notices.noOp = "The trunk is already up to date."
 		pull.notices.changed = "The trunk is up to date; no stack branches were replayed."
@@ -147,15 +144,14 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		plan: func(ctx context.Context) (syncer.Plan, error) {
 			return service.Plan(ctx, selection, remote, chosen)
 		},
-		revalidate: func(ctx context.Context, preview syncer.Plan) (syncer.Plan, error) {
-			return service.Revalidate(ctx, selection, remote, chosen, preview)
-		},
-		render:   func(w io.Writer, plan syncer.Plan, p Presentation) error { return writeStackView(w, pullView(plan), p) },
-		execute:  service.Apply,
-		branches: func(plan syncer.Plan) int { return len(plan.Restack.Steps) + 1 },
-		noOp:     func(plan syncer.Plan) bool { return plan.Nothing() },
-		blocked:  syncer.Plan.Blocked,
-		suggest:  suggest,
+		same:         syncer.Plan.Equal,
+		revalidation: revalidation{"sync", "plan"},
+		render:       func(w io.Writer, plan syncer.Plan, p Presentation) error { return writeStackView(w, pullView(plan), p) },
+		execute:      service.Apply,
+		branches:     func(plan syncer.Plan) int { return len(plan.Restack.Steps) + 1 },
+		noOp:         func(plan syncer.Plan) bool { return plan.Nothing() },
+		blocked:      syncer.Plan.Blocked,
+		suggest:      suggest,
 		// A pull is a sequence, so it can stop between steps. It deliberately
 		// does not unwind: the fetch and the fast-forward are wanted
 		// regardless, and the replay is resumable through the command that

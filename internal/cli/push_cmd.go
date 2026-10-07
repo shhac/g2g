@@ -30,13 +30,12 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				plan: func(ctx context.Context) (push.Plan, error) {
 					return service.Plan(ctx, selection.Selection(), remote, upstream)
 				},
-				revalidate: func(ctx context.Context, preview push.Plan) (push.Plan, error) {
-					return service.Revalidate(ctx, selection.Selection(), remote, upstream, preview)
-				},
-				render:   writePushPlan,
-				guard:    guard,
-				execute:  service.Execute,
-				branches: func(plan push.Plan) int { return len(plan.Branches) },
+				same:         push.Plan.Equal,
+				revalidation: revalidation{"push", "push plan"},
+				render:       writePushPlan,
+				guard:        guard,
+				execute:      service.Execute,
+				branches:     func(plan push.Plan) int { return len(plan.Branches) },
 				// The lease rejects a push the remote has moved under, so this
 				// changes no outcome — it moves the refusal in front of the
 				// network call and names the branch.

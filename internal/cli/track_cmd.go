@@ -50,10 +50,8 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 				plan, err := service.PlanTrack(ctx, selection.Selection(), parent)
 				return trackPlan{plan, describedElsewhere(ctx, describesElsewhere)}, err
 			},
-			revalidate: func(ctx context.Context, preview trackPlan) (trackPlan, error) {
-				plan, err := service.RevalidateTrack(ctx, selection.Selection(), parent, preview.TrackPlan)
-				return trackPlan{plan, describedElsewhere(ctx, describesElsewhere)}, err
-			},
+			same:         func(preview, current trackPlan) bool { return preview.TrackPlan.Equal(current.TrackPlan) },
+			revalidation: revalidation{"graph.track", "graph"},
 			render: func(writer io.Writer, plan trackPlan, p Presentation) error {
 				return writeGraphView(writer, trackView(plan.TrackPlan, plan.elsewhere), plan.Discovery, p)
 			},
@@ -143,9 +141,8 @@ func declareFlow(service graph.Service, selection graphOptions, declaration grap
 		plan: func(ctx context.Context) (graph.DeclarePlan, error) {
 			return service.PlanDeclare(ctx, selection.Selection(), declaration)
 		},
-		revalidate: func(ctx context.Context, preview graph.DeclarePlan) (graph.DeclarePlan, error) {
-			return service.RevalidateDeclare(ctx, selection.Selection(), declaration, preview)
-		},
+		same:         graph.DeclarePlan.Equal,
+		revalidation: revalidation{"graph.declare", "graph"},
 		render: func(writer io.Writer, plan graph.DeclarePlan, p Presentation) error {
 			return writeGraphView(writer, declareView(plan), plan.Discovery, p)
 		},

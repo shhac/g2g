@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 
-	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graphite"
 )
 
@@ -49,18 +48,6 @@ func declaredEdges(forest graphite.Forest) []Adoption {
 		edges = append(edges, Adoption{Branch: branch, Parent: parent})
 	}
 	return edges
-}
-
-// RevalidateAdopt recomputes immediately before the write.
-func (s Service) RevalidateAdopt(ctx context.Context, preview AdoptPlan) (AdoptPlan, error) {
-	current, err := s.PlanAdopt(ctx)
-	if err != nil {
-		return AdoptPlan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "adopt", "the graphs", current.Equal(preview)); err != nil {
-		return AdoptPlan{}, err
-	}
-	return current, nil
 }
 
 // declaredOrder walks Graphite's forest from its roots down, so a parent is

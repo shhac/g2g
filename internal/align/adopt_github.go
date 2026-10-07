@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
@@ -81,22 +80,6 @@ func (s Service) PlanAdoptFromGitHub(ctx context.Context, selection stack.Select
 	}
 	plan.Unconfirmed = unconfirmed(plan)
 	return plan, nil
-}
-
-// RevalidateAdoptFromGitHub recomputes immediately before the write.
-//
-// It reads the pull requests again rather than trusting the preview's reading.
-// What is written is local, but it is written from what GitHub said, and a base
-// someone retargeted in between is exactly the change this exists to catch.
-func (s Service) RevalidateAdoptFromGitHub(ctx context.Context, selection stack.Selection, preview AdoptPlan) (AdoptPlan, error) {
-	current, err := s.PlanAdoptFromGitHub(ctx, selection)
-	if err != nil {
-		return AdoptPlan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "adopt", "the pull requests and the g2g graph", current.Equal(preview)); err != nil {
-		return AdoptPlan{}, err
-	}
-	return current, nil
 }
 
 func (s Service) pullRequestRecord() record {

@@ -241,15 +241,6 @@ func (s Service) wholeStack(ctx context.Context, selection stack.Selection) (sta
 	return whole, snapshot, nil
 }
 
-// Revalidate re-reads the world and refuses if anything moved since preview.
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, selection)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "comment", "comment plan", plan.Equal(preview))
-}
-
 // Stopped is a run that wrote some comments and then failed on one.
 //
 // Those comments are written and correct, so reporting the run as not applied

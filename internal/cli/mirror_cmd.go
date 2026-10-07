@@ -27,9 +27,8 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 			plan: func(ctx context.Context) (align.MirrorPlan, error) {
 				return service.PlanMirror(ctx, prune)
 			},
-			revalidate: func(ctx context.Context, preview align.MirrorPlan) (align.MirrorPlan, error) {
-				return service.RevalidateMirror(ctx, prune, preview)
-			},
+			same:         align.MirrorPlan.Equal,
+			revalidation: revalidation{"mirror", "the graphs"},
 			render: func(writer io.Writer, plan align.MirrorPlan, p Presentation) error {
 				return writeStackView(writer, mirrorView(plan, prune), p)
 			},

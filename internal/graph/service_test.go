@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // memoryStore is an injected store. Preview/apply sequencing is the thing
@@ -342,7 +344,7 @@ func TestRevalidateRefusesWhenTheGraphMovedUnderneath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := service.RevalidateTrack(ctx, Selection{Branch: "synthetic-session"}, "synthetic-billing", preview); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanTrack(ctx, Selection{Branch: "synthetic-session"}, "synthetic-billing")); err == nil {
 		t.Fatal("RevalidateTrack() error = nil after the graph changed")
 	}
 }
@@ -355,7 +357,7 @@ func TestRevalidatePassesWhenNothingMoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.RevalidateUntrack(ctx, Selection{Branch: "synthetic-login"}, preview); err != nil {
+	if _, err := testutil.Replan(preview)(service.PlanUntrack(ctx, Selection{Branch: "synthetic-login"})); err != nil {
 		t.Fatalf("RevalidateUntrack() error = %v", err)
 	}
 }

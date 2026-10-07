@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/graph"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // A branch whose parent is being rewritten has to be rewritten too, even
@@ -429,8 +431,8 @@ func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 	}
 
 	git.objects["synthetic-b"] = "b-moved"
-	if _, err := service.Revalidate(context.Background(), selection(), Onto{}, false, nil, preview); err == nil {
-		t.Fatal("Revalidate() error = nil after a branch moved")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), selection(), Onto{}, false, nil)); err == nil {
+		t.Fatal("Replan() error = nil after a branch moved")
 	}
 }
 

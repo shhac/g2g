@@ -8,6 +8,8 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/graphite"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // fakeGraphite records what alignment asked Graphite to do, in order. Ordering
@@ -324,7 +326,7 @@ func TestRevalidateRefusesAChangedGraph(t *testing.T) {
 	}
 	store.graph = graph.Graph{Edges: map[string]graph.Edge{"synthetic-lower": {Parent: "synthetic-trunk"}}, Trunks: []string{"synthetic-trunk"}}
 
-	if _, err := svc.RevalidateMirror(context.Background(), false, preview); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); err == nil {
 		t.Error("RevalidateMirror() error = nil after the graph moved")
 	}
 }
@@ -336,7 +338,7 @@ func TestRevalidateAcceptsAnUnchangedGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanMirror() error = %v", err)
 	}
-	if _, err := svc.RevalidateMirror(context.Background(), false, preview); err != nil {
+	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); err != nil {
 		t.Errorf("RevalidateMirror() error = %v for an unchanged graph", err)
 	}
 }
@@ -477,7 +479,7 @@ func TestRevalidateMirrorCatchesAChangedParentAtTheSameCount(t *testing.T) {
 		"synthetic-top":   "synthetic-lower",
 	}, "synthetic-trunk")
 
-	if _, err := svc.RevalidateMirror(context.Background(), false, preview); err == nil {
+	if _, err := testutil.Replan(preview)(svc.PlanMirror(context.Background(), false)); err == nil {
 		t.Error("RevalidateMirror() error = nil when a write changed at an unchanged count")
 	}
 }

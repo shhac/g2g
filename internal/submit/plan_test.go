@@ -10,6 +10,8 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 type fakeGraphite struct{ err error }
@@ -166,13 +168,15 @@ func TestSupersededBranchIsSubmittedAgain(t *testing.T) {
 	}
 }
 
-func TestRevalidateRequiresACleanWorktreeBeforeReadingAnything(t *testing.T) {
+// An apply asks this before it re-discovers anything; the CLI's flow pins that
+// order.
+func TestRequireCleanRefusesADirtyWorktreeWithoutReadingGitHub(t *testing.T) {
 	github := &fakeGitHub{}
 	service, git := planService(github)
 	git.cleanErr = errors.New("working tree is not clean")
 
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, Plan{}); err == nil {
-		t.Fatal("Revalidate() = nil, want error")
+	if err := service.RequireClean(context.Background()); err == nil {
+		t.Fatal("RequireClean() = nil, want error")
 	}
 	if github.inspections != 0 {
 		t.Errorf("GitHub was read for a dirty worktree: %d inspections", github.inspections)
@@ -187,8 +191,8 @@ func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, preview); err != nil {
-		t.Fatalf("Revalidate() error = %v", err)
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)); err != nil {
+		t.Fatalf("Replan() error = %v", err)
 	}
 }
 
@@ -207,9 +211,9 @@ func TestRevalidateRejectsAPlanThatChangedUnderneath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = service.Revalidate(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream, preview)
+	_, err = testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream))
 	if err == nil || !strings.Contains(err.Error(), "changed during revalidation") {
-		t.Fatalf("Revalidate() error = %v, want a revalidation mismatch", err)
+		t.Fatalf("Replan() error = %v, want a revalidation mismatch", err)
 	}
 }
 

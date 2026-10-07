@@ -59,7 +59,7 @@ func TestCleanupDeletesASquashMergedBranchAndKeepsUnlandedWork(t *testing.T) {
 	if !strings.Contains(repo.Run("branch", "--list", "synthetic-work"), "synthetic-work") {
 		t.Fatal("preview deleted a branch")
 	}
-	validated, err := service.Revalidate(context.Background(), selection, plan)
+	validated, err := testutil.Replan(plan)(service.PlanWithOptions(context.Background(), selection, plan.Options))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestCleanupRetriesAfterDeletingOnlyPartOfTheSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	validated, err := service.Revalidate(ctx, selection, retry)
+	validated, err := testutil.Replan(retry)(service.PlanWithOptions(ctx, selection, retry.Options))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // adoptionGit is an untracked repository: a trunk, a chain on it, a branch
@@ -189,7 +191,7 @@ func TestRevalidateStackRefusesAChangedGraph(t *testing.T) {
 	}
 	store.graph = moved
 
-	if _, err := service.RevalidateStack(context.Background(), Selection{}, "synthetic-trunk", preview); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanStack(context.Background(), Selection{}, "synthetic-trunk")); err == nil {
 		t.Error("RevalidateStack() error = nil after the graph moved")
 	}
 }

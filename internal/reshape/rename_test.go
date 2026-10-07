@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/repair"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 func TestPlanRenameDecidesWhetherABranchCanBeRenamed(t *testing.T) {
@@ -220,7 +222,7 @@ func TestRevalidationRefusesANameTakenSincePreview(t *testing.T) {
 	}
 	w.git.local = append(w.git.local, "synthetic-renamed")
 
-	if _, err := service.RevalidateRename(context.Background(), "synthetic-middle", "synthetic-renamed", preview); err == nil {
+	if _, err := testutil.Replan(preview)(service.PlanRename(context.Background(), "synthetic-middle", "synthetic-renamed")); err == nil {
 		t.Fatal("RevalidateRename() = nil after the name was taken")
 	}
 }

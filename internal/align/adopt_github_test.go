@@ -12,6 +12,8 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // fakePullRequests answers the way GitHub does: only for the heads it is asked
@@ -295,7 +297,7 @@ func TestRevalidateAdoptFromGitHubRereadsThePullRequests(t *testing.T) {
 		"synthetic-lower": "synthetic-trunk",
 		"synthetic-top":   "synthetic-trunk",
 	}
-	if _, err := fixture.svc.RevalidateAdoptFromGitHub(context.Background(), stack.Selection{}, preview); err == nil {
+	if _, err := testutil.Replan(preview)(fixture.svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{})); err == nil {
 		t.Error("RevalidateAdoptFromGitHub() error = nil after a base was retargeted")
 	}
 	if len(fixture.prs.asked) <= rounds {
@@ -307,7 +309,7 @@ func TestRevalidateAdoptFromGitHubAcceptsAnUnchangedStack(t *testing.T) {
 	fixture := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "synthetic-trunk")
 	preview := planFromPullRequests(t, fixture, stack.Selection{})
 
-	if _, err := fixture.svc.RevalidateAdoptFromGitHub(context.Background(), stack.Selection{}, preview); err != nil {
+	if _, err := testutil.Replan(preview)(fixture.svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{})); err != nil {
 		t.Errorf("RevalidateAdoptFromGitHub() error = %v for an unchanged stack", err)
 	}
 }

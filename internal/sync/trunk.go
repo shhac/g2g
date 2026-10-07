@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 )
 
@@ -28,17 +27,4 @@ func (s Service) PlanTrunk(ctx context.Context, selection graph.Selection, remot
 		return Plan{}, fmt.Errorf("%q has no recorded trunk · name one with --branch, or declare it with g2g track --branch %s --as-trunk", discovery.Target, base)
 	}
 	return s.Plan(ctx, graph.Selection{Branch: base, Scope: graph.ScopeBranch}, remote, TakeNothing)
-}
-
-// RevalidateTrunk rediscovers the selected trunk and checks its remote before
-// applying the preview, using the same boundary as an ordinary pull.
-func (s Service) RevalidateTrunk(ctx context.Context, selection graph.Selection, remote string, preview Plan) (Plan, error) {
-	current, err := s.PlanTrunk(ctx, selection, remote)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "sync", "plan", current.Equal(preview)); err != nil {
-		return Plan{}, err
-	}
-	return current, nil
 }

@@ -10,7 +10,6 @@ package land
 import (
 	"context"
 
-	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
@@ -127,15 +126,6 @@ func Defaults() Options {
 func (s Service) Ready() bool {
 	return s.Git != nil && s.Selector != nil && s.GitHub != nil &&
 		s.Pusher != nil && s.Syncer != nil && s.Pruner != nil
-}
-
-// Revalidate re-decides the descent immediately before it starts.
-func (s Service) Revalidate(ctx context.Context, selection stack.Selection, options Options, preview Plan) (Plan, error) {
-	plan, err := s.Plan(ctx, selection, options)
-	if err != nil {
-		return Plan{}, err
-	}
-	return plan, diagnostic.Revalidated(ctx, "land", "land plan", plan.Equal(preview))
 }
 
 var _ Git = localgit.Client{}

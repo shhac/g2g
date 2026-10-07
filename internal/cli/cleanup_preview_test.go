@@ -85,7 +85,8 @@ func TestCleanupReportsCompletedDeletionAndScopedRetryAsPartWay(t *testing.T) {
 	}
 	flow := pruneFlow(prune.Service{}, push.Known{}, localgit.DefaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
 	flow.plan = func(context.Context) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
-	flow.revalidate = func(context.Context, prunePlan) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
+	// Nothing here is published, so there is nothing for settle to ask.
+	flow.settle = nil
 	flow.execute = func(context.Context, prunePlan) error { return stopped }
 	err := flow.run(cmd, context.Background(), newBudgets(cmd), Presentation{}, true)
 	if exitCode(err) != stoppedExitCode {

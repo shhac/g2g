@@ -9,6 +9,8 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+
+	"github.com/shhac/g2g/internal/testutil"
 )
 
 // fakeGit answers from a table and records every call that changes something,
@@ -357,7 +359,7 @@ func TestRevalidationRefusesAParentThatMoved(t *testing.T) {
 	}
 	git.tips["synthetic-lower"] = "moved-tip"
 
-	if _, err := service.Revalidate(context.Background(), request, preview); err == nil {
-		t.Fatal("Revalidate() = nil after the parent moved")
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), request)); err == nil {
+		t.Fatal("Replan() = nil after the parent moved")
 	}
 }

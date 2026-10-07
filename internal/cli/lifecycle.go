@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // applyFlow is the preview/apply sequence every mutating command performs:
@@ -18,12 +20,28 @@ import (
 // short-circuited a no-op. Here it is stated once, and a command supplies only
 // what genuinely differs.
 type applyFlow[P any] struct {
-	// plan discovers. revalidate re-discovers and compares against the preview,
-	// returning an error if anything moved underneath.
-	plan       func(context.Context) (P, error)
-	revalidate func(context.Context, P) (P, error)
-	render     func(io.Writer, P, Presentation) error
-	execute    func(context.Context, P) error
+	// plan discovers. An apply asks it again immediately before mutating and
+	// refuses unless same finds the second answer equal to the first, so a
+	// command supplies the comparison and the flow does the asking. Each
+	// service used to carry its own Revalidate doing exactly this, some twenty
+	// copies, and a command was free to hand the flow one that compared
+	// nothing.
+	plan    func(context.Context) (P, error)
+	same    func(P, P) bool
+	render  func(io.Writer, P, Presentation) error
+	execute func(context.Context, P) error
+	// revalidation names the comparison: event in the diagnostic stream, and
+	// subject in the refusal when it fails.
+	revalidation revalidation
+	// discovered is a first plan the command already has, which the flow uses
+	// in place of asking plan. An apply still asks plan before mutating.
+	discovered *P
+	// precheck refuses an apply before it re-discovers anything, for a state
+	// a preview does not need, such as a clean working tree.
+	precheck func(context.Context) error
+	// settle finishes a revalidated plan: a refusal that must follow the
+	// comparison, or a fact only an apply needs, gathered from local state.
+	settle func(context.Context, P) (P, error)
 
 	// branches sizes the mutation budget, which scales with the stack. A
 	// command that does not supply one gets the base budget rather than a
@@ -84,6 +102,9 @@ type applyFlow[P any] struct {
 	notices flowNotices
 }
 
+// revalidation names a flow's comparison, as diagnostic.Revalidated takes it.
+type revalidation struct{ event, subject string }
+
 // flowNotices are the human-facing lines around the sequence. They are the
 // only presentational difference between the commands.
 type flowNotices struct {
@@ -119,7 +140,7 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 			return err
 		}
 	}
-	plan, err := f.plan(ctx)
+	plan, err := f.first(ctx)
 	if err != nil {
 		return budgets.discoveryTimedOut(err)
 	}
@@ -161,6 +182,36 @@ func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error 
 	default:
 		return prose(cmd.OutOrStdout(), p, "\n"+p.notice("No changes were made.")+" "+f.notices.preview)
 	}
+}
+
+// first is the plan a preview shows and an apply compares against.
+func (f applyFlow[P]) first(ctx context.Context) (P, error) {
+	if f.discovered != nil {
+		return *f.discovered, nil
+	}
+	return f.plan(ctx)
+}
+
+// revalidate re-discovers immediately before a mutation and refuses if the
+// answer differs from the preview, then settles what was found.
+func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
+	var none P
+	if f.precheck != nil {
+		if err := f.precheck(ctx); err != nil {
+			return none, err
+		}
+	}
+	current, err := f.plan(ctx)
+	if err != nil {
+		return none, err
+	}
+	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, f.same != nil && f.same(preview, current)); err != nil {
+		return none, err
+	}
+	if f.settle == nil {
+		return current, nil
+	}
+	return f.settle(ctx, current)
 }
 
 // mutate renders and flushes the validated plan before invoking the mutation,

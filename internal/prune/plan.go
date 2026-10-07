@@ -190,16 +190,3 @@ func comparisonEdge(recorded graph.Graph, branch string, local []string) (graph.
 	}
 	return graph.Edge{}, false
 }
-
-// Revalidate repeats discovery immediately before the write and refuses if the
-// answer moved.
-func (s Service) Revalidate(ctx context.Context, selection graph.Selection, preview Plan) (Plan, error) {
-	current, err := s.PlanWithOptions(ctx, selection, preview.Options)
-	if err != nil {
-		return Plan{}, err
-	}
-	if err := diagnostic.Revalidated(ctx, "prune", "plan", current.Equal(preview)); err != nil {
-		return Plan{}, err
-	}
-	return current, nil
-}

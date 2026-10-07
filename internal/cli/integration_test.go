@@ -486,3 +486,49 @@ func fillSpecTitles(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+// An apply over a dirty tree is refused before anything is re-discovered, so
+// GitHub is read once, for the preview, and nothing is written. unlink had this
+// only because it borrowed link's revalidation; the flow's precheck is now what
+// each of them names.
+func TestApplyOverADirtyTreeIsRefusedBeforeRediscovery(t *testing.T) {
+	for _, args := range [][]string{
+		{"github", "link", "--apply"},
+		{"github", "unlink", "--stack-number", "7", "--apply"},
+		{"submit", "--apply"},
+	} {
+		t.Run(strings.Join(args[:len(args)-1], " "), func(t *testing.T) {
+			routes, _ := graphiteRoutes(t, []testutil.Route{
+				{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+				{Prefix: "api graphql", Output: pullRequestsJSON(openTopPullRequest)},
+				{Prefix: "stack"},
+			})
+			routes["git"] = append([]testutil.Route{{Prefix: "status --porcelain", Output: " M synthetic.txt"}}, routes["git"]...)
+			recorder := testutil.FakeCLIs(t, routes)
+
+			stdout, _, err := run(t, args...)
+			if err == nil || !strings.Contains(err.Error(), "working tree is not clean") {
+				t.Fatalf("error = %v, want the dirty tree refused\n%s", err, stdout)
+			}
+			if got := recorder.Count("gh api graphql"); got != 1 {
+				t.Errorf("GitHub read %d times, want once for the preview and not again", got)
+			}
+			recorder.AssertNone("gh stack", "git push", "gh pr create")
+		})
+	}
+}
+
+// The flow names each command's revalidation in the diagnostic stream as the
+// service used to, so a debug trace still says the apply compared what it
+// found with what was previewed.
+func TestAnApplyRecordsItsRevalidationInTheDebugStream(t *testing.T) {
+	fakeRepository(t, openTopPullRequest)
+
+	stdout, stderr, err := run(t, "--debug", "push", "--apply")
+	if err != nil {
+		t.Fatalf("push --apply: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stderr, `event=push.revalidation match="true"`) {
+		t.Errorf("debug does not record the revalidation:\n%s", stderr)
+	}
+}

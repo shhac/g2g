@@ -44,7 +44,7 @@ func declaredMethod(declaration graph.Declaration) (githubstack.Method, repair.N
 		return "", repair.Note{
 			Reason: fmt.Sprintf("it is declared to land by %q, which is not a way to merge", declaration.By),
 			Ways: []repair.Step{
-				{Command: fmt.Sprintf("g2g track --as-trunk --into %s --by <method>", declaration.Into), Effect: "declare how it lands again"},
+				{Command: fmt.Sprintf("g2g track --as-trunk --into %s --by <method>", repair.Quote(declaration.Into)), Effect: "declare how it lands again"},
 				{Command: "g2g land --method <method>", Effect: "or name the method for this descent"},
 			},
 		}
@@ -65,7 +65,7 @@ func declaredRefusal(recorded graph.Graph, target string) repair.Note {
 		return repair.Note{
 			Reason: fmt.Sprintf("%s still has %s recorded on it, which would have nowhere to land once it has gone", target, strings.Join(children, ", ")),
 			Ways: []repair.Step{
-				{Command: "g2g land --branch " + children[len(children)-1], Effect: fmt.Sprintf("land what sits on it into %s first", target)},
+				{Command: "g2g land --branch " + repair.Quote(children[len(children)-1]), Effect: fmt.Sprintf("land what sits on it into %s first", target)},
 				{Command: "g2g track --branch <branch> --parent <other>", Effect: "or record it somewhere else"},
 			},
 		}
@@ -74,8 +74,8 @@ func declaredRefusal(recorded graph.Graph, target string) repair.Note {
 		return repair.Note{
 			Reason: fmt.Sprintf("the cleanup deletes %s, which these trunks land into: %s", target, strings.Join(dependents, ", ")),
 			Ways: []repair.Step{
-				{Command: "g2g land --branch " + dependents[0], Effect: fmt.Sprintf("land it into %s first", target)},
-				{Command: "g2g untrack --branch " + dependents[0], Effect: "or stop it being a trunk"},
+				{Command: "g2g land --branch " + repair.Quote(dependents[0]), Effect: fmt.Sprintf("land it into %s first", target)},
+				{Command: "g2g untrack --branch " + repair.Quote(dependents[0]), Effect: "or stop it being a trunk"},
 			},
 		}
 	}
@@ -123,10 +123,10 @@ func (s Service) undeclare(ctx context.Context, landed, into string) error {
 // it is untrack rather than prune.
 func (p Plan) declaredCleanup(step Step) []Command {
 	return []Command{{
-		Command: fmt.Sprintf("git fetch %s %s:%s", p.Options.Remote, p.Trunk, p.Trunk),
+		Command: fmt.Sprintf("git fetch %s %s", repair.Quote(p.Options.Remote), repair.Quote(p.Trunk+":"+p.Trunk)),
 		Effect:  fmt.Sprintf("advance %s to the merge · where it is checked out, git pull --ff-only there instead", p.Trunk),
 	}, {
-		Command: fmt.Sprintf("g2g untrack --branch %s --apply", step.Branch),
+		Command: fmt.Sprintf("g2g untrack --branch %s --apply", repair.Quote(step.Branch)),
 		Effect:  "stop it being a trunk, now it has landed",
 	}}
 }

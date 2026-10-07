@@ -131,7 +131,7 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 	ways := make([]repair.Step, 0, len(stacks))
 	for _, number := range stacks {
 		ways = append(ways, repair.Step{
-			Command: fmt.Sprintf("g2g github unlink --branch %s --stack-number %d", discovery.Target, number),
+			Command: fmt.Sprintf("g2g github unlink --branch %s --stack-number %d", repair.Quote(discovery.Target), number),
 			Effect:  "unlink the GitHub stack, keeping its pull requests",
 		})
 	}

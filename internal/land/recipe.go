@@ -52,7 +52,7 @@ func (p Plan) mergeCommands(step Step) []Command {
 	}
 	if step.Retargets() {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, step.Base),
+			Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, repair.Quote(step.Base)),
 			Effect:  fmt.Sprintf("merge into %s rather than %s", step.Base, step.From),
 		})
 	}
@@ -78,9 +78,9 @@ func (p Plan) republishCommands() []Command {
 
 // pushCommand publishes one branch the way the descent does.
 func (p Plan) pushCommand(branch string) string {
-	command := fmt.Sprintf("g2g push --branch %s --scope path", branch)
+	command := fmt.Sprintf("g2g push --branch %s --scope path", repair.Quote(branch))
 	if p.Options.Remote != Defaults().Remote {
-		command += " --remote " + p.Options.Remote
+		command += " --remote " + repair.Quote(p.Options.Remote)
 	}
 	if p.Options.Upstream == localgit.LeaveUpstream {
 		command += " --no-set-upstream"
@@ -107,7 +107,7 @@ func (p Plan) commentCommands() []Command {
 	commands := make([]Command, 0, len(p.Above))
 	for _, above := range p.Above {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("g2g github comment --branch %s --apply", above),
+			Command: fmt.Sprintf("g2g github comment --branch %s --apply", repair.Quote(above)),
 			Effect:  "keep the stack comments, with what landed listed as merged",
 		})
 	}
@@ -143,7 +143,7 @@ func (p Plan) cleanupCommands(step Step) []Command {
 		Effect:  "advance the trunk and replay what is left onto it",
 	})
 	commands = append(commands, Command{
-		Command: fmt.Sprintf("g2g prune --branch %s --scope branch --apply", step.Branch),
+		Command: fmt.Sprintf("g2g prune --branch %s --scope branch --apply", repair.Quote(step.Branch)),
 		Effect:  "forget it, once what sat on it has been reparented",
 	})
 	return append(commands, p.deletions(step)...)
@@ -154,13 +154,13 @@ func (p Plan) deletions(step Step) []Command {
 	commands := make([]Command, 0, 2)
 	if p.Options.DeleteRemote {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("git push %s --delete %s", p.Options.Remote, step.Branch),
+			Command: fmt.Sprintf("git push %s --delete %s", repair.Quote(p.Options.Remote), repair.Quote(step.Branch)),
 			Effect:  "remove the published branch, if the merge has not already",
 		})
 	}
 	if p.Options.DeleteLocal {
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("git branch -D %s", step.Branch),
+			Command: fmt.Sprintf("git branch -D %s", repair.Quote(step.Branch)),
 			Effect:  "remove it here",
 		})
 	}

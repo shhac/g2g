@@ -1140,3 +1140,14 @@ func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
 		t.Fatalf("plan = %+v, want held leaf protected", plan)
 	}
 }
+
+// A recipe is pasted into a shell, and Git allows a branch name the shell
+// would expand, so every name in it is quoted.
+func TestTheRecipeQuotesNamesTheShellWouldExpand(t *testing.T) {
+	options := Defaults()
+	options.Remote = "synthetic up"
+	got := Plan{Options: options}.pushCommand("synthetic-$(touch x)")
+	if want := "g2g push --branch 'synthetic-$(touch x)' --scope path --remote 'synthetic up' --apply"; got != want {
+		t.Errorf("pushCommand = %q, want %q", got, want)
+	}
+}

@@ -46,12 +46,12 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		return view.blockedBy("repair the marked existing pull requests first.")
 	}
 	if link && plan.LinkBlocked() != "" {
-		return view.refusing(plan.LinkRepair().SentenceWith(runnable), plan.LinkRepair())
+		return view.refusing(plan.LinkRepair())
 	}
 	// Publishing is push's, refusals included, so its reason and ways out are
 	// the ones push itself would show.
 	if plan.Push.Blocked() != "" {
-		return view.refusing(plan.Push.Repair.SentenceWith(runnable), plan.Push.Repair)
+		return view.refusing(plan.Push.Repair)
 	}
 	view = view.note("Publishes the selected branches through one atomic, lease-protected push; existing PR bases are preserved.", severityNeutral)
 	if _, existingOnly := plan.ExistingSpec(); !existingOnly {

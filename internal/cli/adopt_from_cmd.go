@@ -24,7 +24,7 @@ func adoptFromFlow(service align.Service, guard func(context.Context) error) app
 		// Only whether there is no adoption work: the shared lifecycle gives
 		// blocked plans their own refusal path.
 		noOp:    func(plan align.AdoptPlan) bool { return len(plan.Adopt) == 0 },
-		blocked: func(plan align.AdoptPlan) string { return plan.Blocked() },
+		blocked: align.AdoptPlan.Blocked,
 	}
 }
 

@@ -193,7 +193,7 @@ func moveView(move navigate.Move) stackView {
 	}
 	if move.Blocked() != "" {
 		// There is no apply to block: the move itself is what was refused.
-		view = view.refusing(move.Blocked(), move.Repair)
+		view = view.refusing(move.Repair)
 		view.BlockedHeading = "Not moved"
 		return view
 	}

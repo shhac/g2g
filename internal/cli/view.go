@@ -242,13 +242,10 @@ func (v stackView) blockedBy(reason string) stackView {
 // refusing records a refusal in both shapes at once: Blocked keeps the whole
 // sentence, which is what a machine reads, and Advice is the same content laid
 // out for a person, which is what makes the command it names a command rather
-// than a run of words inside prose.
-//
-// The sentence is passed rather than rendered from the note, because a plan
-// can be blocked by a step it delegated to — sync carries restack's refusal —
-// and that one has no structure here to lay out. It must still say why.
-func (v stackView) refusing(sentence string, note repair.Note) stackView {
-	v = v.blockedBy(sentence)
+// than a run of words inside prose. Both come from the note, as every plan's
+// own sentence does.
+func (v stackView) refusing(note repair.Note) stackView {
+	v = v.blockedBy(note.SentenceWith(runnable))
 	v.Repair = note
 	if len(note.Ways) == 0 {
 		return v

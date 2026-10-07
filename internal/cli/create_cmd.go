@@ -43,7 +43,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			guard:    guard,
 			execute:  service.Apply,
 			branches: func(create.Plan) int { return 1 },
-			blocked:  func(plan create.Plan) string { return plan.Blocked() },
+			blocked:  create.Plan.Blocked,
 			// A commit that fails after the branch is recorded has done most of
 			// what was asked, and the branch and its record stay. Reporting that
 			// as "not applied" would be wrong about both.

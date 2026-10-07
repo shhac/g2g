@@ -504,10 +504,13 @@ property the original had.
 - `githubstack.PathStep.Classify` — what one branch's pull request is.
   `github link` and `submit` apply different policy to the same answer; only the policy
   differs.
-- `repair.Note` — a refusal in two shapes: why, and the ways out. A package
-  that refuses builds one and derives its `Blocked` sentence from it, so the
-  line a machine reads and the column a person reads cannot name different
-  commands. It depends on nothing, which is what lets `internal/graph` describe
+- `repair.Note` — a refusal in two shapes: why, and the ways out. A plan that
+  refuses stores only the note, in `Repair`, and its `Blocked()` is a method
+  over it, so the line a machine reads and the column a person reads cannot
+  name different commands. A refusal that arrives as an error is a note with
+  only a reason. Plans used to store the sentence beside the note, kept in step
+  by hand at some thirty sites, and `land` carried a helper whose only job was
+  defending the gap. It depends on nothing, which is what lets `internal/graph` describe
   its own repair without reaching Graphite or GitHub. The joining lives on the
   type — `SentenceWith` takes the decoration rather than exposing the join —
   because a caller assembling its own sentence is free to word it differently

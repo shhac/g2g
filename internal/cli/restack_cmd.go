@@ -182,7 +182,7 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 		// Not "no steps": a branch already on its --onto target has nothing to
 		// replay and a new parent to record, and skipping Apply left the old one.
 		noOp:    func(plan restack.Plan) bool { return plan.Nothing() },
-		blocked: func(plan restack.Plan) string { return plan.Blocked() },
+		blocked: restack.Plan.Blocked,
 		// A restack reads no remote, so what it suggests compares with the
 		// default one.
 		suggest: func(plan restack.Plan) string { return replayNext(plan, "") },

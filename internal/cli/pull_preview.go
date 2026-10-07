@@ -13,7 +13,7 @@ import (
 func pullView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "pull")
 	if plan.Blocked() != "" {
-		return view.refusing(plan.Blocked(), plan.Repair)
+		return view.refusing(plan.Repair)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
 	if note := collectNote(plan); note != "" {

@@ -59,7 +59,7 @@ func adoptFlow(service graph.Service, selection graphOptions, trunk string, guar
 		execute:  service.ApplyStack,
 		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
 		noOp:     func(plan graph.StackPlan) bool { return plan.NoOp() },
-		blocked:  func(plan graph.StackPlan) string { return plan.Blocked() },
+		blocked:  graph.StackPlan.Blocked,
 		suggest:  func(plan graph.StackPlan) string { return statusNext(plan.Discovery) },
 		notices: flowNotices{
 			preview:  "Rerun with --apply to record this stack.",

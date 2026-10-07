@@ -14,7 +14,7 @@ func refusedView(note repair.Note) stackView {
 		{Branch: "synthetic-main", Trunk: true},
 		{Branch: "synthetic-top", Target: true},
 	}}
-	return view.refusing(note.Sentence(), note)
+	return view.refusing(note)
 }
 
 var divergedNote = repair.Note{
@@ -108,7 +108,7 @@ func TestAMachineStillReadsTheWholeRefusalInOneField(t *testing.T) {
 // why rather than rendering an empty heading.
 func TestADelegatedRefusalStillSaysWhy(t *testing.T) {
 	var output bytes.Buffer
-	view := stackView{Operation: "sync", Target: "synthetic-top"}.refusing("a rewrite is already in progress", repair.Note{})
+	view := stackView{Operation: "sync", Target: "synthetic-top"}.refusing(repair.Note{Reason: "a rewrite is already in progress"})
 	if err := writeStackView(&output, view, Presentation{}); err != nil {
 		t.Fatal(err)
 	}

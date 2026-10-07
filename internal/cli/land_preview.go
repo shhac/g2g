@@ -20,7 +20,7 @@ func landView(plan land.Plan) stackView {
 		// No recipe: a refused descent has no ordered set of commands that
 		// would reach the end, and offering the ones decided before the
 		// refusal would invite someone to run half of it.
-		return view.refusing(plan.Blocked(), plan.Repair)
+		return view.refusing(plan.Repair)
 	}
 	view.Sequence = landSequence(plan)
 	if plan.KeepTrunk {

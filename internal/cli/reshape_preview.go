@@ -18,7 +18,7 @@ func writeRemovalPlan(writer io.Writer, plan reshape.Plan, p Presentation) error
 func removalView(plan reshape.Plan) stackView {
 	view := graphView(plan.Discovery, string(plan.Operation))
 	if plan.Blocked() != "" {
-		return view.refusing(plan.Blocked(), plan.Repair)
+		return view.refusing(plan.Repair)
 	}
 	view.Nodes = removalNodes(plan, view.Nodes)
 	if plan.Operation == reshape.Fold {
@@ -130,7 +130,7 @@ func writeRenamePlan(writer io.Writer, plan reshape.RenamePlan, p Presentation) 
 func renameView(plan reshape.RenamePlan) stackView {
 	view := graphView(plan.Discovery, "rename")
 	if plan.Blocked() != "" {
-		return view.refusing(plan.Blocked(), plan.Repair)
+		return view.refusing(plan.Repair)
 	}
 	for index, node := range view.Nodes {
 		if node.Branch == plan.From {

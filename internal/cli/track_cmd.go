@@ -61,7 +61,7 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			execute:  func(ctx context.Context, plan trackPlan) error { return service.ApplyTrack(ctx, plan.TrackPlan) },
 			branches: func(plan trackPlan) int { return len(plan.Branches) },
 			noOp:     func(plan trackPlan) bool { return trackIsNoOp(plan.TrackPlan) },
-			blocked:  func(plan trackPlan) string { return plan.Blocked() },
+			blocked:  trackPlan.Blocked,
 			suggest:  func(plan trackPlan) string { return statusNext(plan.Discovery) },
 			notices: flowNotices{
 				preview:  "Rerun with --apply to record this edge.",
@@ -153,7 +153,7 @@ func declareFlow(service graph.Service, selection graphOptions, declaration grap
 		execute:  service.ApplyDeclare,
 		branches: func(plan graph.DeclarePlan) int { return len(plan.Branches) },
 		noOp:     func(plan graph.DeclarePlan) bool { return plan.NoOp() },
-		blocked:  func(plan graph.DeclarePlan) string { return plan.Blocked() },
+		blocked:  graph.DeclarePlan.Blocked,
 		suggest:  func(plan graph.DeclarePlan) string { return statusNext(plan.Discovery) },
 		notices: flowNotices{
 			preview:  "Rerun with --apply to record this trunk.",

@@ -18,7 +18,7 @@ import (
 func commentView(plan comment.Plan) stackView {
 	view := stackView{Operation: "github comment", Target: plan.Requested, TargetSource: plan.RequestedSource}
 	if plan.Blocked() != "" {
-		view = view.refusing(plan.Blocked(), plan.Repair)
+		view = view.refusing(plan.Repair)
 	}
 	view.Nodes = commentNodes(plan)
 	if len(plan.Merged) != 0 {

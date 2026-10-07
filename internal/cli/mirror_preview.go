@@ -15,7 +15,7 @@ import (
 func mirrorView(plan align.MirrorPlan, prune bool) stackView {
 	view := stackView{Operation: "graphite mirror", Target: "graphite", TargetSource: "destination"}
 	if plan.Blocked() != "" {
-		return view.refusing(plan.Repair.SentenceWith(runnable), plan.Repair)
+		return view.refusing(plan.Repair)
 	}
 	// Nothing-to-do is applyFlow's line to say, not this view's: saying it here
 	// too printed it twice.

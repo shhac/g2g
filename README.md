@@ -263,7 +263,7 @@ the current `--apply` flow.
 `3` is `pull` stopping on a conflict mid-replay, `pull --prune` whose prune
 refused after the pull had happened, `land` stopping part-way down a stack
 after something merged, `github comment` stopping after writing some of its
-comments, `create -m` whose commit failed after the branch was recorded, and a
+comments, `github retarget` stopping after moving some bases, `create -m` whose commit failed after the branch was recorded, and a
 `delete`, `fold` or `rename` that could not put back what it had done. A
 descent that stopped before changing anything is an ordinary failure. Those are
 not failures to retry — what replayed stays replayed and what merged stays
@@ -880,6 +880,11 @@ It touches only the pull requests whose base disagrees with the resolved stack,
 leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
+
+It moves the bases bottom-up and stops at the first `gh` refusal without moving
+any back, because a base already moved is right. A run that stops after moving
+some exits `3`, naming the ones that moved and the retry, which moves only what
+is still wrong.
 
 #### github link and github unlink
 

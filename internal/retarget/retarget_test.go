@@ -2,6 +2,7 @@ package retarget
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -189,8 +190,14 @@ func TestExecuteStopsAtTheFirstRefusal(t *testing.T) {
 	if len(plan.Changes) != 2 {
 		t.Fatalf("Changes = %+v, want two so a stop is observable", plan.Changes)
 	}
-	if err := svc.Execute(context.Background(), plan); err == nil {
+	err = svc.Execute(context.Background(), plan)
+	if err == nil {
 		t.Fatal("Execute() error = nil when GitHub refused")
+	}
+	// Nothing moved, so this is the ordinary failure and not a stop part-way.
+	var stopped *Stopped
+	if errors.As(err, &stopped) {
+		t.Errorf("Execute() = %v, a stop part-way when nothing had moved", err)
 	}
 	if len(github.retargets) != 1 {
 		t.Errorf("made %d calls, want to stop after the first refusal", len(github.retargets))
@@ -243,8 +250,13 @@ func TestExecuteLeavesTheBasesThatAlreadyMoved(t *testing.T) {
 		t.Fatalf("Changes = %+v, want two so partial success is observable", plan.Changes)
 	}
 
-	if err := svc.Execute(context.Background(), plan); err == nil {
-		t.Fatal("Execute() error = nil when the second call failed")
+	err = svc.Execute(context.Background(), plan)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) {
+		t.Fatalf("Execute() error = %v, want a stop part-way after the first move", err)
+	}
+	if len(stopped.Moved) != 1 || stopped.Moved[0].Number != 1 || stopped.Failed.Number != 2 {
+		t.Errorf("Stopped = %+v, want #1 moved and #2 failed", stopped)
 	}
 	// The first move happened and stays; the second was attempted and failed.
 	if got := strings.Join(github.retargets, ";"); got != "#1->synthetic-trunk;#2->synthetic-lower" {

@@ -136,10 +136,28 @@ func (s Service) Revalidate(ctx context.Context, selection stack.Selection, prev
 	return plan, diagnostic.Revalidated(ctx, "retarget", "retarget plan", plan.Equal(preview))
 }
 
+// Stopped is a retarget that failed after moving at least one base. Those
+// moves are on GitHub and stay, so the run is neither a failure to retry from
+// scratch nor a success.
+type Stopped struct {
+	// Moved are the changes made before the failure, in order.
+	Moved []Change
+	// Failed is the change the run stopped on.
+	Failed Change
+	Err    error
+}
+
+func (s *Stopped) Error() string {
+	return fmt.Sprintf("stopped at #%d after moving %d: %v", s.Failed.Number, len(s.Moved), s.Err)
+}
+
+func (s *Stopped) Unwrap() error { return s.Err }
+
 // Execute points each pull request at its recorded parent, bottom-up.
 //
 // It stops at the first refusal rather than unwinding. A base already moved is
-// correct, and putting it back would undo the only part that worked.
+// correct, and putting it back would undo the only part that worked. A failure
+// before anything moved is an ordinary error; one after is a Stopped.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if plan.Blocked != "" {
 		return fmt.Errorf("cannot retarget: %s", plan.Blocked)
@@ -147,9 +165,12 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if err := plan.Snapshot.RequireActionable("g2g github retarget"); err != nil {
 		return err
 	}
-	for _, change := range plan.Changes {
+	for index, change := range plan.Changes {
 		if err := s.GitHub.Retarget(ctx, change.Number, change.To); err != nil {
-			return err
+			if index == 0 {
+				return err
+			}
+			return &Stopped{Moved: plan.Changes[:index], Failed: change, Err: err}
 		}
 	}
 	return nil

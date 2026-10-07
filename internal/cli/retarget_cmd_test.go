@@ -21,7 +21,7 @@ func TestRetargetThatStopsPartWaySaysWhatItMoved(t *testing.T) {
 	second := testutil.Route{Prefix: "pr edit 202", Stderr: "synthetic refusal", Exit: 1}
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, misbasedPullRequests, ownedConversations, second)
 
-	stdout, _, err := run(t, "github", "retarget", "--branch", "synthetic-top", "--apply")
+	stdout, stderr, err := run(t, "github", "retarget", "--branch", "synthetic-top", "--apply")
 	if err == nil {
 		t.Fatalf("retarget --apply succeeded with a failing edit:\n%s", stdout)
 	}
@@ -39,6 +39,9 @@ func TestRetargetThatStopsPartWaySaysWhatItMoved(t *testing.T) {
 	}
 	if !cli.StoppedPartWayForTest(err) {
 		t.Errorf("error = %v, want the part-way status", err)
+	}
+	if !strings.Contains(stderr, "synthetic refusal") {
+		t.Errorf("stderr does not carry gh's output:\n%s", stderr)
 	}
 	if got := recorder.Find("gh pr edit 201"); !strings.Contains(got, "--base synthetic-trunk") {
 		t.Errorf("first edit = %q, want #201 moved onto synthetic-trunk", got)

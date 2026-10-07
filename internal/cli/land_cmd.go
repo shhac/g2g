@@ -169,6 +169,9 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	if len(stopped.Tidied) != 0 {
 		landed += " Cleaned up after " + branchList(stopped.Tidied) + ", which had already landed."
 	}
+	// A stop part-way prints nothing on stderr, so this is the only place
+	// what gh said can be shown.
+	writeDiagnostic(cmd.ErrOrStderr(), stopped)
 	// The merges that happened are permanent, so this is not a failure to
 	// retry — but it is not what was asked for either, and a script reading
 	// only the status had no way to tell the two apart.

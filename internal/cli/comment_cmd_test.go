@@ -142,9 +142,13 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 	}
 	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, second)
 
-	stdout, _, err := run(t, "github", "comment", "--apply")
+	stdout, stderr, err := run(t, "github", "comment", "--apply")
 	if err == nil {
 		t.Fatalf("comment --apply succeeded with a failing write:\n%s", stdout)
+	}
+	// Nothing else prints what gh said once a run stops part-way.
+	if !strings.Contains(stderr, "synthetic refusal") {
+		t.Errorf("stderr does not carry gh's output:\n%s", stderr)
 	}
 	if strings.Contains(stdout, "Not applied") {
 		t.Errorf("a run that wrote a comment says nothing was applied:\n%s", stdout)

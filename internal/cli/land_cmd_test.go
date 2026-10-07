@@ -207,14 +207,15 @@ func TestADescentThatChangedNothingIsAFailureNotAStop(t *testing.T) {
 // happened are permanent — but it is not what was asked for either, and zero
 // told a script the whole stack had landed.
 func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
-	var out bytes.Buffer
+	var out, diagnostics bytes.Buffer
 	cmd := newLand(land.Service{}, comment.Service{}, testCompletions(), nil, Presentation{})
 	cmd.SetOut(&out)
+	cmd.SetErr(&diagnostics)
 
 	err := stoppedMidLand(cmd, &land.Stopped{
 		Landed: []string{"synthetic-one"},
 		Branch: "synthetic-two",
-		Err:    errors.New("synthetic refusal"),
+		Err:    &githubstack.CommandError{Command: "gh pr merge 2", Cause: errors.New("exit status 1"), Output: "synthetic refusal"},
 	}, Presentation{})
 
 	if !wasStopped(err) {
@@ -229,6 +230,10 @@ func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("report missing %q:\n%s", want, rendered)
 		}
+	}
+	// Nothing else prints what gh said once a run stops part-way.
+	if !strings.Contains(diagnostics.String(), "synthetic refusal") {
+		t.Errorf("stderr does not carry gh's output:\n%s", diagnostics.String())
 	}
 	// Distinct from the failure status, because the two want opposite responses.
 	if stoppedExitCode == 2 || stoppedExitCode == 0 {

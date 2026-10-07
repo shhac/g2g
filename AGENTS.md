@@ -407,7 +407,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `3`. Keep the real-Git lease, squash-merge, followup, and worktree tests.
   A live child of a missing parent can be the last ref carrying inherited
   unlanded work: assess the whole range above the first surviving ancestor,
-  rather than only the child's own commits, before deleting it.
+  rather than only the child's own commits, before deleting it. A child of a
+  parent the same run forgets as landed gets the same rule (`landedThrough`):
+  squash-merged together with its parent, its own commit is in the trunk and
+  not in the parent branch, so asking only about the parent kept it and then
+  refused to forget the parent for stranding it. `status` has the matching
+  rule (`graph.belowLanded`), because a branch still on its parent's tip was
+  never asked whether it had landed.
 - restack is the only resumable operation, so every other mutating command
   refuses while its journal exists. `--continue` recomputes from the refs
   rather than resuming a stored queue, which is what makes the user's own

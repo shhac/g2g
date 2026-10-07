@@ -57,6 +57,9 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 			plan.Landed = append(plan.Landed, branch)
 		}
 	}
+	if plan.Landed, err = s.landedThrough(ctx, discovery, comparisons, plan.Landed, options.DeleteBranches, plan.Tips); err != nil {
+		return Plan{}, err
+	}
 	// Forgetting a parent while keeping its child would strand the child. A
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
@@ -81,6 +84,71 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 		diagnostic.Field{Key: "blocked", Value: plan.Blocked()},
 	)
 	return plan, nil
+}
+
+// landedThrough asks a branch whose parent this run forgets as landed whether
+// it landed where that parent did.
+//
+// Each branch is first asked whether it has anything left for its parent, and
+// a child squash-merged together with its parent does: its own commit is not
+// in the parent branch, only in the trunk. It was kept, and forgetting the
+// parent then refused for stranding it, about a stack that had landed whole.
+// So a branch above a landed parent is asked again of the first ancestor this
+// run keeps, over the whole range above that ancestor, which is the rule a
+// missing parent already gets. A branch found landed lets the one above it be
+// asked in turn. The answer is in discovery order.
+func (s Service) landedThrough(ctx context.Context, discovery graph.Discovery, comparisons map[string]graph.Edge, found []string, deleting bool, tips map[string]string) ([]string, error) {
+	forgotten := map[string]bool{}
+	for _, branch := range found {
+		forgotten[branch] = true
+	}
+	type question struct {
+		branch string
+		edge   graph.Edge
+	}
+	asked := map[question]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, branch := range discovery.Branches {
+			edge, through := throughForgotten(comparisons, branch, forgotten)
+			if forgotten[branch] || !through || asked[question{branch, edge}] {
+				continue
+			}
+			asked[question{branch, edge}] = true
+			landed, err := s.assessBranch(ctx, branch, edge, deleting, tips)
+			if err != nil {
+				return nil, err
+			}
+			if landed {
+				forgotten[branch], changed = true, true
+			}
+		}
+	}
+	landed := make([]string, 0, len(forgotten))
+	for _, branch := range discovery.Branches {
+		if forgotten[branch] {
+			landed = append(landed, branch)
+		}
+	}
+	return landed, nil
+}
+
+// throughForgotten is branch's comparison carried past every ancestor in
+// forgotten, to the first one kept, with the fork point where the range above
+// it begins. It reports whether there was any ancestor to carry it past.
+func throughForgotten(comparisons map[string]graph.Edge, branch string, forgotten map[string]bool) (graph.Edge, bool) {
+	edge, comparable := comparisons[branch]
+	if !comparable || !forgotten[edge.Parent] {
+		return graph.Edge{}, false
+	}
+	for forgotten[edge.Parent] {
+		below, comparable := comparisons[edge.Parent]
+		if !comparable {
+			return graph.Edge{}, false
+		}
+		edge.Parent, edge.ForkPoint = below.Parent, below.ForkPoint
+	}
+	return edge, true
 }
 
 // comparisonEdges bounds each assessment at its first surviving parent.

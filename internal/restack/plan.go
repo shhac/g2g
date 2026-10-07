@@ -37,23 +37,17 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	}
 	plan := Plan{Discovery: discovery, Onto: onto, Absorb: absorb}
 	if blocked := s.blockedReason(discovery); blocked.Reason != "" {
-		plan.Repair = blocked
-		plan.Blocked = blocked.Sentence()
-		return plan, nil
+		return plan.refused(blocked), nil
 	}
 	if roots := selectionRoots(discovery); onto.Reparents() && len(roots) > 1 {
 		// --onto moves one branch and what is stacked on it. Moving only the
 		// first of several roots is what it used to do, silently.
-		plan.Repair = ontoOneRoot(roots, onto.Parent)
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
+		return plan.refused(ontoOneRoot(roots, onto.Parent)), nil
 	}
 	steps, err := s.steps(ctx, discovery, onto, pending)
 	var unmeasurable unmeasured
 	if errors.As(err, &unmeasurable) {
-		plan.Repair = unmeasurable.note()
-		plan.Blocked = plan.Repair.Sentence()
-		return plan, nil
+		return plan.refused(unmeasurable.note()), nil
 	}
 	if err != nil {
 		return Plan{}, err
@@ -66,17 +60,15 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		return Plan{}, err
 	}
 	if held.Reason != "" {
-		plan.Repair, plan.Held = held, true
-		plan.Blocked = held.Sentence()
-		return plan, nil
+		plan.Held = true
+		return plan.refused(held), nil
 	}
 	plan.Steps = steps
 	if len(steps) == 0 {
 		return plan, nil
 	}
 	if plan.Absorb && !plan.Absorbable() {
-		plan.Blocked = "commits the parent dropped were rewritten rather than removed, so absorbing them would duplicate work the parent still carries"
-		return plan, nil
+		return plan.refused(repair.Note{Reason: "commits the parent dropped were rewritten rather than removed, so absorbing them would duplicate work the parent still carries"}), nil
 	}
 	updates, clean, unpredicted, err := s.preview(ctx, plan)
 	if err != nil {
@@ -89,12 +81,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// a conflicting fork would need several and a journal that tracks
 		// which of them finished. Refusing is honest until it does.
 		plan.Lines = plan.leaves()
-		ways := make([]repair.Step, 0, len(plan.Lines))
-		for _, leaf := range plan.Lines {
-			ways = append(ways, repair.Step{Command: "g2g restack --branch " + leaf + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
-		}
-		plan.Repair = repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: ways}
-		plan.Blocked = plan.Repair.Sentence()
+		plan = plan.refused(forkConflict(plan.Lines))
 	}
 	diagnostic.Event(ctx, "restack.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")},
@@ -170,6 +157,25 @@ func selectionRoots(discovery graph.Discovery) []string {
 		roots = append(roots, branch)
 	}
 	return roots
+}
+
+// refused is this plan refused for the reason note gives, with the sentence a
+// machine reads derived from the note a person reads, as every sibling
+// planner's is.
+func (p Plan) refused(note repair.Note) Plan {
+	p.Repair = note
+	p.Blocked = note.Sentence()
+	return p
+}
+
+// forkConflict is the way out of a forked selection whose rewrite conflicts:
+// one line of descent at a time, ending at each leaf.
+func forkConflict(leaves []string) repair.Note {
+	ways := make([]repair.Step, 0, len(leaves))
+	for _, leaf := range leaves {
+		ways = append(ways, repair.Step{Command: "g2g restack --branch " + leaf + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
+	}
+	return repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: ways}
 }
 
 // ontoOneRoot is the way out of an --onto that names several roots: one

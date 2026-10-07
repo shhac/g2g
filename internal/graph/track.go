@@ -176,21 +176,30 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 // parent has advanced. Readers without merge-base support must refuse that
 // case rather than record a parent's unreachable tip.
 func (s Service) trackFork(ctx context.Context, parent, target string, origin Origin, trunk bool) (string, error) {
-	var fork string
-	var err error
-	forks, canMerge := s.Git.(interface {
-		MergeBase(context.Context, string, string) (string, error)
-	})
-	if origin == OriginAncestry {
-		fork, err = s.Git.Resolve(ctx, parent)
-	} else if canMerge {
-		fork, err = forks.MergeBase(ctx, parent, target)
-	} else {
-		return "", fmt.Errorf("cannot determine where %s leaves %s: Git reader does not support merge bases", target, parent)
-	}
-	if err != nil || !trunk || !canMerge {
+	forks, _ := s.Git.(MergeBases)
+	fork, err := s.initialFork(ctx, forks, parent, target, origin)
+	if err != nil || !trunk || forks == nil {
 		return fork, err
 	}
+	return s.upstreamFork(ctx, forks, parent, target, fork)
+}
+
+// initialFork is where target leaves parent: parent's tip when target is built
+// on it, and otherwise where the two meet.
+func (s Service) initialFork(ctx context.Context, forks MergeBases, parent, target string, origin Origin) (string, error) {
+	if origin == OriginAncestry {
+		return s.Git.Resolve(ctx, parent)
+	}
+	if forks == nil {
+		return "", fmt.Errorf("cannot determine where %s leaves %s: Git reader does not support merge bases", target, parent)
+	}
+	return forks.MergeBase(ctx, parent, target)
+}
+
+// upstreamFork moves fork past trunk commits target already contains when the
+// remote's copy of the trunk is the local one moved on, which is a local trunk
+// that was stale when the branch was tracked.
+func (s Service) upstreamFork(ctx context.Context, forks MergeBases, parent, target, fork string) (string, error) {
 	known, ok := s.Git.(interface {
 		KnownParent(context.Context, string) (string, error)
 	})
@@ -208,15 +217,7 @@ func (s Service) trackFork(ctx context.Context, parent, target string, origin Or
 	if err != nil || !forward {
 		return fork, err
 	}
-	shared, err := forks.MergeBase(ctx, tip, target)
-	if err != nil {
-		return "", err
-	}
-	forward, err = s.Git.IsAncestor(ctx, fork, shared)
-	if err != nil || !forward {
-		return fork, err
-	}
-	return shared, nil
+	return LaterFork(ctx, s.Git, forks, tip, target, fork)
 }
 
 // originOf records whether Git already agrees with the edge. A parent that is

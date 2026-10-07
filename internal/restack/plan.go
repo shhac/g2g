@@ -229,29 +229,19 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 				return nil, err
 			}
 		}
-		beforeTrunk := resolvedFork
 		// Old records can start below trunk commits the branch already
 		// contains. Those commits belong to the trunk, even if its local ref
 		// was stale when tracked. This also covers upstream refs unavailable
 		// at track time: pull has fetched the new base by the time we plan.
-		if !onto.Reparents() && discovery.Graph.IsTrunk(edge.Parent) {
-			if forks, ok := s.Git.(interface {
-				MergeBase(context.Context, string, string) (string, error)
-			}); ok {
-				shared, err := forks.MergeBase(ctx, base, head)
-				if err != nil {
-					return nil, err
-				}
-				forward, err := s.Git.IsAncestor(ctx, resolvedFork, shared)
-				if err != nil {
-					return nil, err
-				}
-				if forward {
-					resolvedFork = shared
-				}
+		advanced := false
+		if forks, ok := s.Git.(graph.MergeBases); ok && !onto.Reparents() && discovery.Graph.IsTrunk(edge.Parent) {
+			later, err := graph.LaterFork(ctx, s.Git, forks, base, head, resolvedFork)
+			if err != nil {
+				return nil, err
 			}
+			advanced, resolvedFork = later != resolvedFork, later
 		}
-		if resolvedFork == base && !rewriting[parent] && resolvedFork == beforeTrunk {
+		if resolvedFork == base && !rewriting[parent] && !advanced {
 			// Sitting where it belongs, under a parent that is not moving.
 			continue
 		}

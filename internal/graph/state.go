@@ -114,7 +114,39 @@ func assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[
 	for index, branch := range branches {
 		states[branch] = answers[index]
 	}
+	belowLanded(ctx, git, g, present, states)
 	return states, nil
+}
+
+// belowLanded asks whether a branch still sitting on a landed parent has
+// landed too.
+//
+// classify does not ask that of a branch where it was recorded, because one on
+// a trunk cannot have landed without also having no work of its own. One on a
+// feature branch can: a parent and child squash-merged together, or the child
+// merged into its parent before the parent merged, leave the child sitting on
+// its parent's tip with all of its work already in the trunk. It read as an
+// ordinary branch under a landed one, and prune refused to forget the parent
+// for stranding it.
+//
+// Only a branch directly under one already found landed is asked, which is
+// what bounds the cost, and a branch found landed lets the one under it be
+// asked in turn.
+func belowLanded(ctx context.Context, git Ancestry, g Graph, present map[string]bool, states map[string]NodeState) {
+	asked := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for branch, state := range states {
+			edge, tracked := g.Edges[branch]
+			if state != StateAligned || !tracked || states[edge.Parent] != StateLanded || asked[branch] {
+				continue
+			}
+			asked[branch] = true
+			if landedInATrunk(ctx, git, g, present, branch) {
+				states[branch], changed = StateLanded, true
+			}
+		}
+	}
 }
 
 // classify answers what the graph knows about one branch.
@@ -184,8 +216,9 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 // already served its purpose sends them to fix something that is not broken.
 //
 // Only a drifted branch is asked, which is what bounds the cost: a branch
-// sitting exactly where it was recorded cannot have landed without also having
-// no work of its own.
+// sitting exactly where it was recorded on a trunk cannot have landed without
+// also having no work of its own. One recorded on a feature branch that landed
+// can, and belowLanded asks it.
 func drifted(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branch string, otherwise NodeState) (NodeState, error) {
 	if landedInATrunk(ctx, git, g, present, branch) {
 		return StateLanded, nil

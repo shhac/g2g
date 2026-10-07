@@ -31,7 +31,7 @@ const Marker = "<!-- g2g:stack-comment"
 // Its fields are read by name, and `v` says which format the rest is in. A
 // comment in a format this g2g does not know is left alone rather than
 // rewritten, which would drop the history it could not read. A line with no
-// `v` is from 0.43.0 or earlier: the bare list, read by legacyEntries.
+// `v` is from 0.43.0 or earlier: the bare list, which recordedList reads.
 const (
 	dataOpen    = "<!-- g2g:stack-prs "
 	dataClose   = " -->"
@@ -199,31 +199,42 @@ func encode(entries []entry) string {
 // the pull request, and a stray character is no reason to stop keeping the
 // rest of it.
 func recordedIn(body string) []entry {
-	said, ok := dataIn(body)
-	if !ok {
+	list, known := recordedList(body)
+	if !known {
 		return nil
 	}
-	fields := fieldsOf(said)
-	version, versioned := fields["v"]
-	switch {
-	case !versioned:
-		return legacyEntries(said)
-	case version == dataVersion:
-		return entriesIn(fields["prs"])
-	default:
-		return nil
-	}
+	return entriesIn(list)
 }
 
 // readable reports whether this g2g knows the format a comment's data line is
 // in. One with no data line has nothing to lose by being rewritten.
 func readable(body string) bool {
+	_, known := recordedList(body)
+	return known
+}
+
+// recordedList is the list a comment's data line records, and whether this
+// g2g knows the format it is in. It is one rule for both readers, because a
+// comment judged readable and then read as empty would be rewritten without
+// the history it holds.
+func recordedList(body string) (string, bool) {
 	said, ok := dataIn(body)
 	if !ok {
-		return true
+		return "", true
 	}
-	version, versioned := fieldsOf(said)["v"]
-	return !versioned || version == dataVersion
+	fields := fieldsOf(said)
+	version, versioned := fields["v"]
+	switch {
+	case !versioned:
+		// The bare list 0.43.0 and earlier wrote. Remove this case once their
+		// comments have been rewritten: any still unread then loses its
+		// history.
+		return said, true
+	case version == dataVersion:
+		return fields["prs"], true
+	default:
+		return "", false
+	}
 }
 
 // dataIn is what a comment's data line says between its opener and its close.
@@ -238,13 +249,6 @@ func dataIn(body string) (string, bool) {
 		return "", false
 	}
 	return rest[:end], true
-}
-
-// legacyEntries reads a data line written before it had fields, which was the
-// list alone. Remove it once the comments 0.43.0 and earlier wrote have been
-// rewritten: any still unread then loses its history.
-func legacyEntries(said string) []entry {
-	return entriesIn(said)
 }
 
 func entriesIn(list string) []entry {

@@ -58,7 +58,7 @@ func TestRecordedInReadsWhatItCanAndIgnoresTheRest(t *testing.T) {
 }
 
 // A data line with no `v` is from 0.43.0 or earlier, and is read as the bare
-// list it was then. This goes when legacyEntries does.
+// list it was then. This goes when recordedList's legacy case does.
 func TestRecordedInReadsTheListBeforeItHadFields(t *testing.T) {
 	for body, want := range map[string][]entry{
 		dataOpen + "3,1>3,2>1" + dataClose:               {{3, 0}, {1, 3}, {2, 1}},

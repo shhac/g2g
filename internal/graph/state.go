@@ -114,7 +114,7 @@ func assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[
 	for index, branch := range branches {
 		states[branch] = answers[index]
 	}
-	belowLanded(ctx, git, g, present, states)
+	belowLanded(ctx, git, g, present, branches, states)
 	return states, nil
 }
 
@@ -130,21 +130,17 @@ func assess(ctx context.Context, git Ancestry, g Graph, branches []string) (map[
 // for stranding it.
 //
 // Only a branch directly under one already found landed is asked, which is
-// what bounds the cost, and a branch found landed lets the one under it be
-// asked in turn.
-func belowLanded(ctx context.Context, git Ancestry, g Graph, present map[string]bool, states map[string]NodeState) {
-	asked := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for branch, state := range states {
-			edge, tracked := g.Edges[branch]
-			if state != StateAligned || !tracked || states[edge.Parent] != StateLanded || asked[branch] {
-				continue
-			}
-			asked[branch] = true
-			if landedInATrunk(ctx, git, g, present, branch) {
-				states[branch], changed = StateLanded, true
-			}
+// what bounds the cost. branches is in render order, where a parent precedes
+// its children, so a branch found landed lets the one under it be asked in
+// the same pass.
+func belowLanded(ctx context.Context, git Ancestry, g Graph, present map[string]bool, branches []string, states map[string]NodeState) {
+	for _, branch := range branches {
+		edge, tracked := g.Edges[branch]
+		if !tracked || states[branch] != StateAligned || states[edge.Parent] != StateLanded {
+			continue
+		}
+		if landedInATrunk(ctx, git, g, present, branch) {
+			states[branch] = StateLanded
 		}
 	}
 }

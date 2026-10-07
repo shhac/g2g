@@ -136,7 +136,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		changed:  "The stack sits on the current base.",
 		recovery: "The base may already have been advanced; rerunning is safe.",
 	}
-	suggest := pullNext
+	suggest := func(plan syncer.Plan) string { return replayNext(plan.Restack, plan.Remote) }
 	if thenPrune {
 		// What has landed is only known once the base has moved, so a
 		// preview cannot show the prune it would do; it says it will do one.
@@ -174,9 +174,6 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		notices: notices,
 	}
 }
-
-// pullNext follows a pull by what its replay did.
-func pullNext(plan syncer.Plan) string { return replayNext(plan.Restack) }
 
 // pullThenPrune runs the pull and, once it has happened, the prune over the
 // same selection. A preview is the pull's alone.

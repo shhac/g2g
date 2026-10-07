@@ -131,12 +131,9 @@ func keepsUnpublished(ctx context.Context, published push.Known, remote string, 
 // pruneNext is push when the prune kept something to publish, aimed at what
 // it selected, and status over the same selection otherwise.
 func pruneNext(plan prunePlan) string {
+	acted := selectedIn(plan.Discovery).from(plan.remote)
 	if !plan.unpublished {
-		return statusNext(plan.Discovery)
+		return acted.next(statusCommand)
 	}
-	target := pushCommand
-	if plan.remote != localgit.DefaultRemote {
-		target.command += " --remote " + plan.remote
-	}
-	return selectedIn(plan.Discovery).next(target)
+	return acted.next(pushCommand)
 }

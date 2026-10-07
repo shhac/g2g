@@ -1,8 +1,7 @@
-// Recording and removing one branch's parent.
+// Recording one branch's parent.
 //
-// track and untrack share this file because they are two directions of one
-// decision: which branch sits under which. Whole-stack adoption is a different
-// question — where does this stack begin — and lives in stack.go.
+// Its other direction, removing one, is untrack.go. Whole-stack adoption is a
+// different question — where does this stack begin — and lives in adopt.go.
 package graph
 
 import (

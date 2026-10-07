@@ -94,6 +94,13 @@ Known, measured, and left for a change of its own:
 - **`ResolveAll` falls back to a process per revision** when one of them is
   missing, which a pull request head nobody fetched makes ordinary. `cat-file
   --batch-check` answers missing per line.
+- **A branch under a landed one is asked whether it landed serially.**
+  `graph.belowLanded` runs after the concurrent classification, in render
+  order, so a branch found landed lets the one under it be asked in the same
+  pass. It asks only branches directly under a landed one — the part of a stack
+  about to be pruned — through the same check, Untouched shortcut first, that a
+  drifted branch gets. Asking each level concurrently would keep the order and
+  lose the serial wait on a deep landed chain.
 - **The pull request graph's first round is every local branch in one query.**
   With hundreds of stale branches that is one large request; chunking it would
   keep one slow answer from failing the command.

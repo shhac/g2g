@@ -57,7 +57,7 @@ func keptBranches(plan prune.Plan) string {
 	if len(plan.Landed) == 0 {
 		return "No branch is deleted."
 	}
-	command := selectedIn(plan.Discovery).next(pruneCommand) + " --delete-branches"
+	command := selectedIn(plan.Discovery).aimedOr(pruneCommand) + " --delete-branches"
 	if plan.Options.ForgetMissing {
 		command += " --forget-missing"
 	}

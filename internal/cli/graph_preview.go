@@ -146,7 +146,7 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 		view = view.note(note, severityWarn)
 	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
-		command := selectedIn(discovery).next(pruneCommand)
+		command := selectedIn(discovery).aimedOr(pruneCommand)
 		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable(command)+" to forget them.", severityNeutral)
 		view = view.note("Cleanup preview: "+runnable(command+" --delete-branches --forget-missing")+" · also removes eligible local branches and missing records in this selection.", severityNeutral)
 	}

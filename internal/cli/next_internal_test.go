@@ -73,3 +73,12 @@ func TestPullAndItsPruneSuggestTheSameRemote(t *testing.T) {
 		t.Errorf("after pull --prune = %q", got)
 	}
 }
+
+// A suggestion is pasted into a shell, and Git allows a branch name the shell
+// would expand.
+func TestSuggestionsQuoteWhatTheShellWouldExpand(t *testing.T) {
+	acted := selected{branch: "synthetic-$(touch x)", named: true, scope: shape.ScopeStack}.from("synthetic up")
+	if got := acted.next(pushCommand); got != "g2g push --branch 'synthetic-$(touch x)' --remote 'synthetic up'" {
+		t.Errorf("next = %q", got)
+	}
+}

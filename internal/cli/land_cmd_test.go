@@ -225,7 +225,7 @@ func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
 	}
 	// The report carries the detail, so the status is all that is left to say.
 	rendered := out.String()
-	for _, want := range []string{"Stopped part-way at synthetic-two", "synthetic-one", "stay merged"} {
+	for _, want := range []string{"Stopped part-way at synthetic-two", "Merged synthetic-one, and it stays merged."} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("report missing %q:\n%s", want, rendered)
 		}

@@ -156,7 +156,7 @@ func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error
 func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) error {
 	landed := "Nothing merged."
 	if len(stopped.Landed) != 0 {
-		landed = "Merged " + branchList(stopped.Landed) + ", and they stay merged."
+		landed = "Merged " + branchList(stopped.Landed) + ", and " + pick(len(stopped.Landed), "it stays", "they stay") + " merged."
 	}
 	if len(stopped.Changed) != 0 {
 		// What happened short of a merge is on the remote or in the graph too,

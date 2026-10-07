@@ -273,7 +273,7 @@ func TestJourneyLandFinishesOnRerunAfterARefusedMerge(t *testing.T) {
 	if !cli.StoppedPartWayForTest(err) {
 		t.Fatalf("land after a refused merge: err = %v, want the part-way status\n%s%s", err, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "Merged synthetic-a, and they stay merged") {
+	if !strings.Contains(stdout, "Merged synthetic-a, and it stays merged") {
 		t.Errorf("the report does not say synthetic-a merged and stays merged:\n%s", stdout)
 	}
 	if got := readState(t, state, "pr-41.state"); got != "MERGED" {

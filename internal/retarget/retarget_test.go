@@ -144,7 +144,7 @@ func TestPlanBlocksOnAnAmbiguousBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = empty for a branch with two open pull requests")
 	}
 	if got := strings.Join(plan.Ambiguous, ","); got != "synthetic-top" {

@@ -48,7 +48,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 			execute:  service.Execute,
 			branches: comment.Plan.Changing,
 			noOp:     comment.Plan.NothingToDo,
-			blocked:  func(plan comment.Plan) string { return plan.Blocked },
+			blocked:  func(plan comment.Plan) string { return plan.Blocked() },
 			// Comments already written stay written, so a run that fails on
 			// the third is not "not applied".
 			interrupted: func(_ context.Context, _ comment.Plan, err error) (bool, error) {

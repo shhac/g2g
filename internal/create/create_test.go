@@ -193,8 +193,8 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 			}
 
 			if test.blocked == "" {
-				if plan.Blocked != "" {
-					t.Fatalf("Blocked = %q, want the plan to proceed", plan.Blocked)
+				if plan.Blocked() != "" {
+					t.Fatalf("Blocked = %q, want the plan to proceed", plan.Blocked())
 				}
 				if plan.Parent != test.parent || plan.NewTrunk != test.newTrunk {
 					t.Errorf("parent %q new trunk %q, want %q and %q", plan.Parent, plan.NewTrunk, test.parent, test.newTrunk)
@@ -204,14 +204,11 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(plan.Blocked, test.blocked) {
-				t.Errorf("Blocked = %q, want it to contain %q", plan.Blocked, test.blocked)
+			if !strings.Contains(plan.Blocked(), test.blocked) {
+				t.Errorf("Blocked = %q, want it to contain %q", plan.Blocked(), test.blocked)
 			}
 			// The sentence a machine reads is built from the note a person
 			// reads, so the two cannot name different commands.
-			if plan.Blocked != plan.Repair.Sentence() {
-				t.Errorf("Blocked %q is not the repair's sentence %q", plan.Blocked, plan.Repair.Sentence())
-			}
 			if test.way != "" && !slices.ContainsFunc(plan.Repair.Ways, func(way repair.Step) bool { return way.Command == test.way }) {
 				t.Errorf("repair offers %+v, want %q among them", plan.Repair.Ways, test.way)
 			}
@@ -227,8 +224,8 @@ func TestAKnownDefaultBranchIsNotOfferedAsTheWayOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(plan.Blocked, "set-head") || strings.Contains(plan.Blocked, "no default branch") {
-		t.Errorf("Blocked = %q, want nothing about a default branch the repository already names", plan.Blocked)
+	if strings.Contains(plan.Blocked(), "set-head") || strings.Contains(plan.Blocked(), "no default branch") {
+		t.Errorf("Blocked = %q, want nothing about a default branch the repository already names", plan.Blocked())
 	}
 }
 

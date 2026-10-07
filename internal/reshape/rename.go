@@ -36,9 +36,14 @@ type RenamePlan struct {
 	// not refused.
 	Elsewhere string
 	Updated   graph.Graph
-	Blocked   string
-	Repair    repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p RenamePlan) Blocked() string { return p.Repair.Sentence() }
 
 // Equal compares everything that changes what an apply does or what its
 // preview said.
@@ -49,7 +54,7 @@ func (p RenamePlan) Equal(other RenamePlan) bool {
 		p.Trunk == other.Trunk &&
 		p.ForkPoint == other.ForkPoint &&
 		p.Elsewhere == other.Elsewhere &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Children, other.Children) &&
 		slices.Equal(p.Remote, other.Remote) &&
 		p.Updated.Equal(other.Updated) &&
@@ -58,7 +63,6 @@ func (p RenamePlan) Equal(other RenamePlan) bool {
 
 func (p RenamePlan) refuse(note repair.Note) RenamePlan {
 	p.Repair = note
-	p.Blocked = note.Sentence()
 	return p
 }
 
@@ -142,8 +146,8 @@ func (s Service) RevalidateRename(ctx context.Context, from, name string, previe
 // disagree about what the branch is called. Releasing the old pin is tidying,
 // and failing at it leaves a completed rename with a stale ref.
 func (s Service) ApplyRename(ctx context.Context, plan RenamePlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot rename %s: %s", plan.From, plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot rename %s: %s", plan.From, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "reshape.rename.apply", diagnostic.Field{Key: "from", Value: plan.From}, diagnostic.Field{Key: "to", Value: plan.To})
 	if err := s.Git.RenameBranch(ctx, plan.From, plan.To); err != nil {

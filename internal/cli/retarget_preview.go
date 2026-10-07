@@ -20,8 +20,8 @@ func retargetView(plan retarget.Plan) stackView {
 		view = view.note(fmt.Sprintf("%s %s more than one open pull request · this leaves %s alone.",
 			branchList(plan.Ambiguous), pick(len(plan.Ambiguous), "has", "have"), pick(len(plan.Ambiguous), "it", "them")), severityBad)
 	}
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 	for _, change := range plan.Changes {
 		view = view.note(fmt.Sprintf("PR #%d (%s) · base %s → %s", change.Number, change.Branch, change.From, change.To), severityWarn)

@@ -83,11 +83,14 @@ type Plan struct {
 	// Discovery is the graph read from the parent's side: the path down to
 	// it, and where the store lives.
 	Discovery graph.Discovery
-	// Blocked is why an apply would refuse, and Repair is the same refusal as
-	// structure. Blocked is always Repair's sentence.
-	Blocked string
-	Repair  repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // Equal compares everything that changes what an apply does.
 func (p Plan) Equal(other Plan) bool {
@@ -99,14 +102,13 @@ func (p Plan) Equal(other Plan) bool {
 		p.Commit == other.Commit &&
 		p.Message == other.Message &&
 		p.NewTrunk == other.NewTrunk &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Staged, other.Staged) &&
 		p.Discovery.Equal(other.Discovery)
 }
 
 func (p Plan) refuse(note repair.Note) Plan {
 	p.Repair = note
-	p.Blocked = note.Sentence()
 	return p
 }
 
@@ -283,8 +285,8 @@ func (p *Partial) Unwrap() error { return p.Err }
 // deleting it loses nothing. Committing first would put the staged work in a
 // commit that the rollback then deletes.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot create %q: %s", plan.Name, plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot create %q: %s", plan.Name, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "create.apply", diagnostic.Field{Key: "branch", Value: plan.Name}, diagnostic.Field{Key: "parent", Value: plan.Parent})
 	if err := s.Git.CreateBranch(ctx, plan.Name, plan.Parent); err != nil {

@@ -120,11 +120,8 @@ func TestAMoveGoesExactlyWhereTheStructureLeadsAndRefusesToChoose(t *testing.T) 
 			}
 
 			if test.blocked != "" {
-				if !strings.Contains(move.Blocked, test.blocked) {
-					t.Fatalf("Blocked = %q, want it to contain %q", move.Blocked, test.blocked)
-				}
-				if move.Blocked != move.Repair.Sentence() {
-					t.Errorf("Blocked %q is not the repair's sentence %q", move.Blocked, move.Repair.Sentence())
+				if !strings.Contains(move.Blocked(), test.blocked) {
+					t.Fatalf("Blocked = %q, want it to contain %q", move.Blocked(), test.blocked)
 				}
 				if test.way != "" && !slices.ContainsFunc(move.Repair.Ways, func(way repair.Step) bool { return way.Command == test.way }) {
 					t.Errorf("repair offers %+v, want %q", move.Repair.Ways, test.way)
@@ -134,8 +131,8 @@ func TestAMoveGoesExactlyWhereTheStructureLeadsAndRefusesToChoose(t *testing.T) 
 				}
 				return
 			}
-			if move.Blocked != "" {
-				t.Fatalf("Blocked = %q, want %s", move.Blocked, test.to)
+			if move.Blocked() != "" {
+				t.Fatalf("Blocked = %q, want %s", move.Blocked(), test.to)
 			}
 			if move.Destination != test.to {
 				t.Errorf("Destination = %q, want %q", move.Destination, test.to)
@@ -169,8 +166,8 @@ func TestLeavingATrunkWithOneStackResolvesFromTheBranchAbove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if move.Destination != "synthetic-b" || move.Blocked != "" {
-		t.Fatalf("top from the trunk = %q (blocked %q), want synthetic-b", move.Destination, move.Blocked)
+	if move.Destination != "synthetic-b" || move.Blocked() != "" {
+		t.Fatalf("top from the trunk = %q (blocked %q), want synthetic-b", move.Destination, move.Blocked())
 	}
 	if !slices.Equal(move.Walked, []string{"synthetic-main", "synthetic-a", "synthetic-b"}) {
 		t.Errorf("Walked = %v", move.Walked)
@@ -203,8 +200,8 @@ func TestADestinationThatIsNotLocalIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(move.Blocked, "synthetic-d is not a local branch") {
-		t.Errorf("Blocked = %q, want a refusal naming synthetic-d", move.Blocked)
+	if !strings.Contains(move.Blocked(), "synthetic-d is not a local branch") {
+		t.Errorf("Blocked = %q, want a refusal naming synthetic-d", move.Blocked())
 	}
 }
 

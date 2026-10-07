@@ -106,11 +106,11 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		if err != nil {
 			return budgets.discoveryTimedOut(err)
 		}
-		if move.Blocked != "" {
+		if move.Blocked() != "" {
 			if err := writeStackView(cmd.OutOrStdout(), moveView(move), presentation); err != nil {
 				return err
 			}
-			return errors.New(move.Blocked)
+			return errors.New(move.Blocked())
 		}
 		if !dryRun {
 			switchCtx, cancelSwitch := budgets.mutation(root, 1)
@@ -175,7 +175,7 @@ func describeMove(move navigate.Move) string {
 // through in stack order, with the destination as the target.
 func moveView(move navigate.Move) stackView {
 	view := stackView{Operation: string(move.Direction), Target: move.Destination, TargetSource: describeMove(move)}
-	if move.Blocked != "" {
+	if move.Blocked() != "" {
 		view.Target, view.TargetSource = move.Origin, shape.TargetCurrent
 	}
 	if move.Base != "" {
@@ -191,9 +191,9 @@ func moveView(move navigate.Move) stackView {
 		}
 		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Parent: move.Parents[branch], Target: branch == view.Target})
 	}
-	if move.Blocked != "" {
+	if move.Blocked() != "" {
 		// There is no apply to block: the move itself is what was refused.
-		view = view.refusing(move.Blocked, move.Repair)
+		view = view.refusing(move.Blocked(), move.Repair)
 		view.BlockedHeading = "Not moved"
 		return view
 	}

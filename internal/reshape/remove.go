@@ -53,11 +53,14 @@ type Plan struct {
 	// here touches them or the remote.
 	Remote  []string
 	Updated graph.Graph
-	// Blocked is why an apply would refuse, and Repair is the same refusal as
-	// structure. Blocked is always Repair's sentence.
-	Blocked string
-	Repair  repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // Equal compares everything that changes what an apply does or what its
 // preview said.
@@ -69,7 +72,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Tip == other.Tip &&
 		p.ParentTip == other.ParentTip &&
 		p.Current == other.Current &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Children, other.Children) &&
 		slices.Equal(p.Siblings, other.Siblings) &&
 		slices.Equal(p.Unique, other.Unique) &&
@@ -84,7 +87,6 @@ func (p Plan) Moves() bool { return p.Operation == Fold && p.ParentTip != p.Tip 
 
 func (p Plan) refuse(note repair.Note) Plan {
 	p.Repair = note
-	p.Blocked = note.Sentence()
 	return p
 }
 
@@ -279,8 +281,8 @@ func (s Service) Revalidate(ctx context.Context, operation Operation, branch str
 // last. Releasing its fork-point pin is tidying, and failing at it leaves a
 // completed removal with a stale ref rather than a reason to undo one.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot %s %s: %s", plan.Operation, plan.Branch, plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot %s %s: %s", plan.Operation, plan.Branch, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "reshape."+string(plan.Operation)+".apply",
 		diagnostic.Field{Key: "branch", Value: plan.Branch},

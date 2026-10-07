@@ -83,18 +83,19 @@ type Move struct {
 	Walked  []string
 	Parents map[string]string
 	Source  stack.Source
-	// Blocked is why the move cannot be made, and Repair is the same refusal as
-	// structure. Blocked is always Repair's sentence.
-	Blocked string
-	Repair  repair.Note
+	// Repair is why the move cannot be made and the ways out, empty when it
+	// can.
+	Repair repair.Note
 }
 
+// Blocked is why the move cannot be made, as one sentence, empty when it can.
+func (m Move) Blocked() string { return m.Repair.Sentence() }
+
 // Arrived reports a move whose answer is where the checkout already is.
-func (m Move) Arrived() bool { return m.Blocked == "" && m.Destination == m.Origin }
+func (m Move) Arrived() bool { return m.Blocked() == "" && m.Destination == m.Origin }
 
 func (m Move) refuse(note repair.Note) Move {
 	m.Repair = note
-	m.Blocked = note.Sentence()
 	return m
 }
 
@@ -225,7 +226,7 @@ func walk(move Move, within outline) Move {
 	default:
 		return move.refuse(repair.Note{Reason: fmt.Sprintf("unknown direction %q", move.Direction)})
 	}
-	if move.Blocked != "" {
+	if move.Blocked() != "" {
 		return move
 	}
 	if slices.Contains(within.absent, move.Destination) {
@@ -339,8 +340,8 @@ func refuseBelowTrunkAfter(move Move, taken int) Move {
 // Switch moves the checkout to where the plan leads. It refuses a blocked plan
 // and does nothing for one that has already arrived.
 func (s Service) Switch(ctx context.Context, move Move) error {
-	if move.Blocked != "" {
-		return errors.New(move.Blocked)
+	if move.Blocked() != "" {
+		return errors.New(move.Blocked())
 	}
 	if move.Arrived() {
 		return nil

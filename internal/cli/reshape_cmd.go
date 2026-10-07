@@ -85,7 +85,7 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 			guard:       guard,
 			execute:     service.Apply,
 			branches:    func(plan reshape.Plan) int { return 1 + len(plan.Children) },
-			blocked:     func(plan reshape.Plan) string { return plan.Blocked },
+			blocked:     func(plan reshape.Plan) string { return plan.Blocked() },
 			interrupted: reshapeInterrupted[reshape.Plan](cmd.OutOrStdout(), presentation),
 			suggest:     removalNext,
 			notices:     words.notices,
@@ -125,7 +125,7 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 			guard:       guard,
 			execute:     service.ApplyRename,
 			branches:    func(plan reshape.RenamePlan) int { return 1 + len(plan.Children) },
-			blocked:     func(plan reshape.RenamePlan) string { return plan.Blocked },
+			blocked:     func(plan reshape.RenamePlan) string { return plan.Blocked() },
 			interrupted: reshapeInterrupted[reshape.RenamePlan](cmd.OutOrStdout(), presentation),
 			// Not aimed at the selection: it names the branch by the name it
 			// no longer has.

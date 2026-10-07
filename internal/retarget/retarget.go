@@ -50,17 +50,21 @@ type Plan struct {
 	// Ambiguous names branches with more than one open pull request. Nothing
 	// here picks between them, so their base is left alone and the plan says so.
 	Ambiguous []string
-	// Blocked is why an apply would refuse, and Repair the same in parts.
-	Blocked string
-	Repair  repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
 
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
+
 // NothingToRetarget reports a plan with no work.
-func (p Plan) NothingToRetarget() bool { return p.Blocked == "" && len(p.Changes) == 0 }
+func (p Plan) NothingToRetarget() bool { return p.Blocked() == "" && len(p.Changes) == 0 }
 
 // Equal compares everything that changes what the write does.
 func (p Plan) Equal(other Plan) bool {
-	if !p.Discovery.Equal(other.Discovery) || p.Blocked != other.Blocked || len(p.Changes) != len(other.Changes) {
+	if !p.Discovery.Equal(other.Discovery) || !p.Repair.Equal(other.Repair) || len(p.Changes) != len(other.Changes) {
 		return false
 	}
 	for index, change := range p.Changes {
@@ -118,7 +122,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 			Reason: "more than one open pull request for " + strings.Join(plan.Ambiguous, ", ") + ", so which one to retarget cannot be derived",
 			Ways:   []repair.Step{{Effect: "close all but one open pull request for each, then rerun"}},
 		}
-		plan.Blocked = plan.Repair.Sentence()
 	}
 	diagnostic.Event(ctx, "retarget.plan",
 		diagnostic.Field{Key: "changes", Value: fmt.Sprintf("%d", len(plan.Changes))},
@@ -159,8 +162,8 @@ func (s *Stopped) Unwrap() error { return s.Err }
 // correct, and putting it back would undo the only part that worked. A failure
 // before anything moved is an ordinary error; one after is a Stopped.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot retarget: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot retarget: %s", plan.Blocked())
 	}
 	if err := plan.Snapshot.RequireActionable("g2g github retarget"); err != nil {
 		return err

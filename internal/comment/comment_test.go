@@ -528,7 +528,7 @@ func TestPlanBlocksABranchWithTwoOpenPullRequests(t *testing.T) {
 	github := chainGitHub()
 	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
 	got := plan(t, chain(), "synthetic-one", github)
-	if got.Blocked == "" || !slices.Equal(got.Ambiguous, []string{"synthetic-two"}) || len(got.Writes) != 0 {
+	if got.Blocked() == "" || !slices.Equal(got.Ambiguous, []string{"synthetic-two"}) || len(got.Writes) != 0 {
 		t.Fatalf("plan = %+v, want blocked on synthetic-two", got)
 	}
 	if err := (Service{Selector: fakeSelector{}, GitHub: github}).Execute(context.Background(), got); err == nil {
@@ -786,8 +786,8 @@ func TestPlanNamesTheAmbiguousBranchInItsRefusal(t *testing.T) {
 	github := chainGitHub()
 	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
 	got := plan(t, chain(), "synthetic-one", github)
-	if !strings.Contains(got.Blocked, "synthetic-two") || len(got.Repair.Ways) != 1 || got.Repair.Ways[0].Command != "" {
-		t.Errorf("Blocked = %q, Repair = %+v", got.Blocked, got.Repair)
+	if !strings.Contains(got.Blocked(), "synthetic-two") || len(got.Repair.Ways) != 1 || got.Repair.Ways[0].Command != "" {
+		t.Errorf("Blocked = %q, Repair = %+v", got.Blocked(), got.Repair)
 	}
 	if got.Members["synthetic-two"].State != StateAmbiguous || got.Members["synthetic-two"].Number != 0 {
 		t.Errorf("member = %+v, want ambiguous with no number", got.Members["synthetic-two"])
@@ -865,7 +865,7 @@ func TestPlanRefusesABranchThisCheckoutDoesNotHave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Blocked == "" || len(got.Writes) != 0 || len(github.asked) != 0 {
+	if got.Blocked() == "" || len(got.Writes) != 0 || len(github.asked) != 0 {
 		t.Errorf("plan = %+v, asked = %v; want refused before any conversation is read", got, github.asked)
 	}
 }

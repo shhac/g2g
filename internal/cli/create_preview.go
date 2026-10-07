@@ -32,8 +32,8 @@ func createView(plan create.Plan) stackView {
 	if plan.At != "" {
 		view.Nodes = append(view.Nodes, stackNode{Branch: plan.Name, Parent: plan.Parent, Target: true}.labeled("new", severityOK))
 	}
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 
 	view = view.note(fmt.Sprintf("Creates %s at %s, the tip of %s, and switches to it.", plan.Name, shortObject(plan.At), plan.Parent), severityOK)

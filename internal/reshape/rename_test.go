@@ -60,16 +60,13 @@ func TestPlanRenameDecidesWhetherABranchCanBeRenamed(t *testing.T) {
 			}
 
 			if test.blocked == "" {
-				if plan.Blocked != "" {
-					t.Fatalf("Blocked = %q, want the plan to proceed", plan.Blocked)
+				if plan.Blocked() != "" {
+					t.Fatalf("Blocked = %q, want the plan to proceed", plan.Blocked())
 				}
 				return
 			}
-			if !strings.Contains(plan.Blocked, test.blocked) {
-				t.Errorf("Blocked = %q, want it to contain %q", plan.Blocked, test.blocked)
-			}
-			if plan.Blocked != plan.Repair.Sentence() {
-				t.Errorf("Blocked %q is not the repair's sentence", plan.Blocked)
+			if !strings.Contains(plan.Blocked(), test.blocked) {
+				t.Errorf("Blocked = %q, want it to contain %q", plan.Blocked(), test.blocked)
 			}
 			if test.way != "" && !slices.ContainsFunc(plan.Repair.Ways, func(way repair.Step) bool { return way.Command == test.way }) {
 				t.Errorf("repair offers %+v, want %q", plan.Repair.Ways, test.way)

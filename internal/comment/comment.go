@@ -116,13 +116,17 @@ type Plan struct {
 	Members map[string]Member
 	// Ambiguous names branches with more than one open pull request.
 	Ambiguous []string
-	// Blocked is why an apply would refuse, and Repair the same in parts.
-	Blocked string
-	Repair  repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
 
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
+
 // NothingToDo reports a plan with no write to send.
-func (p Plan) NothingToDo() bool { return p.Blocked == "" && p.Changing() == 0 }
+func (p Plan) NothingToDo() bool { return p.Blocked() == "" && p.Changing() == 0 }
 
 // Changing counts the writes that would reach GitHub, which is what sizes the
 // time a run is given.
@@ -141,7 +145,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Requested == other.Requested &&
 		p.RequestedSource == other.RequestedSource &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Merged, other.Merged) &&
 		slices.Equal(p.Unread, other.Unread) &&
 		slices.Equal(p.Ambiguous, other.Ambiguous) &&
@@ -167,7 +171,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	members := classify(discovery)
 	plan := Plan{Discovery: discovery, Requested: requested.Target, RequestedSource: requested.TargetSource, Merged: []int{}, Unread: []int{}, Writes: []Write{}, Alone: []int{}, Members: members, Ambiguous: ambiguous(discovery.Branches, members)}
 	if err := discovery.Snapshot.RequireActionable(command); err != nil {
-		plan.Blocked = err.Error()
+		plan.Repair = repair.Note{Reason: err.Error()}
 		return plan, nil
 	}
 	if len(plan.Ambiguous) != 0 {
@@ -177,7 +181,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 			Reason: "more than one open pull request for " + strings.Join(plan.Ambiguous, ", ") + ", so which one the stack means cannot be derived",
 			Ways:   []repair.Step{{Effect: "close all but one open pull request for each, then rerun"}},
 		}
-		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 
@@ -271,8 +274,8 @@ func (s *Stopped) Unwrap() error { return s.Err }
 // Nothing is unwound. A failure before anything was sent is an ordinary error;
 // one after is a Stopped, because some of the run happened.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot keep the stack comments: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot keep the stack comments: %s", plan.Blocked())
 	}
 	written := make([]int, 0, plan.Changing())
 	for _, write := range plan.Writes {
@@ -310,8 +313,8 @@ func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, err
 	if err != nil {
 		return Plan{}, &NotKept{Err: err}
 	}
-	if plan.Blocked != "" {
-		return plan, &NotKept{Err: fmt.Errorf("%s", plan.Blocked)}
+	if plan.Blocked() != "" {
+		return plan, &NotKept{Err: fmt.Errorf("%s", plan.Blocked())}
 	}
 	if err := s.Execute(ctx, plan); err != nil {
 		return plan, &NotKept{Err: err}

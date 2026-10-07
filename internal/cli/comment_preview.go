@@ -17,8 +17,8 @@ import (
 // see what one looks like, not read eight near-copies; --json carries each.
 func commentView(plan comment.Plan) stackView {
 	view := stackView{Operation: "github comment", Target: plan.Requested, TargetSource: plan.RequestedSource}
-	if plan.Blocked != "" {
-		view = view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		view = view.refusing(plan.Blocked(), plan.Repair)
 	}
 	view.Nodes = commentNodes(plan)
 	if len(plan.Merged) != 0 {

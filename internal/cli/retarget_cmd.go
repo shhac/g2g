@@ -43,7 +43,7 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 			execute:  service.Execute,
 			branches: func(plan retarget.Plan) int { return len(plan.Changes) },
 			noOp:     retarget.Plan.NothingToRetarget,
-			blocked:  func(plan retarget.Plan) string { return plan.Blocked },
+			blocked:  func(plan retarget.Plan) string { return plan.Blocked() },
 			suggest:  func(plan retarget.Plan) string { return githubStatusNext(plan.Snapshot) },
 			// Bases already moved stay moved, so a run that fails on the
 			// second is not "not applied".

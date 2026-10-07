@@ -19,8 +19,12 @@ import (
 func TestCreateStartsARecordedBranchAndTheCheckoutFollows(t *testing.T) {
 	w := newWorld(t)
 
-	mustRun(t, "create", "synthetic-a", "--apply")
+	created := mustRun(t, "create", "synthetic-a", "--apply")
 	w.assertClean(w.Local)
+	// A new branch holds nothing yet, so status would show nothing to act on.
+	if strings.Contains(created, "Suggested next step:") {
+		t.Errorf("create suggests a next step for a branch with no work on it:\n%s", created)
+	}
 	if err := os.WriteFile(filepath.Join(w.Local, "b.txt"), []byte("b\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

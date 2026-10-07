@@ -55,11 +55,12 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 				return true, stoppedMidCreate(cmd.OutOrStdout(), partial, presentation)
 			},
 			notices: flowNotices{
-				preview:       "Rerun with --apply to create it.",
-				applied:       "Created.",
-				changed:       "The new branch is checked out and recorded in the g2g-owned graph.",
-				recovery:      "The branch may already exist and be checked out · run g2g status to see whether it was recorded.",
-				suggestedNext: "g2g status",
+				preview:  "Rerun with --apply to create it.",
+				applied:  "Created.",
+				changed:  "The new branch is checked out and recorded in the g2g-owned graph.",
+				recovery: "The branch may already exist and be checked out · run g2g status to see whether it was recorded.",
+				// None: what follows a new branch is the work on it, which
+				// no command here does.
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

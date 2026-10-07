@@ -121,7 +121,7 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		// would be wrong about the thing that matters most. One that
 		// stopped before changing anything is exactly "not applied", and
 		// exits as the failure it is.
-		interrupted: func(_ context.Context, err error) (bool, error) {
+		interrupted: func(_ context.Context, _ land.Plan, err error) (bool, error) {
 			return landInterrupted(cmd, err, presentation)
 		},
 		// Not aimed at the selection: what it selected has merged and its

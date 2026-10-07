@@ -42,8 +42,9 @@ type applyFlow[P any] struct {
 	// be introduced as one that is about to.
 	blocked func(P) string
 	// interrupted reports a mutation that stopped part-way rather than not
-	// happening. It answers two separate questions: whether this failure was
-	// one it claims, and whether writing its report succeeded.
+	// happening, from the plan that was applied and the failure. It answers
+	// two separate questions: whether this failure was one it claims, and
+	// whether writing its report succeeded.
 	//
 	// One return value cannot carry both. Every report helper in this package
 	// returns nil on a successful write, so a hook that returned its report
@@ -56,7 +57,7 @@ type applyFlow[P any] struct {
 	// sequence that can stop between steps, and a command that grew its own
 	// copy of this whole sequence to say so ended up skipping the revalidation
 	// the copy did not include. One hook is cheaper than one copy.
-	interrupted func(context.Context, error) (handled bool, err error)
+	interrupted func(context.Context, P, error) (handled bool, err error)
 
 	// budget chooses the mutation phase's ceiling when the default does not
 	// fit. A command whose mutation is one external call is sized by the
@@ -176,7 +177,7 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
 		if f.interrupted != nil {
-			if handled, report := f.interrupted(mutateCtx, err); handled {
+			if handled, report := f.interrupted(mutateCtx, validated, err); handled {
 				return report
 			}
 		}

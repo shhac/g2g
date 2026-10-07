@@ -199,7 +199,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		},
 		// The pull requests exist, and are linked if asked, whatever happens
 		// to their comments, so a failure there is not the submission failing.
-		interrupted: func(_ context.Context, err error) (bool, error) {
+		interrupted: func(_ context.Context, _ submit.Plan, err error) (bool, error) {
 			return commentsNotKept(cmd, err, p)
 		},
 		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },

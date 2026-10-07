@@ -160,7 +160,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		// does not unwind: the fetch and the fast-forward are wanted
 		// regardless, and the replay is resumable through the command that
 		// owns it.
-		interrupted: func(ctx context.Context, cause error) (bool, error) {
+		interrupted: func(ctx context.Context, _ syncer.Plan, cause error) (bool, error) {
 			if stopped, err := service.Restack.InProgress(ctx); err == nil && stopped {
 				return true, stoppedMidSync(cmd, p)
 			}

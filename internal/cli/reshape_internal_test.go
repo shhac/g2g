@@ -31,7 +31,7 @@ func TestReshapeClaimsOnlyWhatIsLeftPartWay(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
-			handled, err := reshapeInterrupted(&out, Presentation{})(context.Background(), test.err)
+			handled, err := reshapeInterrupted[reshape.Plan](&out, Presentation{})(context.Background(), reshape.Plan{}, test.err)
 
 			if handled != test.stopped || wasStopped(err) != test.stopped {
 				t.Fatalf("handled %v stopped %v, want %v", handled, wasStopped(err), test.stopped)

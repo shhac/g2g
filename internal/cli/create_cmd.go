@@ -47,7 +47,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			// A commit that fails after the branch is recorded has done most of
 			// what was asked, and the branch and its record stay. Reporting that
 			// as "not applied" would be wrong about both.
-			interrupted: func(_ context.Context, err error) (bool, error) {
+			interrupted: func(_ context.Context, _ create.Plan, err error) (bool, error) {
 				var partial *create.Partial
 				if !errors.As(err, &partial) {
 					return false, nil

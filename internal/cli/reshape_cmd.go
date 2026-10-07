@@ -86,7 +86,7 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 			execute:     service.Apply,
 			branches:    func(plan reshape.Plan) int { return 1 + len(plan.Children) },
 			blocked:     func(plan reshape.Plan) string { return plan.Blocked },
-			interrupted: reshapeInterrupted(cmd.OutOrStdout(), presentation),
+			interrupted: reshapeInterrupted[reshape.Plan](cmd.OutOrStdout(), presentation),
 			suggest:     removalNext,
 			notices:     words.notices,
 		}
@@ -126,7 +126,7 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 			execute:     service.ApplyRename,
 			branches:    func(plan reshape.RenamePlan) int { return 1 + len(plan.Children) },
 			blocked:     func(plan reshape.RenamePlan) string { return plan.Blocked },
-			interrupted: reshapeInterrupted(cmd.OutOrStdout(), presentation),
+			interrupted: reshapeInterrupted[reshape.RenamePlan](cmd.OutOrStdout(), presentation),
 			// Not aimed at the selection: it names the branch by the name it
 			// no longer has.
 			suggest: always[reshape.RenamePlan]("g2g status"),
@@ -171,8 +171,8 @@ func removalNext(plan reshape.Plan) string {
 // a removal or rename that finished and could not tidy up, and a rollback that
 // could not finish. Both leave something done that is not coming back, which
 // is the part-way status.
-func reshapeInterrupted(writer io.Writer, p Presentation) func(context.Context, error) (bool, error) {
-	return func(_ context.Context, err error) (bool, error) {
+func reshapeInterrupted[P any](writer io.Writer, p Presentation) func(context.Context, P, error) (bool, error) {
+	return func(_ context.Context, _ P, err error) (bool, error) {
 		var partial *reshape.Partial
 		if errors.As(err, &partial) {
 			return true, writeStoppedPartWay(writer, p,

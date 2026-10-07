@@ -83,7 +83,7 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		// after it, in Apply.
 		blocked: func(plan prunePlan) string { return plan.Blocked },
 		suggest: pruneNext,
-		interrupted: func(_ context.Context, cause error) (bool, error) {
+		interrupted: func(_ context.Context, _ prunePlan, cause error) (bool, error) {
 			var stopped *prune.Stopped
 			if !errors.As(cause, &stopped) {
 				return false, nil

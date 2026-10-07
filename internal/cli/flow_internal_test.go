@@ -32,7 +32,7 @@ func interruptedFlow(t *testing.T, claim bool) (string, error) {
 			return err
 		},
 		execute: func(context.Context, interruptedPlan) error { return fmt.Errorf("synthetic mutation failure") },
-		interrupted: func(context.Context, error) (bool, error) {
+		interrupted: func(context.Context, interruptedPlan, error) (bool, error) {
 			if !claim {
 				return false, nil
 			}

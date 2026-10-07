@@ -211,6 +211,28 @@ func TestLinkPreviewLabelsEveryUnresolvedNode(t *testing.T) {
 	}
 }
 
+// What follows a link is github status over what was linked, and the stack
+// resolver's own account of how the branch was chosen decides whether it is
+// named: a branch named with --branch is, the checked-out one is not.
+func TestLinkSuggestsStatusOfWhatItLinked(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{want: "Suggested next step: g2g github status\n"},
+		{args: []string{"--branch", "beta"}, want: "Suggested next step: g2g github status --branch beta\n"},
+	} {
+		args := append([]string{"github", "link", "--apply"}, test.args...)
+		output, err := executeWithService(t, cliService(&cliGitHub{}), args...)
+		if err != nil {
+			t.Fatalf("%v: Execute() error = %v", test.args, err)
+		}
+		if !strings.Contains(output, test.want) {
+			t.Errorf("%v: output does not say %q:\n%s", test.args, test.want, output)
+		}
+	}
+}
+
 func TestLinkApplyRevalidatesThenMutates(t *testing.T) {
 	github := &cliGitHub{}
 	output, err := executeWithService(t, cliService(github), "github", "link", "--apply")

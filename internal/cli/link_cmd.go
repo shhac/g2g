@@ -40,6 +40,7 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 				execute:  service.Execute,
 				branches: func(plan link.Plan) int { return len(plan.Branches) },
 				noOp:     link.Plan.NothingToLink,
+				suggest:  func(plan link.Plan) string { return githubStatusNext(plan.Snapshot) },
 				blocked: func(plan link.Plan) string {
 					if len(plan.Issues) == 0 {
 						return ""
@@ -47,12 +48,11 @@ func newLink(service link.Service, completions stack.Completions, guard func(con
 					return blockedReason(plan)
 				},
 				notices: flowNotices{
-					preview:       "Rerun with --apply to link.",
-					noOp:          "No changes were needed or made.",
-					applied:       "Applied — GitHub stack updated",
-					changed:       "Changes were made.",
-					recovery:      "Run g2g github status to see whether GitHub recorded the link.",
-					suggestedNext: "g2g github status",
+					preview:  "Rerun with --apply to link.",
+					noOp:     "No changes were needed or made.",
+					applied:  "Applied — GitHub stack updated",
+					changed:  "Changes were made.",
+					recovery: "Run g2g github status to see whether GitHub recorded the link.",
 				},
 			}
 			return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

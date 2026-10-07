@@ -60,13 +60,13 @@ func adoptFlow(service graph.Service, selection graphOptions, trunk string, guar
 		branches: func(plan graph.StackPlan) int { return len(plan.Record) },
 		noOp:     func(plan graph.StackPlan) bool { return plan.NoOp() },
 		blocked:  func(plan graph.StackPlan) string { return plan.Blocked },
+		suggest:  func(plan graph.StackPlan) string { return statusNext(plan.Discovery) },
 		notices: flowNotices{
-			preview:       "Rerun with --apply to record this stack.",
-			noOp:          "The graph already records this whole ancestry. Nothing to do.",
-			applied:       "Recorded.",
-			changed:       "The g2g-owned graph now records this stack.",
-			recovery:      "The graph store may or may not have been written.",
-			suggestedNext: "g2g status",
+			preview:  "Rerun with --apply to record this stack.",
+			noOp:     "The graph already records this whole ancestry. Nothing to do.",
+			applied:  "Recorded.",
+			changed:  "The g2g-owned graph now records this stack.",
+			recovery: "The graph store may or may not have been written.",
 		},
 	}
 }

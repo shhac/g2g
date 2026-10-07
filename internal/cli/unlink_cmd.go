@@ -61,12 +61,12 @@ func newUnlink(service link.Service, unstacker Unstacker, completions stack.Comp
 				return unstacker.Unstack(ctx, plan.Number)
 			},
 			branches: func(plan unlinkPlan) int { return len(plan.Branches) },
+			suggest:  func(plan unlinkPlan) string { return githubStatusNext(plan.Snapshot) },
 			notices: flowNotices{
-				preview:       "Rerun with --apply to unlink.",
-				applied:       "Unlinked — GitHub stack relationship removed",
-				changed:       "Branches and pull requests were unchanged.",
-				recovery:      "Run g2g github status to see whether the relationship was removed.",
-				suggestedNext: "g2g github status",
+				preview:  "Rerun with --apply to unlink.",
+				applied:  "Unlinked — GitHub stack relationship removed",
+				changed:  "Branches and pull requests were unchanged.",
+				recovery: "Run g2g github status to see whether the relationship was removed.",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

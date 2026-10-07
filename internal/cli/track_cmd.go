@@ -62,13 +62,13 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			branches: func(plan trackPlan) int { return len(plan.Branches) },
 			noOp:     func(plan trackPlan) bool { return trackIsNoOp(plan.TrackPlan) },
 			blocked:  func(plan trackPlan) string { return plan.Blocked },
+			suggest:  func(plan trackPlan) string { return statusNext(plan.Discovery) },
 			notices: flowNotices{
-				preview:       "Rerun with --apply to record this edge.",
-				noOp:          "The graph already records this parent. Nothing to do.",
-				applied:       "Recorded.",
-				changed:       "The g2g-owned graph now records this parent.",
-				recovery:      "The graph store may or may not have been written.",
-				suggestedNext: "g2g status",
+				preview:  "Rerun with --apply to record this edge.",
+				noOp:     "The graph already records this parent. Nothing to do.",
+				applied:  "Recorded.",
+				changed:  "The g2g-owned graph now records this parent.",
+				recovery: "The graph store may or may not have been written.",
 			},
 		}
 		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
@@ -154,13 +154,13 @@ func declareFlow(service graph.Service, selection graphOptions, declaration grap
 		branches: func(plan graph.DeclarePlan) int { return len(plan.Branches) },
 		noOp:     func(plan graph.DeclarePlan) bool { return plan.NoOp() },
 		blocked:  func(plan graph.DeclarePlan) string { return plan.Blocked },
+		suggest:  func(plan graph.DeclarePlan) string { return statusNext(plan.Discovery) },
 		notices: flowNotices{
-			preview:       "Rerun with --apply to record this trunk.",
-			noOp:          "The graph already records this trunk. Nothing to do.",
-			applied:       "Recorded.",
-			changed:       "The g2g-owned graph now records this trunk.",
-			recovery:      "The graph store may or may not have been written.",
-			suggestedNext: "g2g status",
+			preview:  "Rerun with --apply to record this trunk.",
+			noOp:     "The graph already records this trunk. Nothing to do.",
+			applied:  "Recorded.",
+			changed:  "The g2g-owned graph now records this trunk.",
+			recovery: "The graph store may or may not have been written.",
 		},
 	}
 }

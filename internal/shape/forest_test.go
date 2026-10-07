@@ -1,6 +1,7 @@
 package shape
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -217,6 +218,36 @@ func TestHangsRefusesATargetRootedScopeWithNoParent(t *testing.T) {
 	for _, scope := range []Scope{ScopeBranch, ScopeSubtree} {
 		if _, _, err := (syntheticForest()).Hangs([]string{"synthetic-trunk"}, "synthetic-trunk", scope); err == nil {
 			t.Errorf("Hangs(%q) on a trunk error = nil; a trunk has no parent to hang from", scope)
+		}
+	}
+}
+
+// Within is what the traversal says: true exactly when the wider scope
+// reaches everything the narrower one does, from every branch of a forest that
+// tells every scope apart.
+func TestWithinIsWhatTheScopesSelect(t *testing.T) {
+	forest := syntheticForest()
+	for _, narrow := range ReadScopes {
+		for _, wide := range ReadScopes {
+			contained := true
+			for branch := range forest.Parents {
+				inner, err := forest.Select(branch, narrow)
+				if err != nil {
+					t.Fatal(err)
+				}
+				outer, err := forest.Select(branch, wide)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, selected := range inner {
+					if !slices.Contains(outer, selected) {
+						contained = false
+					}
+				}
+			}
+			if got := narrow.Within(wide); got != contained {
+				t.Errorf("%s.Within(%s) = %t, want %t", narrow, wide, got, contained)
+			}
 		}
 	}
 }

@@ -171,6 +171,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		revalidate: func(ctx context.Context, preview submit.Plan) (submit.Plan, error) {
 			return service.Revalidate(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream), preview)
 		},
+		suggest: func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
 		blocked: func(plan submit.Plan) string {
 			if blocked := submitBlocked(plan); blocked != "" {
 				return blocked
@@ -208,11 +209,10 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			return fmt.Errorf("submission spec retained at %s: %w", o.specPath, err)
 		},
 		notices: flowNotices{
-			preview:       invitation,
-			applied:       applied,
-			changed:       "Changes were made.",
-			recovery:      fmt.Sprintf("Rerunning %s is safe: it preserves existing pull requests and creates only the missing ones.", retry),
-			suggestedNext: "g2g github status",
+			preview:  invitation,
+			applied:  applied,
+			changed:  "Changes were made.",
+			recovery: fmt.Sprintf("Rerunning %s is safe: it preserves existing pull requests and creates only the missing ones.", retry),
 		},
 	}
 	// Only an apply is refused mid-restack. A preview changes nothing, and

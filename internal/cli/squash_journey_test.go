@@ -364,3 +364,20 @@ func TestJourneyRestackOverALandedParentSuggestsPrune(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// A suggestion reaches what the command acted on, not wherever the reader
+// stands. Restacking another branch's stack from the trunk suggests a prune of
+// that stack, and running it as offered forgets the landed parent.
+func TestJourneyASuggestionNamesTheBranchItWasAskedAbout(t *testing.T) {
+	w := squashedParent(t)
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "pull", "-q", "--ff-only", "origin", "main")
+
+	restacked := mustRun(t, "restack", "--branch", "synthetic-b", "--scope", "stack", "--apply")
+	const suggested = "g2g prune --branch synthetic-b"
+	if !strings.Contains(restacked, "Suggested next step: "+suggested+"\n") {
+		t.Fatalf("restack does not aim its suggestion at synthetic-b:\n%s", restacked)
+	}
+	mustRun(t, append(strings.Fields(suggested)[1:], "--apply")...)
+	w.assertLanded(t)
+}

@@ -77,6 +77,22 @@ var ProjectScopes = []Scope{ScopeStack, ScopePath}
 // repository rather than of the scope.
 func (s Scope) Linear() bool { return s == ScopeBranch || s == ScopePath }
 
+// Within reports whether wider, asked of the same branch, selects at least
+// everything s does. A command that acted on s can then suggest one whose
+// default is wider without naming s, and reach everything it touched.
+func (s Scope) Within(wider Scope) bool {
+	switch {
+	case s == wider, s == ScopeBranch, wider == ScopeAll:
+		return true
+	case wider == ScopeTrunk:
+		return s != ScopeAll
+	case wider == ScopeStack:
+		return s == ScopePath || s == ScopeSubtree
+	default:
+		return false
+	}
+}
+
 // ParseScope validates a flag value against the scopes a command accepts,
 // falling back to that command's own default when none was given.
 //

@@ -43,13 +43,13 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 			branches: func(plan retarget.Plan) int { return len(plan.Changes) },
 			noOp:     retarget.Plan.NothingToRetarget,
 			blocked:  func(plan retarget.Plan) string { return plan.Blocked },
+			suggest:  func(plan retarget.Plan) string { return githubStatusNext(plan.Snapshot) },
 			notices: flowNotices{
-				preview:       "Rerun with --apply to move these bases.",
-				noOp:          "Every pull request already sits on the branch below it. Nothing to do.",
-				applied:       "Retargeted.",
-				changed:       "GitHub now merges each pull request into the branch below it.",
-				recovery:      "Some bases may already have moved · run g2g github status to see which.",
-				suggestedNext: "g2g github status",
+				preview:  "Rerun with --apply to move these bases.",
+				noOp:     "Every pull request already sits on the branch below it. Nothing to do.",
+				applied:  "Retargeted.",
+				changed:  "GitHub now merges each pull request into the branch below it.",
+				recovery: "Some bases may already have moved · run g2g github status to see which.",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

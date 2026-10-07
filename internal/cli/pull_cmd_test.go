@@ -92,7 +92,11 @@ func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto
 		r.reparented = true
 	}
 	plan := restack.Plan{Onto: onto}
-	plan.Discovery.Scope = selection.Scope
+	// What was selected, as the graph reports it: a named branch says so.
+	plan.Discovery.Target, plan.Discovery.Scope = selection.Branch, selection.Scope
+	if selection.Branch != "" {
+		plan.Discovery.TargetSource = "--branch"
+	}
 	for _, branch := range r.collapses {
 		plan.Steps = append(plan.Steps, restack.Step{Branch: branch, Parent: "synthetic-main", Base: "base-local", ForkPoint: "fork", Tip: "tip", Collapses: true})
 	}
@@ -189,7 +193,7 @@ func TestSyncAdvancesTheBaseThenReplaysExactlyOnce(t *testing.T) {
 	if !strings.Contains(out, "Pulled.") {
 		t.Errorf("output does not report the pull:\n%s", out)
 	}
-	if !strings.Contains(out, "Suggested next step: g2g push") {
+	if !strings.Contains(out, "Suggested next step: g2g push --branch synthetic-login") {
 		t.Errorf("successful sync does not suggest publishing what it replayed:\n%s", out)
 	}
 }
@@ -205,9 +209,12 @@ func TestPullSuggestsWhatItsOutcomeCallsFor(t *testing.T) {
 		collapses []string
 		want      string
 	}{
-		{name: "replayed", steps: []string{"synthetic-login"}, want: "g2g push"},
-		{name: "landed", steps: []string{"synthetic-login"}, collapses: []string{"synthetic-auth"}, want: "g2g prune"},
-		{name: "landed from the trunk", args: []string{"--scope", "trunk"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --scope trunk"},
+		{name: "replayed", steps: []string{"synthetic-login"}, want: "g2g push --branch synthetic-login"},
+		{name: "landed", steps: []string{"synthetic-login"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --branch synthetic-login"},
+		{name: "landed from the trunk", args: []string{"--scope", "trunk"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --branch synthetic-login --scope trunk"},
+		// push takes one stack at a time, so a trunk's worth of replays is
+		// shown rather than pushed.
+		{name: "replayed from the trunk", args: []string{"--scope", "trunk"}, steps: []string{"synthetic-login"}, want: "g2g status --branch synthetic-login --scope trunk"},
 		{name: "base only"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

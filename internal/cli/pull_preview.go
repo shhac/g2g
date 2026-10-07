@@ -124,10 +124,20 @@ func baseSeverity(plan syncer.Plan) severity {
 	return severityNeutral
 }
 
+// replayNote says what the replay does to each branch. A branch whose work is
+// already in its new base is moved there rather than replayed, and it moves a
+// ref all the same: this said "Nothing needs replaying" over a stack whose
+// every branch the apply then moved.
 func replayNote(plan syncer.Plan) string {
-	replaying := plan.Restack.Replaying()
-	if len(replaying) == 0 {
+	said := make([]string, 0, 2)
+	if replaying := plan.Restack.Replaying(); len(replaying) != 0 {
+		said = append(said, "Replays "+branchList(replaying)+".")
+	}
+	if emptied := plan.Restack.Emptied(); len(emptied) != 0 {
+		said = append(said, "Moves "+ontoEach(plan.Restack, emptied)+", where "+pick(len(emptied), "its", "their")+" work already is.")
+	}
+	if len(said) == 0 {
 		return "Nothing needs replaying."
 	}
-	return "Replays " + branchList(replaying) + "."
+	return strings.Join(said, " ")
 }

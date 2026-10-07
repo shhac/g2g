@@ -116,6 +116,19 @@ func (p Plan) LandedBranches() []string {
 	return landed
 }
 
+// MissingLocally reports a stack the g2g graph records with branches that are
+// not on this machine: every mutation refuses it, and github status reports
+// it rather than refusing.
+func (p Plan) MissingLocally() bool {
+	return len(p.Absent) != 0 && p.Source == stack.SourceG2G
+}
+
+// here reports whether branch, and the branch it sits on, are on this machine,
+// which comparing it with anything locally needs.
+func (p Plan) here(branch string) bool {
+	return !slices.Contains(p.Absent, branch) && !slices.Contains(p.Absent, p.SitsOn(branch))
+}
+
 func (p Plan) allIssuesAre(kinds ...IssueKind) bool {
 	if len(p.Issues) == 0 {
 		return false

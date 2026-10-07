@@ -24,7 +24,7 @@ import (
 // come first because a pull request opened or retargeted for work already in
 // the trunk is the wrong next step, whatever else is also true.
 func (p Plan) Repair() (repair.Note, []IssueKind) {
-	if len(p.Absent) != 0 && p.Source == stack.SourceG2G {
+	if p.MissingLocally() {
 		ways := []repair.Step{}
 		root := p.Base
 		if len(p.Ancestry) != 0 {

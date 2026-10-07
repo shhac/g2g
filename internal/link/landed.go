@@ -2,7 +2,6 @@ package link
 
 import (
 	"context"
-	"slices"
 
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/parallel"
@@ -30,7 +29,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	}
 	asking := make([]string, len(plan.Issues))
 	for index, issue := range plan.Issues {
-		if (issue.Kind == IssueMissing || issue.Kind == IssueClosed) && !slices.Contains(plan.Absent, issue.Branch) && !slices.Contains(plan.Absent, plan.SitsOn(issue.Branch)) {
+		if (issue.Kind == IssueMissing || issue.Kind == IssueClosed) && plan.here(issue.Branch) {
 			asking[index] = issue.Branch
 		}
 	}

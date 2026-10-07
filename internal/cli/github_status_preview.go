@@ -100,7 +100,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 
 func githubStatusView(plan link.Plan) stackView {
 	view, native := membershipView(plan, "github status")
-	if len(plan.Issues) != 0 || (len(plan.Absent) != 0 && plan.Source == stack.SourceG2G) {
+	if len(plan.Issues) != 0 || plan.MissingLocally() {
 		// The same reason every mutating command refuses on, under the heading
 		// a read-only report gives it. The heading used to be concatenated in
 		// here and string-replaced back out elsewhere, which is why it is a

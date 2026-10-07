@@ -107,7 +107,7 @@ func strandedNote(left []placement) repair.Note {
 			parents = append(parents, each.parent)
 		}
 		ways = append(ways, repair.Step{
-			Command: fmt.Sprintf("g2g track --branch %s --parent %s", each.child, each.onto),
+			Command: fmt.Sprintf("g2g track --branch %s --parent %s", repair.Quote(each.child), repair.Quote(each.onto)),
 			Effect:  fmt.Sprintf("record %s on %s, where g2g pull leaves it, then prune again", each.child, each.onto),
 		})
 	}

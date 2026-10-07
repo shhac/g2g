@@ -96,7 +96,7 @@ func (p Plan) LinkRepair() repair.Note {
 			if scope == "" {
 				scope = stack.ScopeStack
 			}
-			command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", p.Snapshot.Target, scope)
+			command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", repair.Quote(p.Snapshot.Target), scope)
 			if p.Snapshot.Source != "" {
 				command += " --from " + string(p.Snapshot.Source)
 			}

@@ -107,7 +107,7 @@ func (s Service) blockedReason(discovery graph.Discovery) repair.Note {
 			return repair.Note{
 				Reason: fmt.Sprintf("%s is recorded but is no longer a local branch", branch),
 				Ways: []repair.Step{{
-					Command: "g2g untrack --branch " + branch,
+					Command: "g2g untrack --branch " + repair.Quote(branch),
 					Effect:  "forget the edge it left behind",
 				}},
 			}
@@ -173,7 +173,7 @@ func (p Plan) refused(note repair.Note) Plan {
 func forkConflict(leaves []string) repair.Note {
 	ways := make([]repair.Step, 0, len(leaves))
 	for _, leaf := range leaves {
-		ways = append(ways, repair.Step{Command: "g2g restack --branch " + leaf + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
+		ways = append(ways, repair.Step{Command: "g2g restack --branch " + repair.Quote(leaf) + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
 	}
 	return repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: ways}
 }
@@ -184,7 +184,7 @@ func ontoOneRoot(roots []string, parent string) repair.Note {
 	ways := make([]repair.Step, 0, len(roots))
 	for _, root := range roots {
 		ways = append(ways, repair.Step{
-			Command: fmt.Sprintf("g2g restack --branch %s --onto %s", root, parent),
+			Command: fmt.Sprintf("g2g restack --branch %s --onto %s", repair.Quote(root), repair.Quote(parent)),
 			Effect:  "move " + root + " and what is stacked on it",
 		})
 	}
@@ -343,7 +343,7 @@ func (u unmeasured) note() repair.Note {
 	return repair.Note{
 		Reason: fmt.Sprintf("the version of %s about to be taken is built on neither %s nor where %s was recorded as forking, so which commits are its own cannot be told", u.branch, u.parent, u.branch),
 		Ways: []repair.Step{{
-			Command: fmt.Sprintf("g2g track --branch %s --parent %s", u.branch, u.parent),
+			Command: fmt.Sprintf("g2g track --branch %s --parent %s", repair.Quote(u.branch), repair.Quote(u.parent)),
 			Effect:  "record where it forks, once it is built on its parent",
 		}},
 	}

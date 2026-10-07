@@ -111,12 +111,12 @@ func (s Service) Plan(ctx context.Context, operation Operation, requested string
 		return Plan{}, err
 	}
 	if !slices.Contains(local, plan.Branch) {
-		return plan.refuse(notLocal(plan.Branch, repair.Step{Command: "g2g untrack --branch " + plan.Branch, Effect: "forget the record of a branch that is already gone"})), nil
+		return plan.refuse(notLocal(plan.Branch, repair.Step{Command: "g2g untrack --branch " + repair.Quote(plan.Branch), Effect: "forget the record of a branch that is already gone"})), nil
 	}
 	if !slices.Contains(local, plan.Parent) {
 		return plan.refuse(repair.Note{
 			Reason: fmt.Sprintf("%s is recorded on %s, which is not a local branch, so there is nowhere here to put what sits on it", plan.Branch, plan.Parent),
-			Ways:   []repair.Step{{Command: "g2g track --branch " + plan.Branch + " --parent <branch>", Effect: "record it on a branch that is here first"}},
+			Ways:   []repair.Step{{Command: "g2g track --branch " + repair.Quote(plan.Branch) + " --parent <branch>", Effect: "record it on a branch that is here first"}},
 		}), nil
 	}
 	if plan.Tip, err = s.Git.Resolve(ctx, plan.Branch); err != nil {
@@ -155,7 +155,7 @@ func untrackedRemoval(operation Operation, adopted graph.Graph, branch string) r
 		return repair.Note{
 			Reason: fmt.Sprintf("%s is a declared trunk: nothing records what it sits on, so the branches on it would have nowhere to go", branch),
 			Ways: []repair.Step{
-				{Command: "g2g untrack --branch " + branch, Effect: "stop it being a trunk, stranding what sits on it"},
+				{Command: "g2g untrack --branch " + repair.Quote(branch), Effect: "stop it being a trunk, stranding what sits on it"},
 				{Effect: "then delete it with git branch -D"},
 			},
 		}
@@ -202,7 +202,7 @@ func (s Service) refuseHeld(ctx context.Context, plan Plan) (Plan, bool, error) 
 func intoTrunk(plan Plan) repair.Note {
 	return repair.Note{
 		Reason: fmt.Sprintf("%s sits on the trunk %s, and folding it would move the trunk", plan.Branch, plan.Parent),
-		Ways:   []repair.Step{{Command: "g2g land --branch " + plan.Branch, Effect: "put it into " + plan.Parent + " through its pull request"}},
+		Ways:   []repair.Step{{Command: "g2g land --branch " + repair.Quote(plan.Branch), Effect: "put it into " + plan.Parent + " through its pull request"}},
 	}
 }
 
@@ -217,7 +217,7 @@ func (s Service) planFold(ctx context.Context, plan Plan) (Plan, error) {
 	if !ancestor {
 		return plan.refuse(repair.Note{
 			Reason: fmt.Sprintf("%s has moved on since %s was stacked on it, so it cannot be fast-forwarded to %s", plan.Parent, plan.Branch, plan.Branch),
-			Ways:   []repair.Step{{Command: "g2g restack --branch " + plan.Branch, Effect: "put " + plan.Branch + " back on top of " + plan.Parent + ", then fold"}},
+			Ways:   []repair.Step{{Command: "g2g restack --branch " + repair.Quote(plan.Branch), Effect: "put " + plan.Branch + " back on top of " + plan.Parent + ", then fold"}},
 		}), nil
 	}
 	for _, sibling := range adopted.Children(plan.Parent) {

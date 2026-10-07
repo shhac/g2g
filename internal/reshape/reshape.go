@@ -62,7 +62,7 @@ func (s Service) Ready() bool {
 func unrecorded(branch string, ways ...repair.Step) repair.Note {
 	return repair.Note{
 		Reason: fmt.Sprintf("the g2g graph does not record %s, so nothing says where it sits", branch),
-		Ways:   append([]repair.Step{{Command: "g2g track --branch " + branch, Effect: "record it first"}}, ways...),
+		Ways:   append([]repair.Step{{Command: "g2g track --branch " + repair.Quote(branch), Effect: "record it first"}}, ways...),
 	}
 }
 

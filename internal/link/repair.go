@@ -43,7 +43,7 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 			}
 		}
 		if missingRecords {
-			ways = append(ways, repair.Step{Command: "g2g prune --branch " + p.Target + " --scope " + string(p.Scope) + " --forget-missing", Effect: "preview cleanup of missing records; forgetting a record does not close its pull request"})
+			ways = append(ways, repair.Step{Command: "g2g prune --branch " + repair.Quote(p.Target) + " --scope " + string(p.Scope) + " --forget-missing", Effect: "preview cleanup of missing records; forgetting a record does not close its pull request"})
 		}
 		return repair.Note{Reason: "missing locally: " + sentenceList(p.Absent), Ways: ways}, nil
 	}

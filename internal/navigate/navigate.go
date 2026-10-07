@@ -301,7 +301,7 @@ func bottom(move Move, within outline) Move {
 func refuseFork(move Move, at string, above []string) Move {
 	ways := make([]repair.Step, 0, len(above))
 	for _, child := range above {
-		ways = append(ways, repair.Step{Command: "git switch " + child, Effect: "go up to " + child})
+		ways = append(ways, repair.Step{Command: "git switch " + repair.Quote(child), Effect: "go up to " + child})
 	}
 	return move.refuse(repair.Note{
 		Reason: fmt.Sprintf("%s has %d branches above it (%s), and choosing between them is a guess", at, len(above), strings.Join(above, ", ")),

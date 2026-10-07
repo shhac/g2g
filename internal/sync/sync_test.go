@@ -701,3 +701,12 @@ func TestRevalidateTrunkChecksTheTrunkAgainBeforeApplying(t *testing.T) {
 		})
 	}
 }
+
+// The advice for a divergence is pasted into a shell, so every name it carries
+// is quoted: Git allows branch and remote names the shell would expand.
+func TestDivergenceAdviceQuotesNamesTheShellWouldExpand(t *testing.T) {
+	ways := divergenceWays(graph.Selection{Branch: "synthetic-$(touch x)"}, "synthetic up", Take{}, nil, nil)
+	if got, want := ways[0].Command, "g2g pull --branch 'synthetic-$(touch x)' --remote 'synthetic up' --take published"; got != want {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+}

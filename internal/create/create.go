@@ -142,7 +142,7 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		return plan.refuse(repair.Note{
 			Reason: fmt.Sprintf("a branch named %s already exists", plan.Name),
 			Ways: []repair.Step{
-				{Command: "g2g track --branch " + plan.Name + " --parent " + plan.Parent, Effect: "record the existing branch under " + plan.Parent + " instead"},
+				{Command: "g2g track --branch " + repair.Quote(plan.Name) + " --parent " + repair.Quote(plan.Parent), Effect: "record the existing branch under " + plan.Parent + " instead"},
 				{Effect: "choose another name"},
 			},
 		}), nil
@@ -223,7 +223,7 @@ func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 func untrustedParent(plan Plan, unknownDefault bool) repair.Note {
 	reason := fmt.Sprintf("%s is not in the g2g graph, so recording %s under it would make %s a trunk", plan.Parent, plan.Name, plan.Parent)
 	ways := []repair.Step{
-		{Command: "g2g adopt --branch " + plan.Parent, Effect: "record the stack " + plan.Parent + " is on first"},
+		{Command: "g2g adopt --branch " + repair.Quote(plan.Parent), Effect: "record the stack " + plan.Parent + " is on first"},
 		{Effect: "pass --parent with a branch the graph records"},
 	}
 	if unknownDefault {
@@ -246,7 +246,7 @@ func refuseCommit(plan Plan) Plan {
 			Reason: "nothing is staged, so there is nothing to commit",
 			Ways: []repair.Step{
 				{Effect: "stage what the first commit should hold, then rerun"},
-				{Command: "g2g create " + plan.Name, Effect: "create the branch without committing"},
+				{Command: "g2g create " + repair.Quote(plan.Name), Effect: "create the branch without committing"},
 			},
 		})
 	}

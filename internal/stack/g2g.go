@@ -147,7 +147,7 @@ func (s G2GSelector) declaredTrunk(ctx context.Context, discovery graph.Discover
 func trunkUndescribed(branch string, declaration graph.Declaration, command string) Undescribed {
 	note := repair.Note{
 		Reason: "it is a trunk, so its stacks sit above it and nothing below",
-		Ways:   []repair.Step{{Command: "g2g create <name> --parent " + branch, Effect: "start a stack on it"}},
+		Ways:   []repair.Step{{Command: "g2g create <name> --parent " + repair.Quote(branch), Effect: "start a stack on it"}},
 	}
 	if declaration.Lands() {
 		note = repair.Note{

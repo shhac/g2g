@@ -142,7 +142,7 @@ func throughOutside(take Take, branches []string, base string) (repair.Note, boo
 func lineWays(lines []string) []repair.Step {
 	ways := make([]repair.Step, 0, len(lines))
 	for _, leaf := range lines {
-		ways = append(ways, repair.Step{Command: "g2g pull --branch " + leaf, Effect: "bring the line of descent ending at " + leaf + " up to date"})
+		ways = append(ways, repair.Step{Command: "g2g pull --branch " + repair.Quote(leaf), Effect: "bring the line of descent ending at " + leaf + " up to date"})
 	}
 	return ways
 }

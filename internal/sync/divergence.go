@@ -29,17 +29,17 @@ type divergence struct {
 func divergenceWays(selection graph.Selection, remote string, take Take, parents map[string]string, stuck []divergence) []repair.Step {
 	command := "g2g pull"
 	if selection.Branch != "" {
-		command += " --branch " + selection.Branch
+		command += " --branch " + repair.Quote(selection.Branch)
 	}
 	if selection.Scope == graph.ScopeTrunk {
 		command += " --scope " + string(graph.ScopeTrunk)
 	}
 	if remote != "" && remote != localgit.DefaultRemote {
-		command += " --remote " + remote
+		command += " --remote " + repair.Quote(remote)
 	}
 	command += " --take " + string(SidePublished)
 	if through := widened(take, parents, stuck); through != "" {
-		command += " --through " + through
+		command += " --through " + repair.Quote(through)
 	}
 	return []repair.Step{
 		{Command: command, Effect: fmt.Sprintf("take the version %s has and discard yours", remoteName(remote))},

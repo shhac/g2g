@@ -190,8 +190,8 @@ func fetchFirst(missing []string) repair.Note {
 	return repair.Note{
 		Reason: reason,
 		Ways: []repair.Step{
-			{Command: "git fetch && git switch " + first, Effect: "bring it here and check it out"},
-			{Command: "git branch " + first + " origin/" + first, Effect: "create it without switching to it, once fetched"},
+			{Command: "git fetch && git switch " + repair.Quote(first), Effect: "bring it here and check it out"},
+			{Command: "git branch " + repair.Quote(first) + " " + repair.Quote("origin/"+first), Effect: "create it without switching to it, once fetched"},
 		},
 	}
 }
@@ -200,11 +200,11 @@ func fetchFirst(missing []string) repair.Note {
 // establishes as a trunk.
 func unknownBase(base string, declared []Adoption) repair.Note {
 	ways := []repair.Step{
-		{Command: "g2g adopt --branch " + base, Effect: "record the stack " + base + " is on first"},
+		{Command: "g2g adopt --branch " + repair.Quote(base), Effect: "record the stack " + base + " is on first"},
 	}
 	if first := firstOnto(base, declared); first != "" {
 		ways = append(ways, repair.Step{
-			Command: "g2g track --branch " + first + " --parent " + base,
+			Command: "g2g track --branch " + repair.Quote(first) + " --parent " + repair.Quote(base),
 			Effect:  "say " + base + " is a trunk by recording its first branch yourself",
 		})
 	}

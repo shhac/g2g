@@ -214,7 +214,7 @@ func (r Resolver) remedy(ctx context.Context, branch string) repair.Note {
 	if r.looksLikeTrunk(ctx, branch) {
 		return repair.Note{
 			Reason: "it is this repository's default branch, so nothing is stacked on it yet",
-			Ways:   []repair.Step{{Command: "g2g track --branch <child> --parent " + branch, Effect: "start a stack on it"}},
+			Ways:   []repair.Step{{Command: "g2g track --branch <child> --parent " + repair.Quote(branch), Effect: "start a stack on it"}},
 		}
 	}
 	ways := make([]repair.Step, 0, len(r.Selectors))

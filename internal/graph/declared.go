@@ -122,8 +122,8 @@ func DeclaredConflict(branches []string) repair.Note {
 	return repair.Note{
 		Reason: fmt.Sprintf("the graph names %s a trunk, which only g2g track --parent undoes", strings.Join(branches, ", ")),
 		Ways: []repair.Step{
-			{Command: "g2g adopt --trunk " + first, Effect: "record the stack above it instead"},
-			{Command: "g2g track --branch " + first + " --parent", Effect: "put it back in the stack below it"},
+			{Command: "g2g adopt --trunk " + repair.Quote(first), Effect: "record the stack above it instead"},
+			{Command: "g2g track --branch " + repair.Quote(first) + " --parent", Effect: "put it back in the stack below it"},
 		},
 	}
 }

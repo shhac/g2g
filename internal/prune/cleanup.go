@@ -56,7 +56,7 @@ func partial(plan Plan, deleted, forgotten []string, err error) error {
 	if len(deleted) == 0 && len(forgotten) == 0 {
 		return err
 	}
-	retry := "g2g prune --branch " + plan.Discovery.Target + " --scope " + string(plan.Discovery.Scope) + " --forget-missing"
+	retry := "g2g prune --branch " + repair.Quote(plan.Discovery.Target) + " --scope " + string(plan.Discovery.Scope) + " --forget-missing"
 	if plan.Options.DeleteBranches {
 		retry += " --delete-branches"
 	}

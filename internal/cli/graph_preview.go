@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -51,7 +52,7 @@ type stateAdvice struct {
 var recordedStates = map[graph.NodeState]stateAdvice{
 	graph.StateNeedsRestack: {"needs restack", severityWarn,
 		said("its parent moved underneath it"),
-		func(branch, _ string) string { return "g2g restack --branch " + branch }},
+		func(branch, _ string) string { return "g2g restack --branch " + repair.Quote(branch) }},
 	graph.StateMovedOffParent: {"moved off parent", severityWarn,
 		func(parent string) string { return "no longer built on " + parent },
 		retrack},
@@ -60,25 +61,25 @@ var recordedStates = map[graph.NodeState]stateAdvice{
 		retrack},
 	graph.StateParentMissing: {"parent missing", severityWarn,
 		func(parent string) string { return parent + " is no longer a local branch" },
-		func(branch, _ string) string { return "g2g track --branch " + branch }},
+		func(branch, _ string) string { return "g2g track --branch " + repair.Quote(branch) }},
 	graph.StateBranchMissing: {"branch missing", severityWarn,
 		said("recorded, and no longer a local branch"),
-		func(branch, _ string) string { return "g2g untrack --branch " + branch }},
+		func(branch, _ string) string { return "g2g untrack --branch " + repair.Quote(branch) }},
 	graph.StateLanded: {"landed", severityOK,
 		func(parent string) string { return "already landed in " + parent },
-		func(branch, _ string) string { return "g2g prune --branch " + branch }},
+		func(branch, _ string) string { return "g2g prune --branch " + repair.Quote(branch) }},
 }
 
 // retrack records the fork point again on the parent already recorded, which
 // track does only where that parent's tip is in the branch.
 func retrack(branch, parent string) string {
-	return "g2g track --branch " + branch + " --parent " + parent
+	return "g2g track --branch " + repair.Quote(branch) + " --parent " + repair.Quote(parent)
 }
 
 func said(problem string) func(string) string { return func(string) string { return problem } }
 
 // orphanRepair is a branch whose recorded parent is recorded nowhere.
-func orphanRepair(branch string) string { return "g2g track --branch " + branch }
+func orphanRepair(branch string) string { return "g2g track --branch " + repair.Quote(branch) }
 
 // nodeState says what the graph knows about one branch without a network call.
 func nodeState(discovery graph.Discovery, branch string) (string, severity) {
@@ -177,7 +178,7 @@ func missingNotes(discovery graph.Discovery) []string {
 		for _, child := range subtree {
 			whole = whole && selected[child] && discovery.States[child] == graph.StateBranchMissing
 		}
-		command := "g2g untrack --branch " + branch
+		command := "g2g untrack --branch " + repair.Quote(branch)
 		branches := []string{branch}
 		if whole {
 			branches = subtree

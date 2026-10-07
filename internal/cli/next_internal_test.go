@@ -108,3 +108,11 @@ func TestPruneLeavesOnlyWhatAPushWouldPublish(t *testing.T) {
 		t.Errorf("kept = %v, want only synthetic-kept", got)
 	}
 }
+
+// status and doctor print their repairs for pasting, and Git allows names the
+// shell would expand.
+func TestRepairsQuoteNamesTheShellWouldExpand(t *testing.T) {
+	if got, want := retrack("synthetic-$(touch x)", "synthetic main"), "g2g track --branch 'synthetic-$(touch x)' --parent 'synthetic main'"; got != want {
+		t.Errorf("retrack = %q, want %q", got, want)
+	}
+}

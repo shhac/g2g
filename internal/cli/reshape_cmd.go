@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/reshape"
 )
 
@@ -157,9 +158,9 @@ func removalNext(plan reshape.Plan) string {
 	}
 	switch {
 	case len(stale) == 1:
-		return "g2g restack --branch " + stale[0]
+		return "g2g restack --branch " + repair.Quote(stale[0])
 	case len(stale) > 1 && plan.Discovery.Graph.Tracked(plan.Parent):
-		return "g2g restack --branch " + plan.Parent
+		return "g2g restack --branch " + repair.Quote(plan.Parent)
 	case len(stale) > 1:
 		return "g2g status"
 	}

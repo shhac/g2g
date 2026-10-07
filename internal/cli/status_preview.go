@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -81,9 +82,9 @@ func untrackedNote(discovery graph.Discovery) string {
 		if discovery.Target != discovery.DefaultTrunk {
 			// Declared, or a root whose stacks have all gone. Calling it the
 			// default branch was true only of the case this was written for.
-			return fmt.Sprintf("%s is a trunk · start a stack on it with %s.", discovery.Target, runnable("g2g create <name> --parent "+discovery.Target))
+			return fmt.Sprintf("%s is a trunk · start a stack on it with %s.", discovery.Target, runnable("g2g create <name> --parent "+repair.Quote(discovery.Target)))
 		}
-		return fmt.Sprintf("%s is this repository's default branch · stack on it with %s.", discovery.Target, runnable("g2g track --branch <child> --parent "+discovery.Target))
+		return fmt.Sprintf("%s is this repository's default branch · stack on it with %s.", discovery.Target, runnable("g2g track --branch <child> --parent "+repair.Quote(discovery.Target)))
 	case !slices.Contains(discovery.Branches, discovery.Target):
 		// Not in the drawing at all. A trunk is untracked and still drawn, so
 		// the question is what the selection contains rather than whether the

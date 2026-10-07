@@ -88,7 +88,7 @@ func candidateNotes(plan graph.TrackPlan) []stackNote {
 		notes = append(notes, stackNote{Text: "Then: " + describeOthers(others), Severity: severityNeutral})
 	}
 	return append(notes, alignedCommands(
-		repair.Step{Command: "g2g track --parent " + nearest.Branch, Effect: "record just this edge"},
+		repair.Step{Command: "g2g track --parent " + repair.Quote(nearest.Branch), Effect: "record just this edge"},
 		repair.Step{Command: "g2g adopt", Effect: "record the whole ancestry at once"},
 	)...)
 }

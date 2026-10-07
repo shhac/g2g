@@ -6,6 +6,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -254,7 +255,7 @@ func unstackedState(undescribed stack.Undescribed) string {
 
 func unstackedNote(undescribed stack.Undescribed) string {
 	if undescribed.Trunk {
-		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+undescribed.Branch))
+		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+repair.Quote(undescribed.Branch)))
 	}
 	return undescribed.Sentence(runnable)
 }

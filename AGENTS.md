@@ -486,7 +486,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Six things exist once and must not be reimplemented locally. Each was found as
+Eight things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -512,6 +512,20 @@ property the original had.
   type — `SentenceWith` takes the decoration rather than exposing the join —
   because a caller assembling its own sentence is free to word it differently
   from the one a machine reads, and that is the drift this replaced.
+- `repair.Command` / `repair.Quote` — rendering a command the reader is
+  invited to paste. Git allows branch names the shell would expand, so every
+  real name in a repair, recipe, note or suggestion goes through one of them,
+  and a placeholder such as `<branch>` never does. About fifty commands across
+  a dozen packages had spliced names in raw while one function in `land` quoted
+  and its neighbour two lines down did not.
+- `selected.aim` with a `suggestable` in `internal/cli/next.go` — pointing a
+  follow-up command at what a command acted on: `--branch` only when it was
+  named, `--scope` only when the command's default would not reach the
+  selection, `--remote` only when it is not `git.DefaultRemote`. A suggestable
+  command registers its `--scope` from the same value
+  (`registerScopeOf`), so advice cannot offer a scope the command refuses.
+  status's notes said a bare `g2g push` after `status --branch X`, pushing the
+  wrong stack, while its prune hint always spelled both flags out.
 
 ## Change and verification workflow
 

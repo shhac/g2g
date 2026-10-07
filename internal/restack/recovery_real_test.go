@@ -261,3 +261,33 @@ func TestRecoveryReconcilesAnInterruptedCollapse(t *testing.T) {
 		})
 	}
 }
+
+// A branch deleted with plain Git between a stop and --continue failed with
+// Git's own error about an object it could not name, because recording the
+// structure asks about every selected branch. untrack forgets such an edge
+// anywhere else, but it refuses while the journal exists, so the refusal has
+// to name abort — and abort has to actually bring the branch back.
+func TestContinueAfterADeletedBranchNamesAbortWhichRestoresIt(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	original := r.Revision("synthetic-b")
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	r.Run("rebase", "--abort")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Run("branch", "-D", "synthetic-b")
+
+	err := r.service.Continue(ctx)
+	if err == nil || !strings.Contains(err.Error(), "synthetic-b is recorded but is no longer a local branch · run g2g restack --abort") {
+		t.Fatalf("Continue error = %v, want the deleted branch named with abort as the way out", err)
+	}
+	if active, _ := r.service.InProgress(ctx); !active {
+		t.Fatal("the refusal cleared the journal, so the advised abort has nothing to restore")
+	}
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Revision("synthetic-b"); got != original {
+		t.Fatalf("abort left synthetic-b at %s, want its original tip %s", got, original)
+	}
+	r.assertClean()
+}

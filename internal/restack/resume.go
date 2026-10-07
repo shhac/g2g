@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // Continue resumes an interrupted restack.
@@ -100,6 +102,9 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 	if err != nil {
 		return finishComplete, err
 	}
+	if missing := discovery.InState(graph.StateBranchMissing); len(missing) > 0 {
+		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", deletedMidway(missing).Sentence())
+	}
 	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
 		return finishComplete, err
 	}
@@ -158,6 +163,25 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 		return finishComplete, err
 	}
 	return finishAgain, nil
+}
+
+// deletedMidway refuses a resume after a selected branch was deleted with
+// plain Git. Recording structure asks Git about every selected branch, and a
+// name that is no longer a ref failed that with Git's own error. untrack is
+// what forgets such an edge outside a restack, but it refuses while the journal
+// exists; abort puts every recorded tip back, the deleted branch's included.
+func deletedMidway(missing []string) repair.Note {
+	return repair.Note{
+		Reason: deletedReason(missing),
+		Ways:   []repair.Step{{Command: "g2g restack --abort", Effect: "put every branch back where the restack found it, deleted ones included"}},
+	}
+}
+
+func deletedReason(missing []string) string {
+	if len(missing) == 1 {
+		return missing[0] + " is recorded but is no longer a local branch"
+	}
+	return strings.Join(missing, ", ") + " are recorded but are no longer local branches"
 }
 
 // Abort restores every branch to the tip it had when the operation began,

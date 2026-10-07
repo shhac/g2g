@@ -337,6 +337,12 @@ The remaining queue is deliberately absent. It is re-derived from the refs on
 every invocation, which is what makes a user's own `git rebase --continue` or
 `--abort` change what work remains rather than something to detect.
 
+A branch deleted with plain Git before `--continue` is the one change a
+re-derivation cannot carry on through. `--continue` refuses and names
+`--abort`, which recreates the branch at its recorded tip. It does not name
+`untrack`, which forgets such an edge anywhere else but refuses while the
+journal exists.
+
 Graphite solves the same problem the same way: `.gtcontinue` holds the queue,
 the in-flight base and the branch to return to, and a start-of-operation
 snapshot holds every branch's revision.

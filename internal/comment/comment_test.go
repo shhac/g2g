@@ -12,7 +12,6 @@ import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
-
 	"github.com/shhac/g2g/internal/testutil"
 )
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
-
 	"github.com/shhac/g2g/internal/testutil"
 )
 

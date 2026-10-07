@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/repair"
-
 	"github.com/shhac/g2g/internal/testutil"
 )
 

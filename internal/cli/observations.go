@@ -20,6 +20,14 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 	}
 	shown := false
 	for index, node := range view.Nodes {
+		// A trunk is landed on, not opened as a pull request, so one seen with
+		// a trunk's name as its head is somebody else's — a release from main
+		// into another branch, say — and drawing it on the trunk read as the
+		// trunk's own. A trunk declared to land somewhere is the exception:
+		// that pull request is how it lands.
+		if _, lands := discovery.Graph.Landing(node.Branch); node.Trunk && !lands {
+			continue
+		}
 		seen, known := observed[node.Branch]
 		if !known {
 			if discovery.States[node.Branch] == graph.StateBranchMissing {

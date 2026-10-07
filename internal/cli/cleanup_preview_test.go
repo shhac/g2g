@@ -105,3 +105,34 @@ func TestCleanupReportsCompletedDeletionAndScopedRetryAsPartWay(t *testing.T) {
 		t.Fatalf("pull composition hid cleanup: %v\n%s", err, output.String())
 	}
 }
+
+// A trunk is landed on, not opened as a pull request, so a remembered pull
+// request with a trunk's name as its head is somebody else's — a release from
+// it into another branch — and must not be drawn as the trunk's own. A trunk
+// declared to land somewhere is the exception: that pull request is how it
+// lands.
+func TestRememberedPRsAreDrawnOnATrunkOnlyWhenItLandsSomewhere(t *testing.T) {
+	seen := observationFixture{"synthetic-main": {PullRequest: githubstack.PullRequest{Number: 7, URL: "https://example.test/synthetic/repo/pull/7", State: "CLOSED"}, ObservedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}}
+	for _, test := range []struct {
+		name  string
+		lands bool
+	}{
+		{name: "a trunk", lands: false},
+		{name: "a trunk that lands", lands: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorded := graphFixture()
+			if test.lands {
+				recorded.Declared = map[string]graph.Declaration{"synthetic-main": {Into: "synthetic-release", By: "squash"}}
+			}
+			d := graph.Discovery{Graph: recorded, Target: "synthetic-main", Scope: graph.ScopeStack, Branches: []string{"synthetic-main", "synthetic-auth"}}
+			view := rememberedPRs(context.Background(), statusView(d), d, seen)
+			if !view.Nodes[0].Trunk {
+				t.Fatalf("first node = %+v, want the trunk", view.Nodes[0])
+			}
+			if drawn := strings.Contains(view.Nodes[0].state(), "PR last seen closed"); drawn != test.lands {
+				t.Errorf("trunk state = %q, want the remembered pull request drawn: %t", view.Nodes[0].state(), test.lands)
+			}
+		})
+	}
+}

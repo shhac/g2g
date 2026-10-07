@@ -176,3 +176,39 @@ func TestSubmitRefusesFlagsItWouldIgnore(t *testing.T) {
 		recorder.AssertNone("gh ", "git push")
 	}
 }
+
+// A pull request opened and then linking failed: both the push and the new
+// pull request stand on GitHub, so the report names what was opened, the
+// retry keeps --link, and the run exits part-way rather than "Not applied".
+func TestSubmitThatStopsAtLinkNamesTheOpenedPullRequest(t *testing.T) {
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		{Prefix: "api graphql", Output: pullRequestsJSON("")},
+		{Prefix: "pr create", Output: "https://example.test/synthetic/pull/102"},
+		{Prefix: "stack link", Stderr: "synthetic link refusal", Exit: 1},
+	})
+	recorder := testutil.FakeCLIs(t, routes)
+
+	specDir := t.TempDir()
+	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(specDir, "submission.json")
+	fillSpecTitles(t, specPath)
+
+	stdout, _, err := run(t, "submit", "--spec", specPath, "--link", "--apply")
+	if !cli.StoppedPartWayForTest(err) {
+		t.Fatalf("error = %v, want the part-way status\n%s", err, stdout)
+	}
+	for _, want := range []string{"Stopped part-way: linking the stack", "Opened a pull request for synthetic-top.", "--link"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("report missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "Not applied") {
+		t.Errorf("a submission that opened a pull request says nothing was applied:\n%s", stdout)
+	}
+	if got := recorder.Count("gh pr create"); got != 1 {
+		t.Errorf("gh pr create ran %d times, want once for synthetic-top", got)
+	}
+}

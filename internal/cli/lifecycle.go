@@ -251,6 +251,19 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.suggest(validated))
 }
 
+type outputFlusher interface{ Flush() error }
+
+// flushOutput hands what has been written to the reader before anything is
+// mutated, for a writer that buffers.
+func flushOutput(writer io.Writer) error {
+	if flusher, ok := writer.(outputFlusher); ok {
+		if err := flusher.Flush(); err != nil {
+			return fmt.Errorf("flush ready-to-apply output: %w", err)
+		}
+	}
+	return nil
+}
+
 // claim answers an interrupted hook for one kind of stop: whether err is one,
 // and, when it is, the outcome of writing its report. Each hook used to spell
 // out both halves, and the two answers are exactly what a hook once collapsed

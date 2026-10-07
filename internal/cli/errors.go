@@ -73,6 +73,49 @@ func wasStopped(err error) bool {
 	return errors.As(err, &stopped)
 }
 
+// writeNotApplied renders the outcome of a failed mutation and returns the
+// error marked as presented, so the top-level printer reports it without
+// repeating the diagnostic block.
+func writeNotApplied(writer io.Writer, presentation Presentation, err error) error {
+	if presentation.machine() {
+		return err
+	}
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, presentation.problem("Not applied"))
+
+	summary := err.Error()
+	var commandErr *githubstack.CommandError
+	if errors.As(err, &commandErr) {
+		summary = commandErr.Summary()
+	}
+	// A refusal's reason is the same sentence the preview showed, so a command
+	// it names is drawn the same way here.
+	fmt.Fprintln(writer, presentation.drawCommands(summary, ""))
+
+	diagnostic := commandDiagnostic(err)
+	if diagnostic == "" {
+		return notAppliedError{err}
+	}
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, presentation.subdued("Diagnostic:"))
+	for _, line := range strings.Split(diagnostic, "\n") {
+		fmt.Fprintln(writer, presentation.subdued("  "+line))
+	}
+	return presentedError{err: notAppliedError{err}}
+}
+
+// notAppliedError is a failure writeNotApplied has already told a person
+// about, so a caller composing commands knows not to say it again.
+type notAppliedError struct{ err error }
+
+func (e notAppliedError) Error() string { return e.err.Error() }
+func (e notAppliedError) Unwrap() error { return e.err }
+
+func toldNotApplied(err error) bool {
+	var told notAppliedError
+	return errors.As(err, &told)
+}
+
 // presentedError marks an error whose bounded diagnostic a command already
 // rendered. The top-level printer then reports the failure without repeating
 // that block, keeping one diagnostic per invocation.

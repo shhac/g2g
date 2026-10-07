@@ -12,6 +12,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/navigate"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -174,7 +175,7 @@ func describeMove(move navigate.Move) string {
 func moveView(move navigate.Move) stackView {
 	view := stackView{Operation: string(move.Direction), Target: move.Destination, TargetSource: describeMove(move)}
 	if move.Blocked != "" {
-		view.Target, view.TargetSource = move.Origin, "current Git branch"
+		view.Target, view.TargetSource = move.Origin, shape.TargetCurrent
 	}
 	if move.Base != "" {
 		view.Nodes = append(view.Nodes, stackNode{Branch: move.Base, Trunk: true, Target: view.Target == move.Base})

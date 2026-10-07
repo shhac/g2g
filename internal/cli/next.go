@@ -40,16 +40,12 @@ type selected struct {
 	scope  shape.Scope
 }
 
-// namedSource is the TargetSource a selection reports for a branch named with
-// --branch, as both the g2g graph and the stack resolver word it.
-const namedSource = "--branch"
-
 func selectedIn(discovery graph.Discovery) selected {
-	return selected{branch: discovery.Target, named: discovery.TargetSource == namedSource, scope: discovery.Scope}
+	return selected{branch: discovery.Target, named: discovery.TargetSource == shape.TargetNamed, scope: discovery.Scope}
 }
 
 func selectedFrom(snapshot stack.Snapshot) selected {
-	return selected{branch: snapshot.Target, named: snapshot.TargetSource == namedSource, scope: snapshot.Scope}
+	return selected{branch: snapshot.Target, named: snapshot.TargetSource == shape.TargetNamed, scope: snapshot.Scope}
 }
 
 // aim is command pointed at the selection. It names the branch only when the

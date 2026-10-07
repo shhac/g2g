@@ -235,7 +235,7 @@ func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentat
 	view := stackView{
 		Operation:    "github status",
 		Target:       undescribed.Branch,
-		TargetSource: "current Git branch",
+		TargetSource: shape.TargetCurrent,
 		Nodes:        []stackNode{stackNode{Branch: undescribed.Branch, Trunk: undescribed.Trunk, Target: true}.labeled(unstackedState(undescribed), severityNeutral)},
 	}
 	// The remedy goes out as structure as well as prose: this is the commonest

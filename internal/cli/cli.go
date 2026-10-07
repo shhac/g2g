@@ -25,6 +25,7 @@ import (
 	"github.com/shhac/g2g/internal/reshape"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/retarget"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
 	"github.com/shhac/g2g/internal/subprocess"
@@ -313,9 +314,9 @@ func commandContext(ctx context.Context, cmd *cobra.Command, mode, branch, trunk
 		return ctx
 	}
 	ctx = diagnostic.WithSink(ctx, diagnostic.Writer{Out: cmd.ErrOrStderr()})
-	targetSource := "current Git branch"
+	targetSource := shape.TargetCurrent
 	if branch != "" {
-		targetSource = "--branch"
+		targetSource = shape.TargetNamed
 	}
 	fields := []diagnostic.Field{
 		{Key: "operation", Value: commandPath(cmd)},

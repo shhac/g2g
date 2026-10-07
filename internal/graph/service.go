@@ -207,13 +207,13 @@ func (s Service) defaultTrunk(ctx context.Context) string {
 
 func (s Service) target(ctx context.Context, requested string) (string, string, error) {
 	if requested != "" {
-		return requested, "--branch", nil
+		return requested, shape.TargetNamed, nil
 	}
 	current, err := s.Git.CurrentBranch(ctx)
 	if err != nil {
 		return "", "", err
 	}
-	return current, "current Git branch", nil
+	return current, shape.TargetCurrent, nil
 }
 
 func matched(ctx context.Context, event string, equal bool) error {

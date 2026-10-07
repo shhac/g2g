@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graphite"
+	"github.com/shhac/g2g/internal/shape"
 
 	"github.com/shhac/g2g/internal/subprocess"
 )
@@ -275,13 +276,13 @@ func (s Selection) EffectiveScope() Scope {
 
 func resolveTarget(ctx context.Context, git Git, requestedBranch string) (string, string, error) {
 	if requestedBranch != "" {
-		return requestedBranch, "--branch", nil
+		return requestedBranch, shape.TargetNamed, nil
 	}
 	target, err := git.CurrentBranch(ctx)
 	if err != nil {
 		return "", "", err
 	}
-	return target, "current Git branch", nil
+	return target, shape.TargetCurrent, nil
 }
 
 func branchSet(branches []string) map[string]bool {

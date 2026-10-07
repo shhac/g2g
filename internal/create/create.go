@@ -17,6 +17,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
@@ -128,7 +129,7 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	}
 	plan.Return = current
 	if plan.Parent == "" {
-		plan.Parent, plan.ParentSource = current, "current Git branch"
+		plan.Parent, plan.ParentSource = current, shape.TargetCurrent
 	}
 	if blocked, refused := s.refuseName(ctx, plan); refused {
 		return blocked, nil

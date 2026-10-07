@@ -322,6 +322,54 @@ func TestAResumeThatIsRefusedKeepsTheJournal(t *testing.T) {
 	}
 }
 
+// The same rule for a plan that refuses outright rather than one held by a
+// worktree: here the branch still to be rewritten was pointed at unrelated
+// history with plain Git while the first conflict was being resolved, so no
+// range holds only its own commits. The rewrite of synthetic-a is done and
+// synthetic-b's is not, so the stack is half rewritten and the journal is the
+// only thing that can put it back.
+func TestAResumeWhosePlanIsBlockedKeepsTheJournalForAbort(t *testing.T) {
+	r := conflictingStack(t)
+	ctx := context.Background()
+	before := map[string]string{"synthetic-a": r.Revision("synthetic-a"), "synthetic-b": r.Revision("synthetic-b")}
+	recorded, err := r.store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+	unrelated := r.Run("commit-tree", "-m", "synthetic unrelated", r.Run("hash-object", "-t", "tree", "-w", "/dev/null"))
+	r.Run("update-ref", "refs/heads/synthetic-b", unrelated)
+	r.Write("a.txt", "resolved")
+	r.Run("add", "a.txt")
+
+	err = r.service.Continue(ctx)
+	if err == nil || !strings.Contains(err.Error(), "cannot carry on") || !strings.Contains(err.Error(), "synthetic-b") {
+		t.Fatalf("Continue() error = %v, want the refusal naming synthetic-b", err)
+	}
+	if inProgress, _ := r.service.InProgress(ctx); !inProgress {
+		t.Fatal("a blocked resume deleted the journal, so --abort has nothing to undo")
+	}
+
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatalf("Abort() error = %v", err)
+	}
+	for branch, tip := range before {
+		if got := r.Revision(branch); got != tip {
+			t.Errorf("%s = %s after abort, want %s", branch, got, tip)
+		}
+	}
+	after, err := r.store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for branch, edge := range recorded.Edges {
+		if after.Edges[branch] != edge {
+			t.Errorf("%s is recorded as %+v after abort, want %+v", branch, after.Edges[branch], edge)
+		}
+	}
+	r.assertClean()
+}
+
 // publishedRestack is a stack a colleague has already restacked onto a trunk
 // that moved, and published: every published ref is a branch here standing in
 // for what a fetch would have brought down, and nothing local has moved yet.

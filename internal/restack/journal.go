@@ -161,6 +161,14 @@ func (j FileJournal) write(ctx context.Context, record Record, exclusive bool) e
 		os.Remove(name)
 		return fmt.Errorf("write restack journal: %w", err)
 	}
+	// Flush to disk before it is installed, as the graph store does: this is
+	// the record a crash is recovered from, and a crash must not leave its name
+	// pointing at an empty file.
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		os.Remove(name)
+		return fmt.Errorf("flush restack journal: %w", err)
+	}
 	if err := temporary.Close(); err != nil {
 		os.Remove(name)
 		return fmt.Errorf("close restack journal: %w", err)

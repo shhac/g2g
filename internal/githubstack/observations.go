@@ -121,6 +121,12 @@ func (s *FileObservations) update(ctx context.Context, change func(map[string]Ob
 		f.Close()
 		return err
 	}
+	// Flush before the rename, as the graph store does, so a crash cannot leave
+	// the name pointing at an empty file and every remembered observation lost.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}

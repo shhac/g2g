@@ -710,3 +710,27 @@ func TestDivergenceAdviceQuotesNamesTheShellWouldExpand(t *testing.T) {
 		t.Errorf("command = %q, want %q", got, want)
 	}
 }
+
+// --take published is the one path where pull loses commits that exist nowhere
+// else, and the preview names every one. An apply that would now lose a
+// different set is a different command than the one the reader agreed to, so
+// revalidation must see it, for a branch and for the base alike.
+func TestAPlanThatWouldDiscardDifferentCommitsIsNotTheSamePlan(t *testing.T) {
+	previewed := Plan{
+		Base:         "synthetic-main",
+		DiscardsBase: []string{"synthetic-base-commit"},
+		Collect:      []Collection{{Branch: "synthetic-a", To: "synthetic-published", Discards: []string{"synthetic-commit"}}},
+	}
+	if !previewed.Equal(previewed) {
+		t.Fatal("a plan is not equal to itself")
+	}
+	branch := previewed
+	branch.Collect = []Collection{{Branch: "synthetic-a", To: "synthetic-published", Discards: []string{"synthetic-commit", "synthetic-newer"}}}
+	base := previewed
+	base.DiscardsBase = []string{"synthetic-base-commit", "synthetic-newer"}
+	for name, applied := range map[string]Plan{"a branch's": branch, "the base's": base} {
+		if previewed.Equal(applied) {
+			t.Errorf("%s discards changed and the plans still compare equal", name)
+		}
+	}
+}

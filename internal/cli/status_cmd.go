@@ -39,7 +39,7 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 		if err != nil {
 			return err
 		}
-		view := markPublished(statusView(discovery), remote, publishing)
+		view := markPublished(statusView(discovery), selectedIn(discovery).from(remote), publishing)
 		view = rememberedPRs(ctx, view, discovery, observations)
 		return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
 	}

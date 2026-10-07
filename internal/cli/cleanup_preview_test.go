@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +42,7 @@ func TestMissingHintsGroupOnlyEntirelyMissingSelectedSubtrees(t *testing.T) {
 }
 
 func TestLandedHintPreservesTheSelection(t *testing.T) {
-	discovery := graph.Discovery{Graph: graphFixture(), Target: "synthetic-auth", Scope: graph.ScopeAll, Branches: []string{"synthetic-auth"}, States: map[string]graph.NodeState{"synthetic-auth": graph.StateLanded}}
+	discovery := graph.Discovery{Graph: graphFixture(), Target: "synthetic-auth", TargetSource: shape.TargetNamed, Scope: graph.ScopeAll, Branches: []string{"synthetic-auth"}, States: map[string]graph.NodeState{"synthetic-auth": graph.StateLanded}}
 	text := ""
 	for _, note := range statusView(discovery).Notes {
 		text += plainCommands(note.Text)
@@ -60,7 +61,7 @@ func (f observationFixture) Load(context.Context) (map[string]githubstack.Observ
 func TestOfflinePRKnowledgeIsDatedAndDoesNotDuplicateMarks(t *testing.T) {
 	d := graph.Discovery{Graph: graphFixture(), Target: "synthetic-auth", Scope: graph.ScopeStack, Branches: []string{"synthetic-auth", "synthetic-login"}, States: map[string]graph.NodeState{"synthetic-login": graph.StateBranchMissing}}
 	seen := observationFixture{"synthetic-auth": {PullRequest: githubstack.PullRequest{Number: 41, URL: "https://example.test/synthetic/repo/pull/41", State: "MERGED"}, ObservedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)}}
-	view := markPublished(statusView(d), "origin", map[string]push.Publication{"synthetic-auth": {Standing: push.Current}})
+	view := markPublished(statusView(d), selectedIn(d).from("origin"), map[string]push.Publication{"synthetic-auth": {Standing: push.Current}})
 	view = rememberedPRs(context.Background(), view, d, seen)
 	if strings.Count(view.Nodes[0].state(), "origin✓") != 1 || len(view.Nodes[0].Marks) != 2 {
 		t.Fatalf("repeated marks: %+v", view.Nodes[0])

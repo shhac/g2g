@@ -46,7 +46,7 @@ func rememberedPRs(ctx context.Context, view stackView, discovery graph.Discover
 		if discovery.Scope == graph.ScopeAll || !discovery.Graph.Tracked(discovery.Target) {
 			view = view.note("PR state is remembered knowledge · run "+runnable("g2g github status --branch <branch>")+" for a current online check of a stack.", severityNeutral)
 		} else {
-			view = view.note("PR state is remembered knowledge · run "+runnable("g2g github status --branch "+discovery.Target+" --scope "+string(discovery.Scope))+" for a current online check.", severityNeutral)
+			view = view.note("PR state is remembered knowledge · run "+runnable(selectedIn(discovery).next(githubStatusCommand))+" for a current online check.", severityNeutral)
 		}
 	}
 	return view

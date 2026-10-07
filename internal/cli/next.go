@@ -46,6 +46,7 @@ var (
 	statusCommand       = suggestable{command: "g2g status", accepted: shape.ReadScopes, fallback: shape.ScopeStack, remote: true}
 	pruneCommand        = suggestable{command: "g2g prune", accepted: shape.ReadScopes, fallback: shape.ScopeStack}
 	pushCommand         = suggestable{command: "g2g push", accepted: shape.ProjectScopes, fallback: shape.ScopeStack, remote: true}
+	pullCommand         = suggestable{command: "g2g pull", accepted: shape.SyncScopes, fallback: shape.ScopeStack, remote: true}
 	githubStatusCommand = suggestable{command: "g2g github status", accepted: shape.Scopes, fallback: shape.ScopeStack}
 )
 
@@ -107,6 +108,16 @@ func (s selected) next(target suggestable) string {
 	}
 	status, _ := s.aim(statusCommand)
 	return status
+}
+
+// aimedOr is target aimed at the selection, or the bare command when no scope
+// it accepts reaches all of it. It is for advice inside a status view, where
+// falling back to status would send the reader to where they already are.
+func (s selected) aimedOr(target suggestable) string {
+	if aimed, ok := s.aim(target); ok {
+		return aimed
+	}
+	return target.command
 }
 
 // statusNext is status over what a command recorded.

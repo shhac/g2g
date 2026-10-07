@@ -48,7 +48,7 @@ func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string
 			findings = append(findings, finding{
 				Branch:   branch,
 				Problem:  "diverged from " + remote + " · " + eachSide(publication),
-				Command:  "g2g pull --branch " + branch,
+				Command:  selected{branch: branch, named: true}.from(remote).aimedOr(pullCommand),
 				Severity: severityBad,
 			})
 		}

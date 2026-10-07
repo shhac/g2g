@@ -75,8 +75,10 @@ func eachSide(publication push.Publication) string {
 
 // markPublished adds each compared branch's remote mark beside what the graph
 // already says of it. A branch that was not compared says nothing, rather
-// than reading as up to date.
-func markPublished(view stackView, remote string, publishing map[string]push.Publication) stackView {
+// than reading as up to date. acted is the selection and the remote it was
+// compared with, which the next steps are aimed at.
+func markPublished(view stackView, acted selected, publishing map[string]push.Publication) stackView {
+	remote := acted.remote
 	if publishing == nil {
 		return view
 	}
@@ -94,12 +96,13 @@ func markPublished(view stackView, remote string, publishing map[string]push.Pub
 			view.Nodes[index] = node.withMarks(mark)
 		}
 	}
-	return publishedNotes(view, remote, publishing)
+	return publishedNotes(view, acted, publishing)
 }
 
 // publishedNotes are the next steps, as git status gives them: what to run for
 // the branches that are not where the remote is.
-func publishedNotes(view stackView, remote string, publishing map[string]push.Publication) stackView {
+func publishedNotes(view stackView, acted selected, publishing map[string]push.Publication) stackView {
+	remote := acted.remote
 	var ahead, behind, diverged, unknown []string
 	for _, node := range view.Nodes {
 		publication := publishing[node.Branch]
@@ -116,16 +119,16 @@ func publishedNotes(view stackView, remote string, publishing map[string]push.Pu
 		}
 	}
 	if len(ahead) != 0 {
-		view = view.note("Not on "+remote+" as they are here: "+branchList(ahead)+" · run "+runnable("g2g push")+".", severityWarn)
+		view = view.note("Not on "+remote+" as they are here: "+branchList(ahead)+" · run "+runnable(acted.aimedOr(pushCommand))+".", severityWarn)
 	}
 	if len(behind) != 0 {
-		view = view.note(remote+" has work "+branchList(behind)+" "+pick(len(behind), "does", "do")+" not · run "+runnable("g2g pull")+".", severityWarn)
+		view = view.note(remote+" has work "+branchList(behind)+" "+pick(len(behind), "does", "do")+" not · run "+runnable(acted.aimedOr(pullCommand))+".", severityWarn)
 	}
 	if len(diverged) != 0 {
-		view = view.note("Diverged from "+remote+": "+branchList(diverged)+" · run "+runnable("g2g pull")+" to see the ways to reconcile.", severityBad)
+		view = view.note("Diverged from "+remote+": "+branchList(diverged)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see the ways to reconcile.", severityBad)
 	}
 	if len(unknown) != 0 {
-		view = view.note(remote+" is on a commit this repository has not fetched for "+branchList(unknown)+" · run "+runnable("g2g pull")+" to see it.", severityWarn)
+		view = view.note(remote+" is on a commit this repository has not fetched for "+branchList(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)
 	}
 	return view.note("Compared with "+remote+" as last fetched or pushed · nothing was asked of the network.", severityNeutral)
 }

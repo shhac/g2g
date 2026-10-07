@@ -11,7 +11,6 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
-	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
@@ -67,7 +66,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	// pull, as sync, was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
-	options.selection.registerScope(cmd, shape.SyncScopes, shape.ScopeStack, scopeUsage("pull", shape.SyncScopes))
+	options.selection.registerScopeOf(cmd, pullCommand, "pull")
 	cmd.Flags().BoolVar(&options.trunkOnly, "trunk-only", false, "advance only the selected stack's trunk, without replaying or collecting stack branches")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "scope")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")

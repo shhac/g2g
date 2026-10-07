@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // Every standing reads its own way, and one nobody compared says nothing at
@@ -43,7 +44,7 @@ func TestPublishedNotesNameTheNextStep(t *testing.T) {
 		{Branch: "synthetic-unseen"},
 		{Branch: "synthetic-uncompared"},
 	}}
-	notes := publishedNotes(view, "origin", map[string]push.Publication{
+	notes := publishedNotes(view, selected{}.from("origin"), map[string]push.Publication{
 		"synthetic-main":   {Standing: push.Ahead, Ours: 1},
 		"synthetic-ahead":  {Standing: push.Ahead, Ours: 1},
 		"synthetic-behind": {Standing: push.Behind, Theirs: 1},
@@ -66,5 +67,29 @@ func TestPublishedNotesNameTheNextStep(t *testing.T) {
 	}
 	if strings.Contains(said, "synthetic-main") || strings.Contains(said, "synthetic-uncompared") {
 		t.Errorf("notes name a trunk or a branch nobody compared:\n%s", said)
+	}
+}
+
+// A next step is aimed at what status was asked about and compared with: status
+// --branch X --remote R advises pushing X to R, not the stack the reader is on
+// to origin.
+func TestPublishedNotesAimAtTheSelectionAndRemote(t *testing.T) {
+	view := stackView{Nodes: []stackNode{{Branch: "synthetic-ahead"}, {Branch: "synthetic-behind"}}}
+	acted := selected{branch: "synthetic-ahead", named: true, scope: shape.ScopeStack}.from("synthetic-upstream")
+	notes := publishedNotes(view, acted, map[string]push.Publication{
+		"synthetic-ahead":  {Standing: push.Ahead, Ours: 1},
+		"synthetic-behind": {Standing: push.Behind, Theirs: 1},
+	}).Notes
+	said := ""
+	for _, note := range notes {
+		said += plainCommands(note.Text) + "\n"
+	}
+	for _, want := range []string{
+		"run g2g push --branch synthetic-ahead --remote synthetic-upstream.",
+		"run g2g pull --branch synthetic-ahead --remote synthetic-upstream.",
+	} {
+		if !strings.Contains(said, want) {
+			t.Errorf("notes do not say %q:\n%s", want, said)
+		}
 	}
 }

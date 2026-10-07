@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/testutil"
 )
@@ -150,7 +151,7 @@ func (f *fakeGit) Plan(_ context.Context, selection stack.Selection, remote stri
 		return push.Plan{}, f.remoteErr
 	}
 	tips := testutil.RemoteTips(snapshot().Branches)
-	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Blocked: f.pushBlocked}, nil
+	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Repair: repair.Note{Reason: f.pushBlocked}}, nil
 }
 
 func (f *fakeGit) Execute(_ context.Context, plan push.Plan) error {

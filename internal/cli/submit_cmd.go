@@ -240,8 +240,8 @@ func submitBlocked(plan submit.Plan) string {
 	switch {
 	case len(plan.Issues) != 0:
 		return "submit is blocked by " + plan.Blocked()
-	case plan.Push.Blocked != "":
-		return "submit cannot publish: " + plan.Push.Blocked
+	case plan.Push.Blocked() != "":
+		return "submit cannot publish: " + plan.Push.Blocked()
 	}
 	return ""
 }

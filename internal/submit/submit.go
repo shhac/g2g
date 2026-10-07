@@ -82,7 +82,7 @@ func (p Plan) Blocked() string {
 	if len(p.Issues) != 0 {
 		return "existing pull request state: " + issueText(p.Issues)
 	}
-	return p.Push.Blocked
+	return p.Push.Blocked()
 }
 
 // LinkBlocked keeps base agreement a requirement of explicit GitHub linking,

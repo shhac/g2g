@@ -427,8 +427,8 @@ func TestAPlanSaysWhatPublishingEachBranchWouldDo(t *testing.T) {
 			if got := plan.Publishing["synthetic-top"]; got != test.want {
 				t.Errorf("Publishing = %+v, want %+v", got, test.want)
 			}
-			if blocked := plan.Blocked != ""; blocked != test.rejected {
-				t.Errorf("Blocked = %q, want rejected=%t", plan.Blocked, test.rejected)
+			if blocked := plan.Blocked() != ""; blocked != test.rejected {
+				t.Errorf("Blocked = %q, want rejected=%t", plan.Blocked(), test.rejected)
 			}
 		})
 	}

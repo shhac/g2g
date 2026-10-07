@@ -40,7 +40,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				// The lease rejects a push the remote has moved under, so this
 				// changes no outcome — it moves the refusal in front of the
 				// network call and names the branch.
-				blocked: func(plan push.Plan) string { return plan.Blocked },
+				blocked: func(plan push.Plan) string { return plan.Blocked() },
 				noOp:    func(plan push.Plan) bool { return plan.NothingToPublish() },
 				notices: flowNotices{
 					preview:  "Rerun with --apply to push.",

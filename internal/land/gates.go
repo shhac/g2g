@@ -39,8 +39,8 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
 	pushed, err := s.Pusher.Plan(ctx, pushSelection(*plan), options.Remote, options.Upstream)
-	if err == nil && pushed.Blocked != "" {
-		return pushed.Blocked, pushed.Repair
+	if err == nil && pushed.Blocked() != "" {
+		return pushed.Blocked(), pushed.Repair
 	}
 	if plan.KeepTrunk {
 		return "", repair.Note{}

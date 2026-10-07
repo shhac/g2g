@@ -233,7 +233,7 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	if f.extra != "" {
 		branches = append([]string{f.extra}, branches...)
 	}
-	plan := push.Plan{Blocked: f.blocked, Upstream: upstream}
+	plan := push.Plan{Repair: repair.Note{Reason: f.blocked}, Upstream: upstream}
 	plan.Snapshot = stack.Snapshot{Branches: branches, Base: selection.Trunk}
 	plan.Publishing = map[string]push.Publication{selection.Branch: {Standing: push.Ahead, Ours: 1}}
 	if f.level {

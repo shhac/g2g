@@ -65,8 +65,8 @@ func TestAReplayedBranchIsPublishedRatherThanRefused(t *testing.T) {
 	repo.Run("rebase", "-q", "--onto", "synthetic-lower", "synthetic-lower@{1}", "synthetic-top")
 
 	plan := planPush(t, repo)
-	if plan.Blocked != "" {
-		t.Fatalf("a restacked stack is refused: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("a restacked stack is refused: %s", plan.Blocked())
 	}
 	top := plan.Publishing["synthetic-top"]
 	if top.Standing != Rewritten || top.Theirs != 0 || top.Rejected() {
@@ -89,8 +89,8 @@ func TestAColleaguesCommitOnTheRemoteIsStillRefused(t *testing.T) {
 	repo.Commit("synthetic local work", "local.txt", "local")
 
 	plan := planPush(t, repo)
-	if plan.Blocked == "" || !strings.Contains(plan.Blocked, "synthetic-top") {
-		t.Fatalf("Blocked = %q, want the remote's new commit protected", plan.Blocked)
+	if plan.Blocked() == "" || !strings.Contains(plan.Blocked(), "synthetic-top") {
+		t.Fatalf("Blocked = %q, want the remote's new commit protected", plan.Blocked())
 	}
 	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Standing == Rewritten {
 		t.Errorf("synthetic-top = %+v, want one commit only on the remote", top)
@@ -124,8 +124,8 @@ func TestAReviewersDeletionOnTheRemoteIsNotPublishedOver(t *testing.T) {
 	if top := plan.Publishing["synthetic-top"]; top.Theirs != 1 || top.Standing == Rewritten {
 		t.Fatalf("synthetic-top = %+v, want the reviewer's commit counted as theirs", top)
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-top") {
-		t.Errorf("Blocked = %q, want the push refused", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-top") {
+		t.Errorf("Blocked = %q, want the push refused", plan.Blocked())
 	}
 	if lower := plan.Publishing["synthetic-lower"]; lower.Standing != Rewritten || lower.Theirs != 0 {
 		t.Errorf("synthetic-lower = %+v, want the plain replay still publishable", lower)
@@ -152,8 +152,8 @@ func TestAConflictResolvedReplayOffersAnObservedLeaseWithoutBlamingTheRemote(t *
 		t.Fatal("resolved replay left a dirty tree")
 	}
 	plan := planPush(t, repo)
-	if plan.Blocked == "" || strings.Contains(plan.Blocked, "remote has moved") {
-		t.Fatalf("Blocked = %q, want neutral refusal", plan.Blocked)
+	if plan.Blocked() == "" || strings.Contains(plan.Blocked(), "remote has moved") {
+		t.Fatalf("Blocked = %q, want neutral refusal", plan.Blocked())
 	}
 	if !strings.Contains(plan.Repair.Ways[0].Effect, "conflict-resolved replay") {
 		t.Fatalf("missing explanation: %+v", plan.Repair)

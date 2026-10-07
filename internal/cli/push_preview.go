@@ -24,8 +24,8 @@ func pushView(plan push.Plan) stackView {
 		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target}.labeled(state, level))
 	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 	return view
 }

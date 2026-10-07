@@ -58,13 +58,16 @@ type Plan struct {
 	// pushed — and the last of those is a force-push the lease would reject,
 	// previewed without a word about it.
 	Publishing map[string]Publication
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
-	// Repair is Blocked in the shape a caller can lay out. What it names is a
-	// git command rather than a g2g one, which is exactly the case where a
-	// reader needs to see where it starts and ends before copying it.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed. What it names is a git command rather than a g2g one,
+	// which is exactly the case where a reader needs to see where it starts
+	// and ends before copying it.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // NothingToPublish reports a plan where the remote already holds every selected
 // branch exactly. Pushing would be a no-op, and saying so beats reporting a
@@ -135,7 +138,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing, tips)}
-	plan.Blocked = plan.Repair.Sentence()
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -224,7 +226,7 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 // preview and apply must stop the push, not be overwritten by it.
 func (p Plan) Equal(other Plan) bool {
 	return p.Snapshot.Equal(other.Snapshot) &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		maps.Equal(p.Publishing, other.Publishing) &&
 		p.Remote == other.Remote &&
 		p.Upstream == other.Upstream &&

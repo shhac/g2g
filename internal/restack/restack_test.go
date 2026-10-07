@@ -232,11 +232,11 @@ func TestPlanRefusesStatesItCannotComputeARangeFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = \"\" for a branch that moved off its recorded parent")
 	}
-	if !strings.Contains(plan.Blocked, "retrack") {
-		t.Errorf("Blocked = %q, want it to name the remedy", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "retrack") {
+		t.Errorf("Blocked = %q, want it to name the remedy", plan.Blocked())
 	}
 }
 
@@ -274,11 +274,11 @@ func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = \"\" for a conflicting rewrite of a forked selection")
 	}
-	if !strings.Contains(plan.Blocked, "--scope path") {
-		t.Errorf("Blocked = %q, want it to name the way forward", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "--scope path") {
+		t.Errorf("Blocked = %q, want it to name the way forward", plan.Blocked())
 	}
 	// One way out per line of descent, each naming its own leaf: a bare
 	// "--scope path" from where the reader stands takes only one of them.
@@ -341,8 +341,8 @@ func TestAbsorbRewritesNothingAndOnlyMovesTheForkPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q for an absorbable set", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q for an absorbable set", plan.Blocked())
 	}
 	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -369,11 +369,11 @@ func TestAbsorbIsRefusedWhenAnOrphanWasRewrittenRatherThanRemoved(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked = \"\" for a set that cannot be absorbed")
 	}
-	if !strings.Contains(plan.Blocked, "duplicate") {
-		t.Errorf("Blocked = %q, want it to say why", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "duplicate") {
+		t.Errorf("Blocked = %q, want it to say why", plan.Blocked())
 	}
 }
 
@@ -481,8 +481,8 @@ func TestPlanWithoutReplayReportsThatNothingWasPredicted(t *testing.T) {
 	if plan.Clean {
 		t.Error("Clean = true without a preview to establish it")
 	}
-	if plan.Blocked != "" {
-		t.Errorf("Blocked = %q; an unpredictable rewrite is still allowed to run", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Errorf("Blocked = %q; an unpredictable rewrite is still allowed to run", plan.Blocked())
 	}
 }
 
@@ -645,11 +645,11 @@ func TestALegacyEdgeThatHasDriftedIsRefusedRatherThanSilentlyDoingNothing(t *tes
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked == "" {
-		t.Fatalf("Blocked = %q, want a refusal naming the branch with no recorded fork point", plan.Blocked)
+	if plan.Blocked() == "" {
+		t.Fatalf("Blocked = %q, want a refusal naming the branch with no recorded fork point", plan.Blocked())
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-a") {
-		t.Errorf("Blocked = %q, want it to name synthetic-a", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-a") {
+		t.Errorf("Blocked = %q, want it to name synthetic-a", plan.Blocked())
 	}
 	if len(plan.Steps) != 0 {
 		t.Errorf("Steps = %v, want none once the plan is blocked", plan.Branches())
@@ -671,8 +671,8 @@ func TestALegacyEdgeThatIsStillAlignedIsNotRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q for an aligned legacy edge", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q for an aligned legacy edge", plan.Blocked())
 	}
 }
 
@@ -733,15 +733,15 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 				t.Fatalf("Plan() error = %v", err)
 			}
 
-			if blocked := plan.Blocked != ""; blocked != test.blocked {
-				t.Fatalf("Blocked = %q, want blocked=%t", plan.Blocked, test.blocked)
+			if blocked := plan.Blocked() != ""; blocked != test.blocked {
+				t.Fatalf("Blocked = %q, want blocked=%t", plan.Blocked(), test.blocked)
 			}
 			if !test.blocked {
 				return
 			}
 			for _, want := range []string{test.held, "/synthetic/other", "another worktree"} {
-				if !strings.Contains(plan.Blocked, want) {
-					t.Errorf("refusal %q does not name %q", plan.Blocked, want)
+				if !strings.Contains(plan.Blocked(), want) {
+					t.Errorf("refusal %q does not name %q", plan.Blocked(), want)
 				}
 			}
 			// The same refusal reaches sync, which has no --scope path, so a

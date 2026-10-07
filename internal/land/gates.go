@@ -51,8 +51,8 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 		// here is one the advance after the merge would meet too.
 		return err.Error(), repair.Note{}
 	}
-	if err == nil && synced.Blocked != "" {
-		return synced.Blocked, synced.Repair
+	if err == nil && synced.Blocked() != "" {
+		return synced.Blocked(), synced.Repair
 	}
 	return "", repair.Note{}
 }

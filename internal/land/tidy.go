@@ -48,8 +48,8 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if synced.Blocked != "" {
-		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked)
+	if synced.Blocked() != "" {
+		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked())
 	}
 	if synced.Nothing() {
 		return false, nil

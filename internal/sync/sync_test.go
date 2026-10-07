@@ -242,8 +242,8 @@ func TestPlanRefusesADivergedBase(t *testing.T) {
 	if !plan.Diverged {
 		t.Fatal("Diverged = false for a base that cannot be fast-forwarded")
 	}
-	if plan.Blocked == "" || !strings.Contains(plan.Blocked, "reconcile") {
-		t.Errorf("Blocked = %q, want it to say the user reconciles it", plan.Blocked)
+	if plan.Blocked() == "" || !strings.Contains(plan.Blocked(), "reconcile") {
+		t.Errorf("Blocked = %q, want it to say the user reconciles it", plan.Blocked())
 	}
 	if len(plan.Restack.Steps) != 0 {
 		t.Error("a replay was planned against a base that is not going to move")
@@ -266,9 +266,9 @@ func TestPlanLeavesATrunkThatIsOnlyAheadAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Advance || plan.Supersede || plan.Diverged || plan.Blocked != "" {
+	if plan.Advance || plan.Supersede || plan.Diverged || plan.Blocked() != "" {
 		t.Errorf("Advance = %t, Supersede = %t, Diverged = %t, Blocked = %q; want a trunk that is only ahead left alone",
-			plan.Advance, plan.Supersede, plan.Diverged, plan.Blocked)
+			plan.Advance, plan.Supersede, plan.Diverged, plan.Blocked())
 	}
 }
 
@@ -321,8 +321,8 @@ func TestPlanToleratesABaseTheRemoteDoesNotHave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Diverged || plan.Blocked != "" {
-		t.Errorf("Diverged = %t, Blocked = %q; want an unpushed base to be ordinary", plan.Diverged, plan.Blocked)
+	if plan.Diverged || plan.Blocked() != "" {
+		t.Errorf("Diverged = %t, Blocked = %q; want an unpushed base to be ordinary", plan.Diverged, plan.Blocked())
 	}
 }
 
@@ -338,8 +338,8 @@ func TestPlanIgnoresAFetchedRefTheRemoteNoLongerHas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Advance || plan.Diverged || plan.Blocked != "" {
-		t.Errorf("Advance = %t, Diverged = %t, Blocked = %q; want a base the remote deleted left alone", plan.Advance, plan.Diverged, plan.Blocked)
+	if plan.Advance || plan.Diverged || plan.Blocked() != "" {
+		t.Errorf("Advance = %t, Diverged = %t, Blocked = %q; want a base the remote deleted left alone", plan.Advance, plan.Diverged, plan.Blocked())
 	}
 }
 
@@ -578,9 +578,8 @@ func (a stubAncestry) Absorbed(context.Context, string, string) (bool, error) { 
 // sync's own stack scope is exactly that line, so that is what it names.
 func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
 	restacker := &stubRestacker{plan: restack.Plan{
-		Lines:   []string{"synthetic-left", "synthetic-right"},
-		Blocked: "this selection forks and the rewrite conflicts · run g2g restack --branch synthetic-left --scope path to …",
-		Repair:  repair.Note{Reason: "this selection forks and the rewrite conflicts"},
+		Lines:  []string{"synthetic-left", "synthetic-right"},
+		Repair: repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: []repair.Step{{Command: "g2g restack --branch synthetic-left --scope path", Effect: "rewrite the line of descent ending at synthetic-left"}}},
 	}}
 	service, _ := newService(behindGit(), restacker)
 
@@ -592,8 +591,8 @@ func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
 	for _, way := range plan.Repair.Ways {
 		commands = append(commands, way.Command)
 	}
-	if strings.Join(commands, ",") != "g2g pull --branch synthetic-left,g2g pull --branch synthetic-right" || strings.Contains(plan.Blocked, "--scope path") {
-		t.Errorf("Blocked = %q, ways = %v", plan.Blocked, commands)
+	if strings.Join(commands, ",") != "g2g pull --branch synthetic-left,g2g pull --branch synthetic-right" || strings.Contains(plan.Blocked(), "--scope path") {
+		t.Errorf("Blocked = %q, ways = %v", plan.Blocked(), commands)
 	}
 }
 

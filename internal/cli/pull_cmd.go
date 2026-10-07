@@ -154,7 +154,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		execute:  service.Apply,
 		branches: func(plan syncer.Plan) int { return len(plan.Restack.Steps) + 1 },
 		noOp:     func(plan syncer.Plan) bool { return plan.Nothing() },
-		blocked:  func(plan syncer.Plan) string { return plan.Blocked },
+		blocked:  func(plan syncer.Plan) string { return plan.Blocked() },
 		suggest:  suggest,
 		// A pull is a sequence, so it can stop between steps. It deliberately
 		// does not unwind: the fetch and the fast-forward are wanted

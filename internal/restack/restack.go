@@ -43,8 +43,8 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	} else if active {
 		return fmt.Errorf("a restack is already in progress · run g2g restack --continue or g2g restack --abort in the worktree that started it")
 	}
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot restack: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot restack: %s", plan.Blocked())
 	}
 	if len(plan.Steps) == 0 {
 		// A rewrite with nothing to replay can still have an edge to record: a

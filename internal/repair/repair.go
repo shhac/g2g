@@ -14,7 +14,10 @@
 // network can still describe its own repair.
 package repair
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Step is one way out of a refusal.
 //
@@ -41,6 +44,12 @@ type Note struct {
 	// when the ways say everything there is to say.
 	Reason string
 	Ways   []Step
+}
+
+// Equal reports two notes that say the same thing, which is what a plan's
+// revalidation compares: a refusal is part of what a plan would do.
+func (n Note) Equal(other Note) bool {
+	return n.Reason == other.Reason && slices.Equal(n.Ways, other.Ways)
 }
 
 // Sentence is the one-line form: the reason, then what to do about it.

@@ -95,8 +95,8 @@ func (r realStack) plan(selection graph.Selection) Plan {
 	if err != nil {
 		r.t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		r.t.Fatalf("Plan() blocked: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		r.t.Fatalf("Plan() blocked: %s", plan.Blocked())
 	}
 	return plan
 }
@@ -407,8 +407,8 @@ func TestABranchTheCallerMovesIsMeasuredWhereItWillBe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Plan() blocked: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Plan() blocked: %s", plan.Blocked())
 	}
 
 	// What sync does between planning and applying: advance the trunk and
@@ -448,8 +448,8 @@ func TestABranchTheCallerMovesKeepsARecordedForkItStillContains(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Plan() blocked: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Plan() blocked: %s", plan.Blocked())
 	}
 	// Where synthetic-a lands is only known once it has been replayed, and a
 	// version named by object prints nothing, so there is nothing to predict
@@ -513,8 +513,8 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-a") {
-		t.Errorf("Blocked = %q, want a refusal naming synthetic-a", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-a") {
+		t.Errorf("Blocked = %q, want a refusal naming synthetic-a", plan.Blocked())
 	}
 }
 
@@ -532,11 +532,11 @@ func TestAMissingBranchIsRefusedWithUntrackAsTheWayOut(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-b") {
-		t.Fatalf("Blocked = %q, want a refusal naming synthetic-b", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-b") {
+		t.Fatalf("Blocked = %q, want a refusal naming synthetic-b", plan.Blocked())
 	}
-	if strings.Contains(plan.Blocked, "retrack") {
-		t.Errorf("Blocked = %q; there is no branch left to retrack", plan.Blocked)
+	if strings.Contains(plan.Blocked(), "retrack") {
+		t.Errorf("Blocked = %q; there is no branch left to retrack", plan.Blocked())
 	}
 	var commands []string
 	for _, way := range plan.Repair.Ways {

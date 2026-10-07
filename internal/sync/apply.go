@@ -15,8 +15,8 @@ import (
 // conflict is resumable, and undoing the fetch and the fast-forward would
 // throw away work the user then has to redo.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot sync: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot sync: %s", plan.Blocked())
 	}
 	moved := make([]string, 0, len(plan.Collect)+1)
 	stop := func(err error) error {

@@ -119,11 +119,11 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 		// to rewrite was decided when the restack started.
 		return finishComplete, fmt.Errorf("the restack cannot carry on: %s · switch that worktree to another branch, or close it, then run g2g restack --continue", plan.Repair.Reason)
 	}
-	if plan.Blocked != "" {
+	if plan.Blocked() != "" {
 		// The work is not done, so the journal stays and --abort can still
 		// undo it. Reading a refusal as completion reported "Restack complete"
 		// and deleted the journal over a stack that was half rewritten.
-		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", plan.Blocked)
+		return finishComplete, fmt.Errorf("the restack cannot carry on: %s", plan.Blocked())
 	}
 	if len(plan.Steps) == 0 {
 		// Reparenting is held by the durable record: after a rewrite, the fresh

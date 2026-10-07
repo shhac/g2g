@@ -12,8 +12,8 @@ import (
 // it would stop as easily as what it would do.
 func pullView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "pull")
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 	view = view.note(baseNote(plan), baseSeverity(plan))
 	if note := collectNote(plan); note != "" {

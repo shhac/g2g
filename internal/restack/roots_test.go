@@ -93,7 +93,7 @@ func TestOntoRefusesASelectionWithSeveralRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatal("Blocked is empty for an --onto over two roots")
 	}
 	var commands []string

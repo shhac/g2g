@@ -164,12 +164,15 @@ type Plan struct {
 	// Held reports a refusal because a branch that would move is checked out
 	// in another worktree.
 	Held bool
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
-	// Repair is Blocked in the shape a caller can lay out. Most of restack's
-	// refusals are states rather than choices and carry none.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed. Most of restack's refusals are states rather than
+	// choices and name no way out.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // Nothing reports a plan with nothing to do: no branch to rewrite and no edge
 // to record.
@@ -231,7 +234,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Onto == other.Onto &&
 		p.Absorb == other.Absorb &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		p.Clean == other.Clean &&
 		p.Predicted == other.Predicted &&
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {

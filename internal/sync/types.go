@@ -76,14 +76,16 @@ type Plan struct {
 	// all: sync fetched exactly one ref, the base, so a branch you own was
 	// never brought down and push then refused because the remote was ahead.
 	Collect []Collection
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
-	// Repair is Blocked in the shape a caller can lay out. Where sync refuses
-	// it offers a choice — take the published trunk, or reconcile it yourself —
-	// and a sentence holding both is where a reader loses which words belong
-	// to which.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed. Where sync refuses it offers a choice — take the
+	// published trunk, or reconcile it yourself — and a sentence holding both
+	// is where a reader loses which words belong to which.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // Collection is one branch of yours the remote has moved on, and how.
 type Collection struct {
@@ -127,7 +129,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Diverged == other.Diverged &&
 		p.Supersede == other.Supersede &&
 		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		p.Restack.Equal(other.Restack)
 }
 

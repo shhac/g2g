@@ -100,7 +100,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// delegates to is no less actionable for having been delegated, and
 	// carrying only the sentence handed every machine reader a null where the
 	// ways out were.
-	plan.Blocked, plan.Repair = plan.Restack.Blocked, plan.Restack.Repair
+	plan.Repair = plan.Restack.Repair
 	// A fork whose replay conflicts is taken one line at a time, and from a
 	// leaf sync's own stack scope is exactly that line — whereas the restack
 	// command restack offers takes a scope sync does not.
@@ -119,7 +119,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 // machine reads derived from the same note a person reads.
 func (p Plan) refused(note repair.Note) Plan {
 	p.Repair = note
-	p.Blocked = note.Sentence()
 	return p
 }
 

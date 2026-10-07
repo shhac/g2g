@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
@@ -269,7 +270,7 @@ type fakeSyncer struct {
 
 func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string, _ syncer.Take) (syncer.Plan, error) {
 	f.selections = append(f.selections, selection)
-	plan := syncer.Plan{Blocked: f.blocked, Base: "synthetic-main", Advance: !f.nothing}
+	plan := syncer.Plan{Repair: repair.Note{Reason: f.blocked}, Base: "synthetic-main", Advance: !f.nothing}
 	plan.Restack.Discovery = graph.Discovery{Target: selection.Branch}
 	if f.conflicting != "" {
 		plan.Restack.Steps = []restack.Step{{Branch: f.conflicting}}

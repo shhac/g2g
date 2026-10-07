@@ -63,3 +63,20 @@ func TestDecorationReachesTheCommandsAndNothingElse(t *testing.T) {
 		t.Errorf("SentenceWith() = %q, want %q", marked, want)
 	}
 }
+
+func TestEqualComparesTheReasonAndEveryWay(t *testing.T) {
+	note := Note{Reason: "synthetic reason", Ways: []Step{{Command: "g2g untrack", Effect: "forget it"}}}
+	if !note.Equal(Note{Reason: "synthetic reason", Ways: []Step{{Command: "g2g untrack", Effect: "forget it"}}}) {
+		t.Error("identical notes compare unequal")
+	}
+	for _, other := range []Note{
+		{Reason: "another reason", Ways: note.Ways},
+		{Reason: note.Reason},
+		{Reason: note.Reason, Ways: []Step{{Command: "g2g track", Effect: "forget it"}}},
+		{Reason: note.Reason, Ways: []Step{{Command: "g2g untrack", Effect: "forget it"}, {Effect: "leave it"}}},
+	} {
+		if note.Equal(other) {
+			t.Errorf("%+v compares equal to %+v", other, note)
+		}
+	}
+}

@@ -164,7 +164,6 @@ func selectionRoots(discovery graph.Discovery) []string {
 // planner's is.
 func (p Plan) refused(note repair.Note) Plan {
 	p.Repair = note
-	p.Blocked = note.Sentence()
 	return p
 }
 

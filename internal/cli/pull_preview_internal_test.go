@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/restack"
-	syncer "github.com/shhac/g2g/internal/sync"
 )
 
 // A branch whose work is already in its new base is moved there rather than
@@ -25,7 +24,7 @@ func TestPullPreviewNamesTheBranchesItMoves(t *testing.T) {
 		{name: "both", steps: []restack.Step{step("synthetic-a", true), step("synthetic-b", false)}, want: "Replays synthetic-b. Moves synthetic-a onto synthetic-main, where its work already is."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := replayNote(syncer.Plan{Restack: restack.Plan{Steps: test.steps}}); got != test.want {
+			if got := replayNote(restack.Plan{Steps: test.steps}); got != test.want {
 				t.Errorf("replayNote() = %q, want %q", got, test.want)
 			}
 		})

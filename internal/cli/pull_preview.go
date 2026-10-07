@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
@@ -22,7 +23,7 @@ func pullView(plan syncer.Plan) stackView {
 	if note := discardNote(plan); note != "" {
 		view = view.note(note, severityBad)
 	}
-	view = view.note(replayNote(plan), severityNeutral)
+	view = view.note(replayNote(plan.Restack), severityNeutral)
 	return view
 }
 
@@ -128,13 +129,13 @@ func baseSeverity(plan syncer.Plan) severity {
 // already in its new base is moved there rather than replayed, and it moves a
 // ref all the same: this said "Nothing needs replaying" over a stack whose
 // every branch the apply then moved.
-func replayNote(plan syncer.Plan) string {
+func replayNote(plan restack.Plan) string {
 	said := make([]string, 0, 2)
-	if replaying := plan.Restack.Replaying(); len(replaying) != 0 {
+	if replaying := plan.Replaying(); len(replaying) != 0 {
 		said = append(said, "Replays "+branchList(replaying)+".")
 	}
-	if emptied := plan.Restack.Emptied(); len(emptied) != 0 {
-		said = append(said, "Moves "+ontoEach(plan.Restack, emptied)+", where "+pick(len(emptied), "its", "their")+" work already is.")
+	if emptied := plan.Emptied(); len(emptied) != 0 {
+		said = append(said, "Moves "+ontoEach(plan, emptied)+", where "+pick(len(emptied), "its", "their")+" work already is.")
 	}
 	if len(said) == 0 {
 		return "Nothing needs replaying."

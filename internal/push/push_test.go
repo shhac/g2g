@@ -507,3 +507,25 @@ func TestPlansThatDifferOnlyInUpstreamAreNotEqual(t *testing.T) {
 		t.Error("plans differing only in Upstream compare equal")
 	}
 }
+
+// Every compared standing gets exactly one answer to "what would a push do":
+// refuse it, have nothing to send, or publish it. A reader that asks the three
+// predicates never has to work the exclusivity out again.
+func TestEveryComparedStandingIsOneAnswer(t *testing.T) {
+	for standing := Uncompared; standing <= Rewritten; standing++ {
+		publication := Publication{Standing: standing}
+		answers := 0
+		for _, answered := range []bool{publication.Rejected(), publication.UpToDate(), publication.Unpublished()} {
+			if answered {
+				answers++
+			}
+		}
+		want := 1
+		if standing == Uncompared {
+			want = 0
+		}
+		if answers != want {
+			t.Errorf("standing %d answers %d of rejected, up to date and unpublished, want %d", standing, answers, want)
+		}
+	}
+}

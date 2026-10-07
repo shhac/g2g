@@ -102,18 +102,17 @@ func markPublished(view stackView, remote string, publishing map[string]push.Pub
 func publishedNotes(view stackView, remote string, publishing map[string]push.Publication) stackView {
 	var ahead, behind, diverged, unknown []string
 	for _, node := range view.Nodes {
-		switch publishing[node.Branch].Standing {
-		case push.Unknown:
+		publication := publishing[node.Branch]
+		switch {
+		case publication.Standing == push.Unknown:
 			unknown = append(unknown, node.Branch)
-		case push.Diverged:
+		case publication.Standing == push.Diverged:
 			diverged = append(diverged, node.Branch)
-		case push.Behind:
+		case publication.Standing == push.Behind:
 			behind = append(behind, node.Branch)
-		case push.New, push.Rewritten, push.Ahead:
-			// A trunk is published by landing on it, never by pushing it.
-			if !node.Trunk {
-				ahead = append(ahead, node.Branch)
-			}
+		// A trunk is published by landing on it, never by pushing it.
+		case publication.Unpublished() && !node.Trunk:
+			ahead = append(ahead, node.Branch)
 		}
 	}
 	if len(ahead) != 0 {

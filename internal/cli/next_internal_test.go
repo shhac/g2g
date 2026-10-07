@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"slices"
 	"testing"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 )
@@ -80,5 +83,28 @@ func TestSuggestionsQuoteWhatTheShellWouldExpand(t *testing.T) {
 	acted := selected{branch: "synthetic-$(touch x)", named: true, scope: shape.ScopeStack}.from("synthetic up")
 	if got := acted.next(pushCommand); got != "g2g push --branch 'synthetic-$(touch x)' --remote 'synthetic up'" {
 		t.Errorf("next = %q", got)
+	}
+}
+
+// What a prune leaves for a push is its selection less what it forgets and
+// less the trunk. A landed branch that was never pushed reads as new to the
+// remote, and a trunk ahead of its remote is published by landing on it: either
+// would otherwise suggest a push that publishes nothing anyone wants.
+func TestPruneLeavesOnlyWhatAPushWouldPublish(t *testing.T) {
+	recorded := graph.New()
+	for branch, parent := range map[string]string{"synthetic-landed": "synthetic-main", "synthetic-kept": "synthetic-landed", "synthetic-gone": "synthetic-main"} {
+		updated, err := recorded.Track(branch, graph.Edge{Parent: parent, ForkPoint: "0000000000000000000000000000000000000000"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorded = updated
+	}
+	plan := prune.Plan{
+		Discovery:        graph.Discovery{Graph: recorded, Branches: []string{"synthetic-main", "synthetic-landed", "synthetic-kept", "synthetic-gone"}},
+		Landed:           []string{"synthetic-landed"},
+		ForgottenMissing: []string{"synthetic-gone"},
+	}
+	if got := keptBy(plan).Branches; !slices.Equal(got, []string{"synthetic-kept"}) {
+		t.Errorf("kept = %v, want only synthetic-kept", got)
 	}
 }

@@ -69,6 +69,13 @@ func (p Publication) UpToDate() bool {
 	return p.Standing == Current || p.Standing == Landed
 }
 
+// Unpublished reports a branch the remote does not hold as it is here, which a
+// push would publish without overwriting anything: never pushed, replayed
+// since, or with work on top.
+func (p Publication) Unpublished() bool {
+	return p.Standing == New || p.Standing == Rewritten || p.Standing == Ahead
+}
+
 // Comparer is the part of Git a comparison reads, all of it local: the tips
 // are already in hand, so saying what they mean costs nothing over the network.
 type Comparer interface {

@@ -107,25 +107,31 @@ type prunePlan struct {
 // keepsUnpublished reports whether a branch the prune keeps is not on the
 // remote as it is here, by the comparison status makes from local refs alone.
 // It is asked for a suggestion, so a failure to answer is no answer rather
-// than an error, and a trunk is published by landing on it, never by pushing.
+// than an error.
 func keepsUnpublished(ctx context.Context, published push.Known, remote string, plan prune.Plan) bool {
+	publishing, err := readPublished(ctx, published, remote, false, keptBy(plan))
+	if err != nil {
+		return false
+	}
+	for _, publication := range publishing {
+		if publication.Unpublished() {
+			return true
+		}
+	}
+	return false
+}
+
+// keptBy is the selection a prune leaves for a push to publish: its branches
+// less those it forgets, and less any trunk, which is published by landing on
+// it, never by pushing.
+func keptBy(plan prune.Plan) graph.Discovery {
 	kept := plan.Discovery
 	forgotten := plan.Forgotten()
 	kept.Branches = slices.DeleteFunc(slices.Clone(kept.Branches), func(branch string) bool {
 		_, tracked := kept.Graph.Parent(branch)
 		return !tracked || slices.Contains(forgotten, branch)
 	})
-	publishing, err := readPublished(ctx, published, remote, false, kept)
-	if err != nil {
-		return false
-	}
-	for _, publication := range publishing {
-		switch publication.Standing {
-		case push.New, push.Rewritten, push.Ahead:
-			return true
-		}
-	}
-	return false
+	return kept
 }
 
 // pruneNext is push when the prune kept something to publish, aimed at what

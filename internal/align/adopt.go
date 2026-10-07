@@ -64,10 +64,14 @@ type AdoptPlan struct {
 	// from, so saying "needs a restack" is true there.
 	Unconfirmed []string
 	Updated     graph.Graph
-	Blocked     string
-	// Repair is Blocked in the shape a caller can lay out.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p AdoptPlan) Blocked() string { return p.Repair.Sentence() }
 
 // Claims returns the branches this adoption would start answering for. Adoption
 // is the authority claim, so this is the list that matters most in a preview:
@@ -101,7 +105,6 @@ func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declare
 	plan.Updated = adopted
 	if declared := declaredConflicts(plan.Conflicts); len(declared) != 0 {
 		plan.Repair = graph.DeclaredConflict(declared)
-		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	if len(plan.Conflicts) != 0 {
@@ -112,7 +115,6 @@ func (s Service) planAdoptions(ctx context.Context, adopted graph.Graph, declare
 				{Effect: "leave it as it is"},
 			},
 		}
-		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	updated, trunks, err := s.adopt(ctx, adopted, plan.Adopt, source.forkPoint)
@@ -213,8 +215,8 @@ func (s Service) adopt(ctx context.Context, adopted graph.Graph, adoptions []Ado
 // tracking every branch it tracked; the only change is which record g2g reads
 // when asked about them.
 func (s Service) ApplyAdopt(ctx context.Context, plan AdoptPlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot adopt: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot adopt: %s", plan.Blocked())
 	}
 	if len(plan.Adopt) == 0 {
 		return nil
@@ -235,7 +237,7 @@ func (s Service) ApplyAdopt(ctx context.Context, plan AdoptPlan) error {
 
 // Equal compares everything that changes what the write does.
 func (p AdoptPlan) Equal(other AdoptPlan) bool {
-	if p.From != other.From || p.Blocked != other.Blocked || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
+	if p.From != other.From || !p.Repair.Equal(other.Repair) || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
 		return false
 	}
 	for index, adoption := range p.Adopt {

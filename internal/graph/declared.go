@@ -178,12 +178,17 @@ type DeclarePlan struct {
 	// takes away; empty when it had none.
 	Removed string
 	Updated Graph
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
 
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p DeclarePlan) Blocked() string { return p.Repair.Sentence() }
+
 // NoOp reports a declaration the graph already records exactly.
-func (p DeclarePlan) NoOp() bool { return p.Blocked == "" && p.Updated.Equal(p.Graph) }
+func (p DeclarePlan) NoOp() bool { return p.Blocked() == "" && p.Updated.Equal(p.Graph) }
 
 // Replaces is the landing a plan would drop: the trunk already lands somewhere,
 // and the declaration being written says somewhere else, or nowhere.
@@ -200,7 +205,7 @@ func (p DeclarePlan) Equal(other DeclarePlan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Declaration == other.Declaration &&
 		p.Removed == other.Removed &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		p.Updated.Equal(other.Updated)
 }
 
@@ -220,12 +225,12 @@ func (s Service) PlanDeclare(ctx context.Context, selection Selection, declarati
 			return DeclarePlan{}, err
 		}
 		if !slices.Contains(local, declaration.Into) {
-			plan.Blocked = fmt.Sprintf("%q, where %s would land, is not a local branch", declaration.Into, discovery.Target)
+			plan.Repair = repair.Note{Reason: fmt.Sprintf("%q, where %s would land, is not a local branch", declaration.Into, discovery.Target)}
 			return plan, nil
 		}
 	}
 	if plan.Updated, err = discovery.Graph.Declare(discovery.Target, declaration); err != nil {
-		plan.Updated, plan.Blocked = discovery.Graph, err.Error()
+		plan.Updated, plan.Repair = discovery.Graph, repair.Note{Reason: err.Error()}
 	}
 	return plan, nil
 }
@@ -242,8 +247,8 @@ func (s Service) RevalidateDeclare(ctx context.Context, selection Selection, dec
 // ApplyDeclare writes the declaration, and drops the fork-point pin of the edge
 // it replaced: a trunk has no range to replay, so nothing needs the commit kept.
 func (s Service) ApplyDeclare(ctx context.Context, plan DeclarePlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot declare %q a trunk: %s", plan.Target, plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot declare %q a trunk: %s", plan.Target, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "graph.declare.apply", diagnostic.Field{Key: "branch", Value: plan.Target}, diagnostic.Field{Key: "into", Value: plan.Declaration.Into})
 	if err := s.Store.Save(ctx, plan.Updated); err != nil {

@@ -172,7 +172,7 @@ func TestMirrorBlocksOnARootGraphiteDoesNotKnow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanMirror() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Error("Blocked = empty for a root Graphite does not track")
 	}
 	// The name is carried, not rendered: the preview composes the sentence with
@@ -182,8 +182,8 @@ func TestMirrorBlocksOnARootGraphiteDoesNotKnow(t *testing.T) {
 	}
 	// A refusal carries its ways out as structure, and the sentence a machine
 	// reads is rendered from them, so the two cannot name different commands.
-	if len(plan.Repair.Ways) != 2 || plan.Repair.Ways[1].Command != "gt init" || plan.Blocked != plan.Repair.Sentence() {
-		t.Errorf("Repair = %+v, Blocked = %q", plan.Repair, plan.Blocked)
+	if len(plan.Repair.Ways) != 2 || plan.Repair.Ways[1].Command != "gt init" || plan.Blocked() != plan.Repair.Sentence() {
+		t.Errorf("Repair = %+v, Blocked = %q", plan.Repair, plan.Blocked())
 	}
 	if err := svc.ApplyMirror(context.Background(), plan); err == nil {
 		t.Error("ApplyMirror() error = nil for a blocked plan")

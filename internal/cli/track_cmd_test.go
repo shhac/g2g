@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // A bare track must not choose. The nearest ancestor is usually right, and
@@ -152,7 +153,7 @@ func TestTrackNamesGraphiteAdoptWhenGraphiteDescribesTheRepository(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			view := trackView(graph.TrackPlan{
 				Discovery: graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
-				Blocked:   "no parent chosen",
+				Repair:    repair.Note{Reason: "no parent chosen"},
 				Candidates: []graph.Candidate{
 					{Branch: "synthetic-auth", Distance: 1},
 				},
@@ -196,7 +197,7 @@ func TestTrackCapsTheCandidateTailAndCountsTheRest(t *testing.T) {
 	}
 	view := trackView(graph.TrackPlan{
 		Discovery:  graph.Discovery{Target: "synthetic-login", Branches: []string{"synthetic-login"}},
-		Blocked:    "no parent chosen",
+		Repair:     repair.Note{Reason: "no parent chosen"},
 		Candidates: candidates,
 	}, false)
 

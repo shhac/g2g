@@ -16,11 +16,11 @@ import (
 func adoptFromView(plan align.AdoptPlan) stackView {
 	source := adoptedFrom(plan.From)
 	view := stackView{Operation: plan.From + " adopt", Target: source.name, TargetSource: "source"}
-	if plan.Blocked != "" {
+	if plan.Blocked() != "" {
 		if len(plan.Conflicts) != 0 {
 			view = view.note(conflictNote(plan, source), severityBad)
 		}
-		return view.refusing(plan.Blocked, plan.Repair)
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 	// Nothing-to-adopt is applyFlow's line to say, not this view's.
 	if len(plan.Adopt) == 0 {

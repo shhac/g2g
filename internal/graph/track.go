@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // TrackPlan records one branch under one parent.
@@ -25,9 +26,14 @@ type TrackPlan struct {
 	// point is written again: see refresh.
 	Refreshed bool
 	Updated   Graph
-	// Blocked is why an apply would refuse, empty when it would proceed.
-	Blocked string
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p TrackPlan) Blocked() string { return p.Repair.Sentence() }
 
 // Equal compares everything that changes what the write does.
 func (p TrackPlan) Equal(other TrackPlan) bool {
@@ -35,7 +41,7 @@ func (p TrackPlan) Equal(other TrackPlan) bool {
 		p.Parent == other.Parent &&
 		p.NewTrunk == other.NewTrunk &&
 		p.Refreshed == other.Refreshed &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Candidates, other.Candidates) &&
 		p.Updated.Equal(other.Updated)
 }
@@ -65,13 +71,13 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		}
 	}
 	if blocked != "" {
-		plan.Blocked = blocked
+		plan.Repair = repair.Note{Reason: blocked}
 		plan.Candidates, err = Candidates(ctx, s.Git, discovery.Target, s.knownRoots(discovery.Graph))
 		return plan, err
 	}
 	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked && recorded.Parent == parent {
 		plan, err := s.refresh(ctx, plan, recorded)
-		if err != nil || plan.Blocked != "" {
+		if err != nil || plan.Blocked() != "" {
 			return plan, err
 		}
 		plan.Updated, plan.NewTrunk = plan.Updated.Rooted(parent)
@@ -99,7 +105,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 		ForkPoint: forkPoint,
 	})
 	if err != nil {
-		plan.Blocked = err.Error()
+		plan.Repair = repair.Note{Reason: err.Error()}
 		return plan, nil
 	}
 	// A parent that is not itself tracked becomes a root of the forest. Saying
@@ -154,7 +160,7 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 		return TrackPlan{}, err
 	}
 	if !built && !plan.Graph.IsTrunk(recorded.Parent) && plan.DefaultTrunk != recorded.Parent {
-		plan.Blocked = fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)
+		plan.Repair = repair.Note{Reason: fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)}
 		return plan, nil
 	}
 	origin := OriginUser
@@ -280,8 +286,8 @@ func (s Service) RevalidateTrack(ctx context.Context, selection Selection, paren
 // ApplyTrack writes the adopted graph. It refuses a blocked plan rather than
 // writing a structure the preview said it would not.
 func (s Service) ApplyTrack(ctx context.Context, plan TrackPlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot track %q: %s", plan.Target, plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot track %q: %s", plan.Target, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "graph.track.apply", diagnostic.Field{Key: "branch", Value: plan.Target}, diagnostic.Field{Key: "parent", Value: plan.Parent})
 	if err := s.Store.Save(ctx, plan.Updated); err != nil {

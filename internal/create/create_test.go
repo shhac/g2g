@@ -84,7 +84,7 @@ func (f *fakeGraph) PlanTrack(_ context.Context, selection graph.Selection, pare
 	if err != nil {
 		return graph.TrackPlan{}, err
 	}
-	return graph.TrackPlan{Parent: parent, Updated: updated, Blocked: f.trackBlocked}, nil
+	return graph.TrackPlan{Parent: parent, Updated: updated, Repair: repair.Note{Reason: f.trackBlocked}}, nil
 }
 
 func (f *fakeGraph) ApplyTrack(_ context.Context, plan graph.TrackPlan) error {

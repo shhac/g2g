@@ -130,7 +130,7 @@ func TestPlanTrackWithoutAParentBlocksAndOffersCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanTrack() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Error("Blocked = \"\", want a bare track to refuse")
 	}
 	if names := branchNames(plan.Candidates); names != "synthetic-auth" {
@@ -148,8 +148,8 @@ func TestPlanTrackRecordsAnUntrackedParentAsANewRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanTrack() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q", plan.Blocked())
 	}
 	if plan.NewTrunk != "synthetic-main" {
 		t.Errorf("NewTrunk = %q, want synthetic-main", plan.NewTrunk)
@@ -183,7 +183,7 @@ func TestPlanTrackBlocksOnAnInvalidParent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PlanTrack() error = %v", err)
 			}
-			if plan.Blocked == "" {
+			if plan.Blocked() == "" {
 				t.Errorf("Blocked = \"\" for parent %q", parent)
 			}
 		})
@@ -197,8 +197,8 @@ func TestPlanTrackBlocksOnACycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanTrack() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "cycle") {
-		t.Errorf("Blocked = %q, want it to name the cycle", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "cycle") {
+		t.Errorf("Blocked = %q, want it to name the cycle", plan.Blocked())
 	}
 }
 
@@ -422,8 +422,8 @@ func TestPlanTrackNamingAStrandedParentMakesItATrunk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanTrack() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q", plan.Blocked())
 	}
 	if plan.NewTrunk != "synthetic-auth" {
 		t.Errorf("NewTrunk = %q, want synthetic-auth", plan.NewTrunk)

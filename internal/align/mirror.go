@@ -42,12 +42,14 @@ type MirrorPlan struct {
 	// UnknownRoots are the roots of the g2g forest Graphite has never heard
 	// of. They are what Blocked is about when it is set.
 	UnknownRoots []string
-	// Blocked is why an apply would refuse, empty when it would proceed. It
-	// is Repair's sentence.
-	Blocked string
-	// Repair is the refusal in parts: why, and the ways out.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p MirrorPlan) Blocked() string { return p.Repair.Sentence() }
 
 // Shielded returns the strangers a prune leaves alone because untracking them
 // would cascade into branches g2g does know. It is meaningful only when a
@@ -108,7 +110,6 @@ func (s Service) PlanMirror(ctx context.Context, prune bool) (MirrorPlan, error)
 				{Command: "gt init", Effect: "give Graphite a trunk, if it has none"},
 			},
 		}
-		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	plan.Writes = writes(adopted, forest)
@@ -131,8 +132,8 @@ func (s Service) PlanMirror(ctx context.Context, prune bool) (MirrorPlan, error)
 // It does not unwind. A half-aligned Graphite is closer to correct than the
 // state it started in, and re-running is how the rest gets done.
 func (s Service) ApplyMirror(ctx context.Context, plan MirrorPlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot mirror: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot mirror: %s", plan.Blocked())
 	}
 	for _, write := range plan.Writes {
 		if err := s.Graphite.Track(ctx, write.Branch, write.Parent); err != nil {
@@ -162,7 +163,7 @@ func (s Service) RevalidateMirror(ctx context.Context, prune bool, preview Mirro
 
 // Equal compares everything that changes what the write does.
 func (p MirrorPlan) Equal(other MirrorPlan) bool {
-	if p.Blocked != other.Blocked || len(p.Writes) != len(other.Writes) {
+	if !p.Repair.Equal(other.Repair) || len(p.Writes) != len(other.Writes) {
 		return false
 	}
 	for index, write := range p.Writes {

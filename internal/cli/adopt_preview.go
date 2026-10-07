@@ -10,8 +10,8 @@ import (
 // other structure command uses; only the notes differ.
 func gitAdoptView(plan graph.StackPlan) stackView {
 	view := driftNotes(graphView(plan.Discovery, "adopt"), plan.Discovery)
-	if plan.Blocked != "" {
-		return view.refusing(plan.Blocked, plan.Repair)
+	if plan.Blocked() != "" {
+		return view.refusing(plan.Blocked(), plan.Repair)
 	}
 	if len(plan.Record) == 0 && plan.NewTrunk != "" {
 		return view.note(fmt.Sprintf("The graph already records this whole ancestry · %s becomes a root of the graph.", plan.NewTrunk), severityOK)

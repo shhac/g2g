@@ -37,7 +37,7 @@ func newMirror(service align.Service, guard func(context.Context) error, present
 			execute:  service.ApplyMirror,
 			branches: func(plan align.MirrorPlan) int { return len(plan.Writes) + len(plan.Prunes) },
 			noOp:     mirrorIsNoOp,
-			blocked:  func(plan align.MirrorPlan) string { return plan.Blocked },
+			blocked:  func(plan align.MirrorPlan) string { return plan.Blocked() },
 			notices: flowNotices{
 				preview:  "Rerun with --apply to align Graphite.",
 				noOp:     "Graphite already agrees with the g2g graph. Nothing to do.",

@@ -188,13 +188,13 @@ func TestAdoptTreatsADeclaredTrunkAsADisagreement(t *testing.T) {
 	if len(plan.Conflicts) != 1 || !plan.Conflicts[0].Declared || plan.Conflicts[0].Branch != "synthetic-lower" {
 		t.Fatalf("Conflicts = %+v, want the declared trunk reported", plan.Conflicts)
 	}
-	if !strings.Contains(plan.Blocked, "trunk") || !strings.Contains(plan.Blocked, "g2g adopt --trunk synthetic-lower") {
-		t.Errorf("Blocked = %q, want it to say the branch is a trunk and how to adopt above it", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "trunk") || !strings.Contains(plan.Blocked(), "g2g adopt --trunk synthetic-lower") {
+		t.Errorf("Blocked = %q, want it to say the branch is a trunk and how to adopt above it", plan.Blocked())
 	}
 	// untrack would end the declaration and strand what sits on it, which is
 	// not a way out of a disagreement about a parent.
-	if strings.Contains(plan.Blocked, "g2g untrack") {
-		t.Errorf("Blocked = %q offers untrack for a declared trunk", plan.Blocked)
+	if strings.Contains(plan.Blocked(), "g2g untrack") {
+		t.Errorf("Blocked = %q offers untrack for a declared trunk", plan.Blocked())
 	}
 	if err := svc.ApplyAdopt(context.Background(), plan); err == nil {
 		t.Error("ApplyAdopt() error = nil for a blocked plan")

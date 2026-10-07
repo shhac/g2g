@@ -10,14 +10,14 @@ import (
 
 func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
-	if plan.Blocked == "" && plan.Refreshed {
+	if plan.Blocked() == "" && plan.Refreshed {
 		view = view.note(fmt.Sprintf("Records a new fork point for %s on %s: the recorded one is no longer in it.", plan.Target, plan.Parent), severityOK)
 		if plan.NewTrunk != "" {
 			view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
 		}
 		return view
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		view = view.note(fmt.Sprintf("Records %s under %s.", plan.Target, plan.Parent), severityOK)
 		if plan.Graph.IsDeclared(plan.Target) {
 			view = view.note(fmt.Sprintf("%s stops being a trunk%s, and is replayed with its stack from now on.", plan.Target, landingPhrase(plan.Graph.Declared[plan.Target])), severityWarn)
@@ -27,7 +27,7 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 		}
 		return view.note(confirmation(plan), severityFor(plan))
 	}
-	view = view.blockedBy(plan.Blocked)
+	view = view.blockedBy(plan.Blocked())
 	for _, note := range candidateNotes(plan) {
 		view = view.note(note.Text, note.Severity)
 	}
@@ -139,8 +139,8 @@ func describeCandidate(candidate graph.Candidate) string {
 // declareView renders naming a branch a trunk.
 func declareView(plan graph.DeclarePlan) stackView {
 	view := graphView(plan.Discovery, "track")
-	if plan.Blocked != "" {
-		return view.blockedBy(plan.Blocked)
+	if plan.Blocked() != "" {
+		return view.blockedBy(plan.Blocked())
 	}
 	if plan.NoOp() {
 		return view.note(fmt.Sprintf("%s is already recorded as a trunk%s.", plan.Target, landingPhrase(plan.Declaration)), severityNeutral)

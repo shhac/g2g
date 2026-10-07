@@ -39,11 +39,14 @@ type StackPlan struct {
 	Conflicts []string
 	NewTrunk  string
 	Updated   Graph
-	Blocked   string
-	// Repair is Blocked in the shape a caller can lay out. Blocked is rendered
-	// from it, so the sentence and the column cannot name different commands.
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
 	Repair repair.Note
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p StackPlan) Blocked() string { return p.Repair.Sentence() }
 
 // Adoption is one edge a stack adoption would record.
 type Adoption struct {
@@ -65,7 +68,7 @@ func (p StackPlan) Equal(other StackPlan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Trunk == other.Trunk &&
 		p.NewTrunk == other.NewTrunk &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Record, other.Record) &&
 		slices.Equal(p.Already, other.Already) &&
 		slices.Equal(p.Conflicts, other.Conflicts) &&
@@ -102,26 +105,25 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	plan := StackPlan{Discovery: discovery, Trunk: trunk, Updated: discovery.Graph}
 	if plan.Trunk == "" {
 		if plan.Trunk, err = trunkFor(candidates, s.knownRoots(discovery.Graph)); err != nil {
-			plan.Blocked = err.Error()
+			plan.Repair = repair.Note{Reason: err.Error()}
 			return plan, nil
 		}
 	}
 	below, err := chain(candidates, discovery.Target, plan.Trunk)
 	if err != nil {
-		plan.Blocked = err.Error()
+		plan.Repair = repair.Note{Reason: err.Error()}
 		return plan, nil
 	}
 
 	spine := append(below, discovery.Target)
 	edges, err := s.branches(ctx, spine, plan.Trunk, discovery.Graph)
 	if err != nil {
-		plan.Blocked = err.Error()
+		plan.Repair = repair.Note{Reason: err.Error()}
 		return plan, nil
 	}
 	plan.Record, plan.Already, plan.Conflicts = compare(discovery.Graph, spine, edges)
 	if len(plan.Conflicts) != 0 {
 		plan.Repair = conflictRepair(discovery.Graph, plan.Conflicts)
-		plan.Blocked = plan.Repair.Sentence()
 		return plan, nil
 	}
 	if len(plan.Record) == 0 {
@@ -353,8 +355,8 @@ func (s Service) RevalidateStack(ctx context.Context, selection Selection, trunk
 
 // ApplyStack writes the recorded chain and pins each fork point.
 func (s Service) ApplyStack(ctx context.Context, plan StackPlan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot record this stack: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot record this stack: %s", plan.Blocked())
 	}
 	if plan.NoOp() {
 		return nil

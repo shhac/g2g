@@ -107,8 +107,8 @@ func TestAdoptingAStackDoesNotMeasureEveryBranchAgainstEveryOther(t *testing.T) 
 		if err != nil {
 			t.Fatalf("PlanStack() error = %v", err)
 		}
-		if plan.Blocked != "" {
-			t.Fatalf("PlanStack() blocked: %s", plan.Blocked)
+		if plan.Blocked() != "" {
+			t.Fatalf("PlanStack() blocked: %s", plan.Blocked())
 		}
 		// The answer must not change with the noise around it.
 		if got := strings.Join(plan.Branches(), ","); got != "synthetic-a,synthetic-b,synthetic-c,synthetic-d" {
@@ -232,8 +232,8 @@ func TestAdoptingAStackDoesNotMeasureMergedBranchesAgainstEachOther(t *testing.T
 		if err != nil {
 			t.Fatalf("PlanStack() error = %v", err)
 		}
-		if got := strings.Join(plan.Branches(), ","); plan.Blocked != "" || got != "synthetic-a,synthetic-b,synthetic-c,synthetic-d" {
-			t.Fatalf("Branches() = %s, blocked %q; want the stack alone", got, plan.Blocked)
+		if got := strings.Join(plan.Branches(), ","); plan.Blocked() != "" || got != "synthetic-a,synthetic-b,synthetic-c,synthetic-d" {
+			t.Fatalf("Branches() = %s, blocked %q; want the stack alone", got, plan.Blocked())
 		}
 		measured[merged] = counter.divergence
 	}

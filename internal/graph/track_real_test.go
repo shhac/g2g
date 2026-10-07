@@ -18,8 +18,8 @@ func TestTrackOnAdvancedTrunkRecordsMergeBaseAndRepairsOldRecord(t *testing.T) {
 	ctx := context.Background()
 	selection := graph.Selection{Branch: "synthetic-one"}
 	plan, err := service.PlanTrack(ctx, selection, "synthetic-main")
-	if err != nil || plan.Blocked != "" {
-		t.Fatalf("track: %v, %s", err, plan.Blocked)
+	if err != nil || plan.Blocked() != "" {
+		t.Fatalf("track: %v, %s", err, plan.Blocked())
 	}
 	if got := plan.Updated.Edges[selection.Branch].ForkPoint; got != fork {
 		t.Fatalf("fork point = %s, want merge base %s", got, fork)
@@ -44,7 +44,7 @@ func TestTrackOnAdvancedTrunkRecordsMergeBaseAndRepairsOldRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	repaired, err := service.PlanTrack(ctx, selection, "synthetic-main")
-	if err != nil || repaired.Blocked != "" || !repaired.Refreshed {
+	if err != nil || repaired.Blocked() != "" || !repaired.Refreshed {
 		t.Fatalf("repair: %v, %+v", err, repaired)
 	}
 	if got := repaired.Updated.Edges[selection.Branch].ForkPoint; got != fork {
@@ -88,7 +88,7 @@ func TestTrackOnStaleTrunkUsesKnownUpstreamAndRepairsValidOldBoundary(t *testing
 	ctx := context.Background()
 	selection := graph.Selection{Branch: "synthetic-new"}
 	plan, err := service.PlanTrack(ctx, selection, "synthetic-main")
-	if err != nil || plan.Blocked != "" {
+	if err != nil || plan.Blocked() != "" {
 		t.Fatalf("track: %v, %+v", err, plan)
 	}
 	if got := plan.Updated.Edges[selection.Branch].ForkPoint; got != fork {
@@ -142,7 +142,7 @@ func TestTrackKeepsFeatureParentBoundaryDespiteNewerKnownUpstream(t *testing.T) 
 	repo.Run("switch", "-qc", "synthetic-child")
 	repo.Commit("synthetic child", "child.txt", "child")
 	plan, err := service.PlanTrack(ctx, graph.Selection{Branch: "synthetic-child"}, "synthetic-one")
-	if err != nil || plan.Blocked != "" {
+	if err != nil || plan.Blocked() != "" {
 		t.Fatalf("track: %v, %+v", err, plan)
 	}
 	if got := plan.Updated.Edges["synthetic-child"].ForkPoint; got != fork {

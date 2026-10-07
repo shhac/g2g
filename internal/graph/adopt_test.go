@@ -83,8 +83,8 @@ func TestPlanStackInfersTheOnlyRecordedTrunk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q, want the trunk inferred", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q, want the trunk inferred", plan.Blocked())
 	}
 	if plan.Trunk != "synthetic-trunk" {
 		t.Errorf("Trunk = %q", plan.Trunk)
@@ -100,8 +100,8 @@ func TestPlanStackBlocksWhenNoTrunkCanBeInferred(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "--trunk") {
-		t.Errorf("Blocked = %q, want it to name the flag that resolves this", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "--trunk") {
+		t.Errorf("Blocked = %q, want it to name the flag that resolves this", plan.Blocked())
 	}
 	if err := service.ApplyStack(context.Background(), plan); err == nil {
 		t.Error("ApplyStack() error = nil for a blocked plan")
@@ -121,8 +121,8 @@ func TestPlanStackBlocksOnAnEdgeRecordedDifferently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "synthetic-b") {
-		t.Errorf("Blocked = %q, want it to name the disagreement", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-b") {
+		t.Errorf("Blocked = %q, want it to name the disagreement", plan.Blocked())
 	}
 	if err := service.ApplyStack(context.Background(), plan); err == nil {
 		t.Error("ApplyStack() error = nil for a blocked plan")
@@ -208,8 +208,8 @@ func TestPlanStackNamingAStrandedTrunkRecordsIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if plan.Blocked != "" || len(plan.Record) != 0 {
-		t.Fatalf("Blocked = %q, Record = %v; want nothing blocked and no edge to add", plan.Blocked, plan.Record)
+	if plan.Blocked() != "" || len(plan.Record) != 0 {
+		t.Fatalf("Blocked = %q, Record = %v; want nothing blocked and no edge to add", plan.Blocked(), plan.Record)
 	}
 	if plan.NewTrunk != "synthetic-a" || plan.NoOp() {
 		t.Fatalf("NewTrunk = %q, NoOp = %v; want synthetic-a recorded as a trunk", plan.NewTrunk, plan.NoOp())

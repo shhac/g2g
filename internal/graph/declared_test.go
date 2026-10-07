@@ -105,8 +105,8 @@ func TestPlanTrackNamingADeclaredTrunkEndsTheDeclaration(t *testing.T) {
 	service, _ := newService(t, stackGit(), declared)
 
 	plan, err := service.PlanTrack(context.Background(), Selection{Branch: "synthetic-auth"}, "synthetic-main")
-	if err != nil || plan.Blocked != "" {
-		t.Fatalf("PlanTrack() = %q, %v", plan.Blocked, err)
+	if err != nil || plan.Blocked() != "" {
+		t.Fatalf("PlanTrack() = %q, %v", plan.Blocked(), err)
 	}
 	if parent, _ := plan.Updated.Parent("synthetic-auth"); parent != "synthetic-main" {
 		t.Errorf("parent = %q, want synthetic-main", parent)
@@ -207,8 +207,8 @@ func TestPlanStackTreatsADeclaredTrunkAsAConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if !slices.Equal(plan.Conflicts, []string{"synthetic-a"}) || plan.Blocked == "" {
-		t.Fatalf("Conflicts = %v, Blocked = %q; want the declared trunk refused", plan.Conflicts, plan.Blocked)
+	if !slices.Equal(plan.Conflicts, []string{"synthetic-a"}) || plan.Blocked() == "" {
+		t.Fatalf("Conflicts = %v, Blocked = %q; want the declared trunk refused", plan.Conflicts, plan.Blocked())
 	}
 	if err := service.ApplyStack(context.Background(), plan); err == nil {
 		t.Error("ApplyStack() error = nil for a blocked plan")
@@ -228,7 +228,7 @@ func TestApplyDeclareDropsTheReplacedPinOrPutsTheGraphBack(t *testing.T) {
 	declaration := Declaration{Into: "synthetic-main", By: "merge"}
 
 	plan, err := service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, declaration)
-	if err != nil || plan.Blocked != "" || plan.Removed != "synthetic-main" {
+	if err != nil || plan.Blocked() != "" || plan.Removed != "synthetic-main" {
 		t.Fatalf("PlanDeclare() = %+v, %v", plan, err)
 	}
 	if err := service.ApplyDeclare(ctx, plan); err != nil {
@@ -260,15 +260,15 @@ func TestPlanDeclare(t *testing.T) {
 	t.Run("somewhere that is not a local branch", func(t *testing.T) {
 		service, _ := newService(t, stackGit(), forest())
 		plan, err := service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, Declaration{Into: "synthetic-gone", By: "merge"})
-		if err != nil || !strings.Contains(plan.Blocked, "not a local branch") {
-			t.Errorf("PlanDeclare() = %q, %v", plan.Blocked, err)
+		if err != nil || !strings.Contains(plan.Blocked(), "not a local branch") {
+			t.Errorf("PlanDeclare() = %q, %v", plan.Blocked(), err)
 		}
 	})
 	t.Run("a refusal changes nothing", func(t *testing.T) {
 		service, _ := newService(t, stackGit(), forest())
 		plan, _ := service.PlanDeclare(ctx, Selection{Branch: "synthetic-auth"}, Declaration{Into: "synthetic-login", By: "merge"})
-		if plan.Blocked == "" || !plan.Updated.Equal(plan.Graph) || plan.NoOp() {
-			t.Errorf("Blocked = %q, Updated changed = %v, NoOp = %v", plan.Blocked, !plan.Updated.Equal(plan.Graph), plan.NoOp())
+		if plan.Blocked() == "" || !plan.Updated.Equal(plan.Graph) || plan.NoOp() {
+			t.Errorf("Blocked = %q, Updated changed = %v, NoOp = %v", plan.Blocked(), !plan.Updated.Equal(plan.Graph), plan.NoOp())
 		}
 	})
 	t.Run("the same declaration again", func(t *testing.T) {

@@ -311,8 +311,8 @@ func (s Service) record(ctx context.Context, plan Plan) error {
 	if err != nil {
 		return err
 	}
-	if tracked.Blocked != "" {
-		return errors.New(tracked.Blocked)
+	if tracked.Blocked() != "" {
+		return errors.New(tracked.Blocked())
 	}
 	// The parent can only have moved in the moment between the revalidation
 	// and the switch, and a fork point other than the commit the branch

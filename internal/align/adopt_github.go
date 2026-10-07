@@ -224,7 +224,7 @@ func firstOnto(base string, declared []Adoption) string {
 }
 
 func refused(adopted graph.Graph, note repair.Note) AdoptPlan {
-	return AdoptPlan{From: FromGitHub, Updated: adopted, Repair: note, Blocked: note.Sentence()}
+	return AdoptPlan{From: FromGitHub, Updated: adopted, Repair: note}
 }
 
 // unconfirmed names the adoptions Git does not yet agree with, so the preview

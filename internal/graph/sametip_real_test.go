@@ -48,7 +48,7 @@ func TestTrackOffersTheBranchATargetWasCreatedFrom(t *testing.T) {
 	if !plan.Candidates[0].SameTip() || !plan.Candidates[0].Ancestor {
 		t.Errorf("synthetic-two = %+v, want it offered as an ancestor at the same commit", plan.Candidates[0])
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Error("track chose a parent; it must preview and block")
 	}
 }
@@ -65,12 +65,12 @@ func TestTrackStackRefusesTwoBranchesAtOneCommit(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PlanStack() error = %v", err)
 			}
-			if plan.Blocked == "" {
+			if plan.Blocked() == "" {
 				t.Fatalf("PlanStack() records %v; synthetic-one and synthetic-two point at one commit and ancestry cannot order them", plan.Record)
 			}
 			for _, name := range []string{"synthetic-one", "synthetic-two"} {
-				if !strings.Contains(plan.Blocked, name) {
-					t.Errorf("Blocked = %q, want it to name %s", plan.Blocked, name)
+				if !strings.Contains(plan.Blocked(), name) {
+					t.Errorf("Blocked = %q, want it to name %s", plan.Blocked(), name)
 				}
 			}
 		})
@@ -91,12 +91,12 @@ func TestTrackStackRefusesABranchAtTheSameCommitAsOneItWouldAttach(t *testing.T)
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatalf("PlanStack() records %v; synthetic-copy and synthetic-side point at one commit", plan.Record)
 	}
 	for _, name := range []string{"synthetic-side", "synthetic-copy"} {
-		if !strings.Contains(plan.Blocked, name) {
-			t.Errorf("Blocked = %q, want it to name %s", plan.Blocked, name)
+		if !strings.Contains(plan.Blocked(), name) {
+			t.Errorf("Blocked = %q, want it to name %s", plan.Blocked(), name)
 		}
 	}
 }
@@ -112,8 +112,8 @@ func TestTrackStackRecordsAFreshBranchOnTheTrunkItWasCreatedFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanStack() error = %v", err)
 	}
-	if plan.Blocked != "" {
-		t.Fatalf("PlanStack() blocked: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("PlanStack() blocked: %s", plan.Blocked())
 	}
 	if len(plan.Record) != 1 || plan.Record[0] != (graph.Adoption{Branch: "synthetic-fresh", Parent: "synthetic-main"}) {
 		t.Errorf("Record = %v, want synthetic-fresh under synthetic-main", plan.Record)

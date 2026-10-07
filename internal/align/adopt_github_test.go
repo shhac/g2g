@@ -145,7 +145,7 @@ func TestAdoptFromGitHubRefusesABranchThatIsNotHere(t *testing.T) {
 	fixture := pullRequestService(graph.New(), bases, git, "synthetic-trunk")
 
 	plan := planFromPullRequests(t, fixture, stack.Selection{})
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatalf("plan adopts %v with synthetic-mid only on the remote", plan.Claims())
 	}
 	for _, command := range []string{"git fetch && git switch synthetic-mid", "git branch synthetic-mid origin/synthetic-mid"} {
@@ -178,8 +178,8 @@ func TestAdoptFromGitHubRefusesAConflictingRecordedParent(t *testing.T) {
 	if len(plan.Conflicts) != 1 || plan.Conflicts[0] != (Conflict{Branch: "synthetic-top", Ours: "synthetic-trunk", Theirs: "synthetic-lower"}) {
 		t.Fatalf("Conflicts = %+v, want synthetic-top named with both parents", plan.Conflicts)
 	}
-	if !strings.Contains(plan.Blocked, "pull request's base") {
-		t.Errorf("Blocked = %q, want the way out to name the pull request's side", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "pull request's base") {
+		t.Errorf("Blocked = %q, want the way out to name the pull request's side", plan.Blocked())
 	}
 	if err := fixture.svc.ApplyAdopt(context.Background(), plan); err == nil {
 		t.Error("ApplyAdopt() error = nil for a conflicting plan")
@@ -202,8 +202,8 @@ func TestAdoptFromGitHubIsANoOpWhereTheGraphAgrees(t *testing.T) {
 	fixture := pullRequestService(ours, publishedStack(), everyBranchLocal(), "")
 
 	plan := planFromPullRequests(t, fixture, stack.Selection{})
-	if plan.Blocked != "" || len(plan.Adopt) != 0 {
-		t.Fatalf("plan = blocked %q adopting %v, want nothing to do", plan.Blocked, plan.Claims())
+	if plan.Blocked() != "" || len(plan.Adopt) != 0 {
+		t.Fatalf("plan = blocked %q adopting %v, want nothing to do", plan.Blocked(), plan.Claims())
 	}
 	if got := strings.Join(plan.Agreed, ","); got != "synthetic-lower,synthetic-top" {
 		t.Errorf("Agreed = %s", got)
@@ -225,8 +225,8 @@ func TestAdoptFromGitHubHangsFromARecordedRoot(t *testing.T) {
 	fixture := pullRequestService(ours, publishedStack(), git, "")
 
 	plan := planFromPullRequests(t, fixture, stack.Selection{})
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q for a stack on a recorded trunk", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q for a stack on a recorded trunk", plan.Blocked())
 	}
 	if len(plan.NewTrunks) != 0 {
 		t.Errorf("NewTrunks = %v, want none: the trunk was already recorded", plan.NewTrunks)
@@ -244,8 +244,8 @@ func TestAdoptFromGitHubHangsFromARecordedBranch(t *testing.T) {
 	fixture := pullRequestService(ours, bases, git, "")
 
 	plan := planFromPullRequests(t, fixture, stack.Selection{})
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q for a stack on a recorded branch", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q for a stack on a recorded branch", plan.Blocked())
 	}
 	if got := strings.Join(plan.Claims(), ","); got != "synthetic-top" {
 		t.Errorf("Claims() = %s, want synthetic-top", got)
@@ -258,7 +258,7 @@ func TestAdoptFromGitHubRefusesABaseThatIsNotATrunk(t *testing.T) {
 	fixture := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "")
 
 	plan := planFromPullRequests(t, fixture, stack.Selection{})
-	if plan.Blocked == "" {
+	if plan.Blocked() == "" {
 		t.Fatalf("plan adopts %v onto a base nothing records", plan.Claims())
 	}
 	for _, command := range []string{"g2g adopt --branch synthetic-trunk", "g2g track --branch synthetic-lower --parent synthetic-trunk"} {

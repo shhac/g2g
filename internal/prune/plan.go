@@ -25,13 +25,15 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	if err != nil {
 		return Plan{}, err
 	}
-	comparisons := comparisonEdges(discovery, local)
+	isLocal := func(branch string) bool { return slices.Contains(local, branch) }
+	comparisons := comparisonEdges(discovery, isLocal)
 	if options.DeleteBranches {
 		plan.Tips, err = s.captureTips(ctx, discovery.Branches, local, comparisons)
 		if err != nil {
 			return Plan{}, err
 		}
 	}
+	forgetting := map[string]bool{}
 	for _, branch := range discovery.Branches {
 		_, tracked := discovery.Graph.Edges[branch]
 		if !tracked {
@@ -53,12 +55,15 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 		if err != nil {
 			return Plan{}, err
 		}
+		if !landed && forgetting[edge.Parent] {
+			if landed, err = s.landedThrough(ctx, discovery.Graph, branch, isLocal, forgetting, options.DeleteBranches, plan.Tips); err != nil {
+				return Plan{}, err
+			}
+		}
 		if landed {
+			forgetting[branch] = true
 			plan.Landed = append(plan.Landed, branch)
 		}
-	}
-	if plan.Landed, err = s.landedThrough(ctx, discovery, comparisons, plan.Landed, options.DeleteBranches, plan.Tips); err != nil {
-		return Plan{}, err
 	}
 	// Forgetting a parent while keeping its child would strand the child. A
 	// child Git already shows on the branch below is recorded there; anything
@@ -93,69 +98,25 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 // a child squash-merged together with its parent does: its own commit is not
 // in the parent branch, only in the trunk. It was kept, and forgetting the
 // parent then refused for stranding it, about a stack that had landed whole.
-// So a branch above a landed parent is asked again of the first ancestor this
-// run keeps, over the whole range above that ancestor, which is the rule a
-// missing parent already gets. A branch found landed lets the one above it be
-// asked in turn. The answer is in discovery order.
-func (s Service) landedThrough(ctx context.Context, discovery graph.Discovery, comparisons map[string]graph.Edge, found []string, deleting bool, tips map[string]string) ([]string, error) {
-	forgotten := map[string]bool{}
-	for _, branch := range found {
-		forgotten[branch] = true
+// So it is asked again of the first ancestor this run keeps, over the whole
+// range above that ancestor, which is the rule a missing parent already gets.
+// The selection is in render order, a parent before its children, so a branch
+// found landed here lets the one above it be asked in turn.
+func (s Service) landedThrough(ctx context.Context, recorded graph.Graph, branch string, isLocal func(string) bool, forgetting map[string]bool, deleting bool, tips map[string]string) (bool, error) {
+	edge, comparable := comparisonEdge(recorded, branch, func(ancestor string) bool {
+		return isLocal(ancestor) && !forgetting[ancestor]
+	})
+	if !comparable {
+		return false, nil
 	}
-	type question struct {
-		branch string
-		edge   graph.Edge
-	}
-	asked := map[question]bool{}
-	for changed := true; changed; {
-		changed = false
-		for _, branch := range discovery.Branches {
-			edge, through := throughForgotten(comparisons, branch, forgotten)
-			if forgotten[branch] || !through || asked[question{branch, edge}] {
-				continue
-			}
-			asked[question{branch, edge}] = true
-			landed, err := s.assessBranch(ctx, branch, edge, deleting, tips)
-			if err != nil {
-				return nil, err
-			}
-			if landed {
-				forgotten[branch], changed = true, true
-			}
-		}
-	}
-	landed := make([]string, 0, len(forgotten))
-	for _, branch := range discovery.Branches {
-		if forgotten[branch] {
-			landed = append(landed, branch)
-		}
-	}
-	return landed, nil
-}
-
-// throughForgotten is branch's comparison carried past every ancestor in
-// forgotten, to the first one kept, with the fork point where the range above
-// it begins. It reports whether there was any ancestor to carry it past.
-func throughForgotten(comparisons map[string]graph.Edge, branch string, forgotten map[string]bool) (graph.Edge, bool) {
-	edge, comparable := comparisons[branch]
-	if !comparable || !forgotten[edge.Parent] {
-		return graph.Edge{}, false
-	}
-	for forgotten[edge.Parent] {
-		below, comparable := comparisons[edge.Parent]
-		if !comparable {
-			return graph.Edge{}, false
-		}
-		edge.Parent, edge.ForkPoint = below.Parent, below.ForkPoint
-	}
-	return edge, true
+	return s.assessBranch(ctx, branch, edge, deleting, tips)
 }
 
 // comparisonEdges bounds each assessment at its first surviving parent.
-func comparisonEdges(discovery graph.Discovery, local []string) map[string]graph.Edge {
+func comparisonEdges(discovery graph.Discovery, isLocal func(string) bool) map[string]graph.Edge {
 	comparisons := map[string]graph.Edge{}
 	for _, branch := range discovery.Branches {
-		if edge, ok := comparisonEdge(discovery.Graph, branch, local); ok {
+		if edge, ok := comparisonEdge(discovery.Graph, branch, isLocal); ok {
 			comparisons[branch] = edge
 		}
 	}
@@ -237,12 +198,15 @@ func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bo
 // to this child's own commits could delete the only surviving ref carrying its
 // missing parent's unlanded work. The first edge above a live ancestor bounds
 // the whole range that would disappear, without counting that base's commits.
-func comparisonEdge(recorded graph.Graph, branch string, local []string) (graph.Edge, bool) {
+//
+// survives says which branches count as there: local ones, and for a branch
+// asked again past ancestors this run forgets, local ones it keeps.
+func comparisonEdge(recorded graph.Graph, branch string, survives func(string) bool) (graph.Edge, bool) {
 	edge, tracked := recorded.Edges[branch]
-	if !tracked || !slices.Contains(local, branch) {
+	if !tracked || !survives(branch) {
 		return graph.Edge{}, false
 	}
-	if slices.Contains(local, edge.Parent) {
+	if survives(edge.Parent) {
 		return edge, true
 	}
 	path, err := recorded.Path(branch)
@@ -250,7 +214,7 @@ func comparisonEdge(recorded graph.Graph, branch string, local []string) (graph.
 		return graph.Edge{}, false
 	}
 	for index := len(path) - 2; index >= 0; index-- {
-		if slices.Contains(local, path[index]) {
+		if survives(path[index]) {
 			edge.Parent = path[index]
 			edge.ForkPoint = recorded.Edges[path[index+1]].ForkPoint
 			return edge, true

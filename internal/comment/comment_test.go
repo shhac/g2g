@@ -428,7 +428,6 @@ func TestPlanListsWhatMergedInTheOrderItMerged(t *testing.T) {
 	}
 }
 
-// Only a merged pull request is kept. One closed without merging, or open in
 // A comment 0.43.0 or earlier wrote records its history as the bare list.
 // That history is read and carried into the comment that replaces it.
 func TestPlanCarriesHistoryFromTheListBeforeItHadFields(t *testing.T) {
@@ -456,20 +455,29 @@ func TestPlanCarriesHistoryFromTheListBeforeItHadFields(t *testing.T) {
 // A comment a newer g2g wrote, in a format this one cannot read, is left as
 // it is: rewriting it would drop the history it could not read.
 func TestPlanLeavesACommentInANewerFormatAlone(t *testing.T) {
-	github := chainGitHub()
-	newer := Marker + " rev=0123456789abcdef version=9.0.0 -->\nnewer\n" + dataOpen + "v=2 prs=11,12>11" + dataClose
-	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", newer)
-	got := plan(t, chain(), "synthetic-one", github)
-	if actions(got) != "#11:create #12:skip #13:create" {
-		t.Fatalf("writes = %s", actions(got))
-	}
-	for _, write := range got.Writes {
-		if write.Number == 12 && write.Reason != "the stack comment on #12 was written by g2g@9.0.0, a newer g2g · upgrade g2g to keep it" {
-			t.Errorf("reason = %q", write.Reason)
+	// The version is named when the marker gives one this g2g would write,
+	// and is otherwise only newer: anyone who can edit the comment can edit it.
+	for marker, want := range map[string]string{
+		" rev=0123456789abcdef version=9.0.0 -->": "the stack comment on #12 was written by g2g@9.0.0, a newer g2g · upgrade g2g to keep it",
+		" rev=0123456789abcdef -->":               "the stack comment on #12 was written by a newer g2g · upgrade g2g to keep it",
+		" version=synthetic](x) -->":              "the stack comment on #12 was written by a newer g2g · upgrade g2g to keep it",
+	} {
+		github := chainGitHub()
+		newer := Marker + marker + "\nnewer\n" + dataOpen + "v=2 prs=11,12>11" + dataClose
+		github.conversations[12] = conversation(12, "synthetic-two", "OPEN", newer)
+		got := plan(t, chain(), "synthetic-one", github)
+		if actions(got) != "#11:create #12:skip #13:create" {
+			t.Fatalf("%q: writes = %s", marker, actions(got))
+		}
+		for _, write := range got.Writes {
+			if write.Number == 12 && write.Reason != want {
+				t.Errorf("%q: reason = %q, want %q", marker, write.Reason, want)
+			}
 		}
 	}
 }
 
+// Only a merged pull request is kept. One closed without merging, or open in
 // some other stack now, has left this one.
 func TestPlanDropsWhatDidNotMerge(t *testing.T) {
 	previous := Marker + "\n" + recordedLine("11,12>11,13>12,17,18>12")

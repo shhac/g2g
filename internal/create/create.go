@@ -201,7 +201,7 @@ func (s Service) refuseName(ctx context.Context, plan Plan) (Plan, bool) {
 // repository's default branch is the one exception, because it is a trunk.
 func refuseRecord(plan Plan, discovery graph.Discovery) (Plan, bool) {
 	adopted := discovery.Graph
-	if adopted.Tracked(plan.Name) || adopted.IsTrunk(plan.Name) || len(adopted.Children(plan.Name)) != 0 {
+	if adopted.Records(plan.Name) {
 		// A record for a branch that is not here is left over from one that was
 		// deleted, and it may have children. Reusing the name would hand them
 		// to a branch that has nothing to do with them.

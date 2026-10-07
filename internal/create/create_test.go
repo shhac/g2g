@@ -166,6 +166,16 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 			},
 			blocked: "already records synthetic-deleted",
 		},
+		{
+			// A declared trunk that lands into a name is a record of that name
+			// too: a new branch under it would become where that trunk lands.
+			name:    "a name a declared trunk still lands into",
+			request: Request{Name: "synthetic-deleted"},
+			arrange: func(_ *fakeGit, f *fakeGraph) {
+				f.adopted.Declared = map[string]graph.Declaration{"synthetic-release": {Into: "synthetic-deleted", By: "squash"}}
+			},
+			blocked: "already records synthetic-deleted",
+		},
 		{name: "committing with nothing staged", request: Request{Name: "synthetic-new", Commit: true, Message: "synthetic"}, arrange: func(g *fakeGit, _ *fakeGraph) { g.staged = nil }, blocked: "nothing is staged", way: "g2g create synthetic-new"},
 		{name: "committing with an empty message", request: Request{Name: "synthetic-new", Commit: true}, blocked: "message is empty"},
 		{name: "committing what is staged", request: Request{Name: "synthetic-new", Commit: true, Message: "synthetic"}, parent: "synthetic-lower"},

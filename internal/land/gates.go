@@ -32,9 +32,11 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	if dirty := s.dirtyWhereItMatters(ctx, recorded, discovery.Target, discovery.Base); dirty.Reason != "" {
 		return dirty
 	}
-	if held := s.heldElsewhere(ctx, recorded, plan); held.Reason != "" {
+	kept, held := s.heldElsewhere(ctx, recorded, *plan)
+	if held.Reason != "" {
 		return held
 	}
+	plan.KeepTrunk, plan.Detach = kept.trunk, kept.detach
 	// An error planning the push is not a refusal here: each cycle plans its
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
@@ -149,47 +151,58 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 // something to move — after the first merge, which does not come back. Asking
 // sync up front found nothing while the trunk was level, so a descent with the
 // trunk open in another worktree merged its bottom branch and then stopped.
-func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan *Plan) repair.Note {
+func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan Plan) (keeping, repair.Note) {
 	if s.Holds == nil {
-		return repair.Note{}
+		return keeping{}, repair.Note{}
 	}
 	cannotTell := func(err error) repair.Note {
 		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
 	}
-	target, base := plan.Target, plan.Trunk
-	branches, err := moving(recorded, target, base)
+	branches, err := moving(recorded, plan.Target, plan.Trunk)
 	if err != nil {
-		return cannotTell(err)
+		return keeping{}, cannotTell(err)
 	}
 	held, err := s.Holds.HeldElsewhere(ctx, branches)
 	if err != nil {
-		return cannotTell(err)
+		return keeping{}, cannotTell(err)
 	}
 	if held.Reason == "" {
-		return repair.Note{}
+		return keeping{}, repair.Note{}
 	}
-	// A single branch can merge without advancing the trunk here, provided
-	// there is no survivor whose contents would need replaying afterwards.
-	if len(plan.Branches) == 1 && len(recorded.Children(target)) == 0 {
-		others := slices.DeleteFunc(slices.Clone(branches), func(branch string) bool { return branch == base })
-		note, err := s.Holds.HeldElsewhere(ctx, others)
-		if err != nil {
-			return cannotTell(err)
-		}
-		if note.Reason == "" {
-			current, err := s.Git.CurrentBranch(ctx)
-			if err != nil {
-				return cannotTell(err)
-			}
-			plan.KeepTrunk = true
-			plan.Detach = plan.Options.DeleteLocal && current == target
-			return repair.Note{}
-		}
+	kept, err := s.keepsTrunk(ctx, recorded, plan, branches)
+	if err != nil {
+		return keeping{}, cannotTell(err)
+	}
+	if kept.trunk {
+		return kept, repair.Note{}
 	}
 	// Narrowing the selection is no way out here: a descent moves the whole
 	// stack whatever was selected, because the replay after each merge takes
 	// everything above it.
-	return repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+	return keeping{}, repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+}
+
+// keeping is a descent leaving a trunk another worktree holds where it is,
+// and whether this checkout steps off the branch it deletes onto the merge.
+type keeping struct{ trunk, detach bool }
+
+// keepsTrunk is the one way past a trunk held elsewhere. A single branch can
+// merge without advancing the trunk here, provided there is no survivor whose
+// contents would need replaying afterwards and nothing but the trunk is held.
+func (s Service) keepsTrunk(ctx context.Context, recorded graph.Graph, plan Plan, branches []string) (keeping, error) {
+	if len(plan.Branches) != 1 || len(recorded.Children(plan.Target)) != 0 {
+		return keeping{}, nil
+	}
+	others := slices.DeleteFunc(slices.Clone(branches), func(branch string) bool { return branch == plan.Trunk })
+	held, err := s.Holds.HeldElsewhere(ctx, others)
+	if err != nil || held.Reason != "" {
+		return keeping{}, err
+	}
+	current, err := s.Git.CurrentBranch(ctx)
+	if err != nil {
+		return keeping{}, err
+	}
+	return keeping{trunk: true, detach: plan.Options.DeleteLocal && current == plan.Target}, nil
 }
 
 // dirtyWhereItMatters refuses uncommitted work only where the descent would

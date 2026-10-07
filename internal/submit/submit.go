@@ -203,13 +203,44 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 	if err := s.Pusher.Execute(ctx, plan.Push); err != nil {
 		return err
 	}
-	if err := s.createMissingPulls(ctx, plan, spec); err != nil {
-		return err
+	pushed := !plan.Push.NothingToPublish()
+	opened, err := s.createMissingPulls(ctx, plan, spec)
+	if err != nil {
+		return stopped(pushed, opened, err)
 	}
 	if !link || len(plan.Snapshot.Branches) < 2 {
 		return nil
 	}
-	return s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches)
+	if err := s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches); err != nil {
+		return stopped(pushed, opened, fmt.Errorf("linking the stack: %w", err))
+	}
+	return nil
+}
+
+// Stopped is a submission that failed after doing something it cannot take
+// back: publishing the branches, or opening some of the pull requests. Those
+// stand, so the run is neither a failure to retry from scratch nor a success.
+type Stopped struct {
+	// Pushed means the push published something.
+	Pushed bool
+	// Opened are the branches whose pull request was opened, in order.
+	Opened []string
+	Err    error
+}
+
+func (s *Stopped) Error() string {
+	return fmt.Sprintf("stopped after publishing: %v", s.Err)
+}
+
+func (s *Stopped) Unwrap() error { return s.Err }
+
+// stopped is err as a Stopped when anything before it happened, and as itself
+// when nothing did: the push moved no ref and no pull request was opened.
+func stopped(pushed bool, opened []string, err error) error {
+	if !pushed && len(opened) == 0 {
+		return err
+	}
+	return &Stopped{Pushed: pushed, Opened: opened, Err: err}
 }
 
 // validateSpec checks everything the spec contributes to a mutation, and runs
@@ -240,18 +271,22 @@ func validateSpec(plan Plan, spec Spec) error {
 // Keying off open pull requests rather than any match is what lets a branch
 // with a closed predecessor be re-submitted instead of silently skipped and
 // then failing at the link step.
-func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) error {
+//
+// It returns the branches it opened one for, including when it stops early.
+func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) ([]string, error) {
 	resolutions := githubstack.ResolveHeads(plan.Existing)
 	base := plan.Snapshot.Base
+	opened := make([]string, 0, len(spec.Pulls))
 	for _, pull := range spec.Pulls {
 		if resolutions[pull.Branch].Open == nil {
 			if err := s.GitHub.Create(ctx, pull.Branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
-				return err
+				return opened, fmt.Errorf("opening the pull request for %s: %w", pull.Branch, err)
 			}
+			opened = append(opened, pull.Branch)
 		}
 		base = pull.Branch
 	}
-	return nil
+	return opened, nil
 }
 
 // assessExisting reports only what blocks submission. A branch whose pull

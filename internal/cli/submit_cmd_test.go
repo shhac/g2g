@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/g2g/internal/cli"
 	"github.com/shhac/g2g/internal/testutil"
 )
 
@@ -101,7 +102,9 @@ func TestSubmitEditRetainsTheSpecWhenTheEditorFails(t *testing.T) {
 }
 
 // A GitHub failure mid-apply must also retain it: the titles are the user's
-// work, and re-running with the same spec is the documented recovery.
+// work, and re-running with the same spec is the documented recovery. The push
+// has happened by then, so it is a stop part-way, and the retry it names is
+// the one carrying the spec.
 func TestSubmitRetainsTheSpecWhenGitHubFails(t *testing.T) {
 	routes, _ := graphiteRoutes(t, []testutil.Route{
 		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
@@ -121,8 +124,20 @@ func TestSubmitRetainsTheSpecWhenGitHubFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("submit --apply = nil, want the GitHub failure")
 	}
-	if !strings.Contains(err.Error(), specPath) {
-		t.Errorf("error does not name the retained spec: %v", err)
+	if !cli.StoppedPartWayForTest(err) {
+		t.Errorf("error = %v, want the part-way status", err)
+	}
+	for _, want := range []string{
+		"Stopped part-way: opening the pull request for synthetic-top",
+		"Published the stack to origin.",
+		"--spec " + specPath + " --apply to finish",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("report missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "Not applied") {
+		t.Errorf("a submission that pushed says nothing was applied:\n%s", stdout)
 	}
 	if _, statErr := os.Stat(specPath); statErr != nil {
 		t.Errorf("apply failure destroyed the spec: %v", statErr)

@@ -263,8 +263,10 @@ the current `--apply` flow.
 `3` is `pull` stopping on a conflict mid-replay, `pull --prune` whose prune
 refused after the pull had happened, `land` stopping part-way down a stack
 after something merged, `github comment` stopping after writing some of its
-comments, `github retarget` stopping after moving some bases, `create -m` whose commit failed after the branch was recorded, and a
-`delete`, `fold` or `rename` that could not put back what it had done. A
+comments, `github retarget` stopping after moving some bases, `submit` failing
+after its push or after opening a pull request, `create -m` whose commit failed
+after the branch was recorded, and a `delete`, `fold` or `rename` that could
+not put back what it had done. A
 descent that stopped before changing anything is an ordinary failure. Those are
 not failures to retry — what replayed stays replayed and what merged stays
 merged — and not successes either. Both print what happened and what to do
@@ -811,6 +813,11 @@ stack as a GitHub native stack. That is opt-in because GitHub will not merge a
 linked pull request through `gh pr merge`, which is how `land` merges each one;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
+
+A failure after the push, or after a pull request opened, exits `3`: what was
+published and opened stays, and the report names both and the retry, which
+keeps the pull requests that exist and opens only the missing ones. A failure
+before anything changed is an ordinary one.
 
 When every selected branch already has an open PR, `g2g submit --apply`
 publishes new commits without a spec. Existing PR bases are preserved even when

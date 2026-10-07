@@ -80,6 +80,30 @@ func TestApplyStopsOnCreateFailureAndDoesNotLink(t *testing.T) {
 	if github.links != 0 {
 		t.Errorf("links = %d, want 0", github.links)
 	}
+	// The push published the stack and the first pull request opened, and
+	// both stand.
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !stopped.Pushed || strings.Join(stopped.Opened, ",") != "synthetic/lower" {
+		t.Errorf("Apply() error = %#v, want a stop naming the push and synthetic/lower", err)
+	}
+}
+
+// Nothing to publish and the first pull request refused means nothing
+// happened, which is the ordinary failure rather than a stop part-way.
+func TestApplyThatChangedNothingIsNotAStop(t *testing.T) {
+	git := &fakeGit{}
+	github := &fakeGitHub{createErrAt: 1}
+	current := push.Publication{Standing: push.Current}
+	plan := Plan{Snapshot: snapshot(), Remote: "origin", Push: push.Plan{
+		Snapshot:   snapshot(),
+		Publishing: map[string]push.Publication{"synthetic/lower": current, "synthetic/middle": current, "synthetic/top": current},
+	}}
+	spec := Spec{Version: 1, Pulls: []Pull{{Branch: "synthetic/lower", Title: "lower"}, {Branch: "synthetic/middle", Title: "middle"}, {Branch: "synthetic/top", Title: "top"}}}
+	err := (Service{Git: git, GitHub: github, Pusher: git}).Apply(context.Background(), plan, spec, true)
+	var stopped *Stopped
+	if err == nil || errors.As(err, &stopped) {
+		t.Fatalf("Apply() error = %v, want an ordinary failure", err)
+	}
 }
 
 func TestApplyLinkFailureFollowsSuccessfulCreation(t *testing.T) {
@@ -92,6 +116,10 @@ func TestApplyLinkFailureFollowsSuccessfulCreation(t *testing.T) {
 	}
 	if git.pushes != 1 || len(github.created) != 3 || github.links != 1 {
 		t.Errorf("pushes=%d creates=%d links=%d", git.pushes, len(github.created), github.links)
+	}
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || len(stopped.Opened) != 3 {
+		t.Errorf("Apply() error = %#v, want a stop naming all three opened", err)
 	}
 }
 

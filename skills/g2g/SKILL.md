@@ -151,7 +151,7 @@ description: |
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `pull` stopping mid-replay, `pull --prune`
   whose prune refused after the pull, `land` stopping after something merged
-  or was tidied, `github comment` stopping after writing some comments, `github retarget` stopping after moving some bases, `create -m` whose commit failed after the record, and
+  or was tidied, `github comment` stopping after writing some comments, `github retarget` stopping after moving some bases, `submit` failing after its push or after opening a pull request, `create -m` whose commit failed after the record, and
   a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.

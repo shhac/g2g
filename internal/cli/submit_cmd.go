@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -199,8 +200,17 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		},
 		// The pull requests exist, and are linked if asked, whatever happens
 		// to their comments, so a failure there is not the submission failing.
+		// A failure after the push, or after a pull request opened, leaves
+		// those standing, so it is not "not applied" either.
 		interrupted: func(_ context.Context, _ submit.Plan, err error) (bool, error) {
-			return commentsNotKept(cmd, err, p)
+			if handled, report := commentsNotKept(cmd, err, p); handled {
+				return true, report
+			}
+			var stopped *submit.Stopped
+			if !errors.As(err, &stopped) {
+				return false, nil
+			}
+			return true, stoppedMidSubmit(cmd, stopped, o.remote, retry, p)
 		},
 		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },
 		wrapMutationError: func(err error) error {
@@ -234,4 +244,23 @@ func submitBlocked(plan submit.Plan) string {
 		return "submit cannot publish: " + plan.Push.Blocked
 	}
 	return ""
+}
+
+// stoppedMidSubmit says what a submission published before it stopped. It
+// makes no call of its own: the mutation budget may be what ran out.
+func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry string, p Presentation) error {
+	done := ""
+	if stopped.Pushed {
+		done = "Published the stack to " + remote + ". "
+	}
+	if len(stopped.Opened) != 0 {
+		done += "Opened " + pick(len(stopped.Opened), "a pull request", "pull requests") + " for " + branchList(stopped.Opened) + ". "
+	}
+	// A stop part-way prints nothing on stderr, so this is the only place
+	// what gh said can be shown.
+	writeDiagnostic(cmd.ErrOrStderr(), stopped)
+	return writeStoppedPartWay(cmd.OutOrStdout(), p,
+		"Stopped part-way: "+stopped.Err.Error(),
+		done+"That stands. Rerun "+runnable(retry)+" to finish; it keeps the pull requests that exist and opens only the missing ones.",
+		stopped)
 }

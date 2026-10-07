@@ -152,10 +152,10 @@ func TestSuggestedNextStepOnlyFollowsASuccessfulHumanApply(t *testing.T) {
 				},
 				execute: func(context.Context, interruptedPlan) error { return nil },
 				blocked: func(interruptedPlan) string { return test.blocked },
+				suggest: always[interruptedPlan]("g2g github status"),
 				notices: flowNotices{
-					applied:       "Applied.",
-					changed:       "Changed.",
-					suggestedNext: "g2g github status",
+					applied: "Applied.",
+					changed: "Changed.",
 				},
 			}
 			err := flow.run(cmd, context.Background(), newBudgets(cmd), test.p, true)

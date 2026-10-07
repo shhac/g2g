@@ -71,9 +71,13 @@ type applyFlow[P any] struct {
 	// mutation would act on a structure that is currently untrue.
 	guard func(context.Context) error
 
-	// suggest names the next step from the plan that was applied, for a
-	// command whose continuation depends on what it did. It replaces
-	// notices.suggestedNext, and an empty answer suggests nothing.
+	// suggest is an optional, success-only continuation for a human who has
+	// just completed a clear operation, named from the plan that was applied;
+	// an empty answer, or none, suggests nothing. It is deliberately separate
+	// from recovery advice: it never repairs a blocked state and does not
+	// imply that it must be followed. It reads the plan alone, so a fact it
+	// needs is gathered while revalidating and carried on the plan, from
+	// local state and never the network, as prune's is.
 	suggest func(P) string
 
 	notices flowNotices
@@ -92,11 +96,6 @@ type flowNotices struct {
 	// recovery tells the reader what may already have happened if the mutation
 	// phase runs out of time.
 	recovery string
-	// suggestedNext is an optional, success-only continuation for a human who
-	// has just completed a clear operation. It is deliberately separate from
-	// recovery advice: it never repairs a blocked state, does not imply that it
-	// must be followed, and is omitted when the command cannot know one safely.
-	suggestedNext string
 }
 
 // planOutcome is the complete pre-mutation decision. Keeping the three cases
@@ -194,17 +193,21 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	if err := prose(cmd.OutOrStdout(), p, p.subdued(f.notices.changed)); err != nil {
 		return err
 	}
-	next := f.notices.suggestedNext
-	if f.suggest != nil {
-		next = f.suggest(validated)
+	if f.suggest == nil {
+		return nil
 	}
-	return writeSuggestedNextStep(cmd.OutOrStdout(), p, next)
+	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.suggest(validated))
+}
+
+// always suggests the same command whatever was applied, for a command whose
+// continuation does not depend on what it did.
+func always[P any](command string) func(P) string {
+	return func(P) string { return command }
 }
 
 // writeSuggestedNextStep offers one likely continuation after a completed,
-// unambiguous mutation. It is presentation-only: commands never run it or
-// gather more facts to make it, and machine formats remain their exact
-// plan/state documents.
+// unambiguous mutation. It is presentation-only: commands never run it, and
+// machine formats remain their exact plan/state documents.
 func writeSuggestedNextStep(writer io.Writer, p Presentation, command string) error {
 	if command == "" || p.machine() {
 		return nil

@@ -126,14 +126,14 @@ func newRename(service reshape.Service, branches graph.Service, guard func(conte
 			branches:    func(plan reshape.RenamePlan) int { return 1 + len(plan.Children) },
 			blocked:     func(plan reshape.RenamePlan) string { return plan.Blocked },
 			interrupted: reshapeInterrupted(cmd.OutOrStdout(), presentation),
+			// Not aimed at the selection: it names the branch by the name it
+			// no longer has.
+			suggest: always[reshape.RenamePlan]("g2g status"),
 			notices: flowNotices{
 				preview:  "Rerun with --apply to rename it.",
 				applied:  "Renamed.",
 				changed:  "The branch and every record of it carry the new name.",
 				recovery: "The branch may already be renamed · run g2g status to see what is recorded.",
-				// Not aimed at the selection: it names the branch by the name it
-				// no longer has.
-				suggestedNext: "g2g status",
 			},
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)

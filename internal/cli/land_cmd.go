@@ -124,15 +124,15 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		interrupted: func(_ context.Context, err error) (bool, error) {
 			return landInterrupted(cmd, err, presentation)
 		},
+		// Not aimed at the selection: what it selected has merged and its
+		// branches are gone.
+		suggest: always[land.Plan]("g2g github status"),
 		notices: flowNotices{
 			preview:  "Rerun with --apply to land this stack.",
 			noOp:     "Every branch here has already landed. Nothing to do.",
 			applied:  "Landed.",
 			changed:  "Pull requests were merged and branches removed.",
 			recovery: "Some branches may already have merged · run g2g github status to see which.",
-			// Not aimed at the selection: what it selected has merged and
-			// its branches are gone.
-			suggestedNext: "g2g github status",
 		},
 	}
 }

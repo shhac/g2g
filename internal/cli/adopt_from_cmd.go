@@ -47,13 +47,13 @@ func newGraphiteAdopt(service align.Service, guard func(context.Context) error, 
 		flow.plan = service.PlanAdopt
 		flow.revalidate = service.RevalidateAdopt
 		flow.notices = flowNotices{
-			preview:       "Rerun with --apply to adopt them.",
-			noOp:          "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
-			applied:       "Adopted.",
-			changed:       "Graphite still tracks these branches; g2g is what answers for them now.",
-			recovery:      "The graph store may or may not have been written · rerun g2g graphite adopt to see what is left.",
-			suggestedNext: "g2g status",
+			preview:  "Rerun with --apply to adopt them.",
+			noOp:     "Graphite declares nothing the g2g graph does not already record. Nothing to do.",
+			applied:  "Adopted.",
+			changed:  "Graphite still tracks these branches; g2g is what answers for them now.",
+			recovery: "The graph store may or may not have been written · rerun g2g graphite adopt to see what is left.",
 		}
+		flow.suggest = always[align.AdoptPlan]("g2g status")
 		return flow.run(cmd, commandContext(cmd.Context(), cmd, applyMode(apply), "", ""), newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "record the adoptions instead of previewing them")
@@ -89,13 +89,13 @@ func newGitHubAdopt(service align.Service, completions stack.Completions, guard 
 			return service.RevalidateAdoptFromGitHub(ctx, read, preview)
 		}
 		flow.notices = flowNotices{
-			preview:       "Rerun with --apply to adopt them.",
-			noOp:          "The pull requests declare nothing the g2g graph does not already record. Nothing to do.",
-			applied:       "Adopted.",
-			changed:       "The pull requests are unchanged; g2g is what answers for these branches now.",
-			recovery:      "The graph store may or may not have been written · rerun g2g github adopt to see what is left.",
-			suggestedNext: "g2g status",
+			preview:  "Rerun with --apply to adopt them.",
+			noOp:     "The pull requests declare nothing the g2g graph does not already record. Nothing to do.",
+			applied:  "Adopted.",
+			changed:  "The pull requests are unchanged; g2g is what answers for these branches now.",
+			recovery: "The graph store may or may not have been written · rerun g2g github adopt to see what is left.",
 		}
+		flow.suggest = always[align.AdoptPlan]("g2g status")
 		return flow.run(cmd, commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, ""), newBudgets(cmd), presentation, apply)
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "record the adoptions instead of previewing them")

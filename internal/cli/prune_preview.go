@@ -47,7 +47,21 @@ func pruneView(plan prune.Plan) stackView {
 	if len(plan.Delete) != 0 {
 		return view.note("Deletes local branches "+branchList(plan.Deleted())+". Remote branches are untouched.", severityWarn)
 	}
-	return view.note("No branch is deleted.", severityNeutral)
+	return view.note(keptBranches(plan), severityNeutral)
+}
+
+// keptBranches says that the forgotten branches stay, and how to remove them
+// as well. It has to be said before they are forgotten: prune deletes only
+// branches it records, so once one is forgotten g2g can no longer remove it.
+func keptBranches(plan prune.Plan) string {
+	if len(plan.Landed) == 0 {
+		return "No branch is deleted."
+	}
+	command := selectedIn(plan.Discovery).next(pruneCommand) + " --delete-branches"
+	if plan.Options.ForgetMissing {
+		command += " --forget-missing"
+	}
+	return "No branch is deleted · run " + runnable(command) + " to remove " + pick(len(plan.Landed), "it", "them") + " too, which g2g cannot do once " + pick(len(plan.Landed), "it is", "they are") + " forgotten."
 }
 
 // forgetState says why a branch is forgotten in the words status uses for it. A

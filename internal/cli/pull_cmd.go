@@ -136,7 +136,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 	if thenPrune {
 		// What has landed is only known once the base has moved, so a
 		// preview cannot show the prune it would do; it says it will do one.
-		notices.preview = "Rerun with --apply to bring the stack up to date and then forget what has landed."
+		notices.preview = "Rerun with --apply to bring the stack up to date and then forget what has landed · add --delete-branches to remove their local branches too."
 		suggest = nil
 	}
 	return applyFlow[syncer.Plan]{

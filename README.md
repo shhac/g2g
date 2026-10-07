@@ -733,13 +733,20 @@ deletes no branch. `--delete-branches` also deletes the listed local branches;
 `--forget-missing` also forgets selected records whose local branches are gone.
 These are independent choices, and the preview lists record removal and local
 deletion separately. Add `--apply` after reviewing it. Remote branches are
-untouched, and branches already forgotten from the graph are outside its scope.
+untouched, and branches already forgotten from the graph are outside its scope,
+which is why a preview that forgets landed branches without deleting them names
+the `--delete-branches` run that would remove them too.
 
 Deletion uses Git's content assessment, never a cached PR verdict. It refuses
 branches checked out in this or another worktree, rechecks the assessed heads
 and bases before applying, and deletes each ref only at its assessed tip. Work
 added after a merge stays. A failure after deletion reports what changed, exits
 `3`, and offers a scoped retry with `--forget-missing` for any stale records.
+
+A child whose parent prune forgets is asked whether it landed where that
+parent did, over the whole range above the branch it would be left on. A parent
+and child squash-merged together are forgotten together, rather than the child
+being kept for having work its parent branch lacks.
 
 Forgetting a branch can leave a child recorded under something that is no
 longer there. Where Git shows the branch below is an ancestor of that child —

@@ -136,3 +136,48 @@ func TestRememberedPRsAreDrawnOnATrunkOnlyWhenItLandsSomewhere(t *testing.T) {
 		})
 	}
 }
+
+// prune deletes only branches it records, so a graph-only preview has to name
+// --delete-branches before the branches are forgotten: afterwards g2g can no
+// longer remove them, which is how a whole landed stack was left behind as
+// local branches nothing would clean up.
+func TestAGraphOnlyPruneNamesDeletionBeforeItForgets(t *testing.T) {
+	d := graph.Discovery{Graph: graphFixture(), Target: "synthetic-auth", TargetSource: shape.TargetNamed, Scope: graph.ScopeStack, Branches: []string{"synthetic-main", "synthetic-auth"}}
+	for _, test := range []struct {
+		name    string
+		plan    prune.Plan
+		want    string
+		without string
+	}{
+		{
+			name: "landed branches kept",
+			plan: prune.Plan{Discovery: d, Landed: []string{"synthetic-auth"}},
+			want: "No branch is deleted · run g2g prune --branch synthetic-auth --delete-branches to remove it too, which g2g cannot do once it is forgotten.",
+		},
+		{
+			name: "missing records forgotten too",
+			plan: prune.Plan{Discovery: d, Landed: []string{"synthetic-auth"}, Options: prune.Options{ForgetMissing: true}},
+			want: "--delete-branches --forget-missing to remove it too",
+		},
+		{
+			name:    "only missing records",
+			plan:    prune.Plan{Discovery: d, ForgottenMissing: []string{"synthetic-login"}, Options: prune.Options{ForgetMissing: true}},
+			want:    "No branch is deleted.",
+			without: "--delete-branches",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var notes []string
+			for _, note := range pruneView(test.plan).Notes {
+				notes = append(notes, plainCommands(note.Text))
+			}
+			text := strings.Join(notes, "\n")
+			if !strings.Contains(text, test.want) {
+				t.Errorf("notes do not say %q:\n%s", test.want, text)
+			}
+			if test.without != "" && strings.Contains(text, test.without) {
+				t.Errorf("notes say %q:\n%s", test.without, text)
+			}
+		})
+	}
+}

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -208,11 +207,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			if handled, report := commentsNotKept(cmd, err, p); handled {
 				return true, report
 			}
-			var stopped *submit.Stopped
-			if !errors.As(err, &stopped) {
-				return false, nil
-			}
-			return true, stoppedMidSubmit(cmd, stopped, o.remote, retry, p)
+			return claim(err, func(stopped *submit.Stopped) error { return stoppedMidSubmit(cmd, stopped, o.remote, retry, p) })
 		},
 		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },
 		wrapMutationError: func(err error) error {

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 
 	"github.com/spf13/cobra"
 
@@ -35,12 +34,10 @@ func keepComments(ctx context.Context, service comment.Service, keep bool, selec
 // could not be kept, and marks it as stopped part-way: the work is not coming
 // back, and the comments still need keeping.
 func commentsNotKept(cmd *cobra.Command, err error, p Presentation) (bool, error) {
-	var notKept *comment.NotKept
-	if !errors.As(err, &notKept) {
-		return false, nil
-	}
-	if reportErr := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); reportErr != nil {
-		return true, reportErr
-	}
-	return true, writeWhatStands(cmd, p, "Everything else stands. Run "+runnable("g2g github comment --apply")+" to keep them.", notKept)
+	return claim(err, func(notKept *comment.NotKept) error {
+		if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); err != nil {
+			return err
+		}
+		return writeWhatStands(cmd, p, "Everything else stands. Run "+runnable("g2g github comment --apply")+" to keep them.", notKept)
+	})
 }

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 
 	"github.com/spf13/cobra"
 
@@ -45,11 +44,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			// what was asked, and the branch and its record stay. Reporting that
 			// as "not applied" would be wrong about both.
 			interrupted: func(_ context.Context, _ create.Plan, err error) (bool, error) {
-				var partial *create.Partial
-				if !errors.As(err, &partial) {
-					return false, nil
-				}
-				return true, stoppedMidCreate(cmd, partial, presentation)
+				return claim(err, func(partial *create.Partial) error { return stoppedMidCreate(cmd, partial, presentation) })
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to create it.",

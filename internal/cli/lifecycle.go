@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -248,6 +249,18 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 		return nil
 	}
 	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.suggest(validated))
+}
+
+// claim answers an interrupted hook for one kind of stop: whether err is one,
+// and, when it is, the outcome of writing its report. Each hook used to spell
+// out both halves, and the two answers are exactly what a hook once collapsed
+// into one, printing "Not applied" under its own report.
+func claim[E error](err error, report func(E) error) (bool, error) {
+	var stopped E
+	if !errors.As(err, &stopped) {
+		return false, nil
+	}
+	return true, report(stopped)
 }
 
 // always suggests the same command whatever was applied, for a command whose

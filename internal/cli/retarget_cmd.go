@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
@@ -46,12 +45,8 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 			// Bases already moved stay moved, so a run that fails on the
 			// second is not "not applied".
 			interrupted: func(_ context.Context, plan retarget.Plan, err error) (bool, error) {
-				var stopped *retarget.Stopped
-				if !errors.As(err, &stopped) {
-					return false, nil
-				}
 				retry := selectedFrom(plan.Snapshot).aimedOr(retargetCommand) + " --apply"
-				return true, stoppedMidRetarget(cmd, stopped, retry, presentation)
+				return claim(err, func(stopped *retarget.Stopped) error { return stoppedMidRetarget(cmd, stopped, retry, presentation) })
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to move these bases.",

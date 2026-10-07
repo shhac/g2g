@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"io"
 	"slices"
 
@@ -82,11 +81,9 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		blocked: prunePlan.Blocked,
 		suggest: pruneNext,
 		interrupted: func(_ context.Context, _ prunePlan, cause error) (bool, error) {
-			var stopped *prune.Stopped
-			if !errors.As(cause, &stopped) {
-				return false, nil
-			}
-			return true, writeStoppedPartWay(cmd, p, "Cleanup stopped part-way: "+stopped.Err.Error(), stopped.WhatStands()+" Preview "+runnable(stopped.Retry)+" to see what remains.", stopped)
+			return claim(cause, func(stopped *prune.Stopped) error {
+				return writeStoppedPartWay(cmd, p, "Cleanup stopped part-way: "+stopped.Err.Error(), stopped.WhatStands()+" Preview "+runnable(stopped.Retry)+" to see what remains.", stopped)
+			})
 		},
 		notices: notices,
 	}

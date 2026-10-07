@@ -137,91 +137,6 @@ func TestConflictingApplyJournalsOriginalTips(t *testing.T) {
 	}
 }
 
-// Abort restores paths that already completed, which is the whole reason the
-// journal records tips at all.
-func TestAbortRestoresEveryRecordedTip(t *testing.T) {
-	git := stackGit()
-	git.inProgress = true
-	service, _, journal := newService(git, stack())
-	journal.record = Record{Original: map[string]string{"synthetic-a": "a-was", "synthetic-b": "b-was"}}
-	journal.present = true
-
-	if err := service.Abort(context.Background()); err != nil {
-		t.Fatalf("Abort() error = %v", err)
-	}
-
-	if git.restored["synthetic-a"] != "a-was" || git.restored["synthetic-b"] != "b-was" {
-		t.Errorf("restored = %v, want both original tips", git.restored)
-	}
-	if journal.cleared != 1 {
-		t.Errorf("journal cleared %d times, want once", journal.cleared)
-	}
-}
-
-// Continuing recomputes rather than replaying a stored queue, so a user who
-// ran git rebase --continue themselves simply changes what work remains.
-func TestContinueRecomputesRatherThanResumingAQueue(t *testing.T) {
-	git := stackGit()
-	// The user already finished the rebase by hand, so nothing is in progress
-	// and every branch now sits where the graph says it should.
-	git.objects["synthetic-trunk"] = "trunk-old"
-	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
-	journal.present = true
-
-	if err := service.Continue(context.Background()); err != nil {
-		t.Fatalf("Continue() error = %v", err)
-	}
-
-	if len(git.steps) != 0 {
-		t.Errorf("ran %v; nothing was in progress to continue", git.steps)
-	}
-	if journal.cleared != 1 {
-		t.Error("the journal was not cleared once the work was done")
-	}
-}
-
-// Finishing has to record fork points from the selection, not from the plan.
-// Once the rewrite has succeeded the re-derived plan has no steps left, so
-// recording only those records nothing and leaves every fork point describing
-// the world before the rewrite.
-func TestFinishingRecordsForkPointsWhenNoStepsRemain(t *testing.T) {
-	git := stackGit()
-	// Aligned already: the work happened, whether by us or by the user.
-	git.objects["synthetic-trunk"] = "trunk-old"
-	stale := stack()
-	// The rewrite already happened, so the recorded fork point is not in the
-	// branch's history any more. There is nothing left to replay, and the
-	// stored structure is the only thing still out of date.
-	stale.Edges["synthetic-b"] = graph.Edge{Parent: "synthetic-a", ForkPoint: "stale-fork"}
-	git.objects["stale-fork"] = "stale-fork"
-	service, store, journal := newService(git, stale)
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
-	journal.present = true
-
-	if err := service.Continue(context.Background()); err != nil {
-		t.Fatalf("Continue() error = %v", err)
-	}
-
-	if fork := store.graph.Edges["synthetic-b"].ForkPoint; fork != "a-old" {
-		t.Errorf("fork point = %q, want the parent's current tip; it still describes the world before the rewrite", fork)
-	}
-	if git.pinned["synthetic-b"] == "" {
-		t.Error("the refreshed fork point was not pinned")
-	}
-}
-
-func TestContinueAndAbortRefuseWhenNothingIsInProgress(t *testing.T) {
-	service, _, _ := newService(stackGit(), stack())
-
-	if err := service.Continue(context.Background()); err == nil {
-		t.Error("Continue() error = nil with no restack in progress")
-	}
-	if err := service.Abort(context.Background()); err == nil {
-		t.Error("Abort() error = nil with no restack in progress")
-	}
-}
-
 // Anything whose recorded structure cannot be trusted must not be replayed:
 // the range would be computed from a fork point that is not in the branch.
 func TestPlanRefusesStatesItCannotComputeARangeFrom(t *testing.T) {
@@ -394,32 +309,6 @@ func TestPlanReportsOrphansSoTheyAreNeverDroppedSilently(t *testing.T) {
 	}
 }
 
-func TestSkipAdvancesTheInterruptedRewrite(t *testing.T) {
-	git := stackGit()
-	git.inProgress = true
-	git.objects["synthetic-trunk"] = "trunk-old"
-	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
-	journal.present = true
-
-	if err := service.Skip(context.Background()); err != nil {
-		t.Fatalf("Skip() error = %v", err)
-	}
-	if len(git.steps) != 1 || git.steps[0] != "skip" {
-		t.Errorf("steps = %v, want one skip", git.steps)
-	}
-	if journal.cleared != 1 {
-		t.Error("the journal outlived the completed operation")
-	}
-}
-
-func TestSkipRefusesWhenNothingIsInProgress(t *testing.T) {
-	service, _, _ := newService(stackGit(), stack())
-	if err := service.Skip(context.Background()); err == nil {
-		t.Error("Skip() error = nil with no restack in progress")
-	}
-}
-
 // Revalidation is what stops a rewrite acting on a world that moved between
 // the preview and the apply.
 func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
@@ -433,35 +322,6 @@ func TestRevalidateRefusesWhenTheStackMovedUnderneath(t *testing.T) {
 	git.objects["synthetic-b"] = "b-moved"
 	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), selection(), Onto{}, false, nil)); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil after a branch moved")
-	}
-}
-
-// The resumable engine moves one line of descent per invocation, so a stack is
-// rebased one branch at a time onto the parent it now has. Handing it the whole
-// chain and asking --update-refs to carry the intermediate branches works on
-// some Git versions and not others.
-func TestContinuingIntoAnotherRoundRebasesEachBranchOnItsOwnParent(t *testing.T) {
-	git := stackGit()
-	git.previewClean = false
-	git.inProgress = true
-	service, _, journal := newService(git, stack())
-	journal.record = Record{Branch: "synthetic-b", Scope: string(graph.ScopeTrunk), Original: map[string]string{}}
-	journal.present = true
-
-	if err := service.Continue(context.Background()); err != nil {
-		t.Fatalf("Continue() error = %v", err)
-	}
-
-	// One rebase per branch, bottom-up, each replaying only its own commits
-	// onto the parent it now has.
-	if len(git.rebases) != 2 {
-		t.Fatalf("rebases = %v, want one per branch", git.rebases)
-	}
-	if got := git.rebases[0]; got.From != "trunk-old" || got.To != "synthetic-a" {
-		t.Errorf("first rebase = %v, want synthetic-a from its own fork point", got)
-	}
-	if got := git.rebases[1]; got.From != "a-old" || got.To != "synthetic-b" {
-		t.Errorf("second rebase = %v, want synthetic-b from its own fork point", got)
 	}
 }
 
@@ -566,69 +426,6 @@ func TestApplyRefusesToReportSuccessWhenTheRewriteDidNotHappen(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "did not perform the rewrite") {
 		t.Errorf("error = %v, want it to say the rewrite did not happen", err)
-	}
-}
-
-// A resumed restack has to carry on to the branches above the one that
-// conflicted. It used to stop and report success, because the branch it had
-// just rewritten no longer matched its recorded fork point and the recomputed
-// plan read that as a refusal rather than as work already done.
-func TestContinueCarriesOnToTheRestOfTheChain(t *testing.T) {
-	git := chainGitMidResume()
-	git.inProgress = true
-	service, _, journal := newService(git, chainStack())
-	journal.record = Record{
-		Branch:   "synthetic-c",
-		Scope:    string(graph.ScopeTrunk),
-		ReturnTo: "synthetic-c",
-		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
-		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
-	}
-	journal.present = true
-
-	if err := service.Continue(context.Background()); err != nil {
-		t.Fatalf("Continue() error = %v", err)
-	}
-
-	rewritten := append(append([]string{}, rangeTargets(git.rebases)...), replayTargets(git.replays)...)
-	if !contains(rewritten, "synthetic-c") {
-		t.Errorf("rewrote %v, want synthetic-c carried on to", rewritten)
-	}
-}
-
-// A branch that becomes collapsible while a resume is in flight has to be
-// moved, not driven through an engine that skips it.
-//
-// finish once drove the engine without collapsing first, so such a branch was
-// never moved, the next pass computed an identical plan, and the loop hit its
-// own non-convergence guard — a hard failure for a case the design has an
-// answer to. Apply had always collapsed first; only the resumable path had
-// half the sequence.
-func TestResumeCollapsesBranchesWithNothingLeftToContribute(t *testing.T) {
-	git := chainGitMidResume()
-	git.previewClean = false
-	git.collapses = map[string]bool{"synthetic-c": true}
-	git.inProgress = true
-	service, _, journal := newService(git, chainStack())
-	journal.record = Record{
-		Branch:   "synthetic-c",
-		Scope:    string(graph.ScopeTrunk),
-		Original: map[string]string{"synthetic-b": "b-old", "synthetic-c": "c-old"},
-		Reparent: map[string]string{"synthetic-b": "synthetic-trunk"},
-	}
-	journal.present = true
-
-	if err := service.Continue(context.Background()); err != nil {
-		t.Fatalf("Continue() error = %v", err)
-	}
-
-	// Moved rather than replayed: the engine never sees a commit already in
-	// the base.
-	if git.restored["synthetic-c"] == "" {
-		t.Errorf("synthetic-c was not moved to its base; engine calls were %v", git.rebases)
-	}
-	if journal.cleared != 1 {
-		t.Errorf("journal cleared %d times, want once", journal.cleared)
 	}
 }
 

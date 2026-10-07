@@ -140,34 +140,120 @@ func TestABranchThatStoppedBeingMergeableIsNotMerged(t *testing.T) {
 	}
 }
 
-// A merged branch prune will not forget stops the descent before its refs are
-// deleted. Carrying on deleted the branch and left the graph recording it.
+// A merged branch that cannot be forgotten stops the descent before its refs
+// are deleted. Carrying on deleted the branch and left the graph recording it.
+//
+// Each way of forgetting has its own refusal: prune for an ordinary stack, the
+// landed check against the fetched trunk when the trunk here is held by
+// another worktree and left behind, and untrack for a declared trunk.
 func TestAMergedBranchThatCannotBeForgottenKeepsItsRefs(t *testing.T) {
-	for name, pruner := range map[string]fakePruner{
-		"prune refuses":     {blocked: "synthetic refusal"},
-		"not landed by git": {nothing: true},
+	for name, test := range map[string]struct {
+		arrange   func(*testing.T) *world
+		selection stack.Selection
+		// recorded is whether the graph still names synthetic-one the way it
+		// did before the descent.
+		recorded func(graph.Graph) bool
+		// keepsTrunk is a descent that leaves the trunk here where it is.
+		keepsTrunk bool
+	}{
+		"prune refuses": {
+			arrange: func(t *testing.T) *world {
+				w := newWorld(t)
+				w.service.Pruner.(*fakePruner).blocked = "synthetic refusal"
+				return w
+			},
+			selection: stack.Selection{Scope: shape.ScopeStack},
+			recorded:  func(g graph.Graph) bool { return g.Tracked("synthetic-one") },
+		},
+		"not landed by git": {
+			arrange: func(t *testing.T) *world {
+				w := newWorld(t)
+				w.service.Pruner.(*fakePruner).nothing = true
+				return w
+			},
+			selection: stack.Selection{Scope: shape.ScopeStack},
+			recorded:  func(g graph.Graph) bool { return g.Tracked("synthetic-one") },
+		},
+		// The trunk is open elsewhere, so it is fetched rather than advanced,
+		// and git does not find the branch's work in what was fetched.
+		"not in the fetched trunk": {
+			arrange:    keptTrunkWorld,
+			selection:  stack.Selection{Branch: "synthetic-one", Scope: shape.ScopeStack},
+			recorded:   func(g graph.Graph) bool { return g.Tracked("synthetic-one") },
+			keepsTrunk: true,
+		},
+		"a declared trunk not landed by git": {
+			arrange: func(t *testing.T) *world {
+				w := declaredWorld(t, "rebase")
+				w.store.graph = w.store.graph.Untrack("synthetic-two")
+				w.service.Graph.Git = untrackingGit{w.git}
+				return w
+			},
+			selection: stack.Selection{Branch: "synthetic-one"},
+			recorded:  func(g graph.Graph) bool { return g.IsDeclared("synthetic-one") },
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			w := newWorld(t)
-			configured := w.service.Pruner.(*fakePruner)
-			configured.blocked, configured.nothing = pruner.blocked, pruner.nothing
-			plan := w.plan(t, Defaults())
+			w := test.arrange(t)
+			plan, err := w.service.Plan(context.Background(), test.selection, Defaults())
+			if err != nil || plan.Blocked != "" {
+				t.Fatalf("Plan() = %q, %v", plan.Blocked, err)
+			}
+			if plan.KeepTrunk != test.keepsTrunk {
+				t.Fatalf("KeepTrunk = %t, want %t", plan.KeepTrunk, test.keepsTrunk)
+			}
 
-			err := w.service.Apply(context.Background(), plan)
+			err = w.service.Apply(context.Background(), plan)
 			var stopped *Stopped
 			if !errors.As(err, &stopped) || !slices.Contains(stopped.Landed, "synthetic-one") {
 				t.Fatalf("Apply() error = %#v, want a stop naming synthetic-one as landed", err)
+			}
+			if !strings.Contains(stopped.Err.Error(), "synthetic-one merged") {
+				t.Errorf("stopped because %v, want the refusal to forget synthetic-one", stopped.Err)
 			}
 			for _, removed := range []string{"delete-local:synthetic-one", "delete-remote:synthetic-one"} {
 				if w.events.index(removed) >= 0 {
 					t.Errorf("%s happened for a branch the graph still records", removed)
 				}
 			}
-			if !w.store.graph.Tracked("synthetic-one") {
+			if detached := w.events.only("detach:"); len(detached) != 0 {
+				t.Errorf("moved the checkout off a branch that is being kept: %v", detached)
+			}
+			if !test.recorded(w.store.graph) {
 				t.Error("synthetic-one was forgotten")
 			}
 		})
 	}
+}
+
+// keptTrunkWorld lands synthetic-one alone while synthetic-main is open in
+// another worktree, standing on synthetic-one so that deleting it would first
+// move the checkout off it.
+func keptTrunkWorld(t *testing.T) *world {
+	t.Helper()
+	w := newWorld(t)
+	w.store.graph = w.store.graph.Untrack("synthetic-two")
+	snapshot := w.service.Selector.(fakeSelector).snapshot
+	snapshot.Target = "synthetic-one"
+	snapshot.Branches = []string{"synthetic-one"}
+	snapshot.Ancestry = []string{"synthetic-main", "synthetic-one"}
+	w.service.Selector = fakeSelector{snapshot: snapshot}
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	w.service.Graph.Git = untrackingGit{w.git}
+	w.git.current = "synthetic-one"
+	return w
+}
+
+// untrackingGit lets the graph service untrack for real. Without it the
+// untrack after a missing refusal fails on its own, and the descent stops
+// before deleting anything for a reason that has nothing to do with the
+// refusal under test.
+type untrackingGit struct{ *fakeGit }
+
+func (untrackingGit) AncestorBranches(context.Context, string) ([]string, error) { return nil, nil }
+
+func (untrackingGit) Divergence(context.Context, string, string) (int, int, error) {
+	return 0, 0, nil
 }
 
 // A push the lease refuses before anything merged changed nothing, so it is an

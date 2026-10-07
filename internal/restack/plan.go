@@ -105,7 +105,7 @@ func (s Service) blockedReason(discovery graph.Discovery) repair.Note {
 			// nothing to retrack -- no branch to record a parent for -- so the
 			// way out is to forget the edge.
 			return repair.Note{
-				Reason: fmt.Sprintf("%s is recorded but is no longer a local branch", branch),
+				Reason: noLongerLocal([]string{branch}),
 				Ways: []repair.Step{{
 					Command: "g2g untrack --branch " + repair.Quote(branch),
 					Effect:  "forget the edge it left behind",
@@ -126,6 +126,15 @@ func (s Service) blockedReason(discovery graph.Discovery) repair.Note {
 		}
 	}
 	return repair.Note{}
+}
+
+// noLongerLocal is why branches the graph records cannot be restacked: they
+// were deleted or renamed with plain Git.
+func noLongerLocal(branches []string) string {
+	if len(branches) == 1 {
+		return branches[0] + " is recorded but is no longer a local branch"
+	}
+	return strings.Join(branches, ", ") + " are recorded but are no longer local branches"
 }
 
 // selectionRoots names the branches the selection records an edge for whose

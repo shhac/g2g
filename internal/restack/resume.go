@@ -182,16 +182,9 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 // exists; abort puts every recorded tip back, the deleted branch's included.
 func deletedMidway(missing []string) repair.Note {
 	return repair.Note{
-		Reason: deletedReason(missing),
+		Reason: noLongerLocal(missing),
 		Ways:   []repair.Step{{Command: "g2g restack --abort", Effect: "put every branch back where the restack found it, deleted ones included"}},
 	}
-}
-
-func deletedReason(missing []string) string {
-	if len(missing) == 1 {
-		return missing[0] + " is recorded but is no longer a local branch"
-	}
-	return strings.Join(missing, ", ") + " are recorded but are no longer local branches"
 }
 
 // Abort restores every branch to the tip it had when the operation began,

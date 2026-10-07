@@ -58,7 +58,6 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 }
 
 type submitOptions struct {
-	budgets budgets
 	// comments keeps the stack comment on each pull request once the stack
 	// is published, unless noComment.
 	comments  comment.Service
@@ -69,7 +68,6 @@ type submitOptions struct {
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
 	guard      func(context.Context) error
-	root       context.Context
 	selection  stackOptions
 	remote     string
 	specPath   string
@@ -102,9 +100,9 @@ func (o submitOptions) validate() error {
 func (o submitOptions) keepsComments() bool { return !o.noComment && o.comments.Ready() }
 
 func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presentation Presentation) error {
-	o.budgets = newBudgets(cmd)
-	o.root = commandContext(cmd.Context(), cmd, applyMode(o.apply), o.selection.branch, o.selection.trunk)
-	ctx, cancel := o.budgets.discovery(o.root)
+	budgets := newBudgets(cmd)
+	root := commandContext(cmd.Context(), cmd, applyMode(o.apply), o.selection.branch, o.selection.trunk)
+	ctx, cancel := budgets.discovery(root)
 	defer cancel()
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 	if err != nil {
@@ -117,41 +115,55 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	if o.writeSpec != "" {
 		return o.writeDraft(cmd, plan, chosenTemplate, resolveDraft(submit.DefaultDraft, o.ready, o.noReady), presentation)
 	}
-	// --edit creates the document this command then reads. Returning the path
-	// rather than assigning o.specPath as a side effect keeps the dispatch
-	// below readable from here: previously the variable it switches on was set
-	// inside a method several calls away.
+	// --edit creates the document this command then reads, and from here on
+	// it is read exactly as a --spec given on the command line would be.
 	if o.edit {
-		o.specPath, err = o.editedSpec(ctx, cmd, plan, chosenTemplate)
-		if err != nil {
+		if o.specPath, err = o.editedSpec(ctx, cmd, plan, chosenTemplate); err != nil {
 			return err
 		}
 	}
-	if o.specPath == "" {
-		if spec, existingOnly := plan.ExistingSpec(); existingOnly {
-			invitation := "Rerun with --apply to publish commits to the existing PRs."
-			return o.flow(cmd, service, plan, spec, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, o.apply)
-		}
-		if o.apply {
-			if plan.Blocked() != "" {
-				return o.flow(cmd, service, plan, submit.Spec{Draft: submit.DefaultDraft}, presentation, templateName, "").run(cmd, o.root, o.budgets, presentation, true)
-			}
-			return fmt.Errorf("missing PRs require a submission spec · create one with %s, fill in the titles, then validate and apply with --spec", o.retryCommand("--write-spec", "<private-temp-dir>"))
-		}
-		// No spec has been read yet, so the choice is whatever the flags say
-		// over the default a fresh spec would carry. There is nothing to apply
-		// without one, so this is a preview whatever was asked.
-		draft := resolveDraft(submit.DefaultDraft, o.ready, o.noReady)
-		invitation := "Create a spec with: " + runnable(o.retryCommand("--write-spec", "<private-temp-dir>")+readyFlag(draft))
-		return o.flow(cmd, service, plan, submit.Spec{Draft: draft}, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, false)
-	}
-	spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
+	chosen, err := o.submission(plan)
 	if err != nil {
-		return o.actionableSpecError(err, o.specPath)
+		return err
 	}
-	spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
-	invitation := "Rerun with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs."
-	return o.flow(cmd, service, plan, spec, presentation, templateName, invitation).run(cmd, o.root, o.budgets, presentation, o.apply)
+	return o.flow(cmd, service, plan, chosen.spec, presentation, templateName, chosen.invitation).run(cmd, root, budgets, presentation, chosen.apply)
+}
+
+// submission is what a run previews or applies: the spec, the line closing a
+// preview that could apply, and whether this is an apply.
+type submission struct {
+	spec       submit.Spec
+	invitation string
+	apply      bool
+}
+
+// submission decides what to submit. A spec is read when there is one. With
+// none, pull requests that all exist need no spec, a blocked apply is let
+// through to say why it refuses, an apply that would create pull requests
+// fails naming the command that writes a spec, and anything else is a preview
+// whatever was asked, because there is nothing to apply.
+func (o submitOptions) submission(plan submit.Plan) (submission, error) {
+	if o.specPath != "" {
+		spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
+		if err != nil {
+			return submission{}, o.actionableSpecError(err, o.specPath)
+		}
+		spec.Draft = resolveDraft(spec.Draft, o.ready, o.noReady)
+		return submission{spec, "Rerun with --apply" + readyFlag(spec.Draft) + linkFlag(o.link) + " to push and create missing PRs.", o.apply}, nil
+	}
+	if spec, existingOnly := plan.ExistingSpec(); existingOnly {
+		return submission{spec, "Rerun with --apply to publish commits to the existing PRs.", o.apply}, nil
+	}
+	if o.apply {
+		if plan.Blocked() != "" {
+			return submission{spec: submit.Spec{Draft: submit.DefaultDraft}, apply: true}, nil
+		}
+		return submission{}, fmt.Errorf("missing PRs require a submission spec · create one with %s, fill in the titles, then validate and apply with --spec", o.retryCommand("--write-spec", "<private-temp-dir>"))
+	}
+	// No spec has been read, so the choice is whatever the flags say over the
+	// default a fresh spec would carry.
+	draft := resolveDraft(submit.DefaultDraft, o.ready, o.noReady)
+	return submission{submit.Spec{Draft: draft}, "Create a spec with: " + runnable(o.retryCommand("--write-spec", "<private-temp-dir>")+readyFlag(draft)), false}, nil
 }
 
 // flow is submit's preview and apply. The spec is what a preview is of and

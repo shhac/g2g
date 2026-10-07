@@ -102,18 +102,6 @@ func (a advice) lines(heading string, p Presentation) []string {
 	return rendered
 }
 
-// commands lists what this advice tells the reader to run. It is what must not
-// differ from the sentence a machine reads: shape may, the command may not.
-func (a advice) commands() []string {
-	named := make([]string, 0, len(a.Ways))
-	for _, way := range a.Ways {
-		if way.Command != "" {
-			named = append(named, way.Command)
-		}
-	}
-	return named
-}
-
 // alignedWays lays the ways out in two columns: what to run, and what running
 // it achieves. The commands vary in length with a branch name, so the width is
 // computed rather than guessed, and the padding sits outside the mark so what

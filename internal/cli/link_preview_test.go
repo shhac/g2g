@@ -192,7 +192,7 @@ func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			plan := link.Plan{Discovery: stack.Discovery{Snapshot: stack.Snapshot{Source: test.source}}, Issues: test.issues}
 
-			named := repairAdvice(plan).commands()
+			named := adviceCommands(repairAdvice(plan))
 			if test.command == "" {
 				if len(named) != 0 {
 					t.Errorf("laid-out advice names %v, want nothing to run", named)
@@ -207,4 +207,17 @@ func TestBothAdviceFormsNameTheSameCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+// adviceCommands lists what laid-out advice tells the reader to run, which is
+// what must not differ from the sentence a machine reads: shape may, the
+// command may not.
+func adviceCommands(a advice) []string {
+	named := make([]string, 0, len(a.Ways))
+	for _, way := range a.Ways {
+		if way.Command != "" {
+			named = append(named, way.Command)
+		}
+	}
+	return named
 }

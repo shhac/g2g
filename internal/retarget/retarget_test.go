@@ -72,8 +72,12 @@ func TestPlanMovesABaseThatNoLongerMatchesTheStack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if got := strings.Join(plan.Retargeting(), ","); got != "synthetic-top" {
-		t.Fatalf("Retargeting() = %s, want only the branch whose base is wrong", got)
+	moved := make([]string, 0, len(plan.Changes))
+	for _, change := range plan.Changes {
+		moved = append(moved, change.Branch)
+	}
+	if got := strings.Join(moved, ","); got != "synthetic-top" {
+		t.Fatalf("moved %s, want only the branch whose base is wrong", got)
 	}
 	change := plan.Changes[0]
 	if change.From != "synthetic-trunk" || change.To != "synthetic-lower" || change.Number != 2 {

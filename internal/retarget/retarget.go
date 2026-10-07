@@ -58,17 +58,6 @@ type Plan struct {
 // NothingToRetarget reports a plan with no work.
 func (p Plan) NothingToRetarget() bool { return p.Blocked == "" && len(p.Changes) == 0 }
 
-// Retargeting names the branches whose base this plan would move. It is not
-// called Branches: Discovery already has that field, and it means the whole
-// resolved path rather than the part being changed.
-func (p Plan) Retargeting() []string {
-	names := make([]string, 0, len(p.Changes))
-	for _, change := range p.Changes {
-		names = append(names, change.Branch)
-	}
-	return names
-}
-
 // Equal compares everything that changes what the write does.
 func (p Plan) Equal(other Plan) bool {
 	if !p.Discovery.Equal(other.Discovery) || p.Blocked != other.Blocked || len(p.Changes) != len(other.Changes) {

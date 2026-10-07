@@ -90,8 +90,8 @@ type Options struct {
 	// Observations supplies remembered PR state without reaching GitHub.
 	Observations githubstack.ObservationReader
 
-	// Unstacker performs unlink's mutation. When nil it is taken from Link's
-	// GitHub client if that client provides it.
+	// Unstacker performs unlink's mutation. Without one, unlink refuses to
+	// apply rather than guessing it from another dependency.
 	Unstacker Unstacker
 	// GraphiteConfigured reports whether this repository already uses Graphite.
 	// It is one file check and never runs Graphite, which is what makes it safe
@@ -99,12 +99,6 @@ type Options struct {
 	GraphiteConfigured func(context.Context) (bool, error)
 	// Presentation overrides what Stdout would otherwise imply.
 	Presentation *Presentation
-}
-
-// New creates the canonical g2g root command. version is injected by main at
-// build time.
-func New(version string, stdout, stderr io.Writer) *cobra.Command {
-	return NewNamed(version, "g2g", stdout, stderr)
 }
 
 // NewNamed creates the root command for the executable name used to invoke it.
@@ -188,11 +182,6 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 func NewWithOptions(options Options) *cobra.Command {
 	if options.CommandName == "" {
 		options.CommandName = "g2g"
-	}
-	if options.Unstacker == nil {
-		if configured, ok := options.Link.GitHub.(Unstacker); ok {
-			options.Unstacker = configured
-		}
 	}
 	guard := restackGuard(options.Restack)
 	presentation := detectPresentation(options.Stdout)

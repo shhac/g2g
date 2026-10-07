@@ -15,6 +15,11 @@ import (
 // exported-but-unused-in-production constructors made the real wiring hard to
 // pick out.
 
+// New is the root command as the executable names it.
+func New(version string, stdout, stderr io.Writer) *cobra.Command {
+	return NewNamed(version, "g2g", stdout, stderr)
+}
+
 func NewWithService(version string, stdout, stderr io.Writer, service link.Service) *cobra.Command {
 	return NewWithOptions(Options{
 		Version: version, Stdout: stdout, Stderr: stderr, Link: service,

@@ -640,3 +640,34 @@ func TestRestackRefusesTwoResumeVerbsAtOnce(t *testing.T) {
 		t.Error("restack --continue --skip: error = nil")
 	}
 }
+
+// A rewrite over uncommitted work is refused before anything moves. The
+// replay moves refs and only then brings the checkout along, so local changes
+// to a file the rewrite touches would leave the branches rewritten and the
+// working tree unable to follow — changes nobody made. The clean check is the
+// one thing between the two, and no test asked for it.
+func TestRestackOverADirtyTreeChangesNothing(t *testing.T) {
+	restackRepo(t)
+	trackStack(t)
+	advanceTrunk(t, false)
+	before := map[string]string{"synthetic-a": gitOutput(t, "rev-parse", "synthetic-a"), "synthetic-b": gitOutput(t, "rev-parse", "synthetic-b")}
+	if err := os.WriteFile("shared.txt", []byte("base\na\nb\nsynthetic local edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
+	if err == nil || !strings.Contains(err.Error(), "working tree is not clean") {
+		t.Fatalf("restack --apply over a dirty tree: %v\n%s", err, stdout)
+	}
+	for branch, tip := range before {
+		if now := gitOutput(t, "rev-parse", branch); now != tip {
+			t.Errorf("%s moved from %s to %s", branch, tip, now)
+		}
+	}
+	if status := gitOutput(t, "status", "--porcelain"); status != "M shared.txt" {
+		t.Errorf("status = %q, want only the local edit", status)
+	}
+	if _, _, err := run(t, "restack", "--continue"); err == nil || !strings.Contains(err.Error(), "no restack is in progress") {
+		t.Errorf("restack --continue = %v, want nothing in progress", err)
+	}
+}

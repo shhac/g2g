@@ -9,11 +9,12 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
+	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
 )
 
-func newPull(service syncer.Service, pruner prune.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	options := pullOptions{}
 	cmd := &cobra.Command{
 		Use:     "pull",
@@ -32,10 +33,10 @@ func newPull(service syncer.Service, pruner prune.Service, guard func(context.Co
 		if !options.alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, options.apply)
 		}
-		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, options.selection.Selection(), guard, cmd, presentation, options.cleanup), presentation, options.apply)
+		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, published, options.remote, options.selection.Selection(), guard, cmd, presentation, options.cleanup), presentation, options.apply)
 	}
 
-	cmd.Flags().StringVar(&options.remote, "remote", "origin", "Git remote to read from, as git remote names it")
+	cmd.Flags().StringVar(&options.remote, "remote", defaultRemote, "Git remote to read from, as git remote names it")
 	// Offered only where the build can prune, rather than offered and refused.
 	if pruner.Ready() {
 		cmd.Flags().BoolVar(&options.alsoPrune, "prune", false, "then forget the branches whose work has landed, as g2g prune does")
@@ -178,7 +179,7 @@ func pullNext(plan syncer.Plan) string { return replayNext(plan.Restack) }
 
 // pullThenPrune runs the pull and, once it has happened, the prune over the
 // same selection. A preview is the pull's alone.
-func pullThenPrune(cmd *cobra.Command, ctx context.Context, pull applyFlow[syncer.Plan], forget applyFlow[prune.Plan], p Presentation, apply bool) error {
+func pullThenPrune(cmd *cobra.Command, ctx context.Context, pull applyFlow[syncer.Plan], forget applyFlow[prunePlan], p Presentation, apply bool) error {
 	if err := pull.run(cmd, ctx, newBudgets(cmd), p, apply); err != nil || !apply {
 		return err
 	}

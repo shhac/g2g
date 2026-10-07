@@ -381,3 +381,43 @@ func TestJourneyASuggestionNamesTheBranchItWasAskedAbout(t *testing.T) {
 	mustRun(t, append(strings.Fields(suggested)[1:], "--apply")...)
 	w.assertLanded(t)
 }
+
+// After a pull the branch left above a landed parent has been replayed and is
+// not on the remote as it is here. Forgetting the parent is the prune's job;
+// publishing the child is what follows, by the comparison status would make.
+func TestJourneyPruneAfterAPullSuggestsPublishingWhatItKept(t *testing.T) {
+	w := squashedParent(t)
+	mustRun(t, "pull", "--apply")
+
+	pruned := mustRun(t, "prune", "--apply")
+	if !strings.Contains(pruned, "Suggested next step: g2g push\n") {
+		t.Errorf("prune does not suggest publishing the replayed child:\n%s", pruned)
+	}
+	w.assertLanded(t)
+}
+
+// pull --prune ends on the prune, so the prune's suggestion is the one that
+// follows the whole command.
+func TestJourneyPullPruneSuggestsPublishingWhatItKept(t *testing.T) {
+	w := squashedParent(t)
+	pulled := mustRun(t, "pull", "--prune", "--apply")
+	if !strings.Contains(pulled, "Suggested next step: g2g push\n") {
+		t.Errorf("pull --prune does not suggest publishing the replayed child:\n%s", pulled)
+	}
+	w.assertLanded(t)
+}
+
+// With everything it kept already published there is nothing to push, and
+// status is where to look.
+func TestJourneyPruneWithNothingToPublishSuggestsStatus(t *testing.T) {
+	w := squashedParent(t)
+	mustRun(t, "pull", "--apply")
+	// Only the child: the landed parent is not something push publishes.
+	w.git(w.Local, "push", "-q", "--force", "origin", "synthetic-b")
+
+	pruned := mustRun(t, "prune", "--apply")
+	if !strings.Contains(pruned, "Suggested next step: g2g status\n") {
+		t.Errorf("prune does not fall back to status:\n%s", pruned)
+	}
+	w.assertLanded(t)
+}

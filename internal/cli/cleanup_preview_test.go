@@ -81,10 +81,10 @@ func TestCleanupReportsCompletedDeletionAndScopedRetryAsPartWay(t *testing.T) {
 		Deleted: []string{"synthetic-work"}, Err: errors.New("synthetic graph write failure"),
 		Retry: "g2g prune --branch synthetic-main --scope all --forget-missing --delete-branches",
 	}
-	flow := pruneFlow(prune.Service{}, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
-	flow.plan = func(context.Context) (prune.Plan, error) { return plan, nil }
-	flow.revalidate = func(context.Context, prune.Plan) (prune.Plan, error) { return plan, nil }
-	flow.execute = func(context.Context, prune.Plan) error { return stopped }
+	flow := pruneFlow(prune.Service{}, push.Known{}, defaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
+	flow.plan = func(context.Context) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
+	flow.revalidate = func(context.Context, prunePlan) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
+	flow.execute = func(context.Context, prunePlan) error { return stopped }
 	err := flow.run(cmd, context.Background(), newBudgets(cmd), Presentation{}, true)
 	if exitCode(err) != stoppedExitCode {
 		t.Fatalf("cleanup exit = %d, %v", exitCode(err), err)

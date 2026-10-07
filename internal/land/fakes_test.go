@@ -347,3 +347,18 @@ func instant(context.Context, time.Duration) error {
 }
 
 var attempts atomic.Int64
+
+type fakeHolds struct {
+	held  map[string]bool
+	asked []string
+}
+
+func (f *fakeHolds) HeldElsewhere(_ context.Context, branches []string) (repair.Note, error) {
+	f.asked = branches
+	for _, branch := range branches {
+		if f.held[branch] {
+			return repair.Note{Reason: "checked out in another worktree: " + branch}, nil
+		}
+	}
+	return repair.Note{}, nil
+}

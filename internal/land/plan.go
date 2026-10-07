@@ -40,8 +40,9 @@ type Plan struct {
 	// because discovering it at the second branch is discovering it after the
 	// first has already merged.
 	Protected []string
-	Blocked   string
-	Repair    repair.Note
+	// Repair is why an apply would refuse and the ways out, empty when it
+	// would proceed.
+	Repair repair.Note
 	// KeepTrunk leaves a trunk held by another worktree in place. This is
 	// possible only for one branch with nothing above it to replay.
 	KeepTrunk bool
@@ -90,7 +91,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Trunk == other.Trunk &&
 		p.Declaration == other.Declaration &&
 		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
-		p.Blocked == other.Blocked &&
+		p.Repair.Equal(other.Repair) &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above) &&
 		slices.Equal(p.Republish, other.Republish)
@@ -125,8 +126,8 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		options.Method = method
 		plan.Options = options
 	}
-	if sentence, note := s.blockedBefore(ctx, &plan, recorded); sentence != "" {
-		return plan.refusedAs(sentence, note), nil
+	if note := s.blockedBefore(ctx, &plan, recorded); note.Sentence() != "" {
+		return plan.refuse(note), nil
 	}
 
 	mergeability, err := s.GitHub.Mergeability(ctx, openNumbers(discovery))
@@ -157,7 +158,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 	diagnostic.Event(ctx, "land.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(discovery.Branches, ",")},
 		diagnostic.Field{Key: "landing", Value: fmt.Sprint(plan.Landing())},
-		diagnostic.Field{Key: "blocked", Value: plan.Blocked},
+		diagnostic.Field{Key: "blocked", Value: plan.Blocked()},
 	)
 	return plan, nil
 }
@@ -167,14 +168,14 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 // A refused descent keeps none of the steps decided before the refusal:
 // drawing a stack missing its upper branches, with a recipe covering some of
 // them, reads as the plan rather than as a fragment of one.
-func (p Plan) refuse(note repair.Note) Plan { return p.refusedAs(note.Sentence(), note) }
-
-// refusedAs is refuse for a refusal that reached the plan as a sentence,
-// possibly with no structure behind it; see blockedBefore.
-func (p Plan) refusedAs(sentence string, note repair.Note) Plan {
-	p.Blocked, p.Repair, p.Steps = sentence, note, nil
+func (p Plan) refuse(note repair.Note) Plan {
+	p.Repair, p.Steps = note, nil
 	return p
 }
+
+// Blocked is why an apply would refuse, as one sentence, empty when it would
+// proceed.
+func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // decideSteps decides every branch of the descent in order, or the reason the
 // whole descent is refused.

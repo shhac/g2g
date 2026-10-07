@@ -132,7 +132,7 @@ func TestPlanRefusesTheWholeDescentBeforeAnythingMerges(t *testing.T) {
 			arrange(w)
 
 			plan := w.plan(t, Defaults())
-			if plan.Blocked == "" {
+			if plan.Blocked() == "" {
 				t.Fatalf("Plan() allowed a descent it should refuse: %+v", plan.Steps)
 			}
 			if err := w.service.Apply(context.Background(), plan); err == nil {
@@ -154,8 +154,8 @@ func TestPlanRefusesAStackLinkedOnGitHubAndNamesTheUnlink(t *testing.T) {
 	w.github.prs[1].StackNumber = 7
 
 	plan := w.plan(t, Defaults())
-	if !strings.Contains(plan.Blocked, "#41, #42 are in a GitHub stack") {
-		t.Errorf("Blocked = %q, want it to name the stacked pull requests", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "#41, #42 are in a GitHub stack") {
+		t.Errorf("Blocked = %q, want it to name the stacked pull requests", plan.Blocked())
 	}
 	want := []repair.Step{{Command: "g2g github unlink --branch synthetic-two --stack-number 7", Effect: "unlink the GitHub stack, keeping its pull requests"}}
 	if !slices.Equal(plan.Repair.Ways, want) {
@@ -182,8 +182,8 @@ func TestADirtyTreeIsRefusedOnlyWhereLandingTouchesIt(t *testing.T) {
 	}
 
 	for _, w := range []*world{dirty("synthetic-elsewhere", true), dirty("synthetic-elsewhere", false)} {
-		if plan := w.plan(t, Defaults()); plan.Blocked != "" {
-			t.Fatalf("Blocked = %q, want a descent that need not touch the checkout allowed beside unrelated work in progress", plan.Blocked)
+		if plan := w.plan(t, Defaults()); plan.Blocked() != "" {
+			t.Fatalf("Blocked = %q, want a descent that need not touch the checkout allowed beside unrelated work in progress", plan.Blocked())
 		}
 	}
 	for name, arrange := range map[string]struct {
@@ -195,8 +195,8 @@ func TestADirtyTreeIsRefusedOnlyWhereLandingTouchesIt(t *testing.T) {
 		"a branch above is checked out":     {dirty("synthetic-two", false), "synthetic-two is checked out here"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if plan := arrange.world.plan(t, Defaults()); !strings.Contains(plan.Blocked, arrange.why) {
-				t.Errorf("Blocked = %q, want it refused saying %q", plan.Blocked, arrange.why)
+			if plan := arrange.world.plan(t, Defaults()); !strings.Contains(plan.Blocked(), arrange.why) {
+				t.Errorf("Blocked = %q, want it refused saying %q", plan.Blocked(), arrange.why)
 			}
 		})
 	}
@@ -212,8 +212,8 @@ func TestADescentStopsBeforeAConflictingReplayInADirtyTree(t *testing.T) {
 	w.git.dirty = errors.New("working tree is not clean; commit or stash changes before --apply")
 	w.syncer.conflicting = "synthetic-two"
 	plan := w.plan(t, Defaults())
-	if plan.Blocked != "" {
-		t.Fatalf("Blocked = %q, want the descent planned", plan.Blocked)
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q, want the descent planned", plan.Blocked())
 	}
 
 	err := w.service.Apply(context.Background(), plan)
@@ -246,8 +246,8 @@ func TestPlanRefusesToLandFromTheTrunk(t *testing.T) {
 	}}
 
 	plan := w.plan(t, Defaults())
-	if !strings.Contains(plan.Blocked, "is a trunk") {
-		t.Errorf("Blocked = %q, want a refusal to land from the trunk", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "is a trunk") {
+		t.Errorf("Blocked = %q, want a refusal to land from the trunk", plan.Blocked())
 	}
 }
 
@@ -823,8 +823,8 @@ func TestLandRefusesAStackG2GHasNotAdopted(t *testing.T) {
 
 			plan := w.plan(t, Defaults())
 
-			if !strings.Contains(plan.Blocked, string(source)) {
-				t.Errorf("Blocked = %q, want it to name the source that described the stack", plan.Blocked)
+			if !strings.Contains(plan.Blocked(), string(source)) {
+				t.Errorf("Blocked = %q, want it to name the source that described the stack", plan.Blocked())
 			}
 			if !strings.Contains(plan.Repair.Sentence(), "g2g adopt") {
 				t.Errorf("Repair = %q, want it to name the way in", plan.Repair.Sentence())
@@ -1040,8 +1040,8 @@ func TestPlanRefusesADescentThatWouldMoveABranchOpenElsewhere(t *testing.T) {
 	w.service.Holds = holds
 
 	plan := w.plan(t, Defaults())
-	if !strings.Contains(plan.Blocked, "synthetic-main") {
-		t.Fatalf("Blocked = %q, want the trunk open elsewhere refused", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "synthetic-main") {
+		t.Fatalf("Blocked = %q, want the trunk open elsewhere refused", plan.Blocked())
 	}
 	if !slices.Equal(holds.asked, []string{"synthetic-main", "synthetic-one", "synthetic-two"}) {
 		t.Errorf("asked about %v, want the trunk and the whole stack", holds.asked)
@@ -1122,7 +1122,7 @@ func TestALeafWithSurvivorsStillRefusesATrunkHeldElsewhere(t *testing.T) {
 	w.service.Selector = fakeSelector{snapshot: snapshot}
 	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
 	plan := w.plan(t, Defaults())
-	if plan.Blocked == "" || plan.KeepTrunk {
+	if plan.Blocked() == "" || plan.KeepTrunk {
 		t.Fatalf("plan = %+v, want survivors protected", plan)
 	}
 }
@@ -1136,7 +1136,7 @@ func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
 	w.service.Selector = fakeSelector{snapshot: snapshot}
 	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true, "synthetic-one": true}}
 	plan := w.plan(t, Defaults())
-	if plan.Blocked == "" || plan.KeepTrunk {
+	if plan.Blocked() == "" || plan.KeepTrunk {
 		t.Fatalf("plan = %+v, want held leaf protected", plan)
 	}
 }

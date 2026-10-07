@@ -115,7 +115,7 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		// per-branch ceiling would cut a merge off mid-flight.
 		budget:  budgets.landing,
 		noOp:    land.Plan.Nothing,
-		blocked: func(plan land.Plan) string { return plan.Blocked },
+		blocked: func(plan land.Plan) string { return plan.Blocked() },
 		// A descent that stops part-way has landed everything below where
 		// it stopped, and those merges stay. Reporting it as "not applied"
 		// would be wrong about the thing that matters most. One that

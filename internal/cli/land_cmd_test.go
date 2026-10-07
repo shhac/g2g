@@ -60,7 +60,6 @@ func TestABlockedLandOffersNoRecipe(t *testing.T) {
 		Reason: "synthetic-two (#42) is a draft",
 		Ways:   []repair.Step{{Command: "gh pr ready 42", Effect: "mark it ready for review"}},
 	}
-	plan.Blocked = plan.Repair.Sentence()
 
 	var output bytes.Buffer
 	if err := writeLandPlan(&output, plan, Presentation{}); err != nil {

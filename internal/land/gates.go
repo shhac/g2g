@@ -20,55 +20,55 @@ import (
 // first merge rather than after it. A diverged trunk discovered half way down
 // leaves a stack that has partly landed and cannot be replayed.
 //
-// It answers with a sentence as well as the structure behind it, because a
-// refusal that reaches a plan from another one may carry only the sentence:
-// sync sets Blocked straight from the restack it delegates to, with no Repair
-// beside it. Reading the structure alone let exactly that refusal through.
-func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.Graph) (string, repair.Note) {
-	if sentence, note := structuralRefusal(*plan, recorded); sentence != "" {
-		return sentence, note
+// A refusal is a note whatever it came from: one that reached the plan as an
+// error is a note with only a reason, which reads as that error. Every plan
+// derives its sentence from its note, so the two cannot disagree, and asking
+// whether the sentence is empty asks the same question of every source.
+func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.Graph) repair.Note {
+	if note := structuralRefusal(*plan, recorded); note.Sentence() != "" {
+		return note
 	}
 	discovery, options := plan.Discovery, plan.Options
 	if dirty := s.dirtyWhereItMatters(ctx, recorded, discovery.Target, discovery.Base); dirty.Reason != "" {
-		return dirty.Sentence(), dirty
+		return dirty
 	}
 	if held := s.heldElsewhere(ctx, recorded, plan); held.Reason != "" {
-		return held.Sentence(), held
+		return held
 	}
 	// An error planning the push is not a refusal here: each cycle plans its
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
 	pushed, err := s.Pusher.Plan(ctx, pushSelection(*plan), options.Remote, options.Upstream)
 	if err == nil && pushed.Blocked() != "" {
-		return pushed.Blocked(), pushed.Repair
+		return pushed.Repair
 	}
 	if plan.KeepTrunk {
-		return "", repair.Note{}
+		return repair.Note{}
 	}
 	synced, err := s.Syncer.Plan(ctx, syncSelection(*plan, discovery.Target), options.Remote, syncer.TakeNothing)
 	if err != nil && plan.declared() {
 		// Nothing about a base alone makes sync unable to answer, so a failure
 		// here is one the advance after the merge would meet too.
-		return err.Error(), repair.Note{}
+		return repair.Note{Reason: err.Error()}
 	}
 	if err == nil && synced.Blocked() != "" {
-		return synced.Blocked(), synced.Repair
+		return synced.Repair
 	}
-	return "", repair.Note{}
+	return repair.Note{}
 }
 
 // structuralRefusal is every refusal the plan's own shape answers, with
 // nothing asked of Git or the remote.
-func structuralRefusal(plan Plan, recorded graph.Graph) (string, repair.Note) {
+func structuralRefusal(plan Plan, recorded graph.Graph) repair.Note {
 	discovery := plan.Discovery
 	if err := discovery.RequireLinear("land"); err != nil {
-		return err.Error(), repair.Note{}
+		return repair.Note{Reason: err.Error()}
 	}
 	if err := discovery.RequireActionable("g2g land"); err != nil {
-		return err.Error(), repair.Note{}
+		return repair.Note{Reason: err.Error()}
 	}
 	if len(discovery.Branches) == 0 {
-		return "nothing is stacked here to land", repair.Note{}
+		return repair.Note{Reason: "nothing is stacked here to land"}
 	}
 	// Landing reads pull requests from whichever source describes the stack and
 	// then replays, reparents and forgets in g2g's own graph. Those are not the
@@ -82,24 +82,24 @@ func structuralRefusal(plan Plan, recorded graph.Graph) (string, repair.Note) {
 				{Command: "g2g adopt", Effect: "adopt it, so there is a structure to replay against"},
 			},
 		}
-		return note.Sentence(), note
+		return note
 	}
 	if discovery.Target == discovery.Base {
 		note := repair.Note{
 			Reason: fmt.Sprintf("%s is a trunk, and landing it would merge every branch above it", discovery.Target),
 			Ways:   []repair.Step{{Effect: "stand on the branch you mean to land, or name it with --branch"}},
 		}
-		return note.Sentence(), note
+		return note
 	}
 	if plan.declared() {
 		if note := declaredRefusal(recorded, discovery.Target); note.Reason != "" {
-			return note.Sentence(), note
+			return note
 		}
 	}
 	if note := linkedOnGitHub(discovery); note.Reason != "" {
-		return note.Sentence(), note
+		return note
 	}
-	return "", repair.Note{}
+	return repair.Note{}
 }
 
 // linkedOnGitHub refuses a descent through a pull request in a GitHub native

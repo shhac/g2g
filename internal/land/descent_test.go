@@ -196,8 +196,8 @@ func TestAMergedBranchThatCannotBeForgottenKeepsItsRefs(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			w := test.arrange(t)
 			plan, err := w.service.Plan(context.Background(), test.selection, Defaults())
-			if err != nil || plan.Blocked != "" {
-				t.Fatalf("Plan() = %q, %v", plan.Blocked, err)
+			if err != nil || plan.Blocked() != "" {
+				t.Fatalf("Plan() = %q, %v", plan.Blocked(), err)
 			}
 			if plan.KeepTrunk != test.keepsTrunk {
 				t.Fatalf("KeepTrunk = %t, want %t", plan.KeepTrunk, test.keepsTrunk)

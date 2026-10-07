@@ -101,8 +101,8 @@ func TestPlanRefusesADeclaredTrunkWithAStackOnIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "g2g land --branch synthetic-two") {
-		t.Errorf("Blocked = %q, want the branch on it named", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "g2g land --branch synthetic-two") {
+		t.Errorf("Blocked = %q, want the branch on it named", plan.Blocked())
 	}
 	if len(w.events.seen) != 0 {
 		t.Errorf("a refused plan did %v", w.events.seen)
@@ -117,8 +117,8 @@ func TestPlanRefusesAnUnusableDeclaredMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if !strings.Contains(plan.Blocked, "g2g track --as-trunk") {
-		t.Errorf("Blocked = %q, want the way to declare it again", plan.Blocked)
+	if !strings.Contains(plan.Blocked(), "g2g track --as-trunk") {
+		t.Errorf("Blocked = %q, want the way to declare it again", plan.Blocked())
 	}
 }
 
@@ -130,8 +130,8 @@ func TestPlanLandsADeclaredTrunkAsAStackOfOne(t *testing.T) {
 	w.store.graph = w.store.graph.Untrack("synthetic-two")
 
 	plan, err := w.service.Plan(context.Background(), stack.Selection{Branch: "synthetic-one"}, Defaults())
-	if err != nil || plan.Blocked != "" {
-		t.Fatalf("Plan() = %q, %v", plan.Blocked, err)
+	if err != nil || plan.Blocked() != "" {
+		t.Fatalf("Plan() = %q, %v", plan.Blocked(), err)
 	}
 	if plan.Options.Method != githubstack.MethodRebase {
 		t.Errorf("Method = %s, want the declared rebase", plan.Options.Method)

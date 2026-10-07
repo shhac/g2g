@@ -57,8 +57,8 @@ func (e *Stopped) Unwrap() error { return e.Err }
 // cannot be taken back, and the branches below the failure are exactly where
 // they should be.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if plan.Blocked != "" {
-		return fmt.Errorf("cannot land: %s", plan.Blocked)
+	if plan.Blocked() != "" {
+		return fmt.Errorf("cannot land: %s", plan.Blocked())
 	}
 	if err := plan.RequireActionable("g2g land"); err != nil {
 		return err

@@ -233,22 +233,21 @@ describe a branch that is plainly finished.
 **two-trunks.** A repository has `main` and `staging`, and work is stacked on
 each independently. The forest already allows several roots, and every command
 acts relative to the base of the stack it selected, so a stack on `staging`
-pulls, restacks and lands onto `staging` without seeing `main`. *Starting the
-first stack there is the gap: `create` refuses a parent that is neither a
-recorded trunk nor the default branch, so the first branch has to be made with
-`git switch -c` and recorded with `track --parent staging`. Declaring a trunk
-is the missing primitive.*
+pulls, restacks and lands onto `staging` without seeing `main`. Starting the
+first stack there takes one declaration: `g2g track --branch staging
+--as-trunk --apply`, after which `create` accepts `staging` as a parent like any
+branch the graph records. See [declared trunks](declared-trunks.md).
 
 **landing-branch.** `main ← feature ← a1 ← a2 ← a3`. The three small branches
 are reviewed and squash-merged into `feature` one at a time, and `feature`
 reaches `main` later, as a whole, by a merge that keeps those three commits.
-Today `feature` is an ordinary branch on `main`, so the stack's base is `main`
-and `land` from `a3` would merge `feature` into `main` first — the one thing
-this shape exists to avoid. *The wanted answer is a trunk that still records
-where it goes: `feature` is declared a trunk, so it bounds the stack above it,
-is fast-forwarded and merged into but never replayed, and lands onto `main`
-with a merge method that is not a squash. See
-[declared trunks](declared-trunks.md).*
+Recorded as an ordinary branch on `main`, `feature` would make `main` the
+stack's base, and `land` from `a3` would merge `feature` into `main` first — the
+one thing this shape exists to avoid. So `feature` is declared a trunk that
+still records where it goes (`track --as-trunk --into main --by merge`): it
+bounds the stack above it, is fast-forwarded and merged into but never
+replayed, and lands onto `main` with a merge method that is not a squash. See
+[declared trunks](declared-trunks.md).
 
 **stranded stack.** A middle branch is untracked, so what sits on it has a
 recorded parent that nothing records. `doctor` names `track` for the stranded

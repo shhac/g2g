@@ -1,6 +1,6 @@
 # Stack scope
 
-**Status:** in progress. This is the third question in the family that
+**Status:** implemented. This is the third question in the family that
 [source resolution](source-resolution.md) and [source alignment](source-alignment.md)
 answer. Those decide *which record describes this branch* and *how the records
 stay in step*. This one decides *how much of the stack a command is talking
@@ -208,6 +208,8 @@ not a narrower replay scope; it is mutually exclusive with `--scope`, `--take`,
 `--through`, and `--prune`. Unrecorded feature branches are refused rather than
 guessed to be trunks. Landing declared trunks uses the same base-only path.
 
-**`all` on anything that mutates.** It exists so a repository with several
+**`all` on anything that rewrites.** It exists so a repository with several
 trunks can be seen whole, which is a reading problem. A rewrite acts on one
-trunk, so spanning them is not a wider version of the same request.
+trunk, so spanning them is not a wider version of the same request. `prune` is
+the one mutating command that offers it, because its only write is forgetting
+what has landed, which is per branch whatever trunk it sits on.

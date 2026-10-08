@@ -17,13 +17,19 @@ first merge. Restack is the operation that fixes the contents.
 
 ## What Git can and cannot tell us
 
-**Git alone cannot detect a squash merge.** After squashing a two-commit branch,
-`git cherry` marks both commits as unmerged, because the squash's patch id
-matches neither. The trap is that it *does* detect the single-commit case, so a
-Git-only heuristic passes every simple test and fails in production.
+**Per-commit equivalence cannot detect a squash merge.** After squashing a
+two-commit branch, `git cherry` marks both commits as unmerged, because the
+squash's patch id matches neither. The trap is that it *does* detect the
+single-commit case, so a heuristic built on it passes every simple test and
+fails in production.
 
-The merged state therefore comes from the pull request, not from Git. That is
-not a convenience, it is the only reliable signal.
+The whole-branch question can be asked of Git instead: `git.Client.Absorbed`
+merges the branch into the base and checks the base's own tree comes back,
+which is true of a squash merge however many commits it combined. Landed is
+`Cherry`, then `Absorbed` (`landed.Into`), and both are content checks, so no
+pull request state is needed — which matters because a cherry-picked series has
+no pull request at all, and a squash lands the work under a head the branch
+never had.
 
 ## The rebase range
 
@@ -352,7 +358,7 @@ snapshot holds every branch's revision.
 Git-native, because the operation underneath genuinely is a rebase:
 
 ```text
-g2g restack [--branch <b>] [--scope path|subtree|graph] [--onto <ref>]
+g2g restack [--branch <b>] [--scope branch|path|subtree|stack|trunk] [--onto <ref>]
 g2g restack --continue | --abort | --skip
 ```
 
@@ -385,8 +391,8 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
 Reading remote state must not disturb the user's. This is implemented; see
 `RemoteTips` and `FetchIsolated` in `internal/git`.
 
-Detection is free: `git ls-remote` writes nothing, and the pull request state
-supplies the merged flag Git cannot. Objects come from a fetch into
+Detection is free: `git ls-remote` writes nothing, and whether a branch has
+landed is answered by content, as above. Objects come from a fetch into
 `refs/g2g/remotes/`, which requires both `--refmap=` — a private destination
 refspec alone does not stop git opportunistically updating the matching
 remote-tracking ref — and `--no-write-fetch-head`.

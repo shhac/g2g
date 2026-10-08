@@ -35,7 +35,9 @@ draw the graph.
 A missing branch without an observation says **PR history unknown**, never
 "never submitted". A last-seen open PR on a missing branch is a warning; a
 last-seen merged PR is neutral history. A pending merge request remains distinct
-from confirmation. None of these annotations claims to be current.
+from confirmation. None of these annotations claims to be current. A trunk
+carries one only when it is declared to land somewhere: a pull request whose
+head was `main` says nothing about `main` as a trunk.
 
 `g2g github status --branch synthetic-work` asks GitHub for the actual state,
 even if that g2g-recorded local branch is missing. Its explicit read-only
@@ -63,7 +65,13 @@ by ancestry or whole-branch absorption, so a parent rewind cannot leave that
 work solely on a branch about to be deleted. A followup commit after a merge remains.
 When a parent is missing, the comparison includes its inherited work from the
 first fork above a surviving recorded ancestor. Counting only the child's own
-commits could delete the last ref carrying a parent's unlanded work.
+commits could delete the last ref carrying a parent's unlanded work. A child of
+a parent the same run forgets as landed is asked the same way, against the
+first ancestor kept (`landedThrough`): squash-merged together with its parent,
+its own commit is in the trunk and not in the parent, so asking only about the
+parent kept the child and then refused to forget the parent for stranding it.
+A preview that forgets landed branches without deleting them names
+`--delete-branches`, because once forgotten g2g cannot delete them.
 Surviving selected children are recorded on the branch below only when ancestry
 proves they already sit there. Other children still refuse cleanup.
 

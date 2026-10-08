@@ -218,7 +218,9 @@ command's preview already said it would, every write is an edit of a comment
 this tool owns or a new one on an open pull request, and nothing it does is
 worth a second confirmation. A blocked plan is not written. If keeping them
 fails, the command's own work stands — pull requests opened, a stack landed —
-so the run exits `3` and names `g2g github comment --apply`.
+so the run exits `3` and names `g2g github comment --apply`, aimed with
+`--branch` when the run was. `land` names it bare, because the branch it was
+asked to land may have merged and gone.
 
 After every branch of a stack has landed there is nothing left above to keep a
 comment on, so the merged pull requests keep the last comment they had.

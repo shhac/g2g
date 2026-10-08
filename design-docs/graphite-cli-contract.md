@@ -86,11 +86,11 @@ it may appear only after a row that does not open a connector.
 
 The next deeper row must occupy the exact lane opened by its preceding
 connector. Equal-depth rows extend a branch; shallower rows attach to the node
-that opened that lane. Default traversal extends from the selected branch
-through one unique direct-child chain to its tip, excluding siblings; a
-descendant fork is an ambiguity error, never an inferred child choice.
-`--no-stack` opts out of this extension and reconstructs only the selected
-branch's declared-trunk-to-selected-branch ancestry. Each
+that opened that lane. Discovery reconstructs only the selected branch's
+declared-trunk-to-selected-branch ancestry; how far above it a command reaches
+is a scope, applied over the parsed forest outside this package
+(`internal/stack/graphite.go`), so a fork above the branch is drawn rather than
+refused and a child is never chosen by inference. Each
 separator-delimited component has its own root; components are never connected
 by inference. Link-base resolution considers only Graphite-declared trunk roots
 on the selected ancestry and fails closed when more than one is valid unless

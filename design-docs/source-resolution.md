@@ -251,8 +251,9 @@ pull request base that no longer matches the recorded parent is the *expected*
 result of a merge, not evidence of a problem. The same disagreement without a
 merge means someone retargeted and the native stack needs relinking.
 
-Pull request state is what tells those apart, which is the same reason Git
-alone cannot detect a squash merge.
+Pull request state is what tells those apart: a base is a pull request's
+property, and Git records nothing about it. Whether the work landed is a
+separate question, answered by content (`landed.Into`).
 
 ## Completed boundary: retargeting pull-request bases
 

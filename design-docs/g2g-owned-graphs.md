@@ -145,8 +145,8 @@ so a concurrent reader sees either the old file or the new one and never a
 partial write. Concurrent writers are last-writer-wins; the store is small,
 written only by an explicit `--apply`, and locking it would buy nothing.
 
-The file is a flat `branch -> {parent, authority, origin}` map plus the trunk
-set. `origin` records whether Git already agreed with the edge when it was
+The file is a flat `branch -> {parent, origin, forkPoint}` map plus the trunk
+set and, for declared trunks, where each lands (`declared`). `origin` records whether Git already agreed with the edge when it was
 written: `git-ancestry` when the parent's tip was reachable from the branch,
 `user` when it was not. The second is legitimate — it is how a stack looks
 before a restack — but `track` says so before writing it, because that fact is
@@ -205,7 +205,7 @@ g2g doctor  [--remote <remote>]
 g2g adopt   [--branch <branch>] [--trunk <branch>] [--apply]
 g2g track   [--branch <branch>] [--parent <branch>] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
-g2g restack [--branch <branch>] [--scope branch|path|subtree|stack] [--apply]
+g2g restack [--branch <branch>] [--scope branch|path|subtree|stack|trunk] [--apply]
 g2g create  <branch> [--parent <branch>] [-m <message>] [--apply]
 g2g delete  [--branch <branch>] [--apply]
 g2g fold    [--branch <branch>] [--apply]
@@ -250,6 +250,13 @@ claim, after every pull, to be ahead by everything just pulled. Commits are
 counted by content, as `push` counts them, so a branch replayed since it was
 pushed reads as replayed rather than diverged. The comparison is wired in the
 command, not in `internal/graph`, which still depends on Git alone.
+
+A branch still on its parent's tip reads as aligned, and aligned was never
+asked whether it had landed. Squash-merged together with its parent, a child's
+work is in the trunk while it sits on a branch that has landed, so `status`
+asks each aligned branch under a landed one, in one ordered pass from the root
+(`graph.belowLanded`), and a child found landed is what lets the next one up be
+asked in turn.
 
 `doctor` reads every recorded stack the same way and reports only what is
 wrong, each finding with the one command that repairs it, and exits `1` when it

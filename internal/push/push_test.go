@@ -498,6 +498,31 @@ func TestABranchThatSquashMergedIsNotOfferedForRepublication(t *testing.T) {
 	if plan.Publishing["lower"].Standing != New {
 		t.Errorf("Publishing[lower] = %+v, want the unlanded branches unaffected", plan.Publishing["lower"])
 	}
+	// Its remote branch is gone because it is finished, and naming it in the
+	// push would put it back.
+	if err := service.Execute(context.Background(), plan); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := strings.Join(git.pushed, ","); got != "lower,middle" {
+		t.Errorf("pushed %q, want lower,middle without the landed top", got)
+	}
+}
+
+// A plan with nothing but landed branches names no branch at all, and a bare
+// git push would fall back to push.default and publish whatever that chooses.
+func TestAPushOfOnlyLandedBranchesRunsNoGitPush(t *testing.T) {
+	git := &fakeGit{current: "lower", branches: []string{"main", "lower"}}
+	plan := Plan{
+		Snapshot:   stack.Snapshot{Target: "lower", Base: "main", Branches: []string{"lower"}},
+		Remote:     "origin",
+		Publishing: map[string]Publication{"lower": {Standing: Landed}},
+	}
+	if err := (Service{Git: git, Selector: linePath{}}).Execute(context.Background(), plan); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if git.pushes != 0 {
+		t.Errorf("pushes = %d, want none", git.pushes)
+	}
 }
 
 // The preview is what was approved, so a push planned to set upstreams is a

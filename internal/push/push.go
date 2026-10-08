@@ -98,10 +98,17 @@ func (s Service) Ready() bool {
 	return s.Git != nil && s.Selector != nil
 }
 
-// Leases pairs each selected branch with the tip the plan observed for it.
+// Leases pairs each selected branch with the tip the plan observed for it,
+// leaving out a branch that has landed. Its remote branch is usually gone
+// because it merged, and a lease on the absent value would put it back. A
+// branch already published exactly stays in: git moves nothing for it, and
+// naming it is what lets --set-upstream record what it tracks.
 func (p Plan) Leases() []localgit.Lease {
 	leases := make([]localgit.Lease, 0, len(p.Branches))
 	for _, branch := range p.Branches {
+		if p.Publishing[branch].Standing == Landed {
+			continue
+		}
 		leases = append(leases, localgit.Lease{Branch: branch, Expected: p.RemoteTips[branch]})
 	}
 	return leases
@@ -210,7 +217,13 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches, ",")},
 		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
-	return s.Git.PushAtomic(ctx, plan.Remote, plan.Leases(), plan.Upstream)
+	leases := plan.Leases()
+	// A push naming no branch is not a no-op: git falls back to push.default
+	// and publishes whatever that chooses.
+	if len(leases) == 0 {
+		return nil
+	}
+	return s.Git.PushAtomic(ctx, plan.Remote, leases, plan.Upstream)
 }
 
 // Equal compares every fact that changes what the push does, including the

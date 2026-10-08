@@ -59,6 +59,12 @@ type line struct {
 	// Above is how many pull requests sit on a branch drawn beside the path
 	// rather than on it, which is all a comment says about them.
 	Above int
+	// Historic marks a pull request that merged out of the stack, and
+	// IntoBranch where it merged when that was not the trunk, with
+	// IntoNumber that branch's pull request when it has one.
+	Historic   bool
+	IntoBranch string
+	IntoNumber int
 }
 
 // view is everything one comment says: the stack as seen from one pull
@@ -153,7 +159,12 @@ func (v view) label(entry line) string {
 	if entry.Branch != "" {
 		said += " " + code(entry.Branch)
 	}
-	if entry.State == StateMerged {
+	switch {
+	case entry.State == StateMerged && entry.IntoNumber != 0:
+		said += " · merged into #" + strconv.Itoa(entry.IntoNumber)
+	case entry.State == StateMerged && entry.IntoBranch != "":
+		said += " · merged into " + code(entry.IntoBranch)
+	case entry.State == StateMerged:
 		said += " · merged"
 	}
 	if entry.Number == v.Here {

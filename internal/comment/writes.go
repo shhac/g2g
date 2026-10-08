@@ -13,7 +13,7 @@ import (
 // order the stack reads, then those that merged out of it.
 func (k *kept) writes(forest shape.Forest, base line, members map[string]Member, read map[int]githubstack.Conversation, version string) []Write {
 	recorded, merged := k.recorded(), k.merged()
-	history := historyLines(merged, read)
+	arranged := arrange(merged, read, base.Branch, k.branches, members)
 	// One already there is kept up to date rather than left saying something
 	// false.
 	worthAdding := !k.single()
@@ -23,13 +23,13 @@ func (k *kept) writes(forest shape.Forest, base line, members map[string]Member,
 		if !m.listed() {
 			continue
 		}
-		v := view{Lines: withHistory(linesFrom(forest, base, branch, members), history), Here: m.Number, Recorded: recorded, Version: version}
+		v := view{Lines: arranged.place(linesFrom(forest, base, branch, members)), Here: m.Number, Recorded: recorded, Version: version}
 		if write, ok := decide(read[m.Number], branch, v.body(), m.State == StateOpen && worthAdding); ok {
 			writes = append(writes, write)
 		}
 	}
 	for _, number := range merged {
-		write, ok := k.decideMerged(read[number], forest, base, members, history, recorded, version)
+		write, ok := k.decideMerged(read[number], forest, base, members, arranged, recorded, version)
 		if ok {
 			writes = append(writes, write)
 		}
@@ -66,8 +66,8 @@ func (k *kept) alone(members map[string]Member, writes []Write) []int {
 // — the branch a fork grew from, merged — is left as it is: drawn from either
 // stack alone it would say the other does not exist, and a run from each would
 // undo the other's.
-func (k *kept) decideMerged(conversation githubstack.Conversation, forest shape.Forest, base line, members map[string]Member, history []line, recorded []entry, version string) (Write, bool) {
-	v := view{Lines: withHistory(whole(forest, base, k.branches, members), history), Here: conversation.Number, Recorded: recorded, Version: version}
+func (k *kept) decideMerged(conversation githubstack.Conversation, forest shape.Forest, base line, members map[string]Member, arranged history, recorded []entry, version string) (Write, bool) {
+	v := view{Lines: arranged.place(whole(forest, base, k.branches, members)), Here: conversation.Number, Recorded: recorded, Version: version}
 	write, ok := decide(conversation, conversation.Head, v.body(), false)
 	if !ok {
 		return Write{}, false
@@ -190,31 +190,111 @@ func whole(forest shape.Forest, base line, branches []string, members map[string
 	return lines
 }
 
-// historyLines are the pull requests that merged out of the stack, in the order
-// they merged.
+// history is what merged out of the stack, arranged by where each pull
+// request merged.
 //
-// Where each one sat is not recorded in a way that survives: once the one below
-// lands, the one above is put on the trunk and recorded there. A stack comes
-// down from the bottom, so the order things merged in is the order they sat in.
-func historyLines(merged []int, read map[int]githubstack.Conversation) []line {
+// Most merged into the trunk, and those are drawn between it and what is still
+// open, in the order they merged: a stack comes down from the bottom, so that
+// is the order they sat in, which the records stop saying once the one below
+// lands and the one above is put on the trunk. A pull request can also merge
+// into a branch of the stack — one folded into its parent reads as merged once
+// the parent is published — and drawing that beside the trunk would say it
+// landed when nothing did. It hangs under what it merged into instead.
+type history struct {
+	// landed are drawn between the trunk and what is still open.
+	landed []line
+	// into are those that merged into a branch the stack still carries, by
+	// that branch, and under those that merged into merged work, by its
+	// number.
+	into  map[string][]line
+	under map[int][]line
+}
+
+func arrange(merged []int, read map[int]githubstack.Conversation, base string, branches []string, members map[string]Member) history {
 	lines := make([]line, 0, len(merged))
 	for _, number := range merged {
-		lines = append(lines, line{Branch: read[number].Head, Number: number, State: StateMerged})
+		lines = append(lines, line{Branch: read[number].Head, Number: number, State: StateMerged, Historic: true})
 	}
 	slices.SortStableFunc(lines, func(left, right line) int {
 		return cmp.Or(read[left.Number].MergedAt.Compare(read[right.Number].MergedAt), left.Number-right.Number)
 	})
-	return lines
+	heads := map[string]int{}
+	for _, merged := range lines {
+		heads[merged.Branch] = merged.Number
+	}
+	below := map[int]int{}
+	for _, merged := range lines {
+		into := read[merged.Number].Base
+		if number, found := heads[into]; found && into != base && !slices.Contains(branches, into) {
+			below[merged.Number] = number
+		}
+	}
+	arranged := history{into: map[string][]line{}, under: map[int][]line{}}
+	for _, merged := range lines {
+		into := read[merged.Number].Base
+		switch number, found := below[merged.Number]; {
+		case into == base || into == "":
+			arranged.landed = append(arranged.landed, merged)
+		case slices.Contains(branches, into):
+			merged.IntoBranch, merged.IntoNumber = into, members[into].listedNumber()
+			arranged.into[into] = append(arranged.into[into], merged)
+		case found && settles(merged.Number, below):
+			merged.IntoBranch, merged.IntoNumber = into, number
+			arranged.under[number] = append(arranged.under[number], merged)
+		default:
+			merged.IntoBranch = into
+			arranged.landed = append(arranged.landed, merged)
+		}
+	}
+	return arranged
 }
 
-// withHistory puts what merged between the trunk and what is still open,
-// which is where it sat: the list keeps the stack's shape rather than moving
-// landed work to a line of its own.
-func withHistory(lines, history []line) []line {
-	if len(history) == 0 || len(lines) == 0 {
+// settles reports a pull request whose chain of merged-into pull requests
+// ends somewhere, rather than going round: bases are matched by name, and a
+// name reused between pull requests can make two each other's destination,
+// which would draw neither.
+func settles(number int, below map[int]int) bool {
+	for steps := 0; steps <= len(below); steps++ {
+		next, found := below[number]
+		if !found {
+			return true
+		}
+		number = next
+	}
+	return false
+}
+
+// place puts what merged into the trunk between it and what is still open,
+// and everything else under what it merged into, one level deeper. A pull
+// request whose destination is not drawn here is not drawn either, as the
+// branch it merged into is not.
+func (h history) place(lines []line) []line {
+	if len(lines) == 0 {
 		return lines
 	}
-	return slices.Concat(lines[:1], history, lines[1:])
+	placed := make([]line, 0, len(lines)+len(h.landed))
+	placed = append(placed, lines[0])
+	for _, landed := range h.landed {
+		placed = h.with(placed, landed)
+	}
+	for _, drawn := range lines[1:] {
+		placed = h.with(placed, drawn)
+	}
+	return placed
+}
+
+// with appends a line and what merged into it.
+func (h history) with(placed []line, drawn line) []line {
+	placed = append(placed, drawn)
+	children := h.into[drawn.Branch]
+	if drawn.Historic {
+		children = h.under[drawn.Number]
+	}
+	for _, child := range children {
+		child.Depth = drawn.Depth + 1
+		placed = h.with(placed, child)
+	}
+	return placed
 }
 
 func lineFor(branch string, depth int, members map[string]Member) line {

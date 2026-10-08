@@ -1030,7 +1030,9 @@ Rerunning edits the comment it finds rather than adding another, found by an
 HTML marker in its first line. Pull requests that have merged out of the stack
 stay listed where they sat, marked merged: each comment records every pull
 request the stack has listed, so the history survives the branch being pruned
-and deleted. A merged pull request
+and deleted. One that merged into a branch of the stack rather than the trunk —
+a branch folded into its parent, once the parent is pushed — hangs under that
+branch as `merged into #21`, so it does not read as landed. A merged pull request
 is never given a new comment, a comment you cannot edit is left alone, and a
 branch with two open pull requests refuses the run. A stack that lists only one
 pull request gets no comment, since one pull request is not a stack, and the

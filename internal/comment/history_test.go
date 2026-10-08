@@ -284,3 +284,122 @@ func TestPlanLeavesAMergedForkPointAloneAndListsItOnce(t *testing.T) {
 		}
 	}
 }
+
+// A branch folded into the one below it: publishing the parent puts the
+// child's commits on the branch its pull request targets, so GitHub reads it
+// as merged there. Nothing reached the trunk, and drawing it between the trunk
+// and the open work would say otherwise. It hangs under the pull request it
+// merged into, saying so.
+func TestPlanDrawsAPullRequestMergedIntoTheStackUnderWhereItMerged(t *testing.T) {
+	folded := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-lower": "synthetic-trunk",
+		"synthetic-upper": "synthetic-lower",
+	}}
+	previous := Marker + "\nold\n" + recordedLine("21,22>21,23>22")
+	child := conversation(22, "synthetic-folded", "MERGED", previous)
+	child.Base = "synthetic-lower"
+	github := &fakeGitHub{
+		prs: []githubstack.PullRequest{
+			pr(21, "synthetic-lower", "synthetic-trunk", "OPEN"),
+			pr(23, "synthetic-upper", "synthetic-lower", "OPEN"),
+		},
+		conversations: map[int]githubstack.Conversation{
+			21: conversation(21, "synthetic-lower", "OPEN", previous),
+			22: child,
+			23: conversation(23, "synthetic-upper", "OPEN", previous),
+		},
+	}
+	got := plan(t, folded, "synthetic-lower", github)
+	if !slices.Equal(got.Merged, []int{22}) {
+		t.Fatalf("Merged = %v, want #22 kept", got.Merged)
+	}
+	want := "- base `synthetic-trunk`\n- **#21 `synthetic-lower`** 👈 this pull request\n  - #22 `synthetic-folded` · merged into #21\n- #23 `synthetic-upper`\n"
+	if body := bodyFor(t, got, 21); !strings.Contains(body, want) {
+		t.Errorf("#21 does not draw #22 where it merged:\n%s", body)
+	}
+	want = "- base `synthetic-trunk`\n- #21 `synthetic-lower`\n  - #22 `synthetic-folded` · merged into #21\n- **#23 `synthetic-upper`** 👈 this pull request\n"
+	if body := bodyFor(t, got, 23); !strings.Contains(body, want) {
+		t.Errorf("#23 does not draw #22 where it merged:\n%s", body)
+	}
+	want = "- base `synthetic-trunk`\n- #21 `synthetic-lower`\n  - **#22 `synthetic-folded` · merged into #21** 👈 this pull request\n- #23 `synthetic-upper`\n"
+	if body := bodyFor(t, got, 22); !strings.Contains(body, want) {
+		t.Errorf("#22's own comment does not say where it merged:\n%s", body)
+	}
+}
+
+// The branch it was folded into has landed since, so both are history. The
+// folded one merged first, and is still drawn under the one it merged into
+// rather than as though it reached the trunk ahead of it.
+func TestPlanDrawsWhatMergedIntoMergedWorkUnderIt(t *testing.T) {
+	landed := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-upper": "synthetic-trunk",
+	}}
+	previous := Marker + "\nold\n" + recordedLine("21,22>21,23>21")
+	folded := conversation(22, "synthetic-folded", "MERGED", previous)
+	folded.Base = "synthetic-lower"
+	folded.MergedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	lower := conversation(21, "synthetic-lower", "MERGED", previous)
+	lower.MergedAt = folded.MergedAt.Add(time.Hour)
+	github := &fakeGitHub{
+		prs: []githubstack.PullRequest{pr(23, "synthetic-upper", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{
+			21: lower,
+			22: folded,
+			23: conversation(23, "synthetic-upper", "OPEN", previous),
+		},
+	}
+	got := plan(t, landed, "synthetic-upper", github)
+	want := "- base `synthetic-trunk`\n- #21 `synthetic-lower` · merged\n  - #22 `synthetic-folded` · merged into #21\n- **#23 `synthetic-upper`** 👈 this pull request\n"
+	if body := bodyFor(t, got, 23); !strings.Contains(body, want) {
+		t.Errorf("#23 does not draw #22 under what it merged into:\n%s", body)
+	}
+}
+
+// Merged into a branch this stack no longer reaches, it stays with the
+// history, but does not claim to have reached the trunk.
+func TestPlanNamesWhereAPullRequestMergedWhenTheStackDoesNotHaveIt(t *testing.T) {
+	landed := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-two":   "synthetic-trunk",
+	}}
+	previous := Marker + "\nold\n" + recordedLine("11,12>11")
+	elsewhere := conversation(11, "synthetic-one", "MERGED", previous)
+	elsewhere.Base = "synthetic-gone"
+	github := &fakeGitHub{
+		prs: []githubstack.PullRequest{pr(12, "synthetic-two", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{
+			11: elsewhere,
+			12: conversation(12, "synthetic-two", "OPEN", Marker+"\nold\n"+recordedLine("11,12")),
+		},
+	}
+	got := plan(t, landed, "synthetic-two", github)
+	if body := bodyFor(t, got, 12); !strings.Contains(body, "- base `synthetic-trunk`\n- #11 `synthetic-one` · merged into `synthetic-gone`\n- **#12 `synthetic-two`**") {
+		t.Errorf("#12 does not say where #11 merged:\n%s", body)
+	}
+}
+
+// Bases are matched by name, so two merged pull requests whose branch names
+// were reused can each name the other as where it merged. Neither can hang
+// under the other; both stay listed, saying where they went.
+func TestPlanListsMergedPullRequestsThatNameEachOtherAsTheirBase(t *testing.T) {
+	landed := shape.Forest{Parents: map[string]string{
+		"synthetic-trunk": "",
+		"synthetic-three": "synthetic-trunk",
+	}}
+	previous := Marker + "\nold\n" + recordedLine("11,12,13")
+	first := conversation(11, "synthetic-one", "MERGED", previous)
+	first.Base = "synthetic-two"
+	second := conversation(12, "synthetic-two", "MERGED", previous)
+	second.Base = "synthetic-one"
+	github := &fakeGitHub{
+		prs:           []githubstack.PullRequest{pr(13, "synthetic-three", "synthetic-trunk", "OPEN")},
+		conversations: map[int]githubstack.Conversation{11: first, 12: second, 13: conversation(13, "synthetic-three", "OPEN", previous)},
+	}
+	got := plan(t, landed, "synthetic-three", github)
+	want := "- base `synthetic-trunk`\n- #11 `synthetic-one` · merged into `synthetic-two`\n- #12 `synthetic-two` · merged into `synthetic-one`\n- **#13 `synthetic-three`**"
+	if body := bodyFor(t, got, 13); !strings.Contains(body, want) {
+		t.Errorf("#13 lost the pull requests that name each other:\n%s", body)
+	}
+}

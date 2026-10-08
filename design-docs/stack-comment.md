@@ -132,6 +132,31 @@ sat on anything. A stack comes down from the bottom, so the order things
 merged in is the order they sat in. Its branch is named by what GitHub still
 reports for the pull request, and by its number alone when that is nothing.
 
+That holds for what merged into the trunk. A pull request can also merge into
+a branch the stack still carries: fold a branch into its parent, push the
+parent, and GitHub marks the folded branch's pull request merged, because its
+base now holds its commits. Nothing reached the trunk, and drawing it between
+the trunk and the open work said it had — above the very pull request it merged
+into, which a reader took to mean the work had landed. So where each merged
+pull request is drawn follows its base, as GitHub reports it:
+
+- **The stack's base**, or nothing: between the trunk and what is open, as
+  above, marked `· merged`.
+- **A branch the stack still carries:** one level under that branch, marked
+  `· merged into #21` — or the branch, when it has no pull request.
+- **The head of another merged pull request:** one level under that one. The
+  branch it was folded into has landed since, and the folded one merged first,
+  so merge order alone would put it ahead of what it merged into.
+- **Anything else** — a branch this stack no longer has — stays with what
+  merged into the trunk, but says where it went (`· merged into` the branch)
+  rather than claiming the trunk.
+
+A pull request is drawn only where what it merged into is: a comment that draws
+another fork as one line does not draw what merged into it either. Bases are
+matched by name, and a name reused between pull requests could make two each
+other's destination; those stay with what merged into the trunk, saying where
+each went.
+
 The numbers are editable by anyone who can edit the pull request, so reading
 them back tolerates junk, is bounded, and follows them for a few rounds at most.
 A number that turns out to be an issue, or that nothing answers to any more,

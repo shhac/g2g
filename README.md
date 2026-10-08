@@ -12,6 +12,8 @@ integration: g2g can create pull requests, inspect their bases, and project a
 selected **linear** path onto GitHub native stacks. It never flattens a fork
 merely to publish it.
 
+![Demo](assets/demo.gif)
+
 For a more visual introduction and the docs, see [g2g.foo](https://g2g.foo).
 This README is the full reference.
 

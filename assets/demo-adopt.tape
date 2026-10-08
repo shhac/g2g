@@ -1,18 +1,18 @@
-# g2g demo recording: keeping a stack current
-# Run from the repository root: vhs assets/demo.tape
+# g2g demo recording: adopting branches made with plain git
+# Run from the repository root: vhs assets/demo-adopt.tape
 #
 # Everything runs against throwaway repositories under /tmp created by
 # assets/demo-setup.sh, with a bare repository as the remote. No real
 # repository or remote is touched, and nothing leaves the machine.
-Output assets/demo.gif
-Output assets/demo.webm
+Output assets/demo-adopt.gif
+Output assets/demo-adopt.webm
 
 Set Shell "bash"
 Set Theme "Catppuccin Mocha"
 Set FontFamily "Fira Code"
 Set FontSize 14
 Set Width 1080
-Set Height 600
+Set Height 560
 Set Padding 16
 Set Framerate 5
 Set TypingSpeed 40ms
@@ -20,7 +20,7 @@ Set CursorBlink false
 
 # Hidden setup: throwaway repositories, a freshly built g2g, no global config
 Hide
-Type "bash assets/demo-setup.sh published"
+Type "bash assets/demo-setup.sh"
 Enter
 Sleep 12s
 Type "export PATH=/tmp/g2g-demo/bin:$PATH GIT_CONFIG_GLOBAL=/dev/null GIT_AUTHOR_NAME=Demo GIT_AUTHOR_EMAIL=demo@example.test GIT_COMMITTER_NAME=Demo GIT_COMMITTER_EMAIL=demo@example.test PS1='$ '"
@@ -30,27 +30,35 @@ Enter
 Sleep 500ms
 Show
 
-# A published stack, in step with origin
+# Branches made the ordinary way, two of them on the same parent
+Type `git switch -qc feature/api && echo api > api.js && git add . && git commit -qm "Add the API"`
+Sleep 300ms
+Enter
+Sleep 800ms
+Type `git switch -qc feature/client && echo client > client.js && git add . && git commit -qm "Add a client"`
+Sleep 300ms
+Enter
+Sleep 800ms
+Type `git switch -qc feature/docs feature/api && echo docs > docs.md && git add . && git commit -qm "Add docs"`
+Sleep 300ms
+Enter
+Sleep 800ms
+Type "git switch -q feature/api"
+Sleep 300ms
+Enter
+Sleep 800ms
 Type "g2g status"
 Sleep 300ms
 Enter
 Sleep 3.5s
-
-# A colleague lands a change on main; fetching shows main behind
 Hide
-Type "bash ../trunk-moves.sh && clear"
+Type "clear"
 Enter
-Sleep 2s
+Sleep 300ms
 Show
-Type "# a colleague has landed a change on main"
-Sleep 300ms
-Enter
-Sleep 1s
-Type "git fetch -q"
-Sleep 300ms
-Enter
-Sleep 1.5s
-Type "g2g status"
+
+# One command records them all, ordered by commit ancestry
+Type "g2g adopt --trunk main --apply"
 Sleep 300ms
 Enter
 Sleep 4s
@@ -60,26 +68,7 @@ Enter
 Sleep 300ms
 Show
 
-# pull fast-forwards main and replays the stack onto it
-Type "g2g pull --apply"
-Sleep 300ms
-Enter
-Sleep 3.5s
-Type "g2g status"
-Sleep 300ms
-Enter
-Sleep 4s
-Hide
-Type "clear"
-Enter
-Sleep 300ms
-Show
-
-# One atomic push brings origin back in step
-Type "g2g push --apply"
-Sleep 300ms
-Enter
-Sleep 3.5s
+# The fork is recorded and drawn as one
 Type "g2g status"
 Sleep 300ms
 Enter

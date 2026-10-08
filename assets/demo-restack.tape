@@ -1,11 +1,11 @@
-# g2g demo recording: keeping a stack current
-# Run from the repository root: vhs assets/demo.tape
+# g2g demo recording: a commit in the middle of a stack
+# Run from the repository root: vhs assets/demo-restack.tape
 #
 # Everything runs against throwaway repositories under /tmp created by
 # assets/demo-setup.sh, with a bare repository as the remote. No real
 # repository or remote is touched, and nothing leaves the machine.
-Output assets/demo.gif
-Output assets/demo.webm
+Output assets/demo-restack.gif
+Output assets/demo-restack.webm
 
 Set Shell "bash"
 Set Theme "Catppuccin Mocha"
@@ -34,22 +34,21 @@ Show
 Type "g2g status"
 Sleep 300ms
 Enter
-Sleep 3.5s
+Sleep 3s
 
-# A colleague lands a change on main; fetching shows main behind
-Hide
-Type "bash ../trunk-moves.sh && clear"
-Enter
-Sleep 2s
-Show
-Type "# a colleague has landed a change on main"
-Sleep 300ms
-Enter
-Sleep 1s
-Type "git fetch -q"
+# Step down to the bottom branch and commit there
+Type "g2g down 2"
 Sleep 300ms
 Enter
 Sleep 1.5s
+Type "echo 'export const strict = true' >> auth.js"
+Sleep 300ms
+Enter
+Sleep 500ms
+Type `git commit -qam "Make auth strict"`
+Sleep 300ms
+Enter
+Sleep 1s
 Type "g2g status"
 Sleep 300ms
 Enter
@@ -60,22 +59,22 @@ Enter
 Sleep 300ms
 Show
 
-# pull fast-forwards main and replays the stack onto it
-Type "g2g pull --apply"
+# Every change previews first; --apply carries it out
+Type "g2g restack"
+Sleep 300ms
+Enter
+Sleep 3s
+Type "g2g restack --apply"
 Sleep 300ms
 Enter
 Sleep 3.5s
-Type "g2g status"
-Sleep 300ms
-Enter
-Sleep 4s
 Hide
 Type "clear"
 Enter
 Sleep 300ms
 Show
 
-# One atomic push brings origin back in step
+# Publish the replayed stack
 Type "g2g push --apply"
 Sleep 300ms
 Enter

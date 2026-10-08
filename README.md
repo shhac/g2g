@@ -12,7 +12,7 @@ integration: g2g can create pull requests, inspect their bases, and project a
 selected **linear** path onto GitHub native stacks. It never flattens a fork
 merely to publish it.
 
-![Demo](assets/demo.gif)
+![A published stack falling behind main, pulled, and pushed back in step](assets/demo.gif)
 
 For a more visual introduction and the docs, see [g2g.foo](https://g2g.foo).
 This README is the full reference.
@@ -382,6 +382,8 @@ a script can ask the question and read the status.
 
 ### Record
 
+![Adopting branches made with plain git, including a fork](assets/demo-adopt.gif)
+
 ```sh
 # Record the whole stack you are on, in one step. This is where to start.
 g2g adopt --trunk main --apply
@@ -467,6 +469,8 @@ published stack's pull requests declare, described in
 [Adopting a published stack](#adopting-a-published-stack).
 
 ### Move and add
+
+![Building a stack with create, then publishing it](assets/demo-create.gif)
 
 ```sh
 # Start a branch on top of this one, switch to it, and record it. Preview first.
@@ -566,6 +570,8 @@ walked are listed, and the switch is `command` — the one that ran, or with
 ### Keep current
 
 #### Restack
+
+![A commit in the middle of a stack, restacked and republished](assets/demo-restack.gif)
 
 `g2g restack` replays a stack's commits so its contents match that structure.
 This is what a squash merge upstream breaks: the child keeps its parent's

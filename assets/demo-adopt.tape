@@ -12,7 +12,7 @@ Set Theme "Catppuccin Mocha"
 Set FontFamily "Fira Code"
 Set FontSize 14
 Set Width 1080
-Set Height 560
+Set Height 600
 Set Padding 16
 Set Framerate 5
 Set TypingSpeed 40ms
@@ -69,6 +69,21 @@ Sleep 300ms
 Show
 
 # The fork is recorded and drawn as one
+Type "g2g status"
+Sleep 300ms
+Enter
+Sleep 3.5s
+
+# Both arms publish in one atomic push
+Type "g2g push --apply"
+Sleep 300ms
+Enter
+Sleep 3.5s
+Hide
+Type "clear"
+Enter
+Sleep 300ms
+Show
 Type "g2g status"
 Sleep 300ms
 Enter

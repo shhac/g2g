@@ -542,7 +542,9 @@ only on branches the g2g graph records — anything else is refused, naming
   through its pull request. The parent's other children then need a restack,
   and the preview says which. If the parent is checked out, the working tree
   moves with it; a local change in the way stops the fold and puts the parent
-  back.
+  back. A published branch's pull request into the parent reads as merged on
+  GitHub once the parent is pushed, though nothing reaches the trunk, and the
+  preview says so.
 - `rename` runs `git branch -m` and rewrites the record: the branch's own edge,
   the branches recorded on it, its place among the trunks, and its fork-point
   ref. The name is checked with `git check-ref-format --branch` and must be

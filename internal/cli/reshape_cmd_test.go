@@ -175,6 +175,25 @@ func TestFoldFastForwardsTheParentAndTheCheckoutFollows(t *testing.T) {
 	}
 }
 
+// A published branch folded into its parent has a pull request into it, which
+// GitHub marks merged as soon as the parent is pushed. The preview says so, and
+// that nothing reaches the trunk, before a reader finds it merged and wonders.
+func TestFoldOfAPublishedBranchSaysItsPullRequestWillReadAsMerged(t *testing.T) {
+	w := reshapeWorld(t)
+	w.git(w.Local, "push", "-q", "origin", "synthetic-b")
+
+	preview := mustRun(t, "fold", "--branch", "synthetic-b")
+	if !strings.Contains(preview, "Once synthetic-a is pushed, GitHub marks a pull request from synthetic-b into it merged") || !strings.Contains(preview, "nothing reaches the trunk") {
+		t.Errorf("preview does not say the pull request will read as merged:\n%s", preview)
+	}
+
+	w.git(w.Local, "push", "-q", "origin", ":synthetic-b")
+	w.git(w.Local, "fetch", "-q", "--prune", "origin")
+	if preview := mustRun(t, "fold", "--branch", "synthetic-b"); strings.Contains(preview, "GitHub marks") {
+		t.Errorf("preview mentions a pull request for a branch never published:\n%s", preview)
+	}
+}
+
 // Folding the branch you stand on switches to the parent once the parent has
 // arrived at the same commit, which cannot disturb anything.
 func TestFoldingTheCheckedOutBranchLeavesYouOnTheParent(t *testing.T) {

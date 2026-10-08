@@ -87,6 +87,13 @@ func foldNotes(view stackView, plan reshape.Plan) stackView {
 		view = view.note(plan.Parent+" is checked out, so the working tree moves with it · a local change it would overwrite stops the fold and puts "+plan.Parent+" back.", severityNeutral)
 	}
 	view = view.note("Deletes "+plan.Branch+".", severityNeutral)
+	// GitHub reads a pull request as merged once its base holds its commits,
+	// so the push that publishes the parent closes one from the folded branch
+	// into it, and the stack comment shows it merged. A reader who sees that
+	// asks whether anything reached the trunk.
+	if plan.Moves() && len(plan.Remote) != 0 {
+		view = view.note(fmt.Sprintf("Once %s is pushed, GitHub marks a pull request from %s into it merged, because %s then holds its commits · nothing reaches the trunk.", plan.Parent, plan.Branch, plan.Parent), severityNeutral)
+	}
 	if plan.Current == plan.Branch {
 		view = view.note("Switches to "+plan.Parent+" first, which by then is the same commit.", severityNeutral)
 	}

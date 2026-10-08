@@ -45,16 +45,14 @@ func TestPlanTargetsCurrentOrExplicitBranchWithoutCheckout(t *testing.T) {
 	}
 }
 
-func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
+func TestPlanStackExpandsTheFullStackForkedOrNot(t *testing.T) {
 	git := &fakeGit{current: "middle", branches: []string{"main", "lower", "middle", "top"}}
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: paths(), stackPaths: map[string]graphite.Stack{"middle": {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}}}})}
 	plan, err := service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
 	if err != nil || strings.Join(plan.Branches, ",") != "lower,middle,top" {
 		t.Fatalf("Plan() = (%#v, %v)", plan, err)
 	}
-	// A fork is no longer refused during selection — reading one is ordinary —
-	// so the refusal belongs here, where a linear projection is the thing that
-	// cannot represent it.
+	// One atomic push has no order to keep, so a fork is published whole.
 	forked := fakeGraphite{paths: map[string]graphite.Stack{
 		"middle": {Path: []string{"main", "lower", "middle"}, Trunks: []string{"main"}},
 		"top":    {Path: []string{"main", "lower", "middle", "top"}, Trunks: []string{"main"}},
@@ -62,12 +60,18 @@ func TestPlanStackExpandsFullLinearPathOrRejectsFork(t *testing.T) {
 	}}
 	git.branches = append(git.branches, "side")
 	service.Selector = graphiteSelector(git, forked)
-	_, err = service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
-	if err == nil || !strings.Contains(err.Error(), "one ordered path") {
+	plan, err = service.Plan(context.Background(), link.Selection{}, "origin", localgit.SetUpstream)
+	if err != nil {
 		t.Fatalf("Plan() fork error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "--branch") {
-		t.Errorf("fork refusal does not name the remedy: %v", err)
+	if !plan.Snapshot.Forks() {
+		t.Fatalf("Plan() branches = %v, want the fork above middle selected", plan.Branches)
+	}
+	if err := service.Execute(context.Background(), plan); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := strings.Join(git.pushed, ","); got != strings.Join(plan.Branches, ",") || git.pushes != 1 {
+		t.Errorf("pushed %q in %d pushes, want every selected branch in one", got, git.pushes)
 	}
 }
 

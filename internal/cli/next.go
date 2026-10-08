@@ -45,7 +45,7 @@ type suggestable struct {
 var (
 	statusCommand       = suggestable{command: "g2g status", accepted: shape.ReadScopes, fallback: shape.ScopeStack, remote: true}
 	pruneCommand        = suggestable{command: "g2g prune", accepted: shape.ReadScopes, fallback: shape.ScopeStack}
-	pushCommand         = suggestable{command: "g2g push", accepted: shape.ProjectScopes, fallback: shape.ScopeStack, remote: true}
+	pushCommand         = suggestable{command: "g2g push", accepted: shape.Scopes, fallback: shape.ScopeStack, remote: true}
 	pullCommand         = suggestable{command: "g2g pull", accepted: shape.SyncScopes, fallback: shape.ScopeStack, remote: true}
 	githubStatusCommand = suggestable{command: "g2g github status", accepted: shape.Scopes, fallback: shape.ScopeStack}
 	retargetCommand     = suggestable{command: "g2g github retarget", accepted: shape.ProjectScopes, fallback: shape.ScopeStack}
@@ -103,8 +103,8 @@ func (s selected) aim(target suggestable) (string, bool) {
 }
 
 // next is command aimed at the selection, or status over the same selection
-// when the command cannot reach all of it: a trunk restacked whole has
-// replayed several stacks, and push takes one at a time.
+// when the command cannot reach all of it: every trunk's stacks are wider than
+// anything but a read takes.
 func (s selected) next(target suggestable) string {
 	if aimed, ok := s.aim(target); ok {
 		return aimed

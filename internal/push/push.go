@@ -36,7 +36,7 @@ type Git interface {
 
 type Service struct {
 	Git Git
-	// Selector supplies the ordered path, from whichever source describes the
+	// Selector supplies the selection, from whichever source describes the
 	// branch. push only publishes refs, so it works with any of them.
 	Selector stack.PathSelector
 }
@@ -125,11 +125,9 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	// One atomic push of an ordered path is the whole contract here, so a
-	// selection that forks is refused rather than pushed in some order.
-	if err := snapshot.RequireLinear("push"); err != nil {
-		return Plan{}, err
-	}
+	// A fork is published whole: one atomic push has no order to keep, and
+	// each branch's lease and comparison are its own. The linear projections
+	// are submit's and link's, onto GitHub, not this one's.
 	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
@@ -137,7 +135,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	// A push is of one linear path, so every branch stands on the same base.
+	// A selection stands on one base, forked or not.
 	publishing, err := Compare(ctx, s.Git, snapshot.Branches, tips, func(branch string) (string, string) {
 		return snapshot.SitsOn(branch), snapshot.Base
 	})

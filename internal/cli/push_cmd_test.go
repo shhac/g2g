@@ -148,7 +148,7 @@ func TestPushApplyDoesNotMutateWhenReadyOutputFails(t *testing.T) {
 	}
 }
 
-func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
+func TestPushFailsClosedForRemoteAndAtomicFailures(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		git      *cliPushGit
@@ -156,10 +156,7 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 		args     []string
 		want     string
 	}{
-		// A fork is refused because one atomic push needs one ordered path, and
-		// the refusal names the remedy rather than picking a line.
-		{"fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}, cliPushGraphite{stackErr: errors.New("forked")}, []string{"push"}, "one ordered path"},
-		{"fork opt out", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}, cliPushGraphite{stackErr: errors.New("forked")}, []string{"push", "--scope", "path"}, ""},
+		{"one arm of a fork", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}, cliPushGraphite{stackErr: errors.New("forked")}, []string{"push", "--scope", "path"}, ""},
 		{"remote", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle"}, remoteErr: errors.New("unknown remote")}, cliPushGraphite{}, []string{"push", "--remote", "synthetic"}, "unknown remote"},
 		{"atomic", &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top"}, pushErr: errors.New("atomic unsupported")}, cliPushGraphite{}, []string{"push", "--apply"}, "Not applied\natomic unsupported"},
 	} {
@@ -185,6 +182,27 @@ func TestPushFailsClosedForForkRaceAndFailure(t *testing.T) {
 				t.Errorf("pushes=%d, want one attempt and no fallback", test.git.pushes)
 			}
 		})
+	}
+}
+
+// One atomic push has no order to keep, so a fork is drawn as one and
+// published whole, in a single attempt.
+func TestPushPublishesAForkInOneAtomicPush(t *testing.T) {
+	git := &cliPushGit{current: "synthetic-middle", branches: []string{"synthetic-main", "synthetic-lower", "synthetic-middle", "synthetic-top", "synthetic-side"}}
+	var stdout, stderr bytes.Buffer
+	service := push.Service{Git: git, Selector: stack.GraphiteSelector{Git: git, Graphite: cliPushGraphite{stackErr: errors.New("forked")}}}
+	command := newWithPresentation("v", "g2g", &stdout, &stderr, link.Service{}, service, Presentation{})
+	command.SetArgs([]string{"push", "--apply"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("error = %v\n%s", err, stdout.String())
+	}
+	for _, want := range []string{"├─● synthetic-side", "└─● synthetic-top", "origin synthetic-lower synthetic-middle"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, stdout.String())
+		}
+	}
+	if got := strings.Join(git.pushed, ","); git.pushes != 1 || !strings.Contains(got, "synthetic-top") || !strings.Contains(got, "synthetic-side") {
+		t.Errorf("pushed %q in %d pushes, want both arms in one", got, git.pushes)
 	}
 }
 

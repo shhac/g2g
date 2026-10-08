@@ -35,7 +35,6 @@ func TestProjectingCommandsRefuseAFork(t *testing.T) {
 		{args: []string{"github", "link", "--branch", "synthetic-lower", "--apply"}, mutation: "gh stack link"},
 		{args: []string{"github", "retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh pr edit"},
 		{args: []string{"submit", "--branch", "synthetic-lower"}, mutation: "git push"},
-		{args: []string{"push", "--branch", "synthetic-lower", "--apply"}, mutation: "git push"},
 	} {
 		t.Run(test.args[0], func(t *testing.T) {
 			recorder, _ := g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
@@ -49,6 +48,23 @@ func TestProjectingCommandsRefuseAFork(t *testing.T) {
 			}
 			recorder.AssertNone(test.mutation, "gh pr create")
 		})
+	}
+}
+
+// push is not a projection: one atomic push has no order to keep, so the same
+// fork the projections refuse is published whole.
+func TestPushPublishesTheForkTheProjectionsRefuse(t *testing.T) {
+	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
+
+	stdout, _, err := run(t, "push", "--branch", "synthetic-lower", "--apply")
+	if err != nil {
+		t.Fatalf("push error = %v\n%s", err, stdout)
+	}
+	pushed := recorder.Find("git push --atomic")
+	for _, branch := range []string{"synthetic-lower", "synthetic-top", "synthetic-side"} {
+		if !strings.Contains(pushed, " "+branch) {
+			t.Errorf("push %q does not publish %s", pushed, branch)
+		}
 	}
 }
 

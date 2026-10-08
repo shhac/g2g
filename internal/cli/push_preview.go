@@ -7,6 +7,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 func pushView(plan push.Plan) stackView {
@@ -17,11 +18,13 @@ func pushView(plan push.Plan) stackView {
 		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
 		Action:       pushAction(plan),
 	}
+	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
 	for _, branch := range plan.Branches {
 		// A branch missing from the map reads as Uncompared, never as the
 		// reassuring answer.
 		state, level := publicationState(plan.Publishing[branch])
-		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target}.labeled(state, level))
+		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
+		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked() != "" {

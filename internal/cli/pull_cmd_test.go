@@ -212,9 +212,9 @@ func TestPullSuggestsWhatItsOutcomeCallsFor(t *testing.T) {
 		{name: "replayed", steps: []string{"synthetic-login"}, want: "g2g push --branch synthetic-login"},
 		{name: "landed", steps: []string{"synthetic-login"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --branch synthetic-login"},
 		{name: "landed from the trunk", args: []string{"--scope", "trunk"}, collapses: []string{"synthetic-auth"}, want: "g2g prune --branch synthetic-login --scope trunk"},
-		// push takes one stack at a time, so a trunk's worth of replays is
-		// shown rather than pushed.
-		{name: "replayed from the trunk", args: []string{"--scope", "trunk"}, steps: []string{"synthetic-login"}, want: "g2g status --branch synthetic-login --scope trunk"},
+		// push takes a whole trunk, so a trunk's worth of replays is pushed
+		// as one.
+		{name: "replayed from the trunk", args: []string{"--scope", "trunk"}, steps: []string{"synthetic-login"}, want: "g2g push --branch synthetic-login --scope trunk"},
 		// The remote it pulled from is where the stack is published, so the
 		// push it suggests names it.
 		{name: "replayed from another remote", args: []string{"--remote", "synthetic-upstream"}, steps: []string{"synthetic-login"}, want: "g2g push --branch synthetic-login --remote synthetic-upstream"},

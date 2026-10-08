@@ -24,8 +24,9 @@ func TestSuggestionsAimAtWhatWasSelected(t *testing.T) {
 		{name: "named", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeStack}, want: "g2g push --branch synthetic-a"},
 		{name: "narrower than the default", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopePath}, want: "g2g push --branch synthetic-a"},
 		{name: "no scope", acted: selected{branch: "synthetic-a"}, want: "g2g push"},
-		{name: "wider than push takes", acted: selected{branch: "synthetic-a", scope: shape.ScopeTrunk}, want: "g2g status --scope trunk"},
-		{name: "wider, named", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeTrunk}, want: "g2g status --branch synthetic-a --scope trunk"},
+		{name: "a whole trunk", acted: selected{branch: "synthetic-a", scope: shape.ScopeTrunk}, want: "g2g push --scope trunk"},
+		{name: "wider than push takes", acted: selected{branch: "synthetic-a", scope: shape.ScopeAll}, want: "g2g status --scope all"},
+		{name: "wider, named", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeAll}, want: "g2g status --branch synthetic-a --scope all"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := test.acted.next(pushCommand); got != test.want {
@@ -52,7 +53,7 @@ func TestSuggestionsCarryTheRemoteToCommandsThatTakeOne(t *testing.T) {
 		{name: "push", acted: upstream, target: pushCommand, want: "g2g push --remote synthetic-upstream"},
 		{name: "prune takes none", acted: upstream, target: pruneCommand, want: "g2g prune"},
 		{name: "the default", acted: upstream.from(localgit.DefaultRemote), target: pushCommand, want: "g2g push"},
-		{name: "status in push's place", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeTrunk}.from("synthetic-upstream"), target: pushCommand, want: "g2g status --branch synthetic-a --scope trunk --remote synthetic-upstream"},
+		{name: "status in push's place", acted: selected{branch: "synthetic-a", named: true, scope: shape.ScopeAll}.from("synthetic-upstream"), target: pushCommand, want: "g2g status --branch synthetic-a --scope all --remote synthetic-upstream"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := test.acted.next(test.target); got != test.want {

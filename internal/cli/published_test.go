@@ -84,12 +84,70 @@ func TestPublishedNotesAimAtTheSelectionAndRemote(t *testing.T) {
 	for _, note := range notes {
 		said += plainCommands(note.Text) + "\n"
 	}
+	// Only the branch itself needs publishing, and the stack's default would
+	// also reach the one the remote is ahead on and be refused for it.
 	for _, want := range []string{
-		"run g2g push --branch synthetic-ahead --remote synthetic-upstream.",
+		"run g2g push --branch synthetic-ahead --scope branch --remote synthetic-upstream.",
 		"run g2g pull --branch synthetic-ahead --remote synthetic-upstream.",
 	} {
 		if !strings.Contains(said, want) {
 			t.Errorf("notes do not say %q:\n%s", want, said)
 		}
+	}
+}
+
+// The push a note suggests reaches the branches that need it and no further:
+// the narrowest scope around the target that covers all of them, and the
+// command as status was asked when nothing narrower would select less.
+func TestPublishedNotesNarrowThePushToWhatNeedsIt(t *testing.T) {
+	// main ← lower ← middle ← {top, side}, and other beside lower on main.
+	view := stackView{Nodes: []stackNode{
+		{Branch: "synthetic-main", Trunk: true},
+		{Branch: "synthetic-lower", Parent: "synthetic-main"},
+		{Branch: "synthetic-middle", Parent: "synthetic-lower"},
+		{Branch: "synthetic-top", Parent: "synthetic-middle"},
+		{Branch: "synthetic-side", Parent: "synthetic-middle"},
+		{Branch: "synthetic-other", Parent: "synthetic-main"},
+	}}
+	for _, test := range []struct {
+		name        string
+		target      string
+		scope       shape.Scope
+		unpublished []string
+		want        string
+	}{
+		{name: "just the target", target: "synthetic-middle", unpublished: []string{"synthetic-middle"}, want: "g2g push --scope branch"},
+		{name: "below the target", target: "synthetic-middle", unpublished: []string{"synthetic-lower", "synthetic-middle"}, want: "g2g push --scope path"},
+		{name: "above the target, both arms", target: "synthetic-middle", unpublished: []string{"synthetic-top", "synthetic-side"}, want: "g2g push --scope subtree"},
+		{name: "both sides", target: "synthetic-middle", unpublished: []string{"synthetic-lower", "synthetic-top"}, want: "g2g push"},
+		{name: "a cousin", target: "synthetic-middle", unpublished: []string{"synthetic-other"}, want: "g2g push --scope trunk"},
+		{name: "everything a leaf's path holds", target: "synthetic-top", scope: shape.ScopeStack, unpublished: []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, want: "g2g push"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			nodes := view.Nodes
+			scope := test.scope
+			if scope == "" {
+				scope = shape.ScopeTrunk
+			}
+			if scope == shape.ScopeStack {
+				// A leaf's stack is its path.
+				nodes = nodes[:4]
+			}
+			publishing := map[string]push.Publication{}
+			for _, node := range nodes {
+				publishing[node.Branch] = push.Publication{Standing: push.Current}
+			}
+			for _, branch := range test.unpublished {
+				publishing[branch] = push.Publication{Standing: push.Ahead, Ours: 1}
+			}
+			acted := selected{branch: test.target, scope: scope}.from("origin")
+			said := ""
+			for _, note := range publishedNotes(stackView{Nodes: nodes}, acted, publishing).Notes {
+				said += plainCommands(note.Text) + "\n"
+			}
+			if !strings.Contains(said, "run "+test.want+".") {
+				t.Errorf("notes do not say run %q:\n%s", test.want, said)
+			}
+		})
 	}
 }

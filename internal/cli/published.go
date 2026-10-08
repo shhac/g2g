@@ -8,6 +8,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // readPublished compares every local branch in the discovery with the remote.
@@ -119,7 +120,7 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 		}
 	}
 	if len(ahead) != 0 {
-		view = view.note("Not on "+remote+" as they are here: "+branchList(ahead)+" · run "+runnable(acted.aimedOr(pushCommand))+".", severityWarn)
+		view = view.note("Not on "+remote+" as they are here: "+branchList(ahead)+" · run "+runnable(pushFor(view, acted, ahead))+".", severityWarn)
 	}
 	if len(behind) != 0 {
 		view = view.note(remote+" has work "+branchList(behind)+" "+pick(len(behind), "does", "do")+" not · run "+runnable(acted.aimedOr(pullCommand))+".", severityWarn)
@@ -131,4 +132,84 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 		view = view.note(remote+" is on a commit this repository has not fetched for "+branchList(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)
 	}
 	return view.note("Compared with "+remote+" as last fetched or pushed · nothing was asked of the network.", severityNeutral)
+}
+
+// pushFor is push aimed at the branches that are not published as they are
+// here, cut down to the narrowest scope around the target that still covers
+// them: the target alone, the path below it, everything above it, or both. A scope
+// is only named when it selects less than status showed, since otherwise the
+// push it names is the one status's own selection already suggests. Reaching
+// less matters beyond reading as bounded: one branch the remote is ahead on
+// refuses the whole push, so a push that does not reach it is not refused
+// for it.
+func pushFor(view stackView, acted selected, unpublished []string) string {
+	parents := make(map[string]string, len(view.Nodes))
+	shown := 0
+	for _, node := range view.Nodes {
+		parents[node.Branch] = node.Parent
+		if node.Branch == acted.branch && node.Trunk {
+			return acted.aimedOr(pushCommand)
+		}
+		if !node.Trunk {
+			shown++
+		}
+	}
+	if _, present := parents[acted.branch]; !present {
+		return acted.aimedOr(pushCommand)
+	}
+	for _, scope := range []shape.Scope{shape.ScopeBranch, shape.ScopePath, shape.ScopeSubtree, shape.ScopeStack} {
+		covered := scopedFrom(view, parents, acted.branch, scope)
+		if len(covered) < shown && coversAll(covered, unpublished) {
+			return acted.narrowedTo(scope).aimedOr(pushCommand)
+		}
+	}
+	return acted.aimedOr(pushCommand)
+}
+
+// scopedFrom is the branches a scope around target selects among those shown,
+// leaving out trunks, which a push never publishes.
+func scopedFrom(view stackView, parents map[string]string, target string, scope shape.Scope) map[string]bool {
+	covered := make(map[string]bool, len(view.Nodes))
+	for _, node := range view.Nodes {
+		if node.Trunk {
+			continue
+		}
+		var within bool
+		switch scope {
+		case shape.ScopeBranch:
+			within = node.Branch == target
+		case shape.ScopePath:
+			within = descends(parents, target, node.Branch)
+		case shape.ScopeSubtree:
+			within = descends(parents, node.Branch, target)
+		case shape.ScopeStack:
+			within = descends(parents, target, node.Branch) || descends(parents, node.Branch, target)
+		}
+		if within {
+			covered[node.Branch] = true
+		}
+	}
+	return covered
+}
+
+// descends reports whether branch is ancestor itself or sits somewhere above
+// it, following the parents shown. The walk is bounded by how many there are,
+// so a record that loops cannot hold it.
+func descends(parents map[string]string, branch, ancestor string) bool {
+	for step := 0; step <= len(parents) && branch != ""; step++ {
+		if branch == ancestor {
+			return true
+		}
+		branch = parents[branch]
+	}
+	return false
+}
+
+func coversAll(covered map[string]bool, branches []string) bool {
+	for _, branch := range branches {
+		if !covered[branch] {
+			return false
+		}
+	}
+	return true
 }

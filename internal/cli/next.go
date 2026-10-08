@@ -63,6 +63,9 @@ type selected struct {
 	named  bool
 	scope  shape.Scope
 	remote string
+	// narrow names the scope even where the command's default would reach
+	// it, because reaching less than the default is the point.
+	narrow bool
 }
 
 func selectedIn(discovery graph.Discovery) selected {
@@ -71,6 +74,12 @@ func selectedIn(discovery graph.Discovery) selected {
 
 func selectedFrom(snapshot stack.Snapshot) selected {
 	return selected{branch: snapshot.Target, named: snapshot.TargetSource == shape.TargetNamed, scope: snapshot.Scope}
+}
+
+// narrowedTo is the selection cut down to scope around the same branch.
+func (s selected) narrowedTo(scope shape.Scope) selected {
+	s.scope, s.narrow = scope, true
+	return s
 }
 
 // from is the selection as compared with remote.
@@ -90,7 +99,8 @@ func (s selected) aim(target suggestable) (string, bool) {
 		command += " --branch " + repair.Quote(s.branch)
 	}
 	switch {
-	case s.scope == "" || s.scope.Within(target.fallback):
+	case s.scope == "" || s.scope == target.fallback:
+	case s.scope.Within(target.fallback) && !s.narrow:
 	case slices.Contains(target.accepted, s.scope):
 		command += " --scope " + string(s.scope)
 	default:

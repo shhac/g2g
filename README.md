@@ -223,6 +223,8 @@ defaults to `path`, because standing in the middle of a stack and typing `land`
 means "as far as here". `prune` defaults to `stack` and offers `all`, since it
 edits only the record and forgets only what has landed. `pull` offers only
 `stack` and `trunk`, and `untrack` only `branch` (its default) and `subtree`.
+`push` defaults to `stack` and takes every scope but `all`, forks included,
+because one atomic push has no order to keep.
 
 ```sh
 g2g status                   # where am I: the trunk, me, and everything above
@@ -231,7 +233,7 @@ g2g restack --apply          # me and what depends on me
 g2g status --scope all       # every stack in the repository
 ```
 
-A GitHub native stack is linear, so `push`, `submit`, `land`, `github link`,
+A GitHub native stack is linear, so `submit`, `land`, `github link`,
 `github unlink` and `github retarget` take `stack` or `path` only, and refuse a
 selection that forks — naming the remedy rather than choosing a line. Selecting
 a leaf is that remedy and needs no flag: a leaf has no descendants, so `stack`
@@ -382,7 +384,7 @@ a script can ask the question and read the status.
 
 ### Record
 
-![Adopting branches made with plain git, including a fork](assets/demo-adopt.gif)
+![Adopting branches made with plain git, including a fork, and pushing it whole](assets/demo-adopt.gif)
 
 ```sh
 # Record the whole stack you are on, in one step. This is where to start.
@@ -780,17 +782,22 @@ one branch is the only ambiguity, and it fails closed.
 ```sh
 g2g push --branch feature/top             # preview; full-stack expansion is the default
 g2g push --branch feature/top --apply     # every selected ref advances, or none do
+g2g push --scope subtree --apply          # this branch and everything above it, every fork
+g2g push --branch feature/leaf --scope path --apply  # one arm: the leaf and what it sits on
 g2g push --remote upstream --apply        # another name from git remote, not a branch
 g2g push --no-set-upstream --apply        # leave what each branch tracks alone
 ```
 
-`g2g push` is deliberately narrow: it publishes the selected linear path in one
+`g2g push` is deliberately narrow: it publishes the selected branches in one
 `git push --atomic` with a `--force-with-lease` per branch, and never invokes
-GitHub, submits, or restacks. Each lease is pinned to the remote tip the
-preview observed, because a bare lease takes its baseline from the
-remote-tracking ref and any fetch in between would disarm it. The path may come
-from the local forest or Graphite. `--remote` defaults to `origin` and must name
-a configured remote. Every selected non-trunk branch is pushed bottom-to-top.
+GitHub, submits, or restacks. The selection may fork: an atomic push has no
+order to keep, so every arm advances together or none does. Each lease is pinned
+to the remote tip the preview observed, because a bare lease takes its baseline
+from the remote-tracking ref and any fetch in between would disarm it. The
+selection may come from the local forest or Graphite. `--remote` defaults to
+`origin` and must name a configured remote. Every selected non-trunk branch is
+pushed except one that has landed: its remote branch is usually gone because it
+merged, and naming it would put it back.
 
 A branch replayed since it was published — the ordinary state after a restack —
 is shown as rewritten and pushed: the remote's version is compared by content,

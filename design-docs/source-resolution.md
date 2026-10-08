@@ -158,8 +158,8 @@ whichever source supplied each edge. Writing stops at the boundary.
 - `track` and `untrack` write the g2g store, which is how a branch changes
   hands in either direction. That is the single remedy for every "our record
   disagrees" state.
-- `github link` and `push` only need an ordered path, so they work with any
-  source.
+- `github link` only needs an ordered path, and `push` only a selection, so
+  they work with any source.
 
 A Graphite-backed path must **refuse when the repository is not already
 Graphite-tracked** rather than invoking `gt` and enrolling it.

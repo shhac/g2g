@@ -107,7 +107,7 @@ default widens what you read before agreeing to it.
 
 ## Projection is linear, and that is a capability, not a scope
 
-A GitHub native stack is linear. `github link`, `submit`, `push` and
+A GitHub native stack is linear. `github link`, `submit`, `land` and
 `github retarget` therefore cannot project a fork, and offer only `stack | path`, refusing a
 forked `stack` and naming the remedy: select a leaf.
 
@@ -122,6 +122,18 @@ g2g status                     g2g status --branch feature-c
   │    └─● feature-c             ● feature-c   ← target
   └─● other-stack
 ```
+
+`push` is not a projection, although it once borrowed their scopes and their
+refusal. It publishes refs in one `git push --atomic`, which has no order to
+keep, so it takes every scope but `all` and publishes a fork whole. The two
+phrasings people use about a forked stack are already scopes: "and everything
+above me" is `--scope subtree`, and "along this arm" is `--branch <leaf>
+--scope path`. `status`'s advice to push names the narrowest of `branch`,
+`path`, `subtree` and `stack` around the target that covers every branch not
+published as it is here, and names one only when it selects less than status
+showed. Reaching less is more than reading as bounded: one branch the remote is
+ahead on refuses the whole push, so a push that does not reach it is not
+refused for it.
 
 ## One vocabulary, both records
 

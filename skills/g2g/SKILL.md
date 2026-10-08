@@ -140,8 +140,10 @@ description: |
   `prune --branch`, `pull --branch` (diverged from the remote). It exits `1`
   when it finds something. `status` is the full overview; `doctor` is only the
   unexpected — keep that split.
-- `push` is a preview-first publication escape hatch. It selects a path through
-  source resolution, must never submit or restack, and must never call `gh`;
+- `push` is a preview-first publication escape hatch. It selects through
+  source resolution, forks included (one atomic push has no order to keep, so
+  it takes every scope but `all`), leaves a landed branch out rather than
+  recreating it, must never submit or restack, and must never call `gh`;
   only `--apply` may run exactly one
   `git push --atomic --set-upstream --force-with-lease <remote> <branches>`
   call (`--no-set-upstream` drops `--set-upstream`; `submit` and `land` carry
@@ -354,7 +356,7 @@ description: |
   `prune`, which forgets landed records and, with `--forget-missing`, absent
   selected records. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
-- Projection is a capability, not a scope. `github link`, `submit`, `push` and
+- Projection is a capability, not a scope. `github link`, `submit`, `land` and
   `github retarget` take `stack|path` and refuse a forked selection through
   `Snapshot.RequireLinear`, which names the remedy instead of choosing a line.
 - Selected from a trunk, `stack` is the whole tree under it — a trunk's path is

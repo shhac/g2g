@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func newComment(service comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -70,7 +71,7 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 
 // stoppedMidComment says which comments were written before the run failed.
 func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, retry string, p Presentation) error {
-	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + pick(len(stopped.Written), "it stays", "they stay") + "."
+	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + words.Pick(len(stopped.Written), "it stays", "they stay") + "."
 	return writeStoppedPartWay(cmd, p,
 		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err),
 		written+" Rerun "+runnable(retry)+" to finish; it edits rather than adds.",

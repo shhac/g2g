@@ -7,6 +7,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // divergence is one branch both sides have moved, and by how much.
@@ -100,16 +101,8 @@ func divergenceReason(stuck []divergence) string {
 	for _, moved := range stuck {
 		parts = append(parts, fmt.Sprintf("%s (%d here that %s not published, %d published that %s not here)",
 			moved.Branch,
-			moved.Ours, pick(moved.Ours, "is", "are"),
-			moved.Theirs, pick(moved.Theirs, "is", "are")))
+			moved.Ours, words.Pick(moved.Ours, "is", "are"),
+			moved.Theirs, words.Pick(moved.Theirs, "is", "are")))
 	}
 	return fmt.Sprintf("both sides have moved on %s", strings.Join(parts, ", "))
-}
-
-// pick chooses the form that agrees with a count.
-func pick(count int, one, many string) string {
-	if count == 1 {
-		return one
-	}
-	return many
 }

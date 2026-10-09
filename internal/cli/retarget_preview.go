@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/retarget"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // retargetView names every base it would move, and where from.
@@ -18,7 +19,7 @@ func retargetView(plan retarget.Plan) stackView {
 	}
 	if len(plan.Ambiguous) != 0 {
 		view = view.note(fmt.Sprintf("%s %s more than one open pull request · this leaves %s alone.",
-			branchList(plan.Ambiguous), pick(len(plan.Ambiguous), "has", "have"), pick(len(plan.Ambiguous), "it", "them")), severityBad)
+			words.List(plan.Ambiguous), words.Pick(len(plan.Ambiguous), "has", "have"), words.Pick(len(plan.Ambiguous), "it", "them")), severityBad)
 	}
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)

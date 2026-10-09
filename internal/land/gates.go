@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // blockedBefore is everything that refuses the whole descent before any of it
@@ -144,7 +145,7 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 		})
 	}
 	return repair.Note{
-		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), pick(len(numbers), "is", "are")),
+		Reason: fmt.Sprintf("%s %s in a GitHub stack, and GitHub will not merge a stacked pull request on its own", strings.Join(numbers, ", "), words.Pick(len(numbers), "is", "are")),
 		Ways:   ways,
 	}
 }

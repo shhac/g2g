@@ -5,6 +5,7 @@ import (
 
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func restackView(plan restack.Plan) stackView {
@@ -58,7 +59,7 @@ func ontoEach(plan restack.Plan, branches []string) string {
 	}
 	said := make([]string, 0, len(order))
 	for _, onto := range order {
-		said = append(said, branchList(grouped[onto])+" onto "+onto)
+		said = append(said, words.List(grouped[onto])+" onto "+onto)
 	}
 	return strings.Join(said, "; ")
 }
@@ -71,7 +72,7 @@ func orphanNote(view stackView, plan restack.Plan) stackView {
 	if len(orphans) == 0 {
 		return view
 	}
-	dropped, listed := count(len(orphans), "commit", "commits"), orphanList(plan)
+	dropped, listed := words.Count(len(orphans), "commit", "commits"), orphanList(plan)
 	if plan.Absorb {
 		return view.note("Keeps "+dropped+" the parent dropped, by re-recording where the branch forks"+listed+". Nothing is rewritten.", severityWarn)
 	}
@@ -105,7 +106,7 @@ func emptiedNote(view stackView, plan restack.Plan) stackView {
 	if len(emptied) == 0 {
 		return view
 	}
-	return view.note("Leaves "+branchList(emptied)+" with no commits of its own · its content is already upstream, so consider "+runnable("g2g untrack")+".", severityWarn)
+	return view.note("Leaves "+words.List(emptied)+" with no commits of its own · its content is already upstream, so consider "+runnable("g2g untrack")+".", severityWarn)
 }
 
 // engineNote is the informed-consent line. A rewrite that cannot apply cleanly

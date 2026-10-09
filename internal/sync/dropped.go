@@ -10,6 +10,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // What changed on each side since this clone and the remote last agreed.
@@ -317,7 +318,7 @@ func strictly(plan Plan, unsynced []string) repair.Note {
 		reasons = append(reasons, "it would put back "+dropNames(plan.Restored)+", missing only after a reset to an out-of-date tracking ref")
 	}
 	if len(unsynced) != 0 {
-		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+pick(len(unsynced), "differs", "differ")+" from "+remoteName(plan.Remote)+" with no record of where the two last agreed")
+		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+words.Pick(len(unsynced), "differs", "differ")+" from "+remoteName(plan.Remote)+" with no record of where the two last agreed")
 	}
 	if len(reasons) == 0 {
 		return repair.Note{}

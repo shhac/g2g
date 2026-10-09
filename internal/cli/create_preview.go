@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/create"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/words"
 
 	localgit "github.com/shhac/g2g/internal/git"
 )
@@ -72,7 +73,7 @@ func stagedSummary(paths []string) string {
 	if len(shown) > stagedShown {
 		shown = shown[:stagedShown]
 	}
-	summary := count(len(paths), "staged file", "staged files") + " (" + strings.Join(shown, ", ")
+	summary := words.Count(len(paths), "staged file", "staged files") + " (" + strings.Join(shown, ", ")
 	if rest := len(paths) - len(shown); rest > 0 {
 		summary += fmt.Sprintf(", and %d more", rest)
 	}

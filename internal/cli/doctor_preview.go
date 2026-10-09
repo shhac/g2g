@@ -5,6 +5,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // finding is one thing that is not as it should be, and the way to put it
@@ -84,7 +85,7 @@ func doctorView(discovery graph.Discovery, findings []finding) stackView {
 		view = view.note(subject+" · run "+runnable(found.Command)+".", found.Severity)
 	}
 	if len(findings) == 0 {
-		return view.note(fmt.Sprintf("Nothing needs putting right across %s.", count(len(discovery.Graph.Edges), "recorded branch", "recorded branches")), severityOK)
+		return view.note(fmt.Sprintf("Nothing needs putting right across %s.", words.Count(len(discovery.Graph.Edges), "recorded branch", "recorded branches")), severityOK)
 	}
 	return view
 }

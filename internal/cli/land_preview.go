@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/shhac/g2g/internal/land"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // landView draws the descent: the stack as it is, what each branch needs, and
@@ -38,7 +39,7 @@ func landView(plan land.Plan) stackView {
 		// which restarts the required checks that were green when this was
 		// planned, and on a protected repository that is every run.
 		view = view.note(fmt.Sprintf("%s will read blocked once their replay restarts the required checks · rerun with %s to merge without waiting for them",
-			branchList(plan.Protected), runnable("--admin")), severityWarn)
+			words.List(plan.Protected), runnable("--admin")), severityWarn)
 	}
 	return view
 }

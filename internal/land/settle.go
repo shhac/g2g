@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // The wait between attempts, and its ceiling. Short enough that an answer
@@ -59,15 +60,7 @@ type NotSettled struct {
 }
 
 func (e *NotSettled) Error() string {
-	return fmt.Sprintf("gave up waiting for %s after %d %s", e.What, e.Attempts, pick(e.Attempts, "attempt", "attempts"))
-}
-
-// pick is singular for one and plural otherwise.
-func pick(count int, singular, plural string) string {
-	if count == 1 {
-		return singular
-	}
-	return plural
+	return fmt.Sprintf("gave up waiting for %s after %d %s", e.What, e.Attempts, words.Pick(e.Attempts, "attempt", "attempts"))
 }
 
 // settle asks until the answer is yes, the context gives up, or asking fails.

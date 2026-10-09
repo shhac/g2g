@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/shhac/g2g/internal/align"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // adoptFromView leads with the authority claim rather than the branch count.
@@ -26,10 +27,10 @@ func adoptFromView(plan align.AdoptPlan) stackView {
 	if len(plan.Adopt) == 0 {
 		return agreementNote(view, plan)
 	}
-	view = view.note("Adopts "+branchList(plan.Claims())+" into the g2g graph.", severityOK)
+	view = view.note("Adopts "+words.List(plan.Claims())+" into the g2g graph.", severityOK)
 	view = view.note(source.authority(len(plan.Adopt)), severityWarn)
 	if len(plan.NewTrunks) != 0 {
-		view = view.note("Records "+branchList(plan.NewTrunks)+" as "+pick(len(plan.NewTrunks), "a trunk", "trunks")+" of the g2g forest.", severityNeutral)
+		view = view.note("Records "+words.List(plan.NewTrunks)+" as "+words.Pick(len(plan.NewTrunks), "a trunk", "trunks")+" of the g2g forest.", severityNeutral)
 	}
 	for _, note := range unconfirmedNotes(plan) {
 		view = view.note(note, severityWarn)
@@ -52,7 +53,7 @@ func adoptedFrom(from string) adoptSource {
 			name: align.FromGitHub,
 			says: "the pull request says",
 			authority: func(count int) string {
-				them := pick(count, "it", "them")
+				them := words.Pick(count, "it", "them")
 				return fmt.Sprintf("g2g answers for %s from now on · the pull requests are unchanged, and %s still shows what GitHub will merge.",
 					them, runnable("g2g github status --from github"))
 			},
@@ -62,7 +63,7 @@ func adoptedFrom(from string) adoptSource {
 		name: align.FromGraphite,
 		says: "Graphite says",
 		authority: func(count int) string {
-			them := pick(count, "it", "them")
+			them := words.Pick(count, "it", "them")
 			return fmt.Sprintf("g2g answers for %s from now on · run %s to see Graphite's view of %s. Graphite keeps tracking %s.",
 				them, runnable("g2g status --from graphite"), them, them)
 		},
@@ -73,7 +74,7 @@ func agreementNote(view stackView, plan align.AdoptPlan) stackView {
 	if len(plan.Agreed) == 0 {
 		return view
 	}
-	return view.note("Both already agree about "+branchList(plan.Agreed)+".", severityNeutral)
+	return view.note("Both already agree about "+words.List(plan.Agreed)+".", severityNeutral)
 }
 
 // unconfirmedNotes says which adopted edges Git does not yet show, in track's
@@ -93,7 +94,7 @@ func unconfirmedNotes(plan align.AdoptPlan) []string {
 // conflictNote names each disagreement in full. "Blocked on a conflict" is not
 // actionable; which parent each record holds is.
 func conflictNote(plan align.AdoptPlan, source adoptSource) string {
-	note := "The two records disagree about " + branchList(conflictedBranches(plan)) + ":"
+	note := "The two records disagree about " + words.List(conflictedBranches(plan)) + ":"
 	for _, conflict := range plan.Conflicts {
 		ours := conflict.Ours
 		if conflict.Declared {

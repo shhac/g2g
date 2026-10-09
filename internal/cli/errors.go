@@ -10,6 +10,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // ghAuthExitCode is the exit status the GitHub CLI uses for an authentication
@@ -192,7 +193,7 @@ func remediationHint(err error) string {
 type foundError struct{ count int }
 
 func (e foundError) Error() string {
-	return fmt.Sprintf("found %s", count(e.count, "problem", "problems"))
+	return fmt.Sprintf("found %s", words.Count(e.count, "problem", "problems"))
 }
 
 func foundProblems(count int) error { return foundError{count} }

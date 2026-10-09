@@ -14,6 +14,7 @@ import (
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func newSubmit(service submit.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -269,7 +270,7 @@ func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry
 		done = "Published the stack to " + remote + ". "
 	}
 	if len(stopped.Opened) != 0 {
-		done += "Opened " + pick(len(stopped.Opened), "a pull request", "pull requests") + " for " + branchList(stopped.Opened) + ". "
+		done += "Opened " + words.Pick(len(stopped.Opened), "a pull request", "pull requests") + " for " + words.List(stopped.Opened) + ". "
 	}
 	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: "+stopped.Err.Error(),

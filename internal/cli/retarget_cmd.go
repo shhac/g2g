@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/retarget"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func newRetarget(service retarget.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -73,7 +74,7 @@ func stoppedMidRetarget(cmd *cobra.Command, stopped *retarget.Stopped, retry str
 	for _, change := range stopped.Moved {
 		numbers = append(numbers, change.Number)
 	}
-	moved := "Moved the base of " + pullRequestList(numbers) + ", and " + pick(len(numbers), "it stays", "they stay") + " moved."
+	moved := "Moved the base of " + pullRequestList(numbers) + ", and " + words.Pick(len(numbers), "it stays", "they stay") + " moved."
 	return writeStoppedPartWay(cmd, p,
 		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed.Number, stopped.Err),
 		moved+" Rerun "+runnable(retry)+" to finish; it moves only the bases still wrong.",

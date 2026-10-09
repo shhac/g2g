@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // recentDrops is how long status keeps naming commits a pull or push dropped.
@@ -50,9 +51,9 @@ func ago(since time.Duration) string {
 	case since < time.Hour:
 		return "just now"
 	case since < 24*time.Hour:
-		return count(int(since.Hours()), "hour", "hours") + " ago"
+		return words.Count(int(since.Hours()), "hour", "hours") + " ago"
 	default:
-		return count(int(since.Hours()/24), "day", "days") + " ago"
+		return words.Count(int(since.Hours()/24), "day", "days") + " ago"
 	}
 }
 

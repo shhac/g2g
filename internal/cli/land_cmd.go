@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/land"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func newLand(service land.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -158,15 +159,15 @@ func landInterrupted(cmd *cobra.Command, err error, p Presentation) (bool, error
 func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) error {
 	landed := "Nothing merged."
 	if len(stopped.Landed) != 0 {
-		landed = "Merged " + branchList(stopped.Landed) + ", and " + pick(len(stopped.Landed), "it stays", "they stay") + " merged."
+		landed = "Merged " + words.List(stopped.Landed) + ", and " + words.Pick(len(stopped.Landed), "it stays", "they stay") + " merged."
 	}
 	if len(stopped.Changed) != 0 {
 		// What happened short of a merge is on the remote or in the graph too,
 		// and "nothing merged" alone read as nothing having happened.
-		landed += " Also " + branchList(stopped.Changed) + "."
+		landed += " Also " + words.List(stopped.Changed) + "."
 	}
 	if len(stopped.Tidied) != 0 {
-		landed += " Cleaned up after " + branchList(stopped.Tidied) + ", which had already landed."
+		landed += " Cleaned up after " + words.List(stopped.Tidied) + ", which had already landed."
 	}
 	// The merges that happened are permanent, so this is not a failure to
 	// retry — but it is not what was asked for either, and a script reading

@@ -7,6 +7,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // graphNodes projects a discovery onto the shared view.
@@ -116,14 +117,14 @@ func graphView(discovery graph.Discovery, operation string) stackView {
 // for. Adding it here rather than at each view's return means no branch of any
 // of them can forget it.
 func writeGraphView(writer io.Writer, view stackView, discovery graph.Discovery, p Presentation) error {
-	summary := fmt.Sprintf("Scope %s · %s · %s", discovery.Scope, count(len(discovery.Branches), "branch", "branches"), discovery.StorePath)
+	summary := fmt.Sprintf("Scope %s · %s · %s", discovery.Scope, words.Count(len(discovery.Branches), "branch", "branches"), discovery.StorePath)
 	return writeStackView(writer, view.note(summary, severityNeutral), p)
 }
 
 // driftNotes report what g2g can see and deliberately will not repair.
 func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	if stale := discovery.NeedsRestack(); len(stale) != 0 {
-		view = view.note("Parent moved under "+branchList(stale)+" · run "+runnable("g2g restack")+".", severityWarn)
+		view = view.note("Parent moved under "+words.List(stale)+" · run "+runnable("g2g restack")+".", severityWarn)
 	}
 	// What is wrong with one branch's edge is put right one branch at a time,
 	// so these are a line each, naming the command doctor names.
@@ -147,11 +148,11 @@ func driftNotes(view stackView, discovery graph.Discovery) stackView {
 	}
 	if landed := discovery.InState(graph.StateLanded); len(landed) != 0 {
 		command := selectedIn(discovery).aimedOr(pruneCommand)
-		view = view.note("Already in the trunk: "+branchList(landed)+" · run "+runnable(command)+" to forget them.", severityNeutral)
+		view = view.note("Already in the trunk: "+words.List(landed)+" · run "+runnable(command)+" to forget them.", severityNeutral)
 		view = view.note("Cleanup preview: "+runnable(command+" --delete-branches --forget-missing")+" · also removes eligible local branches and missing records in this selection.", severityNeutral)
 	}
 	if empty := discovery.InState(graph.StateEmpty); len(empty) != 0 {
-		view = view.note("Nothing of their own on "+branchList(empty)+" · either finished, or not started yet.", severityNeutral)
+		view = view.note("Nothing of their own on "+words.List(empty)+" · either finished, or not started yet.", severityNeutral)
 	}
 	for _, orphan := range discovery.Orphans() {
 		view = view.note("No tracked parent for "+orphan+" · run "+runnable(orphanRepair(orphan))+" to choose one.", severityWarn)
@@ -187,7 +188,7 @@ func missingNotes(discovery graph.Discovery) []string {
 		for _, child := range branches {
 			covered[child] = true
 		}
-		notes = append(notes, "Recorded but no longer local: "+branchList(branches)+" · run "+runnable(command)+" to forget "+pick(len(branches), "it", "them")+".")
+		notes = append(notes, "Recorded but no longer local: "+words.List(branches)+" · run "+runnable(command)+" to forget "+words.Pick(len(branches), "it", "them")+".")
 	}
 	return notes
 }

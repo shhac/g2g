@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func pushView(plan push.Plan) stackView {
@@ -45,14 +46,14 @@ func pushView(plan push.Plan) stackView {
 func pushDropNotes(view stackView, plan push.Plan) stackView {
 	if len(plan.Drops) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s from %s that you dropped here since you last pulled or pushed: %s · to keep %s, run %s first.",
-			count(len(plan.Drops), "published commit", "published commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
-			pick(len(plan.Drops), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
+			words.Count(len(plan.Drops), "published commit", "published commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
+			words.Pick(len(plan.Drops), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
 	}
 	if len(plan.Moves) != 0 {
-		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", count(len(plan.Moves), "published commit", "published commits"), dropList(plan.Subjects, plan.Moves)), severityNeutral)
+		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", words.Count(len(plan.Moves), "published commit", "published commits"), dropList(plan.Subjects, plan.Moves)), severityNeutral)
 	}
 	if len(plan.Restores) != 0 {
-		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, count(len(plan.Restores), "commit", "commits"), dropList(plan.Subjects, plan.Restores)), severityBad)
+		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, words.Count(len(plan.Restores), "commit", "commits"), dropList(plan.Subjects, plan.Restores)), severityBad)
 	}
 	return view
 }
@@ -84,9 +85,9 @@ func publicationState(publication push.Publication) (string, severity) {
 		return "remote is on a commit you do not have · fetch before publishing", severityBad
 	case push.Diverged:
 		return fmt.Sprintf("diverged · %s here, %s only on the remote · publishing would drop %s",
-			count(publication.Ours, "commit", "commits"), count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
+			words.Count(publication.Ours, "commit", "commits"), words.Count(publication.Theirs, "commit", "commits"), words.Pick(publication.Theirs, "it", "them")), severityBad
 	case push.Behind:
-		return fmt.Sprintf("remote has %s this does not · publishing would drop %s", count(publication.Theirs, "commit", "commits"), pick(publication.Theirs, "it", "them")), severityBad
+		return fmt.Sprintf("remote has %s this does not · publishing would drop %s", words.Count(publication.Theirs, "commit", "commits"), words.Pick(publication.Theirs, "it", "them")), severityBad
 	case push.Rewritten:
 		return "rewritten since it was published · replaces it, and the remote holds nothing it lacks", severityOK
 	case push.Landed:
@@ -96,11 +97,11 @@ func publicationState(publication push.Publication) (string, severity) {
 	case push.Current:
 		return "up to date", severityNeutral
 	case push.Ahead:
-		return fmt.Sprintf("%s to publish", count(publication.Ours, "commit", "commits")), severityOK
+		return fmt.Sprintf("%s to publish", words.Count(publication.Ours, "commit", "commits")), severityOK
 	case push.Dropping:
-		return fmt.Sprintf("drops %s you dropped here", count(publication.Dropped, "published commit", "published commits")), severityWarn
+		return fmt.Sprintf("drops %s you dropped here", words.Count(publication.Dropped, "published commit", "published commits")), severityWarn
 	case push.Restoring:
-		return fmt.Sprintf("would put back %s the remote dropped · pull first", count(publication.Dropped, "commit", "commits")), severityBad
+		return fmt.Sprintf("would put back %s the remote dropped · pull first", words.Count(publication.Dropped, "commit", "commits")), severityBad
 	default:
 		// Never compared, so there is nothing to say.
 		return "", severityNeutral

@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // readPublished compares every local branch in the discovery with the remote.
@@ -159,7 +160,7 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 			restoring = append(restoring, node.Branch)
 		case publication.CarriedBy != "":
 			view = view.note(fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
-				node.Branch, count(publication.Theirs, "commit", "commits"), publication.CarriedBy,
+				node.Branch, words.Count(publication.Theirs, "commit", "commits"), publication.CarriedBy,
 				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy)+" --absorb"), publication.CarriedBy,
 				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy))), severityWarn)
 		case publication.Standing == push.Behind:
@@ -170,19 +171,19 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 		}
 	}
 	if len(ahead) != 0 {
-		view = view.note("Not on "+remote+" as they are here: "+branchList(ahead)+" · run "+runnable(pushFor(view, acted, ahead))+".", severityWarn)
+		view = view.note("Not on "+remote+" as they are here: "+words.List(ahead)+" · run "+runnable(pushFor(view, acted, ahead))+".", severityWarn)
 	}
 	if len(behind) != 0 {
-		view = view.note(remote+" has work "+branchList(behind)+" "+pick(len(behind), "does", "do")+" not · run "+runnable(acted.aimedOr(pullCommand))+".", severityWarn)
+		view = view.note(remote+" has work "+words.List(behind)+" "+words.Pick(len(behind), "does", "do")+" not · run "+runnable(acted.aimedOr(pullCommand))+".", severityWarn)
 	}
 	if len(diverged) != 0 {
-		view = view.note("Diverged from "+remote+": "+branchList(diverged)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see the ways to reconcile.", severityBad)
+		view = view.note("Diverged from "+remote+": "+words.List(diverged)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see the ways to reconcile.", severityBad)
 	}
 	if len(restoring) != 0 {
-		view = view.note(remote+" dropped commits "+branchList(restoring)+" still "+pick(len(restoring), "has", "have")+" since you last pulled or pushed · run "+runnable(acted.aimedOr(pullCommand))+" to drop them here too, or keep them with --keep.", severityWarn)
+		view = view.note(remote+" dropped commits "+words.List(restoring)+" still "+words.Pick(len(restoring), "has", "have")+" since you last pulled or pushed · run "+runnable(acted.aimedOr(pullCommand))+" to drop them here too, or keep them with --keep.", severityWarn)
 	}
 	if len(unknown) != 0 {
-		view = view.note(remote+" is on a commit this repository has not fetched for "+branchList(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)
+		view = view.note(remote+" is on a commit this repository has not fetched for "+words.List(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)
 	}
 	return view.note("Compared with "+remote+" as last fetched or pushed · nothing was asked of the network.", severityNeutral)
 }

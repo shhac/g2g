@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/words"
 
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
@@ -51,20 +52,20 @@ func pullCommits(plan syncer.Plan) []stackCommit {
 func dropNotes(view stackView, plan syncer.Plan) stackView {
 	if len(plan.Drops) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s %s no longer has, removed there since this clone last pulled or pushed: %s · keep any with %s · each stays reachable through the sync point's reflog for about 30 days, and %s recovers one.",
-			count(len(plan.Drops), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
+			words.Count(len(plan.Drops), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
 			runnable("g2g pull --keep <commit>"), runnable("git branch <name> <commit>")), severityWarn)
 	}
 	if len(plan.Moves) != 0 {
-		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", count(len(plan.Moves), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Moves)), severityNeutral)
+		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", words.Count(len(plan.Moves), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Moves)), severityNeutral)
 	}
 	if len(plan.Kept) != 0 {
-		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", count(len(plan.Kept), "commit", "commits"), dropList(plan.Subjects, plan.Kept)), severityNeutral)
+		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", words.Count(len(plan.Kept), "commit", "commits"), dropList(plan.Subjects, plan.Kept)), severityNeutral)
 	}
 	if len(plan.Restored) != 0 {
-		view = view.note(fmt.Sprintf("Puts back %s missing only because the branch was reset to a remote-tracking ref older than the last pull: %s.", count(len(plan.Restored), "commit", "commits"), dropList(plan.Subjects, plan.Restored)), severityWarn)
+		view = view.note(fmt.Sprintf("Puts back %s missing only because the branch was reset to a remote-tracking ref older than the last pull: %s.", words.Count(len(plan.Restored), "commit", "commits"), dropList(plan.Subjects, plan.Restored)), severityWarn)
 	}
 	if len(plan.Left) != 0 {
-		view = view.note(fmt.Sprintf("Leaves %s you dropped and %s still has, for %s to publish: %s.", count(len(plan.Left), "commit", "commits"), plan.Remote, runnable("g2g push"), dropList(plan.Subjects, plan.Left)), severityNeutral)
+		view = view.note(fmt.Sprintf("Leaves %s you dropped and %s still has, for %s to publish: %s.", words.Count(len(plan.Left), "commit", "commits"), plan.Remote, runnable("g2g push"), dropList(plan.Subjects, plan.Left)), severityNeutral)
 	}
 	return view
 }
@@ -91,13 +92,13 @@ func collectNote(plan syncer.Plan) string {
 	}
 	notes := make([]string, 0, 3)
 	if len(advanced) != 0 {
-		notes = append(notes, "Brings "+branchList(advanced)+" up to what is published.")
+		notes = append(notes, "Brings "+words.List(advanced)+" up to what is published.")
 	}
 	if len(superseded) != 0 {
-		notes = append(notes, "Replaces "+branchList(superseded)+" with the published version, which already has everything here.")
+		notes = append(notes, "Replaces "+words.List(superseded)+" with the published version, which already has everything here.")
 	}
 	if len(taken) != 0 {
-		notes = append(notes, "Replaces "+branchList(taken)+" with the published version.")
+		notes = append(notes, "Replaces "+words.List(taken)+" with the published version.")
 	}
 	return strings.Join(notes, " ")
 }
@@ -121,7 +122,7 @@ func discardNote(plan syncer.Plan) string {
 		return ""
 	}
 	return fmt.Sprintf("--take published discards %s that %s nowhere else: %s.",
-		count(len(losses), "commit", "commits"), pick(len(losses), "exists", "exist"), strings.Join(losses, ", "))
+		words.Count(len(losses), "commit", "commits"), words.Pick(len(losses), "exists", "exist"), strings.Join(losses, ", "))
 }
 
 func baseNote(plan syncer.Plan) string {
@@ -165,10 +166,10 @@ func baseSeverity(plan syncer.Plan) severity {
 func replayNote(plan restack.Plan) string {
 	said := make([]string, 0, 2)
 	if replaying := plan.Replaying(); len(replaying) != 0 {
-		said = append(said, "Replays "+branchList(replaying)+".")
+		said = append(said, "Replays "+words.List(replaying)+".")
 	}
 	if emptied := plan.Emptied(); len(emptied) != 0 {
-		said = append(said, "Moves "+ontoEach(plan, emptied)+", where "+pick(len(emptied), "its", "their")+" work already is.")
+		said = append(said, "Moves "+ontoEach(plan, emptied)+", where "+words.Pick(len(emptied), "its", "their")+" work already is.")
 	}
 	if len(said) == 0 {
 		return "Nothing needs replaying."

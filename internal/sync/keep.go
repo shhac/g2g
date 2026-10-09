@@ -8,6 +8,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // resolveKeep turns the commits a caller named into full ids, refusing one
@@ -39,7 +40,7 @@ func unkeptRefusal(plan Plan) (repair.Note, bool) {
 		return repair.Note{}, false
 	}
 	return repair.Note{
-		Reason: fmt.Sprintf("--keep %s %s not a commit this pull would drop", strings.Join(unkept, ", "), pick(len(unkept), "is", "are")),
+		Reason: fmt.Sprintf("--keep %s %s not a commit this pull would drop", strings.Join(unkept, ", "), words.Pick(len(unkept), "is", "are")),
 		Ways:   []repair.Step{{Effect: "name only commits the preview lists as dropped"}},
 	}, true
 }

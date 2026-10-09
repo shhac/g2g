@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // gitAdoptView renders a whole-stack adoption. It is the same graph view every
@@ -19,7 +20,7 @@ func gitAdoptView(plan graph.StackPlan) stackView {
 	if len(plan.Record) == 0 {
 		return view.note("The graph already records this whole ancestry.", severityNeutral)
 	}
-	view = view.note(fmt.Sprintf("Records %s, from %s upwards.", branchList(plan.Branches()), plan.Trunk), severityOK)
+	view = view.note(fmt.Sprintf("Records %s, from %s upwards.", words.List(plan.Branches()), plan.Trunk), severityOK)
 	for _, adoption := range plan.Record {
 		view = view.note(fmt.Sprintf("  %s under %s", adoption.Branch, adoption.Parent), severityNeutral)
 	}
@@ -27,7 +28,7 @@ func gitAdoptView(plan graph.StackPlan) stackView {
 		view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
 	}
 	if len(plan.Already) != 0 {
-		view = view.note("Already recorded: "+branchList(plan.Already)+".", severityNeutral)
+		view = view.note("Already recorded: "+words.List(plan.Already)+".", severityNeutral)
 	}
 	return view
 }

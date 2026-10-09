@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/align"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // mirrorView shows the reconciliation in the order it runs, so a reader can see
@@ -25,10 +26,10 @@ func mirrorView(plan align.MirrorPlan, prune bool) stackView {
 
 func writeNotes(view stackView, plan align.MirrorPlan) stackView {
 	if added := plan.Added(); len(added) != 0 {
-		view = view.note("Tracks "+branchList(added)+" in Graphite.", severityOK)
+		view = view.note("Tracks "+words.List(added)+" in Graphite.", severityOK)
 	}
 	if moved := plan.Moved(); len(moved) != 0 {
-		view = view.note("Moves "+branchList(moved)+" in Graphite to the parent the g2g graph records.", severityOK)
+		view = view.note("Moves "+words.List(moved)+" in Graphite to the parent the g2g graph records.", severityOK)
 	}
 	return view
 }
@@ -42,14 +43,14 @@ func strangerNotes(view stackView, plan align.MirrorPlan, prune bool) stackView 
 	}
 	if !prune {
 		return view.note(fmt.Sprintf("Graphite also tracks %s, which the g2g graph does not · --prune would untrack %s in Graphite. Nothing is removed from the g2g graph.",
-			branchList(plan.Strangers), pick(len(plan.Strangers), "it", "them")), severityNeutral)
+			words.List(plan.Strangers), words.Pick(len(plan.Strangers), "it", "them")), severityNeutral)
 	}
 	if len(plan.Prunes) != 0 {
-		view = view.note("Untracks "+branchList(plan.Prunes)+" in Graphite · deepest first, because untracking takes the subtree with it. Nothing is removed from the g2g graph.", severityWarn)
+		view = view.note("Untracks "+words.List(plan.Prunes)+" in Graphite · deepest first, because untracking takes the subtree with it. Nothing is removed from the g2g graph.", severityWarn)
 	}
 	if shielded := plan.Shielded(); len(shielded) != 0 {
 		view = view.note(fmt.Sprintf("Keeps %s in Graphite · untracking %s would take a branch the g2g graph does know.",
-			branchList(shielded), pick(len(shielded), "it", "them")), severityNeutral)
+			words.List(shielded), words.Pick(len(shielded), "it", "them")), severityNeutral)
 	}
 	return view
 }

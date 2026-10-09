@@ -2,9 +2,9 @@ package link
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/words"
 
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
@@ -45,27 +45,27 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 		if missingRecords {
 			ways = append(ways, repair.Step{Command: "g2g prune --branch " + repair.Quote(p.Target) + " --scope " + string(p.Scope) + " --forget-missing", Effect: "preview cleanup of missing records; forgetting a record does not close its pull request"})
 		}
-		return repair.Note{Reason: "missing locally: " + sentenceList(p.Absent), Ways: ways}, nil
+		return repair.Note{Reason: "missing locally: " + words.List(p.Absent), Ways: ways}, nil
 	}
 	if len(p.Issues) == 0 {
 		return repair.Note{}, nil
 	}
 	if merged := p.MergedBranches(); len(merged) != 0 {
-		return repair.Note{Reason: sentenceList(merged) + " already merged", Ways: []repair.Step{bringDown(p.Source)}}, []IssueKind{IssueMerged}
+		return repair.Note{Reason: words.List(merged) + " already merged", Ways: []repair.Step{bringDown(p.Source)}}, []IssueKind{IssueMerged}
 	}
 	if landed := p.LandedBranches(); len(landed) != 0 {
-		return repair.Note{Reason: sentenceList(landed) + pick(len(landed), " has", " have") + " already landed", Ways: []repair.Step{ForgetLanded(p.Source)}}, []IssueKind{IssueLanded}
+		return repair.Note{Reason: words.List(landed) + words.Pick(len(landed), " has", " have") + " already landed", Ways: []repair.Step{ForgetLanded(p.Source)}}, []IssueKind{IssueLanded}
 	}
 	if p.allIssuesAre(IssueBase) {
 		return repair.Note{
-			Reason: "every pull request is open, and " + pick(len(p.Issues), "one is", "some are") + " based on the wrong branch",
+			Reason: "every pull request is open, and " + words.Pick(len(p.Issues), "one is", "some are") + " based on the wrong branch",
 			Ways:   []repair.Step{{Command: "g2g github retarget", Effect: "point each pull request at the branch below it"}},
 		}, []IssueKind{IssueBase}
 	}
 	if p.allIssuesAre(IssueMissing, IssueClosed) {
 		return repair.Note{
 			Reason: p.missingReason(),
-			Ways:   []repair.Step{{Command: "g2g submit", Effect: pick(len(p.Issues), "open a new pull request", fmt.Sprintf("open a new pull request for each of these %d branches", len(p.Issues)))}},
+			Ways:   []repair.Step{{Command: "g2g submit", Effect: words.Pick(len(p.Issues), "open a new pull request", fmt.Sprintf("open a new pull request for each of these %d branches", len(p.Issues)))}},
 		}, []IssueKind{IssueMissing, IssueClosed}
 	}
 	return repair.Note{Ways: []repair.Step{{Effect: "resolve every unresolved GitHub PR mapping first"}}}, nil
@@ -112,30 +112,10 @@ func (p Plan) missingReason() string {
 	}
 	switch {
 	case len(closed) == 0:
-		return sentenceList(missing) + pick(len(missing), " has", " have") + " no pull request"
+		return words.List(missing) + words.Pick(len(missing), " has", " have") + " no pull request"
 	case len(missing) == 0:
-		return sentenceList(closed) + pick(len(closed), " had its pull request closed", " had their pull requests closed")
+		return words.List(closed) + words.Pick(len(closed), " had its pull request closed", " had their pull requests closed")
 	default:
-		return sentenceList(missing) + pick(len(missing), " has", " have") + " no pull request, and " + sentenceList(closed) + pick(len(closed), " had one closed", " had theirs closed")
+		return words.List(missing) + words.Pick(len(missing), " has", " have") + " no pull request, and " + words.List(closed) + words.Pick(len(closed), " had one closed", " had theirs closed")
 	}
-}
-
-// sentenceList names branches as the subject of a sentence.
-func sentenceList(branches []string) string {
-	switch len(branches) {
-	case 0:
-		return ""
-	case 1:
-		return branches[0]
-	case 2:
-		return branches[0] + " and " + branches[1]
-	}
-	return strings.Join(branches[:len(branches)-1], ", ") + " and " + branches[len(branches)-1]
-}
-
-func pick(count int, one, many string) string {
-	if count == 1 {
-		return one
-	}
-	return many
 }

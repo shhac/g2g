@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // Drops, from push's side.
@@ -175,7 +176,7 @@ func strictly(remote string, branches []string, publishing map[string]Publicatio
 		}
 	}
 	if len(unsynced) != 0 {
-		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+pickWord(len(unsynced), "differs", "differ")+" from "+remote+" with no record of where the two last agreed")
+		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+words.Pick(len(unsynced), "differs", "differ")+" from "+remote+" with no record of where the two last agreed")
 	}
 	if len(reasons) == 0 {
 		return repair.Note{}
@@ -197,17 +198,10 @@ func restoring(remote string, restores []Drop) repair.Note {
 		keep += " --keep " + localgit.Short(drop.Commit)
 	}
 	return repair.Note{
-		Reason: fmt.Sprintf("%s dropped %s since this clone last pulled or pushed, and publishing would put %s back", remote, strings.Join(named, ", "), pickWord(len(restores), "it", "them")),
+		Reason: fmt.Sprintf("%s dropped %s since this clone last pulled or pushed, and publishing would put %s back", remote, strings.Join(named, ", "), words.Pick(len(restores), "it", "them")),
 		Ways: []repair.Step{
-			{Command: "g2g pull", Effect: "drop " + pickWord(len(restores), "it", "them") + " here too"},
-			{Command: keep, Effect: "keep " + pickWord(len(restores), "it", "them") + " as yours, then push"},
+			{Command: "g2g pull", Effect: "drop " + words.Pick(len(restores), "it", "them") + " here too"},
+			{Command: keep, Effect: "keep " + words.Pick(len(restores), "it", "them") + " as yours, then push"},
 		},
 	}
-}
-
-func pickWord(count int, one, many string) string {
-	if count == 1 {
-		return one
-	}
-	return many
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // pruneView marks what would be forgotten inside the graph it belongs to, so a
@@ -43,9 +44,9 @@ func pruneView(plan prune.Plan) stackView {
 	for _, child := range slices.Sorted(maps.Keys(plan.Rehome)) {
 		view = view.note("Records "+child+" on "+plan.Rehome[child].Parent+", where it already sits.", severityOK)
 	}
-	view = view.note("Forgets "+branchList(plan.Forgotten())+" from the recorded graph.", severityWarn)
+	view = view.note("Forgets "+words.List(plan.Forgotten())+" from the recorded graph.", severityWarn)
 	if len(plan.Delete) != 0 {
-		return view.note("Deletes local branches "+branchList(plan.Deleted())+". Remote branches are untouched.", severityWarn)
+		return view.note("Deletes local branches "+words.List(plan.Deleted())+". Remote branches are untouched.", severityWarn)
 	}
 	return view.note(keptBranches(plan), severityNeutral)
 }
@@ -61,7 +62,7 @@ func keptBranches(plan prune.Plan) string {
 	if plan.Options.ForgetMissing {
 		command += " --forget-missing"
 	}
-	return "No branch is deleted · run " + runnable(command) + " to remove " + pick(len(plan.Landed), "it", "them") + " too, which g2g cannot do once " + pick(len(plan.Landed), "it is", "they are") + " forgotten."
+	return "No branch is deleted · run " + runnable(command) + " to remove " + words.Pick(len(plan.Landed), "it", "them") + " too, which g2g cannot do once " + words.Pick(len(plan.Landed), "it is", "they are") + " forgotten."
 }
 
 // forgetState says why a branch is forgotten in the words status uses for it. A

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/reshape"
+	"github.com/shhac/g2g/internal/words"
 
 	localgit "github.com/shhac/g2g/internal/git"
 )
@@ -60,8 +61,8 @@ func deleteNotes(view stackView, plan reshape.Plan) stackView {
 	}
 	if len(plan.Children) != 0 {
 		view = view.note(fmt.Sprintf("Records %s on %s, where %s sat. %s its fork point, so the next restack replays only its own commits onto %s and %s's commits leave %s%s.",
-			branchList(plan.Children), plan.Parent, plan.Branch, pick(len(plan.Children), "It keeps", "Each keeps"),
-			plan.Parent, plan.Branch, pick(len(plan.Children), "it", "them"), restackHint(plan)), severityWarn)
+			words.List(plan.Children), plan.Parent, plan.Branch, words.Pick(len(plan.Children), "It keeps", "Each keeps"),
+			plan.Parent, plan.Branch, words.Pick(len(plan.Children), "it", "them"), restackHint(plan)), severityWarn)
 	}
 	if len(plan.Unique) == 0 {
 		return view.note(fmt.Sprintf("Everything on %s is already in %s or on a remote-tracking ref, so deleting it loses no commit.", plan.Branch, plan.Parent), severityOK)
@@ -73,8 +74,8 @@ func deleteNotes(view stackView, plan reshape.Plan) stackView {
 	// Named one by one rather than counted: this is work that exists nowhere
 	// else, and once the branch is gone nothing here will name it again.
 	return view.note(fmt.Sprintf("%s %s that %s nowhere else, not in %s and on no remote-tracking ref, and %s gone once %s is: %s.",
-		plan.Branch, pick(len(plan.Unique), "has 1 commit", fmt.Sprintf("has %d commits", len(plan.Unique))),
-		pick(len(plan.Unique), "exists", "exist"), plan.Parent, pick(len(plan.Unique), "it is", "they are"), plan.Branch,
+		plan.Branch, words.Pick(len(plan.Unique), "has 1 commit", fmt.Sprintf("has %d commits", len(plan.Unique))),
+		words.Pick(len(plan.Unique), "exists", "exist"), plan.Parent, words.Pick(len(plan.Unique), "it is", "they are"), plan.Branch,
 		strings.Join(listed, "; ")), severityBad)
 }
 
@@ -100,10 +101,10 @@ func foldNotes(view stackView, plan reshape.Plan) stackView {
 		view = view.note("Switches to "+plan.Parent+" first, which by then is the same commit.", severityNeutral)
 	}
 	if len(plan.Children) != 0 {
-		view = view.note(fmt.Sprintf("Records %s on %s, where %s's commits now are.", branchList(plan.Children), plan.Parent, plan.Branch), severityNeutral)
+		view = view.note(fmt.Sprintf("Records %s on %s, where %s's commits now are.", words.List(plan.Children), plan.Parent, plan.Branch), severityNeutral)
 	}
 	if len(plan.Siblings) != 0 && plan.Moves() {
-		view = view.note(fmt.Sprintf("%s also %s on %s and will need a restack once it moves%s.", branchList(plan.Siblings), pick(len(plan.Siblings), "sits", "sit"), plan.Parent, restackHint(plan)), severityWarn)
+		view = view.note(fmt.Sprintf("%s also %s on %s and will need a restack once it moves%s.", words.List(plan.Siblings), words.Pick(len(plan.Siblings), "sits", "sit"), plan.Parent, restackHint(plan)), severityWarn)
 	}
 	return view
 }
@@ -129,7 +130,7 @@ func remoteNote(branch string, remote []string, action string) string {
 	if len(remote) == 0 {
 		return "This " + action + " · nothing on any remote changes."
 	}
-	return fmt.Sprintf("This %s · %s %s untouched, and so is any pull request for %s.", action, branchList(remote), pick(len(remote), "is", "are"), branch)
+	return fmt.Sprintf("This %s · %s %s untouched, and so is any pull request for %s.", action, words.List(remote), words.Pick(len(remote), "is", "are"), branch)
 }
 
 func writeRenamePlan(writer io.Writer, plan reshape.RenamePlan, p Presentation) error {
@@ -157,11 +158,11 @@ func renameView(plan reshape.RenamePlan) stackView {
 		view = view.note(fmt.Sprintf("%s is a trunk, and the graph records it as one under the new name.", plan.From), severityNeutral)
 	}
 	if len(plan.Children) != 0 {
-		view = view.note(fmt.Sprintf("Records %s on %s.", branchList(plan.Children), plan.To), severityNeutral)
+		view = view.note(fmt.Sprintf("Records %s on %s.", words.List(plan.Children), plan.To), severityNeutral)
 	}
 	if len(plan.Remote) != 0 {
 		view = view.note(fmt.Sprintf("%s %s the old name, and the published branch and any pull request for it stay under that name · %s publishes %s as a new branch.",
-			branchList(plan.Remote), pick(len(plan.Remote), "still carries", "still carry"), runnable("g2g push"), plan.To), severityWarn)
+			words.List(plan.Remote), words.Pick(len(plan.Remote), "still carries", "still carry"), runnable("g2g push"), plan.To), severityWarn)
 	}
 	return view.note("Graph store · "+plan.Discovery.StorePath, severityNeutral)
 }

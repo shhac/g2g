@@ -8,6 +8,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func statusView(discovery graph.Discovery) stackView {
@@ -31,7 +32,7 @@ func statusView(discovery graph.Discovery) stackView {
 		view = view.note(note, severityNeutral)
 	}
 	if hidden := hiddenDescendants(discovery); hidden != 0 {
-		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", count(hidden, "branch", "branches")), severityNeutral)
+		view = view.note(fmt.Sprintf("%s below this one not shown · rerun with --scope subtree, or --scope all for every stack.", words.Count(hidden, "branch", "branches")), severityNeutral)
 	}
 	return driftNotes(view, discovery)
 }

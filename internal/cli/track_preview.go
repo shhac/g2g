@@ -6,6 +6,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
@@ -117,13 +118,13 @@ func describeOthers(others []graph.Candidate) string {
 	}
 	listed := strings.Join(described, ", ")
 	if remaining := len(others) - len(shown); remaining > 0 {
-		listed += fmt.Sprintf(", and %s further back", count(remaining, "other", "others"))
+		listed += fmt.Sprintf(", and %s further back", words.Count(remaining, "other", "others"))
 	}
 	return listed
 }
 
 func describeCandidate(candidate graph.Candidate) string {
-	described := count(candidate.Distance, "commit", "commits") + " behind"
+	described := words.Count(candidate.Distance, "commit", "commits") + " behind"
 	// Two branches at one commit are each other's ancestor, so "0 commits
 	// behind" would read as the nearest parent when it is a question only the
 	// user can answer.

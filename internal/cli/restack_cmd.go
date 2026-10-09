@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // restackOptions are the resume verbs, which mirror git rebase because the
@@ -151,7 +152,7 @@ func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter
 		}
 		return writeWhatStands(cmd, p, "Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo.", cause)
 	}
-	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+branchList(paths)+"."))
+	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+words.List(paths)+"."))
 	return writeWhatStands(cmd, p, "Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo.", cause)
 }
 

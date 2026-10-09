@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // commentView draws the stack with what happens to each pull request's
@@ -84,7 +85,7 @@ func pullRequestList(numbers []int) string {
 	for _, number := range numbers {
 		named = append(named, fmt.Sprintf("#%d", number))
 	}
-	return branchList(named)
+	return words.List(named)
 }
 
 // commentMark is what happens to one comment, said as the one axis it is.

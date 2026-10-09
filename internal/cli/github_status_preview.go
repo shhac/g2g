@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // How a stack, its pull requests and its GitHub-native membership are drawn.
@@ -130,7 +131,7 @@ func structureNote(view stackView, snapshot stack.Snapshot) stackView {
 		source = "unresolved"
 	}
 	shown := len(snapshot.Branches) + 1
-	return view.note(fmt.Sprintf("Structure from %s · scope %s · %s", source, snapshot.Scope, count(shown, "branch", "branches")), severityNeutral)
+	return view.note(fmt.Sprintf("Structure from %s · scope %s · %s", source, snapshot.Scope, words.Count(shown, "branch", "branches")), severityNeutral)
 }
 
 func writeGitHubStatus(writer io.Writer, plan link.Plan, p Presentation) error {
@@ -270,12 +271,12 @@ func currencyNote(currency map[string]link.Currency, branch string) (string, sev
 	}
 	if state.Diverged {
 		if state.Unpushed > 0 {
-			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here %s not on it", count(state.Unpushed, "commit", "commits"), pick(state.Unpushed, "is", "are")), severityBad
+			return fmt.Sprintf("PR is on a commit this branch does not have, and %s here %s not on it", words.Count(state.Unpushed, "commit", "commits"), words.Pick(state.Unpushed, "is", "are")), severityBad
 		}
 		return "PR is on a commit this branch does not have", severityBad
 	}
 	if state.Unpushed > 0 {
-		return fmt.Sprintf("%s not pushed", count(state.Unpushed, "commit", "commits")), severityWarn
+		return fmt.Sprintf("%s not pushed", words.Count(state.Unpushed, "commit", "commits")), severityWarn
 	}
 	// Nothing is missing from it. The branch was replayed or amended since it
 	// was pushed, so the pull request renders the same work as older commits.

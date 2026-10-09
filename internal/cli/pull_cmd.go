@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/words"
 )
 
 func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -226,7 +227,7 @@ func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
 func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentation) error {
 	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: "+stopped.Err.Error(),
-		"Brought "+branchList(stopped.Moved)+" to what the remote holds, and "+pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.",
+		"Brought "+words.List(stopped.Moved)+" to what the remote holds, and "+words.Pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.",
 		stopped)
 }
 

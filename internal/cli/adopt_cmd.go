@@ -23,15 +23,19 @@ func newAdopt(service graph.Service, guard func(context.Context) error, presenta
 		GroupID: groupShape,
 		Short:   "Record the stack you are on, from git's own history (preview by default)",
 		Long: "Records a stack that already exists in one step: the order comes from commit ancestry, from the " +
-			"trunk up to the selected branch and everything built on it. It records a forest, not a chain — a " +
+			"trunk up to the selected branch and everything built on it. That is a forest, not a chain — a " +
 			"branch that merely shares the trunk is a separate stack and is left alone — and it refuses rather " +
-			"than guessing wherever ancestry cannot order two branches.\n\n" +
+			"than guessing wherever ancestry cannot order two branches. --scope path records the chain alone: " +
+			"one line of a stack somebody else published, without the branches around it.\n\n" +
 			"The first time, name the trunk with --trunk; after that the recorded root is used. To adopt what " +
 			"another tool declares instead, see g2g graphite adopt and g2g github adopt.",
 		Args: cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		if err := selection.validateScope(); err != nil {
+			return err
+		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, trunk)
 		return adoptFlow(service, selection, trunk, guard).run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
@@ -39,6 +43,7 @@ func newAdopt(service graph.Service, guard func(context.Context) error, presenta
 	_ = cmd.RegisterFlagCompletionFunc("trunk", completionCallback(localBranchCompletions(service)))
 	cmd.Flags().BoolVar(&apply, "apply", false, "record the stack instead of previewing it")
 	selection.registerBranch(cmd, service)
+	selection.registerScope(cmd, graph.AdoptScopes, graph.ScopeStack, scopeUsage("adopt", graph.AdoptScopes))
 	return cmd
 }
 

@@ -80,12 +80,19 @@ func (p StackPlan) Equal(other StackPlan) bool {
 // only that it is one.
 func (p StackPlan) NoOp() bool { return p.Updated.Equal(p.Graph) }
 
+// AdoptScopes are how much of a stack adopt records. stack is the chain and
+// everything that grows from it; path is the chain alone, for somebody taking
+// up one line of a stack another person published, whose other branches are
+// not theirs to record.
+var AdoptScopes = []Scope{ScopeStack, ScopePath}
+
 // PlanStack works out how to record the whole ancestry between a trunk and the
-// selected branch.
+// selected branch, and with ScopePath nothing beyond that chain.
 //
 // One command instead of one per branch, and one that does not need the user to
 // already know the structure the tool has just measured for them.
 func (s Service) PlanStack(ctx context.Context, selection Selection, trunk string) (StackPlan, error) {
+	chainOnly := selection.Scope == ScopePath
 	selection.Scope = ScopeBranch
 	discovery, err := s.Discover(ctx, selection)
 	if err != nil {
@@ -116,10 +123,12 @@ func (s Service) PlanStack(ctx context.Context, selection Selection, trunk strin
 	}
 
 	spine := append(below, discovery.Target)
-	edges, err := s.branches(ctx, spine, plan.Trunk, discovery.Graph)
-	if err != nil {
-		plan.Repair = repair.Note{Reason: err.Error()}
-		return plan, nil
+	var edges []Adoption
+	if !chainOnly {
+		if edges, err = s.branches(ctx, spine, plan.Trunk, discovery.Graph); err != nil {
+			plan.Repair = repair.Note{Reason: err.Error()}
+			return plan, nil
+		}
 	}
 	plan.Record, plan.Already, plan.Conflicts = compare(discovery.Graph, spine, edges)
 	if len(plan.Conflicts) != 0 {

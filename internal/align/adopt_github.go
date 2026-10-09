@@ -28,10 +28,12 @@ type Forks interface {
 }
 
 // GitHubAdoptScopes are how much of a stack an adoption from pull requests
-// may adopt. Both open with the base the stack hangs from, which is what the
+// may adopt. Each opens with the base the stack hangs from, which is what the
 // root rule below needs to see; a scope rooted at the target would leave that
-// base unexamined, and all would span trunks the user did not name.
-var GitHubAdoptScopes = []shape.Scope{shape.ScopeStack, shape.ScopeTrunk}
+// base unexamined, and all would span trunks the user did not name. path is
+// one line of the stack, for taking up a chain somebody else published
+// without recording the branches around it.
+var GitHubAdoptScopes = []shape.Scope{shape.ScopeStack, shape.ScopePath, shape.ScopeTrunk}
 
 // PlanAdoptFromGitHub works out what the open pull requests above a
 // branch declare that the g2g graph does not.
@@ -49,7 +51,7 @@ func (s Service) PlanAdoptFromGitHub(ctx context.Context, selection stack.Select
 	selection.From = stack.SourceGitHub
 	selection.Scope = selection.EffectiveScope()
 	if !slices.Contains(GitHubAdoptScopes, selection.Scope) {
-		return AdoptPlan{}, fmt.Errorf("github adopt adopts a stack or a trunk, not scope %q", selection.Scope)
+		return AdoptPlan{}, fmt.Errorf("github adopt adopts a stack, a path or a trunk, not scope %q", selection.Scope)
 	}
 	snapshot, err := s.PullRequests.Select(ctx, selection, "g2g github adopt")
 	if err != nil {
@@ -163,19 +165,21 @@ func (s Service) defaultBranch(ctx context.Context) string {
 // here. Creating them is not this command's business: which remote, which
 // upstream, and whether to check one out are the user's to decide, and an
 // adoption that quietly made branches would be doing something nobody previewed.
+//
+// The way out names every one of them in one command. Naming only the first
+// left a person to rerun and find the next, once per branch of the stack.
 func fetchFirst(missing []string) repair.Note {
-	first := missing[0]
-	reason := fmt.Sprintf("%s is only on the remote, and the g2g graph records only local branches", first)
+	reason := fmt.Sprintf("%s is only on the remote, and the g2g graph records only local branches", missing[0])
 	if len(missing) > 1 {
-		reason = fmt.Sprintf("%s are only on the remote, and the g2g graph records only local branches · each needs one, starting with %s",
-			strings.Join(missing, ", "), first)
+		reason = fmt.Sprintf("%s are only on the remote, and the g2g graph records only local branches", strings.Join(missing, ", "))
+	}
+	command := "git fetch origin"
+	for _, branch := range missing {
+		command += " && git branch " + repair.Quote(branch) + " " + repair.Quote("origin/"+branch)
 	}
 	return repair.Note{
 		Reason: reason,
-		Ways: []repair.Step{
-			{Command: "git fetch && git switch " + repair.Quote(first), Effect: "bring it here and check it out"},
-			{Command: "git branch " + repair.Quote(first) + " " + repair.Quote("origin/"+first), Effect: "create it without switching to it, once fetched"},
-		},
+		Ways:   []repair.Step{{Command: command, Effect: "bring them here without switching to any, then adopt again"}},
 	}
 }
 

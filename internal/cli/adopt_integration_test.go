@@ -120,6 +120,24 @@ func TestAdoptFromGitHubAdoptsAColleaguesStack(t *testing.T) {
 	recorder.AssertNone("gt ", "git switch", "git branch synthetic", "git fetch", "gh pr")
 }
 
+// A path is one line of the stack: the trunk up to the named branch. What the
+// pull requests place above it is somebody else's, and is not recorded.
+func TestAdoptFromGitHubAlongAPathRecordsOnlyThatChain(t *testing.T) {
+	_, common := publishedRepository(t, []string{"synthetic-lower", "synthetic-top", "synthetic-trunk"}, publishedStackJSON)
+
+	stdout, stderr, err := run(t, "github", "adopt", "--branch", "synthetic-lower", "--scope", "path", "--apply")
+	if err != nil {
+		t.Fatalf("github adopt --scope path: %v\n%s%s", err, stdout, stderr)
+	}
+	branches, _ := storedGraph(t, common)
+	if got := branches["synthetic-lower"]["parent"]; got != "synthetic-trunk" {
+		t.Errorf("parent of synthetic-lower = %q, want synthetic-trunk", got)
+	}
+	if _, recorded := branches["synthetic-top"]; recorded {
+		t.Errorf("a path adoption recorded synthetic-top, which sits above the named branch:\n%s", stdout)
+	}
+}
+
 // A branch the pull requests place that is not here is refused by name, with
 // the way to bring it here, and nothing is written or created.
 func TestAdoptFromGitHubRefusesARemoteOnlyBranch(t *testing.T) {
@@ -132,7 +150,7 @@ func TestAdoptFromGitHubRefusesARemoteOnlyBranch(t *testing.T) {
 	if err == nil {
 		t.Fatalf("github adopt --apply: error = nil with synthetic-mid not here\n%s", stdout)
 	}
-	for _, want := range []string{"synthetic-mid", "git fetch && git switch synthetic-mid", "git branch synthetic-mid origin/synthetic-mid"} {
+	for _, want := range []string{"synthetic-mid", "git fetch origin && git branch synthetic-mid origin/synthetic-mid"} {
 		if !strings.Contains(stdout+err.Error(), want) {
 			t.Errorf("refusal omits %q:\n%s\n%v", want, stdout, err)
 		}

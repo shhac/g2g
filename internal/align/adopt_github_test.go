@@ -150,7 +150,7 @@ func TestAdoptFromGitHubRefusesABranchThatIsNotHere(t *testing.T) {
 	if plan.Blocked() == "" {
 		t.Fatalf("plan adopts %v with synthetic-mid only on the remote", plan.Claims())
 	}
-	for _, command := range []string{"git fetch && git switch synthetic-mid", "git branch synthetic-mid origin/synthetic-mid"} {
+	for _, command := range []string{"git fetch origin && git branch synthetic-mid origin/synthetic-mid"} {
 		if !offersCommand(plan.Repair, command) {
 			t.Errorf("repair %+v does not offer %q", plan.Repair.Ways, command)
 		}
@@ -334,7 +334,7 @@ func TestAdoptFromGitHubNeverAsksGraphite(t *testing.T) {
 func TestAdoptFromGitHubRefusesAScopeItDoesNotOffer(t *testing.T) {
 	fixture := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "synthetic-trunk")
 
-	for _, scope := range []shape.Scope{shape.ScopePath, shape.ScopeSubtree, shape.ScopeAll} {
+	for _, scope := range []shape.Scope{shape.ScopeBranch, shape.ScopeSubtree, shape.ScopeAll} {
 		if _, err := fixture.svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{Scope: scope}); err == nil {
 			t.Errorf("scope %s: error = nil", scope)
 		}
@@ -355,5 +355,41 @@ func TestAdoptFromGitHubNeedsItsOwnDependencies(t *testing.T) {
 
 	if _, err := svc.PlanAdoptFromGitHub(context.Background(), stack.Selection{}); err == nil {
 		t.Error("PlanAdoptFromGitHub() error = nil without a pull request reader")
+	}
+}
+
+// Every branch missing is named in the one command that brings them all here,
+// rather than the first alone and a rerun to discover the next.
+func TestFetchFirstNamesEveryMissingBranch(t *testing.T) {
+	note := fetchFirst([]string{"synthetic-low", "synthetic-mid"})
+	want := "git fetch origin && git branch synthetic-low origin/synthetic-low && git branch synthetic-mid origin/synthetic-mid"
+	if len(note.Ways) == 0 || note.Ways[0].Command != want {
+		t.Fatalf("ways = %+v, want %q first", note.Ways, want)
+	}
+	if !strings.Contains(note.Reason, "synthetic-low, synthetic-mid") {
+		t.Errorf("reason = %q, want both named", note.Reason)
+	}
+	quoted := fetchFirst([]string{"synthetic-$odd"})
+	if !strings.Contains(quoted.Ways[0].Command, "'synthetic-$odd'") {
+		t.Errorf("command = %q, want the name quoted", quoted.Ways[0].Command)
+	}
+}
+
+// A path opens with the base, so the root rule still sees it, and records the
+// chain up to the named branch and nothing above it.
+func TestAdoptFromGitHubAlongAPathAdoptsOnlyTheChain(t *testing.T) {
+	fixture := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "synthetic-trunk")
+
+	plan := planFromPullRequests(t, fixture, stack.Selection{Branch: "synthetic-lower", Scope: shape.ScopePath})
+	if plan.Blocked() != "" {
+		t.Fatalf("plan blocked: %s", plan.Blocked())
+	}
+	if got := strings.Join(plan.Claims(), ","); got != "synthetic-lower" {
+		t.Errorf("adopts %s, want synthetic-lower alone", got)
+	}
+
+	unknown := pullRequestService(graph.New(), publishedStack(), everyBranchLocal(), "")
+	if plan := planFromPullRequests(t, unknown, stack.Selection{Branch: "synthetic-lower", Scope: shape.ScopePath}); plan.Blocked() == "" {
+		t.Error("a path from a base nothing establishes as a trunk was adopted")
 	}
 }

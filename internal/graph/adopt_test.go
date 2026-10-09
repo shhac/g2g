@@ -77,6 +77,35 @@ func TestPlanStackRecordsTheWholeTree(t *testing.T) {
 	}
 }
 
+// A path adoption is one chain: the trunk up to the selected branch. A branch
+// forking off that chain, and anything built on the selected branch, are left
+// for whoever owns them.
+func TestPlanStackOfAPathRecordsOnlyTheChain(t *testing.T) {
+	service, store := adoptionService(t, New().withTrunks("synthetic-trunk"))
+
+	plan, err := service.PlanStack(context.Background(), Selection{Branch: "synthetic-b", Scope: ScopePath}, "synthetic-trunk")
+	if err != nil {
+		t.Fatalf("PlanStack() error = %v", err)
+	}
+	if got, want := strings.Join(plan.Branches(), ","), "synthetic-a,synthetic-b"; got != want {
+		t.Fatalf("Branches() = %s, want %s", got, want)
+	}
+	if err := service.ApplyStack(context.Background(), plan); err != nil {
+		t.Fatalf("ApplyStack() error = %v", err)
+	}
+	if store.graph.Tracked("synthetic-side") {
+		t.Error("a path adoption recorded a branch forking off the chain")
+	}
+
+	below, err := service.PlanStack(context.Background(), Selection{Branch: "synthetic-a", Scope: ScopePath}, "synthetic-trunk")
+	if err != nil {
+		t.Fatalf("PlanStack() error = %v", err)
+	}
+	if got := strings.Join(below.Branches(), ","); got != "" {
+		t.Errorf("Branches() from synthetic-a = %s, want nothing above it recorded", got)
+	}
+}
+
 // The trunk is the one thing the user asserts, and it is inferred when only one
 // recorded root is an ancestor.
 func TestPlanStackInfersTheOnlyRecordedTrunk(t *testing.T) {

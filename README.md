@@ -414,6 +414,9 @@ not a chain**: branches hanging off the stack join it, and branches hanging off
 those join in turn, while a branch that merely shares the trunk is left alone,
 being a separate stack rather than part of this one. Where ancestry cannot
 order two branches it refuses and names them, exactly as `track` does.
+`--scope path` records the chain alone — the trunk up to `--branch` (or the
+branch you are on), nothing built on it and nothing forking off it — which is
+what taking up one line of somebody else's stack wants.
 
 `g2g track` records one edge, the `--parent` you name. Without `--parent` it
 previews the candidates: the local branches the branch's commits sit on top of,
@@ -1203,8 +1206,8 @@ g2g github adopt --apply
 ```
 
 It reads the stack exactly as `g2g github status --from github` does —
-`--branch` picks another branch's, `--scope stack` (the default) or `trunk`
-says how much — and records it, so the branches can be restacked. It is the
+`--branch` picks another branch's, `--scope stack` (the default), `path` or
+`trunk` says how much — and records it, so the branches can be restacked. It is the
 only adoption that needs the network, because reading a base invokes `gh`. Its
 rules are `graphite adopt`'s: it writes only g2g's graph, adds what is
 missing, and refuses a branch g2g already records under a different parent.
@@ -1214,8 +1217,10 @@ Three things it will not do:
 
 - **Create a branch.** The graph records local branches, so a branch the pull
   requests place that is only on the remote refuses the adoption by name, with
-  `git fetch && git switch <branch>` or `git branch <branch> origin/<branch>`
-  as the way out.
+  one command that brings every missing branch here
+  (`git fetch origin && git branch <branch> origin/<branch> && …`). Adopting
+  one chain of a larger stack with `--scope path` needs only that chain's
+  branches here.
 - **Make a trunk of a feature branch.** The stack must start from the
   repository's default branch (what `refs/remotes/origin/HEAD` names) or from a
   branch g2g already records; otherwise it names the `g2g track` that

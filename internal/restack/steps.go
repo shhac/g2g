@@ -44,6 +44,17 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 			if resolvedFork, err = s.pendingFork(ctx, branch, edge.Parent, base, resolvedFork, head, pending.Begins[branch]); err != nil {
 				return nil, err
 			}
+		} else if begins := pending.Begins[branch]; begins != "" {
+			// Not moved by the caller, but told where it begins: its parent is
+			// being taken as published, and this branch already sits on that
+			// version. A commit moved out of the parent into it is its own now.
+			built, err := s.Git.IsAncestor(ctx, begins, head)
+			if err != nil {
+				return nil, err
+			}
+			if built {
+				resolvedFork = begins
+			}
 		}
 		// Old records can start below trunk commits the branch already
 		// contains. Those commits belong to the trunk, even if its local ref

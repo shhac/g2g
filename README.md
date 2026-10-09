@@ -700,7 +700,9 @@ different responses and only you can give the second.
 When a branch and its published version have each moved, `pull` refuses rather
 than choosing. `--take published` is the way through, and it is the one path
 where `pull` loses work that exists nowhere else — so the preview names every
-commit it would discard.
+commit it would discard. (A commit the remote dropped is not that: it is
+dropped here because somebody dropped it there, and it stays recoverable; see
+*Dropped commits* below.)
 
 ```sh
 g2g pull --take published                          # the whole stack
@@ -737,6 +739,33 @@ the published version of a branch, the remote's ref is. When the remote is not
 g2g pull --remote upstream                         # refuses: both sides moved
 g2g pull --remote upstream --take published --apply
 ```
+
+**Dropped commits.** Content alone cannot tell a commit somebody dropped from
+one nobody had yet, so `pull` and `push` remember where this clone and the
+remote last agreed on each branch — a *sync point*, kept under
+`refs/g2g/synced/` with a reflog (see `design-docs/sync-points.md`). Against
+it, a difference has a direction:
+
+| The commit is | `pull` |
+|---|---|
+| here, and the remote dropped it since you last agreed | **drops it here too**, naming each one |
+| on the remote, and you dropped it here | leaves it: publishing the drop is `push`'s |
+| at the top of one branch, now in the branch above it | keeps it where it went, as a **move** |
+| here only because you reset to an out-of-date `origin/<branch>` | puts it back, and says so |
+
+Every dropped commit is listed by branch, short id and subject, and stays
+reachable through the sync point's reflog for about 30 days
+(`git branch <name> <commit>` recovers one). `--keep <commit>`, repeatable,
+keeps one instead: a commit the remote dropped stays here as yours, and the
+next `push` publishes it; one you dropped is taken back. A `--keep` naming a
+commit this pull would not drop is refused by name.
+
+`pull` refuses rather than choosing when a drop meets other work on the same
+branch — your own commits on top of what the remote dropped, or a drop here
+while the remote gained something — and names `--keep` and `--take published`
+for that branch. A branch with no sync point yet (one never pulled, pushed or
+adopted through g2g) is read as it always was: every difference is new work on
+its own side.
 
 #### Prune
 

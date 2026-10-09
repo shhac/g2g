@@ -183,6 +183,32 @@ the other person's commit, so `push` then refuses, saying a conflict-resolved
 replay changed the published patch: replacing it is a decision to make having
 looked.
 
+**dropped upstream.** Bob drops a commit `x` from B and publishes that; Alice
+still has it. Without a record of where Alice and the remote last agreed, her
+`pull` reads `x` as her own unpublished work and her next `push` puts it back.
+With one (`design-docs/sync-points.md`) `x` is a commit she saw on the remote
+that the remote no longer has: `pull` drops it here too, names it, and records
+it in the sync point's history, where it stays recoverable. `--keep x` keeps it
+as hers instead. Alice's own commits on top of B refuse instead of choosing,
+naming both ways.
+
+**dropped here.** Alice drops `x` herself. The remote still has it, and `pull`
+must not fast-forward it back: a branch reset back to drop a commit is an
+ancestor of the published one, which is exactly what an ordinary fast-forward
+looks for. `pull` leaves it, and says the drop is `push`'s to publish.
+
+**moved across a boundary.** Bob moves A back one commit, so the commit at its
+tip becomes B's, and publishes both. Alice's `pull` takes A without it and
+leaves it in B, saying it moved rather than that it was dropped, and records
+B's fork point where A's published tip is, so the next restack does not read
+it as A's dropped work.
+
+**reset to a stale tracking ref.** `pull` never moves `origin/B`, so after Alice
+pulls Bob's commits it still names B without them, and
+`git reset --hard origin/B` leaves out exactly what the pull brought. That
+looks like a deliberate drop and is not safe to publish as one, so it is
+counted as theirs: `pull` puts the commits back and says why.
+
 ## Merges that land out of order
 
 **middle merges first.** `main ← A ← B ← C` and B lands, carrying A with it.

@@ -102,6 +102,10 @@ type Changes struct {
 	// DroppedHere, commits the remote has that this branch had and no longer
 	// has.
 	DroppedUpstream, DroppedHere []string
+	// Shared are this branch's own commits the remote also has, by content.
+	// A branch with none left is one the remote emptied, or made again under
+	// the name, rather than one it dropped a commit from.
+	Shared []string
 	// Stale reports commits that would have read as dropped here, but are
 	// exactly what resetting the branch to its remote-tracking ref -- older
 	// than the sync point, because pull fetched past it -- leaves out. They
@@ -163,6 +167,18 @@ func Classify(ctx context.Context, git Git, branch Branch) (Changes, error) {
 	if err != nil {
 		return Changes{}, err
 	}
+	// cherry lists only what the other side cannot reach, so what is shared
+	// is counted from the branch's own commits rather than from its answer.
+	own, err := git.Commits(ctx, branch.Local, nonEmpty(branch.LocalParent))
+	if err != nil {
+		return Changes{}, err
+	}
+	shared := make([]string, 0, len(own))
+	for _, commit := range own {
+		if !slices.Contains(ours, commit) {
+			shared = append(shared, commit)
+		}
+	}
 	theirsFrom := branch.LocalParent
 	if branch.PublishedParent != "" {
 		theirsFrom = branch.PublishedParent
@@ -172,22 +188,23 @@ func Classify(ctx context.Context, git Git, branch Branch) (Changes, error) {
 		return Changes{}, err
 	}
 	if !branch.Synced {
-		return Changes{Mine: ours, New: theirs}, nil
+		return Changes{Mine: ours, New: theirs, Shared: shared}, nil
 	}
 	parents := nonEmpty(branch.LocalParent, branch.PublishedParent)
 	seen, err := git.Commits(ctx, branch.Sync.Tip, parents)
 	if err != nil {
 		return Changes{}, err
 	}
-	var changes Changes
+	changes := Changes{Shared: shared}
 	changes.DroppedUpstream, changes.Mine = split(ours, seen)
 	changes.DroppedHere, changes.New = split(theirs, seen)
 	return stale(ctx, git, branch, changes)
 }
 
 // stale moves commits that read as dropped here back to new, when the branch
-// was reset to a remote-tracking ref older than the sync point and those are
-// exactly the commits that reset left out.
+// sits on a remote-tracking ref older than the sync point and they are all,
+// and only, the commits the sync point has beyond that ref: exactly what
+// resetting to it leaves out.
 func stale(ctx context.Context, git Git, branch Branch, changes Changes) (Changes, error) {
 	if len(changes.DroppedHere) == 0 || branch.Tracking == "" || branch.Tracking == branch.Sync.Tip {
 		return changes, nil
@@ -200,9 +217,15 @@ func stale(ctx context.Context, git Git, branch Branch, changes Changes) (Change
 	if err != nil || !onIt {
 		return changes, err
 	}
+	// Every commit the sync point has beyond the tracking ref is gone, and
+	// nothing else is: a drop that kept some of them, or dropped something
+	// older, was made on purpose.
 	beyond, err := git.Commits(ctx, branch.Sync.Tip, []string{branch.Tracking})
 	if err != nil {
 		return changes, err
+	}
+	if len(beyond) != len(changes.DroppedHere) {
+		return changes, nil
 	}
 	for _, commit := range changes.DroppedHere {
 		if !slices.Contains(beyond, commit) {

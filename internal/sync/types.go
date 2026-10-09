@@ -77,6 +77,27 @@ type Plan struct {
 	// all: sync fetched exactly one ref, the base, so a branch you own was
 	// never brought down and push then refused because the remote was ahead.
 	Collect []Collection
+	// Keep are the commits the caller asked to keep rather than drop, by full
+	// id. Each must be a drop this pull would otherwise make, in either
+	// direction, or the plan refuses it by name.
+	Keep []string
+	// Drops are commits this pull takes off a branch here because the remote
+	// no longer has them, measured against where the two last agreed. Moves
+	// are commits that left one branch and are in another, which are not
+	// drops. Kept are drops the caller kept. Left are commits dropped here and
+	// still on the remote, which this pull leaves for push to publish.
+	// Restored are commits a branch lacked only because it was reset to a
+	// remote-tracking ref older than its sync point, which the pull puts back.
+	// Every one is listed, never counted: once a ref moves nothing else will
+	// name them.
+	Drops, Moves, Kept, Left, Restored []Drop
+	// Starts are where branches this pull does not take begin, when the
+	// branch below them is taken and they are built on its published version:
+	// a commit moved from the parent into the branch is the branch's now.
+	Starts map[string]string
+	// Subjects names every commit the lists above hold, for the preview.
+	// Derived from their ids, which Equal already compares.
+	Subjects map[string]string
 	// Published is what the remote held for each selected branch when this
 	// was planned, and is what an apply records as the point this clone and
 	// the remote now agree on: never read again at write time, because
@@ -108,12 +129,24 @@ type Collection struct {
 	// none of yours, and it is a reset rather than a fast-forward, so it is
 	// named rather than treated as the same thing.
 	Superseded bool
+	// Dropped are the commits taking the published version takes off this
+	// branch because the remote dropped them, as opposed to Discards, which
+	// --take costs.
+	Dropped []string
 	// Begins is where the published version's own commits begin, when it is
 	// built on the parent as the remote holds it rather than on the parent
 	// here: somebody published this branch before this clone moved its
 	// parent on. Without it the replay could not tell which of the published
 	// version's commits are the branch's.
 	Begins string
+}
+
+// Drop is one commit a pull names, and the branch it is about. To is the
+// branch a moved commit is in now.
+type Drop struct {
+	Branch string
+	Commit string
+	To     string
 }
 
 // onto names the base the replay should land on. Until the base branch is
@@ -129,7 +162,7 @@ func (p Plan) onto() string {
 // Nothing reports a plan with no step to take: the base is level and there is
 // nothing to replay.
 func (p Plan) Nothing() bool {
-	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Starts) == 0 && len(p.Restack.Steps) == 0
 }
 
 // Equal compares every fact that changes what the sync does.
@@ -142,6 +175,13 @@ func (p Plan) Equal(other Plan) bool {
 		p.Supersede == other.Supersede &&
 		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
 		maps.Equal(p.Published, other.Published) &&
+		slices.Equal(p.Keep, other.Keep) &&
+		slices.Equal(p.Drops, other.Drops) &&
+		slices.Equal(p.Moves, other.Moves) &&
+		slices.Equal(p.Kept, other.Kept) &&
+		slices.Equal(p.Left, other.Left) &&
+		slices.Equal(p.Restored, other.Restored) &&
+		maps.Equal(p.Starts, other.Starts) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Restack.Equal(other.Restack)
 }
@@ -155,10 +195,13 @@ func (p Plan) Equal(other Plan) bool {
 // the trunk checked out — the ordinary layout of a checkout with several — and
 // sync would move it underneath that worktree.
 func (p Plan) pending() restack.Pending {
-	if len(p.Collect) == 0 && p.onto() == "" {
+	if len(p.Collect) == 0 && len(p.Starts) == 0 && p.onto() == "" {
 		return restack.Pending{}
 	}
-	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: map[string]string{}}
+	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: maps.Clone(p.Starts)}
+	if moving.Begins == nil {
+		moving.Begins = map[string]string{}
+	}
 	for _, collection := range p.Collect {
 		moving.Tips[collection.Branch] = collection.To
 		if collection.Begins != "" {

@@ -51,6 +51,11 @@ type Take struct {
 	// the bottom of it being rebased somewhere else, and the set that follows
 	// from that is always the branch and what it is stacked on.
 	Through string
+	// Keep are commits to keep where pull would drop them: one the remote
+	// dropped since the last agreement stays here as yours, and one dropped
+	// here is taken back from the remote. Revisions as given; the plan
+	// resolves them and refuses any that is not a drop it would make.
+	Keep []string
 }
 
 // TakeNothing is the zero choice: refuse a divergence rather than resolve it.

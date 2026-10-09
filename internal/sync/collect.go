@@ -9,6 +9,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 // What moved, and how to say so.
@@ -100,38 +101,76 @@ func (s Service) compare(ctx context.Context, base, remote string, published map
 //
 // The branches both sides moved come back rather than a refusal, because the
 // way out names the selection it came from and only the caller has that.
-func (s Service) collect(ctx context.Context, remote, base string, branches []string, onRemote map[string]string, take Take, parents map[string]string) ([]Collection, []divergence, error) {
-	collect := make([]Collection, 0, len(branches))
-	stuck := make([]divergence, 0)
-	for _, branch := range branches {
-		found, err := s.collectOne(ctx, remote, base, branch, onRemote, take, parents)
+func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
+	found := collected{collections: make([]Collection, 0, len(c.branches)), stuck: make([]divergence, 0)}
+	for _, branch := range c.branches {
+		verdict, err := s.collectOne(ctx, c, branch)
 		if err != nil {
-			return nil, nil, err
+			return collected{}, err
 		}
-		if found.collection != nil {
-			collect = append(collect, *found.collection)
+		if verdict.collection != nil {
+			found.collections = append(found.collections, *verdict.collection)
 		}
-		if found.stuck != nil {
-			stuck = append(stuck, *found.stuck)
+		if verdict.stuck != nil {
+			found.stuck = append(found.stuck, *verdict.stuck)
 		}
+		if verdict.refusal != nil && found.refusal == nil {
+			found.refusal = verdict.refusal
+		}
+		found.drops = append(found.drops, verdict.drops...)
+		found.moves = append(found.moves, verdict.moves...)
+		found.kept = append(found.kept, verdict.kept...)
+		found.left = append(found.left, verdict.left...)
+		found.restored = append(found.restored, verdict.restored...)
 	}
-	if len(stuck) != 0 {
-		return nil, stuck, nil
+	if len(found.stuck) != 0 || found.refusal != nil {
+		return found, nil
 	}
-	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(collect))})
-	return collect, nil, nil
+	starts, err := s.starts(ctx, c, found.collections)
+	if err != nil {
+		return collected{}, err
+	}
+	found.starts = starts
+	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(found.collections))})
+	return found, nil
+}
+
+// collecting is what deciding each branch reads: the selection, what the
+// remote holds, and what the caller chose.
+type collecting struct {
+	remote, base string
+	branches     []string
+	onRemote     map[string]string
+	take         Take
+	parents      map[string]string
+	// forks are the recorded fork points, keep the commits the caller chose
+	// to keep, and command and takeCommand the pulls a refusal offers.
+	forks                map[string]string
+	keep                 []string
+	command, takeCommand string
+}
+
+// collected is what collect decided across the selection.
+type collected struct {
+	collections                        []Collection
+	stuck                              []divergence
+	refusal                            *repair.Note
+	drops, moves, kept, left, restored []Drop
+	starts                             map[string]string
 }
 
 // verdict is what collect decided about one branch: a collection, a
-// divergence, or neither.
+// divergence, or neither, and what a sync point said about it.
 type verdict struct {
 	collection *Collection
 	stuck      *divergence
+	changed
 }
 
 // collectOne gives one branch one of collect's five answers, each returned
 // where it is decided.
-func (s Service) collectOne(ctx context.Context, remote, base, branch string, onRemote map[string]string, take Take, parents map[string]string) (verdict, error) {
+func (s Service) collectOne(ctx context.Context, c collecting, branch string) (verdict, error) {
+	remote, base, onRemote, parents := c.remote, c.base, c.onRemote, c.parents
 	if branch == base || onRemote[branch] == "" {
 		// Not on the remote at all, which is ordinary for work in progress.
 		return verdict{}, nil
@@ -147,6 +186,38 @@ func (s Service) collectOne(ctx context.Context, remote, base, branch string, on
 	if local == published {
 		return verdict{}, nil
 	}
+	// This branch's own work, bounded at its parent as currency is: what is
+	// below the parent is the parent's.
+	parent := parentOrBase(parents, branch, base)
+	// The published version's own work is bounded at the parent as the
+	// remote holds it, when it is built on that. Bounded at the parent here,
+	// whatever somebody else added to the parent and published -- or this
+	// clone added to it and has not -- counted as this branch's: two people
+	// each moving a different branch of one stack read as both moving this
+	// one, and the only way offered through discarded one of them.
+	begins, err := s.publishedParent(ctx, parent, published, onRemote)
+	if err != nil {
+		return verdict{}, err
+	}
+	// Before the fast-forward below: a branch somebody reset back to drop a
+	// commit is an ancestor of the published version, and fast-forwarding it
+	// would put the commit back.
+	sync, err := s.bySyncPoint(ctx, c, branch, local, published, parent, begins)
+	if err != nil {
+		return verdict{}, err
+	}
+	if sync.decided {
+		return verdict{collection: sync.collection, changed: sync}, nil
+	}
+	found, err := s.collectUnsynced(ctx, c, branch, local, published, parent, begins)
+	found.changed = sync
+	return found, err
+}
+
+// collectUnsynced is collectOne for a branch its sync point does not settle,
+// which is every branch without one: the rules pull had before sync points.
+func (s Service) collectUnsynced(ctx context.Context, c collecting, branch, local, published, parent, begins string) (verdict, error) {
+	remote, take, parents := c.remote, c.take, c.parents
 	behind, err := s.Git.IsAncestor(ctx, branch, published)
 	if err != nil {
 		return verdict{}, err
@@ -162,9 +233,6 @@ func (s Service) collectOne(ctx context.Context, remote, base, branch string, on
 		// You have unpublished work. That is push's business, not sync's.
 		return verdict{}, nil
 	}
-	// This branch's own work, bounded at its parent as currency is: what is
-	// below the parent is the parent's.
-	parent := parentOrBase(parents, branch, base)
 	ours, _, err := s.Git.Cherry(ctx, published, branch, parent)
 	if err != nil {
 		return verdict{}, err
@@ -186,16 +254,6 @@ func (s Service) collectOne(ctx context.Context, remote, base, branch string, on
 	}
 	if len(ours) == 0 && onParent {
 		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
-	}
-	// The published version's own work is bounded at the parent as the
-	// remote holds it, when it is built on that. Bounded at the parent here,
-	// whatever somebody else added to the parent and published -- or this
-	// clone added to it and has not -- counted as this branch's: two people
-	// each moving a different branch of one stack read as both moving this
-	// one, and the only way offered through discarded one of them.
-	begins, err := s.publishedParent(ctx, parent, published, onRemote)
-	if err != nil {
-		return verdict{}, err
 	}
 	theirsFrom := parent
 	if begins != "" {
@@ -278,7 +336,7 @@ func fetchList(base string, branches []string) []string {
 func collectionsEqual(left, right []Collection) bool {
 	return slices.EqualFunc(left, right, func(a, b Collection) bool {
 		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
-			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards)
+			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards) && slices.Equal(a.Dropped, b.Dropped)
 	})
 }
 

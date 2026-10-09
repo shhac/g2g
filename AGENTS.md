@@ -360,7 +360,21 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `pull --take <enum>` exists only for the outcome neither command can otherwise
   reach, is an enum so the vocabulary can grow, and has no `mine` value. It is
   the one path where `pull` discards work that exists nowhere else, so the
-  preview names every commit it would lose rather than counting them.
+  preview names every commit it would lose rather than counting them. The
+  other thing `pull` drops is a commit the remote dropped since the last
+  agreement (below), and that is deliberate: it exists in the sync point's
+  reflog, it is named commit by commit, and `--keep` keeps it.
+- **Sync points** (`refs/g2g/synced/<remote>/<branch>`, `internal/syncpoint`)
+  are g2g's own refs, like `refs/g2g/remotes/`. Read
+  `design-docs/sync-points.md` before touching them. Membership in a sync
+  point is by commit id, never by content: content is the direction that would
+  call a re-made change "dropped here" and delete it from the remote. Record
+  the tip the plan saw, never one read again at write time; record at plan time
+  only for a branch exactly level with the remote, because a branch ahead of it
+  is also what a remote-dropped commit looks like; and a recording that fails
+  after the command's own work is a diagnostic, never a failure. The Git
+  client's own delete and rename forget and carry them, so no command can
+  forget to. A trunk never has one.
   `published` names a side, not a place: the branch as the git remote
   `--remote` names holds it (one of `git remote`'s names, `origin` by
   default). It never means GitHub — a value naming `github` would promise a

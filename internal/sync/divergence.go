@@ -27,6 +27,19 @@ type divergence struct {
 // read, and a suggestion without it names origin's version instead — the wrong
 // side of a choice that discards commits.
 func divergenceWays(selection graph.Selection, remote string, take Take, parents map[string]string, stuck []divergence) []repair.Step {
+	command := pullCommand(selection, remote) + " --take " + string(SidePublished)
+	if through := widened(take, parents, stuck); through != "" {
+		command += " --through " + repair.Quote(through)
+	}
+	return []repair.Step{
+		{Command: command, Effect: fmt.Sprintf("take the version %s has and discard yours", remoteName(remote))},
+		{Effect: "reconcile it yourself"},
+	}
+}
+
+// pullCommand is pull aimed at the selection and remote a refusal came from,
+// which is what any way out it offers has to be.
+func pullCommand(selection graph.Selection, remote string) string {
 	command := "g2g pull"
 	if selection.Branch != "" {
 		command += " --branch " + repair.Quote(selection.Branch)
@@ -37,14 +50,7 @@ func divergenceWays(selection graph.Selection, remote string, take Take, parents
 	if remote != "" && remote != localgit.DefaultRemote {
 		command += " --remote " + repair.Quote(remote)
 	}
-	command += " --take " + string(SidePublished)
-	if through := widened(take, parents, stuck); through != "" {
-		command += " --through " + repair.Quote(through)
-	}
-	return []repair.Step{
-		{Command: command, Effect: fmt.Sprintf("take the version %s has and discard yours", remoteName(remote))},
-		{Effect: "reconcile it yourself"},
-	}
+	return command
 }
 
 // remoteName is the remote as a sentence names it. An empty one is what a

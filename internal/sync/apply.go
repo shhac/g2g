@@ -71,6 +71,14 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			}
 		}
 	}
+	// Before the replay for the same reason as a taken branch's: a branch a
+	// commit moved into begins at its parent's published tip now, and a
+	// replay that sits it there unchanged records no fork point of its own.
+	for _, branch := range slices.Sorted(maps.Keys(plan.Starts)) {
+		if err := s.Graph.Refork(ctx, branch, plan.Starts[branch]); err != nil {
+			return stop(err)
+		}
+	}
 	if len(plan.Restack.Steps) != 0 {
 		if err := s.Restack.Apply(ctx, plan.Restack); err != nil {
 			return stop(err)
@@ -93,7 +101,13 @@ func (s Service) recordAgreed(ctx context.Context, plan Plan) {
 		if err != nil {
 			continue
 		}
-		s.agree(ctx, recorder, plan.Remote, branch, localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull"})
+		dropped := make([]string, 0)
+		for _, drop := range plan.Drops {
+			if drop.Branch == branch {
+				dropped = append(dropped, drop.Commit)
+			}
+		}
+		s.agree(ctx, recorder, plan.Remote, branch, localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: dropped})
 	}
 }
 

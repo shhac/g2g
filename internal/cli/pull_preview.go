@@ -23,8 +23,50 @@ func pullView(plan syncer.Plan) stackView {
 	if note := discardNote(plan); note != "" {
 		view = view.note(note, severityBad)
 	}
+	view = dropNotes(view, plan)
 	view = view.note(replayNote(plan.Restack), severityNeutral)
 	return view
+}
+
+// dropNotes list every commit a pull drops, moves, keeps or leaves, by branch,
+// short id and subject. A count would not do: once a ref moves nothing else
+// will name them, and the list is what makes one findable again.
+func dropNotes(view stackView, plan syncer.Plan) stackView {
+	if len(plan.Drops) != 0 {
+		view = view.note(fmt.Sprintf("Drops %s %s no longer has, removed there since this clone last pulled or pushed: %s · keep any with %s · each stays reachable through the sync point's reflog for about 30 days, and %s recovers one.",
+			count(len(plan.Drops), "commit", "commits"), plan.Remote, dropList(plan, plan.Drops),
+			runnable("g2g pull --keep <commit>"), runnable("git branch <name> <commit>")), severityWarn)
+	}
+	if len(plan.Moves) != 0 {
+		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", count(len(plan.Moves), "commit", "commits"), plan.Remote, dropList(plan, plan.Moves)), severityNeutral)
+	}
+	if len(plan.Kept) != 0 {
+		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", count(len(plan.Kept), "commit", "commits"), dropList(plan, plan.Kept)), severityNeutral)
+	}
+	if len(plan.Restored) != 0 {
+		view = view.note(fmt.Sprintf("Puts back %s missing only because the branch was reset to a remote-tracking ref older than the last pull: %s.", count(len(plan.Restored), "commit", "commits"), dropList(plan, plan.Restored)), severityWarn)
+	}
+	if len(plan.Left) != 0 {
+		view = view.note(fmt.Sprintf("Leaves %s you dropped and %s still has, for %s to publish: %s.", count(len(plan.Left), "commit", "commits"), plan.Remote, runnable("g2g push"), dropList(plan, plan.Left)), severityNeutral)
+	}
+	return view
+}
+
+// dropList names each commit by branch, short id and subject; a moved one by
+// the branch it left and the branch it is in now.
+func dropList(plan syncer.Plan, drops []syncer.Drop) string {
+	said := make([]string, 0, len(drops))
+	for _, drop := range drops {
+		entry := drop.Branch + " " + shortObject(drop.Commit)
+		if subject := plan.Subjects[drop.Commit]; subject != "" {
+			entry += " " + subject
+		}
+		if drop.To != "" {
+			entry += " (" + drop.Branch + " → " + drop.To + ")"
+		}
+		said = append(said, entry)
+	}
+	return strings.Join(said, ", ")
 }
 
 // collectNote says which of your branches the remote has moved on, and how.

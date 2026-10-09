@@ -61,6 +61,10 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	// Everything above it keeps the default, which is to refuse rather than
 	// pick a side silently.
 	cmd.Flags().StringVar(&options.through, "through", "", "with --take, the last branch the chosen side applies to · above it a divergence is still refused")
+	// Repeatable, and per commit rather than per branch: the preview lists
+	// every commit a pull would drop, and keeping one is a decision about that
+	// commit.
+	cmd.Flags().StringArrayVar(&options.keep, "keep", nil, "keep a commit the preview lists as dropped — one the remote dropped stays as yours, one you dropped is taken back · repeatable")
 	_ = cmd.RegisterFlagCompletionFunc("through", completionCallback(localBranchCompletions(service.Graph)))
 	options.selection.registerBranch(cmd, service.Graph)
 	// pull, as sync, was the only mutating stack command with no scope at all, so the
@@ -71,6 +75,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "scope")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
+	cmd.MarkFlagsMutuallyExclusive("trunk-only", "keep")
 	if pruner.Ready() {
 		cmd.MarkFlagsMutuallyExclusive("trunk-only", "prune")
 	}
@@ -81,6 +86,7 @@ type pullOptions struct {
 	selection                   graphOptions
 	remote                      string
 	take, through               string
+	keep                        []string
 	apply, alsoPrune, trunkOnly bool
 	cleanup                     prune.Options
 }
@@ -97,6 +103,7 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 	if err != nil {
 		return syncer.Take{}, err
 	}
+	chosen.Keep = o.keep
 	// Machine output is one document, and this writes two reports.
 	if o.alsoPrune && presentation.machine() {
 		return syncer.Take{}, errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")

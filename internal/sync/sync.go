@@ -89,14 +89,32 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// fetch and the fast-forward assessment come first.
 	// A location, never a parent: the trunk is about to be here, and recording
 	// a ref under refs/g2g/ as the parent is what broke every synced stack.
-	collect, stuck, err := s.collect(ctx, remote, plan.Base, discovery.Branches, published, take, parents)
+	if plan.Keep, err = s.resolveKeep(ctx, take.Keep); err != nil {
+		return Plan{}, err
+	}
+	command := pullCommand(selection, remote)
+	found, err := s.collect(ctx, collecting{
+		remote: remote, base: plan.Base, branches: discovery.Branches, onRemote: published, take: take,
+		parents: parents, forks: forkPoints(discovery), keep: plan.Keep,
+		command: command, takeCommand: command + " --take " + string(SidePublished),
+	})
 	if err != nil {
 		return Plan{}, err
 	}
-	if len(stuck) != 0 {
-		return plan.refused(repair.Note{Reason: divergenceReason(stuck), Ways: divergenceWays(selection, remote, take, parents, stuck)}), nil
+	plan.Drops, plan.Moves, plan.Kept, plan.Left, plan.Restored = found.drops, found.moves, found.kept, found.left, found.restored
+	if plan.Subjects, err = s.describe(ctx, plan); err != nil {
+		return Plan{}, err
 	}
-	plan.Collect = collect
+	if len(found.stuck) != 0 {
+		return plan.refused(repair.Note{Reason: divergenceReason(found.stuck), Ways: divergenceWays(selection, remote, take, parents, found.stuck)}), nil
+	}
+	if found.refusal != nil {
+		return plan.refused(*found.refusal), nil
+	}
+	if note, unkept := unkeptRefusal(plan); unkept {
+		return plan.refused(note), nil
+	}
+	plan.Collect, plan.Starts = found.collections, found.starts
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
 	if err != nil {
 		return Plan{}, err
@@ -200,11 +218,17 @@ func ownTips(published map[string]string, base string, branches []string) map[st
 	return own
 }
 
-// recordLevel notes the agreement a branch is already in when it holds
-// everything the remote has: level with it, or ahead of it with work to push.
-// That is a fact rather than a decision, like the fetch into g2g's own refs a
-// preview already makes, and it is what gives a branch nobody has pulled or
-// pushed through g2g a sync point to measure the next change from.
+// recordLevel notes the agreement a branch is already in when it is exactly
+// level with the remote. That is a fact rather than a decision, like the fetch
+// into g2g's own refs a preview already makes, and it is what gives a branch
+// nobody has pulled or pushed through g2g a sync point to measure the next
+// change from.
+//
+// Exactly level, and nothing looser. A branch ahead of the remote holds
+// everything the remote has, which reads like agreement too -- and is also
+// what a branch looks like when the remote dropped a commit it still has.
+// Recording the remote's tip then would erase the one fact that tells the two
+// apart, before anything had asked.
 func (s Service) recordLevel(ctx context.Context, remote string, published map[string]string) {
 	recorder, ok := s.Git.(syncpoint.ReadRecorder)
 	if !ok {
@@ -212,16 +236,10 @@ func (s Service) recordLevel(ctx context.Context, remote string, published map[s
 	}
 	for _, branch := range slices.Sorted(maps.Keys(published)) {
 		local, err := s.Git.Resolve(ctx, branch)
-		if err != nil {
+		if err != nil || local != published[branch] {
 			continue
 		}
-		if local != published[branch] {
-			holds, err := s.Git.IsAncestor(ctx, published[branch], local)
-			if err != nil || !holds {
-				continue
-			}
-		}
-		s.agree(ctx, recorder, remote, branch, localgit.SyncPoint{Tip: published[branch], Local: local, Command: "pull"})
+		s.agree(ctx, recorder, remote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "pull"})
 	}
 }
 
@@ -232,4 +250,49 @@ func (s Service) agree(ctx context.Context, recorder syncpoint.ReadRecorder, rem
 	if err := syncpoint.Agree(ctx, recorder, remote, branch, point); err != nil {
 		diagnostic.Event(ctx, "sync.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
 	}
+}
+
+// resolveKeep turns the commits a caller named into full ids, refusing one
+// that names nothing.
+func (s Service) resolveKeep(ctx context.Context, keep []string) ([]string, error) {
+	resolved := make([]string, 0, len(keep))
+	for _, commit := range keep {
+		id, err := s.Git.Resolve(ctx, commit+"^{commit}")
+		if err != nil {
+			return nil, fmt.Errorf("--keep %s names no commit here", commit)
+		}
+		if !slices.Contains(resolved, id) {
+			resolved = append(resolved, id)
+		}
+	}
+	return resolved, nil
+}
+
+// unkeptRefusal refuses a --keep naming a commit this pull would not drop.
+// Silently ignoring it would let a mistyped id read as kept.
+func unkeptRefusal(plan Plan) (repair.Note, bool) {
+	unkept := make([]string, 0)
+	for _, commit := range plan.Keep {
+		if !slices.ContainsFunc(plan.Kept, func(drop Drop) bool { return drop.Commit == commit }) {
+			unkept = append(unkept, shortID(commit))
+		}
+	}
+	if len(unkept) == 0 {
+		return repair.Note{}, false
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("--keep %s %s not a commit this pull would drop", strings.Join(unkept, ", "), pick(len(unkept), "is", "are")),
+		Ways:   []repair.Step{{Effect: "name only commits the preview lists as dropped"}},
+	}, true
+}
+
+// forkPoints are where each selected branch was recorded as forking.
+func forkPoints(discovery graph.Discovery) map[string]string {
+	forks := map[string]string{}
+	for _, branch := range discovery.Branches {
+		if edge, tracked := discovery.Graph.Edges[branch]; tracked && edge.ForkPoint != "" {
+			forks[branch] = edge.ForkPoint
+		}
+	}
+	return forks
 }

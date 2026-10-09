@@ -67,6 +67,12 @@ func bySyncPoint(ctx context.Context, git Comparer, remote, branch, local, tip, 
 		// Somebody else's commit on top of a drop of this clone's: still a
 		// divergence, and still refused.
 		return Publication{Standing: Diverged, Ours: ours, Theirs: len(changes.New) + len(changes.DroppedHere)}, changes, true, nil
+	case len(changes.Shared) == 0:
+		// Every commit of the branch's own gone: that is a branch emptied or
+		// made again, not one a commit was dropped from, and pull refuses
+		// the same thing from the other side. The comparison push had before
+		// refuses it, naming the replacement for whoever means it.
+		return Publication{}, syncpoint.Changes{}, false, nil
 	default:
 		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere)}, changes, true, nil
 	}

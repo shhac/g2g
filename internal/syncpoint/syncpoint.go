@@ -207,35 +207,35 @@ func Classify(ctx context.Context, git Git, branch Branch) (Changes, error) {
 }
 
 // stale moves commits that read as dropped here back to new, when the branch
-// sits on a remote-tracking ref older than the sync point and they are all,
-// and only, the commits the sync point has beyond that ref: exactly what
-// resetting to it leaves out.
+// was reset to its remote-tracking ref: pull never moves that ref, so after a
+// pull it can be older than the sync point, and resetting to it leaves out
+// exactly what the pull brought -- which looks like a deliberate drop.
+//
+// The test is what the branch added since that ref. A drop made on purpose,
+// by git rebase -i say, keeps the rest of what the sync point had beyond the
+// ref, under new ids; a reset to the ref keeps none of it. Asked by content,
+// so it holds when somebody rewrote the branch before the pull, which leaves
+// the tracking ref no ancestor of the sync point at all.
 func stale(ctx context.Context, git Git, branch Branch, changes Changes) (Changes, error) {
 	if len(changes.DroppedHere) == 0 || branch.Tracking == "" || branch.Tracking == branch.Sync.Tip {
 		return changes, nil
-	}
-	older, err := git.IsAncestor(ctx, branch.Tracking, branch.Sync.Tip)
-	if err != nil || !older {
-		return changes, err
 	}
 	onIt, err := git.IsAncestor(ctx, branch.Tracking, branch.Local)
 	if err != nil || !onIt {
 		return changes, err
 	}
-	// Every commit the sync point has beyond the tracking ref is gone, and
-	// nothing else is: a drop that kept some of them, or dropped something
-	// older, was made on purpose.
 	beyond, err := git.Commits(ctx, branch.Sync.Tip, []string{branch.Tracking})
 	if err != nil {
 		return changes, err
-	}
-	if len(beyond) != len(changes.DroppedHere) {
-		return changes, nil
 	}
 	for _, commit := range changes.DroppedHere {
 		if !slices.Contains(beyond, commit) {
 			return changes, nil
 		}
+	}
+	_, kept, err := git.Cherry(ctx, branch.Sync.Tip, branch.Local, branch.Tracking)
+	if err != nil || len(kept) != 0 {
+		return changes, err
 	}
 	changes.New = append(changes.New, changes.DroppedHere...)
 	changes.DroppedHere, changes.Stale = nil, true

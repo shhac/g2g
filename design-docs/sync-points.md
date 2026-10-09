@@ -91,11 +91,26 @@ refuses — never deletes it.
 `pull` fetches into `refs/g2g/remotes/` and leaves `refs/remotes/<remote>/B`
 where it was, so after a pull that brought commits down the tracking ref is
 older than the sync point. `git reset --hard origin/B` then leaves out exactly
-what the pull brought, which looks like a deliberate drop. When the commits that
-would read as dropped here are exactly what the sync point holds beyond the
-tracking ref, and the branch sits on that ref, they are counted as new instead
-and the classification says so. A deliberate drop and that reset look the same,
-and only one of them is safe to publish.
+what the pull brought, which looks like a deliberate drop. The test is what the
+branch added since that ref: a drop made on purpose (`git rebase -i`) keeps the
+rest of what the sync point had beyond the ref, under new ids; a reset to the
+ref keeps none of it. So when the branch sits on the tracking ref, every commit
+that would read as dropped here is beyond that ref in the sync point, and the
+branch has added nothing of the sync point's content since the ref, they are
+counted as new instead and the classification says so. It is asked by content,
+because somebody may have rewritten the branch before the pull, which leaves the
+tracking ref no ancestor of the sync point at all — the first version of this
+rule asked for that ancestry and so missed exactly that case. A deliberate drop
+and that reset look the same, and only one of them is safe to publish.
+
+### A branch emptied
+
+A branch none of whose own commits are left on one side has not had a commit
+dropped from it: it was emptied, or made again under the name. `pull` refuses
+the remote's emptied version rather than taking every commit off the branch
+here, and `push` refuses to publish this clone's, falling back to the
+comparison it had before sync points, which names the replacement for whoever
+means it.
 
 ## What pull and push do with it
 

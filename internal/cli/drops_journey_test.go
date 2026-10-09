@@ -255,3 +255,111 @@ func TestJourneyACommitMovedIntoTheChildStaysInTheChild(t *testing.T) {
 		t.Errorf("a restack after the pull would drop the moved commit:\n%s", restack)
 	}
 }
+
+// The stale-reset case again, after Bob rewrote B: he restacked it onto a
+// moved A before adding x, so Alice's out-of-date origin/synthetic-b is not
+// an ancestor of what she pulled. Resetting to it still leaves out exactly
+// what the pull brought, and push must not publish that as her drop of x.
+func TestJourneyAResetToAStaleTrackingRefAfterARewriteIsNotPublishedAsADrop(t *testing.T) {
+	s := newDropWorld(t)
+	s.asBob()
+	s.commit(s.Other, "synthetic-a", "bob-a.txt", "bob")
+	mustRun(t, "restack", "--apply")
+	s.commit(s.Other, "synthetic-b", "z.txt", "z")
+	mustRun(t, "push", "--apply")
+	z := s.tip(s.Remote, "synthetic-b")
+
+	s.asAlice()
+	mustRun(t, "pull", "--apply")
+	s.git(s.Local, "switch", "-q", "synthetic-b")
+	s.git(s.Local, "reset", "-q", "--hard", "origin/synthetic-b")
+
+	if stdout, _, err := run(t, "push", "--apply"); err == nil {
+		t.Errorf("push published a reset to a stale tracking ref as a drop:\n%s", stdout)
+	}
+	if !s.contains(s.Remote, z, "synthetic-b") {
+		t.Error("Bob's commit is gone from the remote")
+	}
+}
+
+// Emptying a branch -- resetting it to its parent -- is not dropping a commit
+// from it. Pull refuses the remote's version of that; push refuses this
+// clone's, naming the replacement a person who means it can run.
+func TestJourneyPushRefusesToEmptyAPublishedBranch(t *testing.T) {
+	s := newDropWorld(t)
+	s.git(s.Local, "switch", "-q", "synthetic-b")
+	s.git(s.Local, "reset", "-q", "--hard", "synthetic-a")
+	published := s.tip(s.Remote, "synthetic-b")
+
+	stdout, _, err := run(t, "push", "--apply")
+	if err == nil {
+		t.Fatalf("push emptied a published branch:\n%s", stdout)
+	}
+	if !strings.Contains(stdout+err.Error(), "--force-with-lease=refs/heads/synthetic-b:"+published) {
+		t.Errorf("the refusal does not name the replacement:\n%s\n%v", stdout, err)
+	}
+	if s.tip(s.Remote, "synthetic-b") != published {
+		t.Error("the remote branch moved")
+	}
+}
+
+// Alice drops x while Bob publishes z on the same branch. Taking Bob's
+// version would put x back; publishing hers would lose z. Both commands
+// refuse, and the way out pull names -- keeping x -- takes Bob's version
+// with z, which is what keeping her dropped commit back means.
+func TestJourneyADropHereMeetingNewWorkThereRefusesBothWays(t *testing.T) {
+	s := newDropWorld(t)
+	x := s.dropX(s.Local)
+	s.asBob()
+	s.commit(s.Other, "synthetic-b", "z.txt", "z")
+	mustRun(t, "push", "--apply")
+	z := s.tip(s.Remote, "synthetic-b")
+
+	s.asAlice()
+	stdout, _, err := run(t, "pull", "--apply")
+	if err == nil || !strings.Contains(stdout+err.Error(), "--keep "+x[:12]) {
+		t.Fatalf("pull over a drop here and new work there: error = %v\n%s", err, stdout)
+	}
+	if stdout, _, err := run(t, "push", "--apply"); err == nil {
+		t.Errorf("push published Alice's drop over Bob's commit:\n%s", stdout)
+	}
+	if !s.contains(s.Remote, z, "synthetic-b") {
+		t.Fatal("Bob's commit is gone from the remote")
+	}
+
+	if stdout, _, err := run(t, "pull", "--keep", x[:12], "--apply"); err != nil {
+		t.Fatalf("the way out the refusal names: %v\n%s", err, stdout)
+	}
+	s.assertHas(s.Local, "synthetic-b", "x.txt")
+	s.assertHas(s.Local, "synthetic-b", "z.txt")
+	s.assertClean(s.Local)
+}
+
+// The remote emptied B. That is not a commit dropped from it, and pull
+// refuses rather than taking every one of Alice's commits off it; keeping
+// them, as the refusal offers, leaves her B as it was.
+func TestJourneyPullRefusesABranchTheRemoteEmptied(t *testing.T) {
+	s := newDropWorld(t)
+	s.asBob()
+	s.git(s.Other, "push", "-q", "--force", "origin", "synthetic-a:synthetic-b")
+
+	s.asAlice()
+	before := s.tip(s.Local, "synthetic-b")
+	stdout, _, err := run(t, "pull", "--apply")
+	if err == nil || !strings.Contains(stdout+err.Error(), "has none of synthetic-b's own commits any more") {
+		t.Fatalf("pull of an emptied branch: error = %v\n%s", err, stdout)
+	}
+	if s.tip(s.Local, "synthetic-b") != before {
+		t.Fatal("a refused pull moved synthetic-b")
+	}
+	keep := []string{"pull"}
+	for _, commit := range strings.Fields(s.git(s.Local, "rev-list", "synthetic-a..synthetic-b")) {
+		keep = append(keep, "--keep", commit[:12])
+	}
+	if stdout, _, err := run(t, append(keep, "--apply")...); err != nil {
+		t.Fatalf("keeping them: %v\n%s", err, stdout)
+	}
+	if s.tip(s.Local, "synthetic-b") != before {
+		t.Error("keeping every commit still moved synthetic-b")
+	}
+}

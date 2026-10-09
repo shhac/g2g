@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -163,4 +164,30 @@ func strictly(remote string, branches []string, publishing map[string]Publicatio
 		Reason: "--strict: " + strings.Join(reasons, "; "),
 		Ways:   []repair.Step{{Effect: "run without --strict to go ahead with what the preview lists"}},
 	}
+}
+
+// restoring refuses a push that would put back commits the remote dropped
+// since this clone last agreed with it. The way through is pull's: drop them
+// here too, or keep them on purpose, after which they are this clone's own
+// and publish like any other commit.
+func restoring(remote string, restores []Drop) repair.Note {
+	named, keep := make([]string, 0, len(restores)), "g2g pull"
+	for _, drop := range restores {
+		named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
+		keep += " --keep " + localgit.Short(drop.Commit)
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("%s dropped %s since this clone last pulled or pushed, and publishing would put %s back", remote, strings.Join(named, ", "), pickWord(len(restores), "it", "them")),
+		Ways: []repair.Step{
+			{Command: "g2g pull", Effect: "drop " + pickWord(len(restores), "it", "them") + " here too"},
+			{Command: keep, Effect: "keep " + pickWord(len(restores), "it", "them") + " as yours, then push"},
+		},
+	}
+}
+
+func pickWord(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+	return many
 }

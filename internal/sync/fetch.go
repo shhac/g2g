@@ -55,3 +55,20 @@ func (s Service) stale(ctx context.Context, remote string, wanted []string, publ
 	}
 	return stale, nil
 }
+
+// fetchList is the base and the selection, each named once. The base is
+// normally the first selected branch as well, and asking for it twice put the
+// same refspec in the command twice.
+//
+// What the remote actually has is asked separately, because git fetch fails the
+// whole command on one ref it cannot find — and a branch that is gone because
+// it merged is the commonest reason for it not to be there.
+func fetchList(base string, branches []string) []string {
+	wanted := []string{base}
+	for _, branch := range branches {
+		if branch != base {
+			wanted = append(wanted, branch)
+		}
+	}
+	return wanted
+}

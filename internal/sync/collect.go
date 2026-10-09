@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 
@@ -314,33 +313,6 @@ func (s Service) publishedParent(ctx context.Context, parent, published string, 
 		return "", err
 	}
 	return tip, nil
-}
-
-// fetchList is the base and the selection, each named once. The base is
-// normally the first selected branch as well, and asking for it twice put the
-// same refspec in the command twice.
-//
-// What the remote actually has is asked separately, because git fetch fails the
-// whole command on one ref it cannot find — and a branch that is gone because
-// it merged is the commonest reason for it not to be there.
-func fetchList(base string, branches []string) []string {
-	wanted := []string{base}
-	for _, branch := range branches {
-		if branch != base {
-			wanted = append(wanted, branch)
-		}
-	}
-	return wanted
-}
-
-// collectionsEqual compares collections, including the commits each would
-// discard. A plan that would lose different work is a different plan, and
-// revalidation has to see that.
-func collectionsEqual(left, right []Collection) bool {
-	return slices.EqualFunc(left, right, func(a, b Collection) bool {
-		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
-			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards) && slices.Equal(a.Dropped, b.Dropped)
-	})
 }
 
 // parentOrBase is what a branch sits on in the selection, the base for a root.

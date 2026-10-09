@@ -225,3 +225,13 @@ func (p Plan) pending() restack.Pending {
 	}
 	return moving
 }
+
+// collectionsEqual compares collections, including the commits each would
+// discard. A plan that would lose different work is a different plan, and
+// revalidation has to see that.
+func collectionsEqual(left, right []Collection) bool {
+	return slices.EqualFunc(left, right, func(a, b Collection) bool {
+		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
+			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards) && slices.Equal(a.Dropped, b.Dropped)
+	})
+}

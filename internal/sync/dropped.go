@@ -131,16 +131,6 @@ func drops(branch string, commits []string) []Drop {
 	return named
 }
 
-// keepCommand is the pull that keeps these commits, for the selection and
-// remote this one was asked about.
-func (c collecting) keepCommand(commits []string) string {
-	command := c.command
-	for _, commit := range commits {
-		command += " --keep " + localgit.Short(commit)
-	}
-	return command
-}
-
 func listed(commits []string) string {
 	short := make([]string, 0, len(commits))
 	for _, commit := range commits {

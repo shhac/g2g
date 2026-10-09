@@ -97,25 +97,6 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	return nil
 }
 
-// recordAgreed notes that every selected branch the remote holds has been
-// reconciled with what it held when this was planned: taken, replayed onto,
-// or left ahead of it as work to push. Only a pull that finished records it.
-func (s Service) recordAgreed(ctx context.Context, plan Plan) {
-	recorder, ok := s.Git.(syncpoint.ReadRecorder)
-	if !ok {
-		return
-	}
-	for _, branch := range slices.Sorted(maps.Keys(plan.Published)) {
-		local, err := s.Git.Resolve(ctx, branch)
-		if err != nil {
-			continue
-		}
-		syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, branch, localgit.SyncPoint{
-			Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Drops),
-		})
-	}
-}
-
 // Stopped is a sync that moved some branches and then failed.
 //
 // The trunk it advanced and the branches it brought down stay where they are:

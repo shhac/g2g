@@ -9,16 +9,13 @@ package sync
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
-	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
-	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // Ready reports a service with everything it needs.
@@ -204,78 +201,6 @@ func syncScope(scope graph.Scope) graph.Scope {
 		return scope
 	}
 	return graph.ScopeStack
-}
-
-// ownTips is what the remote holds for each selected branch but the base. A
-// trunk is never given a sync point: what pull does to one is decided by the
-// rules for a rewritten trunk, and a drop there is not anybody's to publish.
-func ownTips(published map[string]string, base string, branches []string) map[string]string {
-	own := make(map[string]string, len(branches))
-	for _, branch := range branches {
-		if tip := published[branch]; tip != "" && branch != base {
-			own[branch] = tip
-		}
-	}
-	return own
-}
-
-// recordLevel notes the agreement a branch is already in when it is exactly
-// level with the remote. That is a fact rather than a decision, like the fetch
-// into g2g's own refs a preview already makes, and it is what gives a branch
-// nobody has pulled or pushed through g2g a sync point to measure the next
-// change from.
-//
-// Exactly level, and nothing looser. A branch ahead of the remote holds
-// everything the remote has, which reads like agreement too -- and is also
-// what a branch looks like when the remote dropped a commit it still has.
-// Recording the remote's tip then would erase the one fact that tells the two
-// apart, before anything had asked.
-func (s Service) recordLevel(ctx context.Context, remote string, published map[string]string) {
-	recorder, ok := s.Git.(syncpoint.ReadRecorder)
-	if !ok {
-		return
-	}
-	for _, branch := range slices.Sorted(maps.Keys(published)) {
-		local, err := s.Git.Resolve(ctx, branch)
-		if err != nil || local != published[branch] {
-			continue
-		}
-		syncpoint.Record(ctx, recorder, "sync.sync_point", remote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "pull"})
-	}
-}
-
-// resolveKeep turns the commits a caller named into full ids, refusing one
-// that names nothing.
-func (s Service) resolveKeep(ctx context.Context, keep []string) ([]string, error) {
-	resolved := make([]string, 0, len(keep))
-	for _, commit := range keep {
-		id, err := s.Git.Resolve(ctx, commit+"^{commit}")
-		if err != nil {
-			return nil, fmt.Errorf("--keep %s names no commit here", commit)
-		}
-		if !slices.Contains(resolved, id) {
-			resolved = append(resolved, id)
-		}
-	}
-	return resolved, nil
-}
-
-// unkeptRefusal refuses a --keep naming a commit this pull would not drop.
-// Silently ignoring it would let a mistyped id read as kept.
-func unkeptRefusal(plan Plan) (repair.Note, bool) {
-	unkept := make([]string, 0)
-	for _, commit := range plan.Keep {
-		if !slices.ContainsFunc(plan.Kept, func(drop Drop) bool { return drop.Commit == commit }) {
-			unkept = append(unkept, localgit.Short(commit))
-		}
-	}
-	if len(unkept) == 0 {
-		return repair.Note{}, false
-	}
-	return repair.Note{
-		Reason: fmt.Sprintf("--keep %s %s not a commit this pull would drop", strings.Join(unkept, ", "), pick(len(unkept), "is", "are")),
-		Ways:   []repair.Step{{Effect: "name only commits the preview lists as dropped"}},
-	}, true
 }
 
 // forkPoints are where each selected branch was recorded as forking.

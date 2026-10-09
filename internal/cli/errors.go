@@ -183,6 +183,9 @@ func remediationHint(err error) string {
 	if strings.Contains(commandErr.Output, "unknown command \"stack\"") {
 		return "This gh build has no `stack` command. Upgrade gh, then retry."
 	}
+	if githubstack.RateLimited(err) {
+		return "GitHub is refusing requests from this account for coming too often. Wait for the limit to reset (gh api rate_limit says when), then retry."
+	}
 	return ""
 }
 

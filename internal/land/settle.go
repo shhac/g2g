@@ -15,9 +15,17 @@ import (
 // The wait between attempts, and its ceiling. Short enough that an answer
 // GitHub already has is not sat on, long enough that a slow one is not asked
 // fifty times.
+//
+// A wait that has gone on for a minute is not going to answer in seconds --
+// a pull request in a merge queue, checks that take a while -- so after
+// settleSlow the gap keeps widening, to settleLate. Asked every eight seconds
+// for the length of a descent's budget, one stuck merge was a few hundred
+// requests against the same allowance every other gh call draws on.
 const (
 	settleFirst = 2 * time.Second
 	settleMost  = 8 * time.Second
+	settleSlow  = time.Minute
+	settleLate  = 30 * time.Second
 )
 
 // diagnoseBudget bounds the one read made after a wait has given up, which
@@ -73,28 +81,52 @@ func settle(ctx context.Context, wait pauser, what string, ask func(context.Cont
 	if wait == nil {
 		wait = pause
 	}
-	interval := settleFirst
+	interval, waited := settleFirst, time.Duration(0)
 	for attempts := 1; ; attempts++ {
 		settled, err := ask(ctx)
-		if err != nil {
+		// GitHub refusing for being asked too often is one more thing to wait
+		// out, at the slow pace; stopping part-way down a stack for it would
+		// leave a descent half done over something that passes with time.
+		limited := githubstack.RateLimited(err)
+		if err != nil && !limited {
 			return err
 		}
 		diagnostic.Event(ctx, "land.settle",
 			diagnostic.Field{Key: "what", Value: what},
 			diagnostic.Field{Key: "attempt", Value: fmt.Sprint(attempts)},
 			diagnostic.Field{Key: "settled", Value: fmt.Sprintf("%t", settled)},
+			diagnostic.Field{Key: "rate_limited", Value: fmt.Sprintf("%t", limited)},
 		)
 		if settled {
 			return nil
 		}
-		if err := wait(ctx, interval); err != nil {
+		pace := interval
+		if limited {
+			pace = max(interval, settleLate)
+		}
+		if waitErr := wait(ctx, pace); waitErr != nil {
+			if limited {
+				return fmt.Errorf("GitHub was still refusing requests for coming too often when the wait for %s ran out · rerun g2g land once its limit resets: %w", what, err)
+			}
 			// The context expiring here is the wait running out, not a
 			// failure of its own, and saying which wait it was is the whole
 			// point of having two.
 			return &NotSettled{What: what, Attempts: attempts}
 		}
-		interval = min(interval*2, settleMost)
+		waited += pace
+		interval = nextInterval(interval, waited)
 	}
+}
+
+// nextInterval widens the gap between attempts: to settleMost while the wait
+// is young, and on to settleLate once it has gone on for settleSlow. Counted
+// in time waited rather than read from the clock, so a test that does not
+// sleep sees the same sequence the real wait does.
+func nextInterval(interval, waited time.Duration) time.Duration {
+	if waited < settleSlow {
+		return min(interval*2, settleMost)
+	}
+	return min(interval*2, settleLate)
 }
 
 // settlePush waits until GitHub is looking at what was just pushed, and

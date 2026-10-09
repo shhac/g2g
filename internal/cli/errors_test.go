@@ -139,3 +139,20 @@ func TestEachOutcomeExitsWithItsOwnStatus(t *testing.T) {
 		}
 	}
 }
+
+// A secondary rate limit passes with time; the advice says so rather than
+// leaving the bare GitHub error to be read as something to fix.
+func TestWriteErrorExplainsARateLimit(t *testing.T) {
+	err := &githubstack.CommandError{
+		Command: "gh api graphql",
+		Cause:   exitError(t, 1),
+		Output:  "HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+	}
+
+	var out strings.Builder
+	writeError(&out, err)
+
+	if got := out.String(); !strings.Contains(got, "coming too often") {
+		t.Fatalf("writeError did not explain the rate limit:\n%s", got)
+	}
+}

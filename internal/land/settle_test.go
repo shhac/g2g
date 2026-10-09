@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/githubstack"
 )
 
 // recordingPauser stands in for the clock. It records what it was asked to
@@ -171,5 +172,57 @@ func TestThePauserStopsWhenTheContextDoes(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Errorf("pause() took %v, want to stop with the context", elapsed)
+	}
+}
+
+// A wait that has gone on for a minute is asked less often: still widening
+// from the ceiling a young wait keeps to, never past the slow one.
+func TestSettleSlowsDownOnceAWaitHasGoneOnAMinute(t *testing.T) {
+	clock := &recordingPauser{}
+	asked := 0
+	if err := settle(context.Background(), clock.wait, "the merge", func(context.Context) (bool, error) {
+		asked++
+		return asked == 20, nil
+	}); err != nil {
+		t.Fatalf("settle() error = %v", err)
+	}
+	var total time.Duration
+	for _, waited := range clock.waited {
+		if total < settleSlow && waited > settleMost {
+			t.Fatalf("waited %v, want nothing above %v in the first %v", clock.waited, settleMost, settleSlow)
+		}
+		if waited > settleLate {
+			t.Fatalf("waited %v, want nothing above %v", clock.waited, settleLate)
+		}
+		total += waited
+	}
+	if last := clock.waited[len(clock.waited)-1]; last != settleLate {
+		t.Errorf("final wait = %v, want the slow ceiling %v", last, settleLate)
+	}
+}
+
+// GitHub refusing for being asked too often is waited out at the slow pace,
+// and named if the wait runs out while it still is.
+func TestSettleWaitsOutARateLimit(t *testing.T) {
+	limited := &githubstack.CommandError{Command: "gh api graphql", Cause: errors.New("synthetic exit 1"), Output: `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}`}
+	clock := &recordingPauser{}
+	asked := 0
+	if err := settle(context.Background(), clock.wait, "the merge", func(context.Context) (bool, error) {
+		asked++
+		if asked == 1 {
+			return false, limited
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatalf("settle() error = %v, want the limit waited out", err)
+	}
+	if len(clock.waited) != 1 || clock.waited[0] != settleLate {
+		t.Errorf("waited %v, want one wait at %v", clock.waited, settleLate)
+	}
+
+	gaveUp := &recordingPauser{giveUp: 1}
+	err := settle(context.Background(), gaveUp.wait, "the merge", func(context.Context) (bool, error) { return false, limited })
+	if err == nil || !strings.Contains(err.Error(), "too often") || !errors.Is(err, limited) {
+		t.Errorf("settle() error = %v, want the rate limit named", err)
 	}
 }

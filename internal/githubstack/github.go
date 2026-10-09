@@ -4,6 +4,7 @@ package githubstack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -177,4 +178,17 @@ func (c Client) Retarget(ctx context.Context, number int, base string) error {
 	diagnostic.Event(ctx, "github.pr_retarget", diagnostic.Field{Key: "number", Value: strconv.Itoa(number)}, diagnostic.Field{Key: "base", Value: base})
 	_, err := c.run(ctx, args...)
 	return err
+}
+
+// RateLimited reports a request GitHub refused for coming too often: the
+// hourly allowance spent, or a secondary limit on how fast requests arrive.
+// Both pass with time, so a caller that is already waiting for something can
+// wait for this too rather than give up part-way.
+func RateLimited(err error) bool {
+	var command *CommandError
+	if !errors.As(err, &command) {
+		return false
+	}
+	output := strings.ToLower(command.Output)
+	return strings.Contains(output, "rate limit") || strings.Contains(output, "rate_limited")
 }

@@ -29,8 +29,6 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 			return err
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(options.apply), options.selection.branch, "")
-		service := service
-		service.Strict = options.strict
 		pull := options.flow(cmd, service, chosen, guard, presentation)
 		if !options.alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, options.apply)
@@ -121,6 +119,13 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 // flow chooses the trunk or stack plan and the promise its preview makes.
 func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
 	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, guard, presentation, o.alsoPrune)
+	if o.strict {
+		plan := pull.plan
+		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
+			planned, err := plan(ctx)
+			return planned.Strictly(), err
+		}
+	}
 	if o.trunkOnly {
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
 			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote)

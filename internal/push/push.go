@@ -41,10 +41,6 @@ type Service struct {
 	// Selector supplies the selection, from whichever source describes the
 	// branch. push only publishes refs, so it works with any of them.
 	Selector stack.PathSelector
-	// Strict refuses a push that would drop any published commit, or that
-	// publishes a branch with no sync point to say what changed: abort
-	// rather than plough on, for whoever asks for it.
-	Strict bool
 }
 
 type Plan struct {
@@ -74,9 +70,8 @@ type Plan struct {
 	Drops, Moves, Restores []Drop
 	Subjects               map[string]string
 	// Strict is what --strict would refuse on top of Repair, empty when
-	// nothing is out of step. It is worked out whether or not the push is
-	// strict, so a caller that publishes through push -- land, before its
-	// descent -- can ask it of a plan made without the flag.
+	// nothing is out of step. It is worked out whether or not anybody asked,
+	// and Strictly is how a caller that did makes it the refusal.
 	Strict repair.Note
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. What it names is a git command rather than a g2g one,
@@ -88,6 +83,17 @@ type Plan struct {
 // Blocked is why an apply would refuse, as one sentence, empty when it would
 // proceed.
 func (p Plan) Blocked() string { return p.Repair.Sentence() }
+
+// Strictly is the plan as --strict refuses it: what Strict names becomes the
+// refusal, unless the push was refused anyway. Every caller that asks for
+// strictness -- push, submit, land -- asks it of the plan, so none of them
+// needs a different push to do it.
+func (p Plan) Strictly() Plan {
+	if p.Blocked() == "" && p.Strict.Reason != "" {
+		p.Repair = p.Strict
+	}
+	return p
+}
 
 // NothingToPublish reports a plan where the remote already holds every selected
 // branch exactly. Pushing would be a no-op, and saying so beats reporting a
@@ -172,9 +178,6 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	}
 	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, plan.Restores)
 	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, plan.Drops)
-	if s.Strict && plan.Repair.Reason == "" {
-		plan.Repair = plan.Strict
-	}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},

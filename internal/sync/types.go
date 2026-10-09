@@ -48,10 +48,6 @@ type Service struct {
 	Git     Git
 	Graph   graph.Service
 	Restack Restacker
-	// Strict refuses a pull that would drop or put back any commit, or that
-	// takes a branch with no sync point to say what changed: abort rather
-	// than plough on, for whoever asks for it.
-	Strict bool
 }
 
 // Plan is what a sync would do, in the order it would do it.
@@ -103,8 +99,8 @@ type Plan struct {
 	// Derived from their ids, which Equal already compares.
 	Subjects map[string]string
 	// Strict is what --strict would refuse, empty when nothing is out of
-	// step. Worked out whether or not the pull is strict, so land can ask it
-	// of the pull it plans before its descent.
+	// step. Worked out whether or not anybody asked; Strictly makes it the
+	// refusal for a caller that did.
 	Strict repair.Note
 	// Published is what the remote held for each selected branch when this
 	// was planned, and is what an apply records as the point this clone and
@@ -121,6 +117,15 @@ type Plan struct {
 // Blocked is why an apply would refuse, as one sentence, empty when it would
 // proceed.
 func (p Plan) Blocked() string { return p.Repair.Sentence() }
+
+// Strictly is the plan as --strict refuses it: what Strict names becomes the
+// refusal, unless the pull was refused anyway.
+func (p Plan) Strictly() Plan {
+	if p.Blocked() == "" && p.Strict.Reason != "" {
+		p.Repair = p.Strict
+	}
+	return p
+}
 
 // Collection is one branch of yours the remote has moved on, and how.
 type Collection struct {

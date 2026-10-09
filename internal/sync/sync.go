@@ -116,9 +116,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	}
 	plan.Collect, plan.Starts = found.collections, found.starts
 	plan.Strict = strictly(plan, found.unsynced)
-	if s.Strict && plan.Strict.Reason != "" {
-		return plan.refused(plan.Strict), nil
-	}
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
 	if err != nil {
 		return Plan{}, err

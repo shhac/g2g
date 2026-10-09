@@ -26,11 +26,13 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 			}
 			root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 			upstream := upstreamFor(noSetUpstream)
-			service := service
-			service.Strict = strict
 			flow := applyFlow[push.Plan]{
 				plan: func(ctx context.Context) (push.Plan, error) {
-					return service.Plan(ctx, selection.Selection(), remote, upstream)
+					plan, err := service.Plan(ctx, selection.Selection(), remote, upstream)
+					if strict {
+						plan = plan.Strictly()
+					}
+					return plan, err
 				},
 				revalidation: revalidation{"push", "push plan"},
 				render:       writePushPlan,

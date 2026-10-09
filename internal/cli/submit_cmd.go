@@ -11,7 +11,6 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	localgit "github.com/shhac/g2g/internal/git"
-	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
@@ -27,7 +26,7 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 		if err := options.validate(); err != nil {
 			return err
 		}
-		return options.run(cmd, strictSubmit(service, options.strict), presentation.resolve(cmd))
+		return options.run(cmd, service, presentation.resolve(cmd))
 	}
 	options.selection.register(cmd, completions, stack.ReadableSources, "local branch to submit (defaults to current branch)", "trunk to use as the submit base")
 	// A GitHub native stack is linear, so these are the two scopes that can
@@ -109,6 +108,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
+	plan = o.planned(plan)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,8 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		// still re-discovers through plan before mutating.
 		discovered: &preview,
 		plan: func(ctx context.Context) (submit.Plan, error) {
-			return service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
+			plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
+			return o.planned(plan), err
 		},
 		revalidation: revalidation{"submit", "submit plan"},
 		precheck:     service.RequireClean,
@@ -276,15 +277,12 @@ func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry
 		stopped)
 }
 
-// strictSubmit is submit publishing through a strict push. submit owns no rule
-// about what may be published; it is push's, so the flag is push's too.
-func strictSubmit(service submit.Service, strict bool) submit.Service {
-	pusher, ok := service.Pusher.(*push.Service)
-	if !strict || !ok {
-		return service
+// planned is submit's plan as this run asks for it. --strict is push's: submit
+// owns no rule about what may be published, so the push it plans is what is
+// made strict.
+func (o submitOptions) planned(plan submit.Plan) submit.Plan {
+	if o.strict {
+		plan.Push = plan.Push.Strictly()
 	}
-	strictPush := *pusher
-	strictPush.Strict = true
-	service.Pusher = &strictPush
-	return service
+	return plan
 }

@@ -209,13 +209,5 @@ func (s Service) subjects(ctx context.Context, ids []string) (map[string]string,
 	if !ok || len(ids) == 0 {
 		return nil, nil
 	}
-	commits, err := describer.Describe(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	named := make(map[string]string, len(commits))
-	for _, commit := range commits {
-		named[commit.ID] = commit.Subject
-	}
-	return named, nil
+	return describer.Subjects(ctx, ids)
 }

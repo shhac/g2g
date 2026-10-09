@@ -41,7 +41,7 @@ func noteRecentDrops(ctx context.Context, view stackView, published push.Known, 
 				continue
 			}
 			for _, commit := range point.Dropped {
-				said = append(said, fmt.Sprintf("%s %s (g2g %s, %s)", branch, shortObject(commit), point.Command, ago(now.Sub(point.At))))
+				said = append(said, fmt.Sprintf("%s %s (g2g %s, %s)", branch, localgit.Short(commit), point.Command, ago(now.Sub(point.At))))
 			}
 		}
 	}

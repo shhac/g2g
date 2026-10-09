@@ -7,6 +7,8 @@ import (
 
 	"github.com/shhac/g2g/internal/create"
 	"github.com/shhac/g2g/internal/repair"
+
+	localgit "github.com/shhac/g2g/internal/git"
 )
 
 // stagedShown is how many staged paths are named before the rest are counted.
@@ -36,7 +38,7 @@ func createView(plan create.Plan) stackView {
 		return view.refusing(plan.Repair)
 	}
 
-	view = view.note(fmt.Sprintf("Creates %s at %s, the tip of %s, and switches to it.", plan.Name, shortObject(plan.At), plan.Parent), severityOK)
+	view = view.note(fmt.Sprintf("Creates %s at %s, the tip of %s, and switches to it.", plan.Name, localgit.Short(plan.At), plan.Parent), severityOK)
 	view = view.note(fmt.Sprintf("Records %s under %s.", plan.Name, plan.Parent), severityNeutral)
 	if plan.NewTrunk != "" {
 		view = view.note(fmt.Sprintf("%s becomes a root of the graph, as the repository's default branch.", plan.NewTrunk), severityNeutral)

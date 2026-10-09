@@ -48,7 +48,7 @@ func pushDropNotes(view stackView, plan push.Plan) stackView {
 	name := func(drops []push.Drop) string {
 		said := make([]string, 0, len(drops))
 		for _, drop := range drops {
-			entry := drop.Branch + " " + shortObject(drop.Commit)
+			entry := drop.Branch + " " + localgit.Short(drop.Commit)
 			if subject := plan.Subjects[drop.Commit]; subject != "" {
 				entry += " " + subject
 			}

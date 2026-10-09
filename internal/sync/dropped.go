@@ -156,22 +156,15 @@ func (c collecting) keeping(changes syncpoint.Changes) []string {
 func (c collecting) keepCommand(commits []string) string {
 	command := c.command
 	for _, commit := range commits {
-		command += " --keep " + shortID(commit)
+		command += " --keep " + localgit.Short(commit)
 	}
 	return command
-}
-
-func shortID(commit string) string {
-	if len(commit) > 12 {
-		return commit[:12]
-	}
-	return commit
 }
 
 func listed(commits []string) string {
 	short := make([]string, 0, len(commits))
 	for _, commit := range commits {
-		short = append(short, shortID(commit))
+		short = append(short, localgit.Short(commit))
 	}
 	return strings.Join(short, ", ")
 }
@@ -260,7 +253,7 @@ func (s Service) starts(ctx context.Context, c collecting, collections []Collect
 // describe names every commit a plan lists, when Git can say.
 func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, error) {
 	describer, ok := s.Git.(interface {
-		Describe(ctx context.Context, ids []string) ([]localgit.Commit, error)
+		Subjects(ctx context.Context, ids []string) (map[string]string, error)
 	})
 	if !ok {
 		return nil, nil
@@ -276,15 +269,7 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	commits, err := describer.Describe(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	named := make(map[string]string, len(commits))
-	for _, commit := range commits {
-		named[commit.ID] = commit.Subject
-	}
-	return named, nil
+	return describer.Subjects(ctx, ids)
 }
 
 // strictly is what --strict refuses on top of what pull refuses anyway: a
@@ -316,7 +301,7 @@ func strictly(plan Plan, unsynced []string) repair.Note {
 func dropNames(drops []Drop) string {
 	named := make([]string, 0, len(drops))
 	for _, drop := range drops {
-		named = append(named, drop.Branch+" "+shortID(drop.Commit))
+		named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
 	}
 	return strings.Join(named, ", ")
 }

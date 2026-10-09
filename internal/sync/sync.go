@@ -278,7 +278,7 @@ func unkeptRefusal(plan Plan) (repair.Note, bool) {
 	unkept := make([]string, 0)
 	for _, commit := range plan.Keep {
 		if !slices.ContainsFunc(plan.Kept, func(drop Drop) bool { return drop.Commit == commit }) {
-			unkept = append(unkept, shortID(commit))
+			unkept = append(unkept, localgit.Short(commit))
 		}
 	}
 	if len(unkept) == 0 {

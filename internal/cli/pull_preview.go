@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	localgit "github.com/shhac/g2g/internal/git"
+
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	syncer "github.com/shhac/g2g/internal/sync"
@@ -74,7 +76,7 @@ func dropNotes(view stackView, plan syncer.Plan) stackView {
 func dropList(plan syncer.Plan, drops []syncer.Drop) string {
 	said := make([]string, 0, len(drops))
 	for _, drop := range drops {
-		entry := drop.Branch + " " + shortObject(drop.Commit)
+		entry := drop.Branch + " " + localgit.Short(drop.Commit)
 		if subject := plan.Subjects[drop.Commit]; subject != "" {
 			entry += " " + subject
 		}
@@ -127,11 +129,11 @@ func collectNote(plan syncer.Plan) string {
 func discardNote(plan syncer.Plan) string {
 	losses := make([]string, 0)
 	for _, commit := range plan.DiscardsBase {
-		losses = append(losses, plan.Base+" "+shortObject(commit))
+		losses = append(losses, plan.Base+" "+localgit.Short(commit))
 	}
 	for _, collection := range plan.Collect {
 		for _, commit := range collection.Discards {
-			losses = append(losses, collection.Branch+" "+shortObject(commit))
+			losses = append(losses, collection.Branch+" "+localgit.Short(commit))
 		}
 	}
 	if len(losses) == 0 {
@@ -139,15 +141,6 @@ func discardNote(plan syncer.Plan) string {
 	}
 	return fmt.Sprintf("--take published discards %s that %s nowhere else: %s.",
 		count(len(losses), "commit", "commits"), pick(len(losses), "exists", "exist"), strings.Join(losses, ", "))
-}
-
-// shortObject trims an object id to the length a person reads, leaving anything
-// that is not one alone.
-func shortObject(object string) string {
-	if len(object) <= 12 {
-		return object
-	}
-	return object[:12]
 }
 
 func baseNote(plan syncer.Plan) string {

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/reshape"
+
+	localgit "github.com/shhac/g2g/internal/git"
 )
 
 func writeRemovalPlan(writer io.Writer, plan reshape.Plan, p Presentation) error {
@@ -52,7 +54,7 @@ func removalNodes(plan reshape.Plan, nodes []stackNode) []stackNode {
 }
 
 func deleteNotes(view stackView, plan reshape.Plan) stackView {
-	view = view.note(fmt.Sprintf("Deletes %s, at %s.", plan.Branch, shortObject(plan.Tip)), severityOK)
+	view = view.note(fmt.Sprintf("Deletes %s, at %s.", plan.Branch, localgit.Short(plan.Tip)), severityOK)
 	if plan.Current == plan.Branch {
 		view = view.note(switchNote(plan), severityNeutral)
 	}
@@ -66,7 +68,7 @@ func deleteNotes(view stackView, plan reshape.Plan) stackView {
 	}
 	listed := make([]string, 0, len(plan.Unique))
 	for _, commit := range plan.Unique {
-		listed = append(listed, shortObject(commit.ID)+" "+commit.Subject)
+		listed = append(listed, localgit.Short(commit.ID)+" "+commit.Subject)
 	}
 	// Named one by one rather than counted: this is work that exists nowhere
 	// else, and once the branch is gone nothing here will name it again.
@@ -79,7 +81,7 @@ func deleteNotes(view stackView, plan reshape.Plan) stackView {
 func foldNotes(view stackView, plan reshape.Plan) stackView {
 	if plan.Moves() {
 		view = view.note(fmt.Sprintf("Fast-forwards %s from %s to %s, so %s's commits become %s's.",
-			plan.Parent, shortObject(plan.ParentTip), shortObject(plan.Tip), plan.Branch, plan.Parent), severityOK)
+			plan.Parent, localgit.Short(plan.ParentTip), localgit.Short(plan.Tip), plan.Branch, plan.Parent), severityOK)
 	} else {
 		view = view.note(fmt.Sprintf("%s has no commits of its own, so %s does not move.", plan.Branch, plan.Parent), severityNeutral)
 	}

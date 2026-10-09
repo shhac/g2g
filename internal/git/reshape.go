@@ -49,6 +49,32 @@ func (c Client) Unpublished(ctx context.Context, branch, since string) ([]Commit
 	return commits, nil
 }
 
+// Short is a commit id at the length a person reads and pastes back. One rule,
+// because the ids a preview lists are the ids --keep is asked for: a preview
+// printing one length and a refusal suggesting another would name commits the
+// reader could not match.
+func Short(id string) string {
+	if len(id) <= 12 {
+		return id
+	}
+	return id[:12]
+}
+
+// Subjects names each commit by its subject, keyed by its full id, in one
+// read. A preview that drops, moves or keeps commits lists every one of them
+// by what it is.
+func (c Client) Subjects(ctx context.Context, ids []string) (map[string]string, error) {
+	commits, err := c.Describe(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	named := make(map[string]string, len(commits))
+	for _, commit := range commits {
+		named[commit.ID] = commit.Subject
+	}
+	return named, nil
+}
+
 // Describe names each commit with its subject, in the order given, in one
 // read. A preview that drops, moves or keeps commits lists every one of them
 // by what it is, because once a ref has moved nothing here will name them

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/restack"
+
+	localgit "github.com/shhac/g2g/internal/git"
 )
 
 func restackView(plan restack.Plan) stackView {
@@ -90,7 +92,7 @@ func orphanList(plan restack.Plan) string {
 	said := make([]string, 0)
 	for _, step := range plan.Steps {
 		for _, orphan := range step.Orphans {
-			entry := step.Branch + " " + shortObject(orphan)
+			entry := step.Branch + " " + localgit.Short(orphan)
 			if subject := plan.Subjects[orphan]; subject != "" {
 				entry += " " + subject
 			}

@@ -45,7 +45,7 @@ type Git interface {
 // preview still says how many commits a parent dropped, as it did before it
 // could say which.
 type Describer interface {
-	Describe(ctx context.Context, ids []string) ([]localgit.Commit, error)
+	Subjects(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 // Service rewrites stacks so their contents match their recorded structure.

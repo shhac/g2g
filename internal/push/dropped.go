@@ -132,7 +132,7 @@ func (s Service) holding(ctx context.Context, branches []string, branch, commit 
 // subjects names every commit the plan lists, when Git can say.
 func (s Service) subjects(ctx context.Context, plan Plan) (map[string]string, error) {
 	describer, ok := s.Git.(interface {
-		Describe(ctx context.Context, ids []string) ([]localgit.Commit, error)
+		Subjects(ctx context.Context, ids []string) (map[string]string, error)
 	})
 	if !ok {
 		return nil, nil
@@ -146,15 +146,7 @@ func (s Service) subjects(ctx context.Context, plan Plan) (map[string]string, er
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	commits, err := describer.Describe(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	named := make(map[string]string, len(commits))
-	for _, commit := range commits {
-		named[commit.ID] = commit.Subject
-	}
-	return named, nil
+	return describer.Subjects(ctx, ids)
 }
 
 // strictly is what --strict refuses on top of what push refuses anyway: any
@@ -166,7 +158,7 @@ func strictly(remote string, branches []string, publishing map[string]Publicatio
 	if len(drops) != 0 {
 		named := make([]string, 0, len(drops))
 		for _, drop := range drops {
-			named = append(named, drop.Branch+" "+short(drop.Commit))
+			named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
 		}
 		reasons = append(reasons, "it would drop "+strings.Join(named, ", ")+" from "+remote)
 	}

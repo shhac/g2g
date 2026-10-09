@@ -240,8 +240,8 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 func restoring(remote string, restores []Drop) repair.Note {
 	named, keep := make([]string, 0, len(restores)), "g2g pull"
 	for _, drop := range restores {
-		named = append(named, drop.Branch+" "+short(drop.Commit))
-		keep += " --keep " + short(drop.Commit)
+		named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
+		keep += " --keep " + localgit.Short(drop.Commit)
 	}
 	return repair.Note{
 		Reason: fmt.Sprintf("%s dropped %s since this clone last pulled or pushed, and publishing would put %s back", remote, strings.Join(named, ", "), pickWord(len(restores), "it", "them")),
@@ -250,13 +250,6 @@ func restoring(remote string, restores []Drop) repair.Note {
 			{Command: keep, Effect: "keep " + pickWord(len(restores), "it", "them") + " as yours, then push"},
 		},
 	}
-}
-
-func short(commit string) string {
-	if len(commit) > 12 {
-		return commit[:12]
-	}
-	return commit
 }
 
 func pickWord(count int, one, many string) string {

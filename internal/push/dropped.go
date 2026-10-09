@@ -27,24 +27,25 @@ import (
 // bySyncPoint is the standing a sync point gives a branch the remote holds
 // commits of that it does not, or that holds commits the remote dropped. ok is
 // false when there is no sync point, or nothing was dropped either way, and
-// the comparison push had before stands. publishedParent is the parent's
-// remote tip, which bounds the remote's side when its version is built on it.
-func bySyncPoint(ctx context.Context, git Comparer, remote, branch, local, tip, parent, publishedParent string) (Publication, syncpoint.Changes, bool, error) {
+// the comparison push had before stands. begins is where the remote's own work
+// on the branch starts -- the parent's remote tip when its version is built on
+// that -- which bounds the remote's side.
+func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, branch, local, tip, parent string, begins func() (string, error)) (Publication, syncpoint.Changes, bool, error) {
 	// The Git client can assess; anything that cannot compares as push did
-	// before sync points.
+	// before sync points. A branch with none recorded asks nothing further.
 	assessor, ok := git.(syncpoint.Assessor)
-	if !ok || remote == "" {
+	if _, synced := latest.Of(branch); !ok || !synced {
 		return Publication{}, syncpoint.Changes{Unsynced: true}, false, nil
 	}
 	// A parent whose ancestry cannot be asked bounds nothing: the sync point
 	// is then read against the parent here, as before there was a published
 	// one to ask about.
-	begins, err := builtOn(ctx, git, publishedParent, tip)
+	publishedParent, err := begins()
 	if err != nil {
-		begins = ""
+		publishedParent = ""
 	}
-	changes, err := syncpoint.Assess(ctx, assessor, remote, branch, syncpoint.Branch{
-		Local: local, Remote: tip, LocalParent: parent, PublishedParent: begins,
+	changes, err := syncpoint.Assess(ctx, assessor, latest, branch, syncpoint.Branch{
+		Local: local, Remote: tip, LocalParent: parent, PublishedParent: publishedParent,
 	})
 	if err != nil || !changes.Dropped() {
 		return Publication{}, changes, false, err
@@ -97,8 +98,27 @@ func (s Service) drops(ctx context.Context, branches []string, changed map[strin
 }
 
 // holding is another branch of the push that still holds a commit, which
-// makes dropping it from one branch a move rather than a drop.
+// makes dropping it from one branch a move rather than a drop: the first in
+// the push's order, as asking each in turn found it.
 func (s Service) holding(ctx context.Context, branches []string, branch, commit string) (string, error) {
+	if lister, ok := s.Git.(syncpoint.RefLister); ok {
+		refs := make([]string, 0, len(branches))
+		for _, other := range branches {
+			if other != branch {
+				refs = append(refs, "refs/heads/"+other)
+			}
+		}
+		holders, err := lister.Refs(ctx, refs, commit)
+		if err != nil {
+			return "", err
+		}
+		for _, other := range branches {
+			if _, holds := holders["refs/heads/"+other]; holds && other != branch {
+				return other, nil
+			}
+		}
+		return "", nil
+	}
 	for _, other := range branches {
 		if other == branch {
 			continue

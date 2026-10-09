@@ -83,6 +83,8 @@ func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Ro
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			// status compares with what the remote last held here, and nothing is known.
 			{Prefix: "for-each-ref --format=%(objectname) %(refname) refs/remotes/"},
+			// and no sync point is recorded for any branch.
+			{Prefix: "for-each-ref --format=%(refname) refs/g2g/synced/"},
 			// push asks whether a branch has work its base does not, which is
 			// how a branch that merged and was deleted is told from a new one.
 			{Prefix: "cherry", Lines: []string{"+ 1111111111111111111111111111111111111111"}},

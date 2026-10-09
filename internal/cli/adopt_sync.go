@@ -35,11 +35,11 @@ func recordAdopted(ctx context.Context, git graph.Ancestry, branches []string) {
 	if err != nil {
 		return
 	}
-	for _, branch := range branches {
-		local, err := recorder.Resolve(ctx, branch)
-		if err != nil || tips[branch] == "" || tips[branch] != local {
-			continue
+	level := map[string]localgit.SyncPoint{}
+	for branch, local := range syncpoint.Locals(ctx, recorder, branches) {
+		if tips[branch] != "" && tips[branch] == local {
+			level[branch] = localgit.SyncPoint{Tip: local, Local: local, Command: "adopt"}
 		}
-		syncpoint.Record(ctx, recorder, "adopt.sync_point", localgit.DefaultRemote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "adopt"})
 	}
+	syncpoint.Record(ctx, recorder, "adopt.sync_point", localgit.DefaultRemote, level)
 }

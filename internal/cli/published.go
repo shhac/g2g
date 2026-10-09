@@ -29,7 +29,7 @@ func readPublished(ctx context.Context, published push.Known, remote string, nam
 			local = append(local, branch)
 		}
 	}
-	publishing, err := published.Compare(ctx, remote, local, func(branch string) (string, string) {
+	publishing, tips, err := published.Compare(ctx, remote, local, func(branch string) (string, string) {
 		trunk := branch
 		if path, err := discovery.Graph.Path(branch); err == nil && len(path) != 0 {
 			trunk = path[0]
@@ -45,7 +45,7 @@ func readPublished(ctx context.Context, published push.Known, remote string, nam
 	if err != nil {
 		return nil, err
 	}
-	return publishing, carried(ctx, published, remote, discovery, publishing)
+	return publishing, carried(ctx, published, discovery, publishing, tips)
 }
 
 // carried marks a branch the remote is ahead of only because it was moved
@@ -53,26 +53,15 @@ func readPublished(ctx context.Context, published push.Known, remote string, nam
 // pull there would put those commits back on it and undo the move; what the
 // person has to decide is whether the child keeps them, which is restack's
 // --absorb.
-func carried(ctx context.Context, published push.Known, remote string, discovery graph.Discovery, publishing map[string]push.Publication) error {
-	behind := make([]string, 0)
+func carried(ctx context.Context, published push.Known, discovery graph.Discovery, publishing map[string]push.Publication, tips map[string]string) error {
 	for branch, publication := range publishing {
-		if publication.Standing == push.Behind {
-			behind = append(behind, branch)
+		if publication.Standing != push.Behind {
+			continue
 		}
-	}
-	if len(behind) == 0 {
-		return nil
-	}
-	tips, err := published.Git.KnownTips(ctx, remote, behind)
-	if err != nil {
-		return err
-	}
-	for _, branch := range behind {
 		child, err := carrierOf(ctx, published, discovery, branch, tips[branch])
 		if err != nil {
 			return err
 		}
-		publication := publishing[branch]
 		publication.CarriedBy = child
 		publishing[branch] = publication
 	}

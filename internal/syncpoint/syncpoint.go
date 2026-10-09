@@ -18,16 +18,22 @@ package syncpoint
 import (
 	"cmp"
 	"context"
+	"maps"
 	"slices"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 )
 
-// Reader reads a branch's sync point and says whether it was recorded for this
-// branch rather than another that had its name.
+// HistoryReader reads many branches' sync points for one remote at once.
+type HistoryReader interface {
+	SyncHistories(ctx context.Context, remote string, branches []string) (map[string][]localgit.SyncPoint, error)
+}
+
+// Reader reads sync points and says whether one was recorded for this branch
+// rather than another that had its name.
 type Reader interface {
-	ReadSync(ctx context.Context, remote, branch string) (localgit.SyncPoint, bool, error)
+	HistoryReader
 	Describes(ctx context.Context, branch string, point localgit.SyncPoint) (bool, error)
 }
 
@@ -38,32 +44,123 @@ type Recorder interface {
 
 // ReadRecorder reads and writes sync points.
 type ReadRecorder interface {
-	Reader
+	HistoryReader
 	Recorder
 }
 
-// Agree records that this clone and the remote agree on a branch, unless the
-// latest sync point already says exactly that. A preview runs often, and an
-// agreement it found already recorded adds nothing to the history but noise.
-func Agree(ctx context.Context, git ReadRecorder, remote, branch string, point localgit.SyncPoint) error {
-	current, ok, err := git.ReadSync(ctx, remote, branch)
-	if err != nil {
-		return err
-	}
-	if ok && current.Tip == point.Tip && current.Local == point.Local && len(point.Dropped) == 0 {
-		return nil
-	}
-	return git.RecordSync(ctx, remote, branch, point)
+// Latest is the newest sync point of each branch a command asked about, for
+// one remote, read once for the whole selection. Asking per branch was two
+// processes each, on every preview, whether or not a branch had one.
+type Latest struct {
+	Remote string
+	points map[string]localgit.SyncPoint
+	// described says, of each point, whether it was recorded for the branch
+	// that has the name now; nil until Describe has asked.
+	described map[string]bool
 }
 
-// Record is Agree for a command whose own work has already happened. A
-// recording that fails is a diagnostic named by event, never a failure: the
-// push or pull stands, and until the next agreement records it the cautious
-// reading applies.
-func Record(ctx context.Context, git ReadRecorder, event, remote, branch string, point localgit.SyncPoint) {
-	if err := Agree(ctx, git, remote, branch, point); err != nil {
-		diagnostic.Event(ctx, event, diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+// LoadLatest reads the newest sync point of each branch.
+func LoadLatest(ctx context.Context, git HistoryReader, remote string, branches []string) (Latest, error) {
+	latest := Latest{Remote: remote, points: map[string]localgit.SyncPoint{}}
+	if len(branches) == 0 {
+		return latest, nil
 	}
+	histories, err := git.SyncHistories(ctx, remote, branches)
+	if err != nil {
+		return Latest{}, err
+	}
+	for branch, history := range histories {
+		if len(history) != 0 {
+			latest.points[branch] = history[0]
+		}
+	}
+	return latest, nil
+}
+
+// Describe asks of every point at once whether it was recorded for the branch
+// that has its name now, when Git can answer that in one go. Without it each
+// is asked when it is assessed.
+func (l Latest) Describe(ctx context.Context, git Reader) (Latest, error) {
+	batch, ok := git.(interface {
+		DescribesAll(ctx context.Context, points map[string]localgit.SyncPoint) (map[string]bool, error)
+	})
+	if !ok || len(l.points) == 0 {
+		return l, nil
+	}
+	described, err := batch.DescribesAll(ctx, l.points)
+	if err != nil {
+		return Latest{}, err
+	}
+	l.described = described
+	return l, nil
+}
+
+// Of is a branch's newest sync point, and whether it has one.
+func (l Latest) Of(branch string) (localgit.SyncPoint, bool) {
+	point, ok := l.points[branch]
+	return point, ok
+}
+
+// Record notes that this clone and the remote agree on each branch named, at
+// the point given, for a command whose own work has already happened. It
+// reads what is recorded once for all of them and writes only where that
+// differs: a preview runs often, and an agreement already recorded adds
+// nothing to the history but noise. A recording that fails is a diagnostic
+// named by event, never a failure -- the push or pull stands, and until the
+// next agreement records it the cautious reading applies.
+func Record(ctx context.Context, git ReadRecorder, event, remote string, points map[string]localgit.SyncPoint) {
+	if len(points) == 0 {
+		return
+	}
+	branches := slices.Sorted(maps.Keys(points))
+	latest, err := LoadLatest(ctx, git, remote, branches)
+	for _, branch := range branches {
+		point := points[branch]
+		if err == nil && agreed(latest, branch, point) {
+			continue
+		}
+		if err != nil || git.RecordSync(ctx, remote, branch, point) != nil {
+			diagnostic.Event(ctx, event, diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+		}
+	}
+}
+
+// RefLister lists which of the named refs exist and what they point at, only
+// those containing a commit when one is given. It is how a commit dropped from
+// one branch is found in another in one process rather than one per branch.
+type RefLister interface {
+	Refs(ctx context.Context, refs []string, contains string) (map[string]string, error)
+}
+
+// Resolver resolves one revision.
+type Resolver interface {
+	Resolve(ctx context.Context, revision string) (string, error)
+}
+
+// Locals is each branch's tip here, leaving out any that does not resolve --
+// asked in one process when Git can answer them all at once, which the Git
+// client can, and one at a time otherwise.
+func Locals(ctx context.Context, git Resolver, branches []string) map[string]string {
+	if batch, ok := git.(interface {
+		ResolveAll(ctx context.Context, revisions []string) (map[string]string, error)
+	}); ok {
+		if tips, err := batch.ResolveAll(ctx, branches); err == nil {
+			return tips
+		}
+	}
+	tips := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		if tip, err := git.Resolve(ctx, branch); err == nil {
+			tips[branch] = tip
+		}
+	}
+	return tips
+}
+
+// agreed reports a branch whose newest sync point already says exactly this.
+func agreed(latest Latest, branch string, point localgit.SyncPoint) bool {
+	current, ok := latest.Of(branch)
+	return ok && current.Tip == point.Tip && current.Local == point.Local && len(point.Dropped) == 0
 }
 
 // DroppedOn is the commits a list of drops names on one branch, which is what
@@ -97,15 +194,16 @@ type Assessor interface {
 
 // Assess says what changed on each side of a branch since this clone and the
 // remote last agreed on it. sides names the branch here and on the remote and
-// each side's parent; Assess supplies the rest. A branch with no sync point
-// recorded for it reports Unsynced and nothing else, and the caller compares it
-// as it did before there were sync points. One nothing was dropped from
-// reports no changes at all, whatever else differs.
+// each side's parent; latest holds its sync point, and Assess supplies the
+// rest. A branch with no sync point recorded for it reports Unsynced and
+// nothing else, and the caller compares it as it did before there were sync
+// points. One nothing was dropped from reports no changes at all, whatever
+// else differs.
 //
 // It is the one place a sync point is read for a decision, so pull and push
 // cannot come to mean different things by having one.
-func Assess(ctx context.Context, git Assessor, remote, branch string, sides Branch) (Changes, error) {
-	point, synced, err := Read(ctx, git, remote, branch)
+func Assess(ctx context.Context, git Assessor, latest Latest, branch string, sides Branch) (Changes, error) {
+	point, synced, err := describing(ctx, git, latest, branch)
 	if err != nil {
 		return Changes{}, err
 	}
@@ -117,12 +215,31 @@ func Assess(ctx context.Context, git Assessor, remote, branch string, sides Bran
 	if err != nil || !droppable {
 		return Changes{}, err
 	}
-	tracking, err := git.Resolve(ctx, localgit.TrackingRef(remote, branch))
+	tracking, err := git.Resolve(ctx, localgit.TrackingRef(latest.Remote, branch))
 	if err != nil {
 		tracking = ""
 	}
 	sides.Tracking = tracking
 	return Classify(ctx, git, sides)
+}
+
+// describing is a branch's sync point when it has one recorded for it. One
+// recorded for a branch that has since been deleted and made again under the
+// name is no sync point at all, which is the cautious answer: without one,
+// every difference reads as new work on its side.
+func describing(ctx context.Context, git Reader, latest Latest, branch string) (localgit.SyncPoint, bool, error) {
+	point, ok := latest.Of(branch)
+	if !ok {
+		return localgit.SyncPoint{}, false, nil
+	}
+	if latest.described != nil {
+		return point, latest.described[branch], nil
+	}
+	describes, err := git.Describes(ctx, branch, point)
+	if err != nil || !describes {
+		return localgit.SyncPoint{}, false, err
+	}
+	return point, true, nil
 }
 
 // mayHaveDropped reports whether Classify could find a drop on either side.
@@ -147,52 +264,32 @@ func mayHaveDropped(ctx context.Context, git Git, branch Branch) (bool, error) {
 		held[commit] = true
 	}
 	isHeld := func(commit string) bool { return held[commit] }
-	// Here: a commit of this branch's own the remote cannot reach was
-	// rewritten, or made, since the agreement -- unless the sync point holds
-	// it, which makes it the remote's drop.
-	ours, err := git.Commits(ctx, branch.Local, nonEmpty(branch.Remote, branch.LocalParent))
-	if err != nil || slices.ContainsFunc(ours, isHeld) {
-		return true, err
-	}
-	// The remote: after a restack every commit of its version is one the
-	// sync point holds and this branch has only under a new id, so the id
-	// alone cannot settle it; content bounded at the parents can.
-	theirs, err := git.Commits(ctx, branch.Remote, nonEmpty(branch.Local, cmp.Or(branch.PublishedParent, branch.LocalParent)))
-	if err != nil || !slices.ContainsFunc(theirs, isHeld) {
-		return false, err
-	}
-	matcher, ok := git.(Matcher)
+	comparer, ok := git.(Comparer)
 	if !ok {
-		return true, nil
+		// Without the bounded comparison, ask by id alone: a commit held by
+		// the sync point and on one side only may have been dropped.
+		ours, err := git.Commits(ctx, branch.Local, nonEmpty(branch.Remote, branch.LocalParent))
+		if err != nil || slices.ContainsFunc(ours, isHeld) {
+			return true, err
+		}
+		theirs, err := git.Commits(ctx, branch.Remote, nonEmpty(branch.Local, cmp.Or(branch.PublishedParent, branch.LocalParent)))
+		return slices.ContainsFunc(theirs, isHeld), err
 	}
-	unmatched, err := matcher.Unmatched(ctx, branch.Remote, branch.Local, nonEmpty(branch.LocalParent, branch.PublishedParent))
+	// After a restack every commit of the remote's version is one the sync
+	// point holds and this branch has only under a new id, so the id alone
+	// cannot settle it; content bounded at both parents can, for both sides
+	// at once.
+	ours, theirs, err := comparer.Inequivalent(ctx, branch.Local, branch.Remote, nonEmpty(branch.LocalParent, branch.PublishedParent))
 	if err != nil {
 		return false, err
 	}
-	return slices.ContainsFunc(unmatched, isHeld), nil
+	return slices.ContainsFunc(ours, isHeld) || slices.ContainsFunc(theirs, isHeld), nil
 }
 
-// Matcher compares by content with both sides bounded, which lets Assess
-// settle the commonest case cheaply; without it every branch the id check
-// cannot settle is classified in full.
-type Matcher interface {
-	Unmatched(ctx context.Context, tip, against string, bounds []string) ([]string, error)
-}
-
-// Read is a branch's sync point when it has one recorded for it. One recorded
-// for a branch that has since been deleted and made again under the name is
-// no sync point at all, which is the cautious answer: without one, every
-// difference reads as new work on its side.
-func Read(ctx context.Context, reader Reader, remote, branch string) (localgit.SyncPoint, bool, error) {
-	point, ok, err := reader.ReadSync(ctx, remote, branch)
-	if err != nil || !ok {
-		return localgit.SyncPoint{}, false, err
-	}
-	describes, err := reader.Describes(ctx, branch, point)
-	if err != nil || !describes {
-		return localgit.SyncPoint{}, false, err
-	}
-	return point, true, nil
+// Comparer compares by content with both sides bounded, which lets Assess
+// settle the commonest case in one process.
+type Comparer interface {
+	Inequivalent(ctx context.Context, left, right string, bounds []string) (leftOnly, rightOnly []string, err error)
 }
 
 // Branch is one branch on both sides and where they last agreed.

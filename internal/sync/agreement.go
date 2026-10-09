@@ -25,13 +25,14 @@ func (s Service) recordLevel(ctx context.Context, remote string, published map[s
 	if !ok {
 		return
 	}
-	for _, branch := range slices.Sorted(maps.Keys(published)) {
-		local, err := s.Git.Resolve(ctx, branch)
-		if err != nil || local != published[branch] {
-			continue
+	locals := syncpoint.Locals(ctx, s.Git, slices.Sorted(maps.Keys(published)))
+	level := map[string]localgit.SyncPoint{}
+	for branch, local := range locals {
+		if local == published[branch] {
+			level[branch] = localgit.SyncPoint{Tip: local, Local: local, Command: "pull"}
 		}
-		syncpoint.Record(ctx, recorder, "sync.sync_point", remote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "pull"})
 	}
+	syncpoint.Record(ctx, recorder, "sync.sync_point", remote, level)
 }
 
 // ownTips is what the remote holds for each selected branch but the base. A
@@ -55,13 +56,24 @@ func (s Service) recordAgreed(ctx context.Context, plan Plan) {
 	if !ok {
 		return
 	}
-	for _, branch := range slices.Sorted(maps.Keys(plan.Published)) {
-		local, err := s.Git.Resolve(ctx, branch)
-		if err != nil {
-			continue
-		}
-		syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, branch, localgit.SyncPoint{
-			Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Drops),
-		})
+	agreed := map[string]localgit.SyncPoint{}
+	for branch, local := range syncpoint.Locals(ctx, s.Git, slices.Sorted(maps.Keys(plan.Published))) {
+		agreed[branch] = localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Drops)}
 	}
+	syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, agreed)
+}
+
+// latest reads each selected branch's newest sync point once, for the whole
+// collection. A Git that cannot read them has none, and pull decides as it
+// did before there were sync points.
+func (s Service) latest(ctx context.Context, remote string, branches []string) (syncpoint.Latest, error) {
+	reader, ok := s.Git.(syncpoint.Reader)
+	if !ok {
+		return syncpoint.Latest{Remote: remote}, nil
+	}
+	latest, err := syncpoint.LoadLatest(ctx, reader, remote, branches)
+	if err != nil {
+		return syncpoint.Latest{}, err
+	}
+	return latest.Describe(ctx, reader)
 }

@@ -90,10 +90,15 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	command := pullCommand(selection, remote)
+	latest, err := s.latest(ctx, remote, discovery.Branches)
+	if err != nil {
+		return Plan{}, err
+	}
 	found, err := s.collect(ctx, collecting{
 		remote: remote, base: plan.Base, branches: discovery.Branches, onRemote: published, take: take,
 		parents: parents, forks: forkPoints(discovery), keep: plan.Keep,
 		command: command, takeCommand: command + " --take " + string(SidePublished),
+		latest: latest,
 	})
 	if err != nil {
 		return Plan{}, err

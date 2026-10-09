@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -33,7 +34,7 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 	if !ok {
 		return verdict{unsynced: true}, false, nil
 	}
-	changes, err := syncpoint.Assess(ctx, git, c.remote, branch, syncpoint.Branch{
+	changes, err := syncpoint.Assess(ctx, git, c.latest, branch, syncpoint.Branch{
 		Local: local, Remote: published, LocalParent: parent, PublishedParent: begins,
 	})
 	if err != nil {
@@ -93,8 +94,15 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 // dropped -- and those gone from the stack.
 func (s Service) moved(ctx context.Context, c collecting, branch string, commits []string) ([]Drop, []string, error) {
 	moves, gone := make([]Drop, 0), make([]string, 0, len(commits))
+	if len(commits) == 0 {
+		return moves, gone, nil
+	}
+	fetched, err := s.fetchedTips(ctx, c, branch)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, commit := range commits {
-		to, err := s.holder(ctx, c, branch, commit)
+		to, err := s.holder(ctx, c, branch, commit, fetched)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -108,19 +116,70 @@ func (s Service) moved(ctx context.Context, c collecting, branch string, commits
 }
 
 // holder is another selected branch whose published version still holds a
-// commit, empty when none does.
-func (s Service) holder(ctx context.Context, c collecting, branch, commit string) (string, error) {
-	for _, other := range c.branches {
-		tip := c.onRemote[other]
-		if other == branch || other == c.base || tip == "" {
+// commit, empty when none does: the first in the selection's order, as asking
+// each in turn found it. fetched are the published versions g2g has fetched
+// and are exactly what the remote holds, which one process can ask about all
+// at once; any other is asked on its own.
+func (s Service) holder(ctx context.Context, c collecting, branch, commit string, fetched map[string]string) (string, error) {
+	var holders map[string]string
+	if lister, ok := s.Git.(syncpoint.RefLister); ok && len(fetched) != 0 {
+		var err error
+		if holders, err = lister.Refs(ctx, slices.Collect(maps.Values(fetched)), commit); err != nil {
+			return "", err
+		}
+	}
+	for _, other := range c.others(branch) {
+		if ref, asked := fetched[other]; asked {
+			if _, holds := holders[ref]; holds {
+				return other, nil
+			}
 			continue
 		}
-		holds, err := s.Git.IsAncestor(ctx, commit, tip)
+		holds, err := s.Git.IsAncestor(ctx, commit, c.onRemote[other])
 		if err != nil || holds {
 			return other, err
 		}
 	}
 	return "", nil
+}
+
+// others are the selected branches a commit dropped from branch could have
+// moved into: every other one the remote holds, the base aside.
+func (c collecting) others(branch string) []string {
+	others := make([]string, 0, len(c.branches))
+	for _, other := range c.branches {
+		if other != branch && other != c.base && c.onRemote[other] != "" {
+			others = append(others, other)
+		}
+	}
+	return others
+}
+
+// fetchedTips names, for each branch a dropped commit could have moved into,
+// the ref g2g fetched it into -- only where that ref points exactly at what
+// the remote holds, which is what makes asking the ref the same question as
+// asking the tip. Without a Git that can list refs, there are none.
+func (s Service) fetchedTips(ctx context.Context, c collecting, branch string) (map[string]string, error) {
+	lister, ok := s.Git.(syncpoint.RefLister)
+	if !ok {
+		return nil, nil
+	}
+	others := c.others(branch)
+	refs := make([]string, 0, len(others))
+	for _, other := range others {
+		refs = append(refs, localgit.IsolatedRef(c.remote, other))
+	}
+	tips, err := lister.Refs(ctx, refs, "")
+	if err != nil {
+		return nil, err
+	}
+	fetched := make(map[string]string, len(others))
+	for _, other := range others {
+		if ref := localgit.IsolatedRef(c.remote, other); tips[ref] == c.onRemote[other] {
+			fetched[other] = ref
+		}
+	}
+	return fetched, nil
 }
 
 func drops(branch string, commits []string) []Drop {

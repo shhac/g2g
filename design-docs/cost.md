@@ -48,7 +48,7 @@ work a push would drop, and path-limited counting could miss some.
 `syncpoint.Assess` follows the same rule before classifying a branch: a drop
 needs a commit the sync point holds with no equivalent on the other side, and
 whether there is one is asked by id and by a content comparison bounded on
-both sides (`git.Client.Unmatched`). Only a "maybe" pays for `Classify`, whose
+both sides (`git.Client.Inequivalent`). Only a "maybe" pays for `Classify`, whose
 `git cherry` reads every commit the trunk gained since the remote's version —
 which, on a stack restacked and not yet pushed, doubled every command that
 compares with the remote until it was asked first.

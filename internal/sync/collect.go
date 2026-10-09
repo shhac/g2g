@@ -10,6 +10,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // What moved, and how to say so.
@@ -151,6 +152,8 @@ type collecting struct {
 	forks                map[string]string
 	keep                 []string
 	command, takeCommand string
+	// latest is each branch's newest sync point, read once for the selection.
+	latest syncpoint.Latest
 }
 
 // collected is what collect decided across the selection.

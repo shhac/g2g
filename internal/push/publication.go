@@ -3,6 +3,7 @@ package push
 import (
 	"cmp"
 	"context"
+	gosync "sync"
 
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/parallel"
@@ -126,12 +127,16 @@ func Compare(ctx context.Context, git Comparer, remote string, branches []string
 // compare is Compare with what each sync point said, which only push's own
 // plan reads: it lists every commit a drop concerns.
 func compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, map[string]syncpoint.Changes, error) {
+	latest, err := latestOf(ctx, git, remote, branches)
+	if err != nil {
+		return nil, nil, err
+	}
 	// Sized before the reads start, so each owns one element and needs no lock.
 	results := make([]Publication, len(branches))
 	changes := make([]syncpoint.Changes, len(branches))
-	err := parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
+	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		parent, trunk := below(branch)
-		publication, changed, err := compareOne(ctx, git, remote, branch, tips[branch], parent, trunk, tips[parent])
+		publication, changed, err := compareOne(ctx, git, latest, branch, tips[branch], parent, trunk, tips[parent])
 		results[index], changes[index] = publication, changed
 		return err
 	})
@@ -149,9 +154,24 @@ func compare(ctx context.Context, git Comparer, remote string, branches []string
 	return publishing, changed, nil
 }
 
+// latestOf reads every branch's newest sync point once, before the per-branch
+// reads start. No remote, or a Git that cannot read them, has none, and every
+// branch compares as it did before there were sync points.
+func latestOf(ctx context.Context, git Comparer, remote string, branches []string) (syncpoint.Latest, error) {
+	reader, ok := git.(syncpoint.Reader)
+	if !ok || remote == "" {
+		return syncpoint.Latest{Remote: remote}, nil
+	}
+	latest, err := syncpoint.LoadLatest(ctx, reader, remote, branches)
+	if err != nil {
+		return syncpoint.Latest{}, err
+	}
+	return latest.Describe(ctx, reader)
+}
+
 // compareOne is where one branch stands against the tip the remote holds for
 // it, which is empty when the remote has no such branch.
-func compareOne(ctx context.Context, git Comparer, remote, branch, tip, parent, trunk, publishedParent string) (Publication, syncpoint.Changes, error) {
+func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, branch, tip, parent, trunk, publishedParent string) (Publication, syncpoint.Changes, error) {
 	if tip == "" {
 		// Absent from the remote has two meanings, and they want opposite
 		// answers: work nobody has seen, or work that merged and took the
@@ -175,13 +195,16 @@ func compareOne(ctx context.Context, git Comparer, remote, branch, tip, parent, 
 	if _, err := git.Resolve(ctx, tip); err != nil {
 		return Publication{Standing: Unknown}, syncpoint.Changes{}, nil
 	}
+	// Where the remote's own work on the branch begins is asked at most once,
+	// and only by whichever of the two comparisons below needs it.
+	begins := gosync.OnceValues(func() (string, error) { return builtOn(ctx, git, publishedParent, tip) })
 	// Before the content comparison: a drop on either side reads as being
 	// behind or diverged by it, and what decides which is whose drop it was.
-	publication, changes, ok, err := bySyncPoint(ctx, git, remote, branch, local, tip, parent, publishedParent)
+	publication, changes, ok, err := bySyncPoint(ctx, git, latest, branch, local, tip, parent, begins)
 	if err != nil || ok {
 		return publication, changes, err
 	}
-	publication, err = compareApart(ctx, git, branch, tip, parent, publishedParent)
+	publication, err = compareApart(ctx, git, branch, tip, parent, begins)
 	return publication, syncpoint.Changes{Unsynced: changes.Unsynced}, err
 }
 
@@ -193,7 +216,7 @@ func compareOne(ctx context.Context, git Comparer, remote, branch, tip, parent, 
 // a commit somebody published on the parent counted as this branch's: after
 // one person replayed a stack over another's commit on the parent, every
 // branch above it read as dropping that commit, which is the parent's.
-func compareApart(ctx context.Context, git Comparer, branch, tip, parent, publishedParent string) (Publication, error) {
+func compareApart(ctx context.Context, git Comparer, branch, tip, parent string, begins func() (string, error)) (Publication, error) {
 	behind, ours, err := git.Divergence(ctx, tip, branch)
 	if err != nil {
 		return Publication{}, err
@@ -211,7 +234,7 @@ func compareApart(ctx context.Context, git Comparer, branch, tip, parent, publis
 	// The remote tip is not an ancestor. Whether that loses anything is a
 	// question of content, and it is the same one status asks of a pull
 	// request's head, asked the same way.
-	theirsFrom, err := builtOn(ctx, git, publishedParent, tip)
+	theirsFrom, err := begins()
 	if err != nil {
 		return Publication{}, err
 	}

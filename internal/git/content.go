@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"slices"
 	"strings"
 )
 
@@ -204,35 +205,80 @@ func (c Client) Commits(ctx context.Context, tip string, excluded []string) ([]s
 	return outputLines(output), nil
 }
 
-// Unmatched lists the commits in tip and not in against that have no
-// equivalent by content among against's own, both sides bounded by bounds.
+// Inequivalent lists the commits on each side of left...right with no
+// equivalent by content on the other side, both sides bounded by bounds.
+// Merges are left out, as git cherry leaves them out.
 //
-// It is Cherry with the upstream side bounded too. Cherry compares head's
-// commits with everything upstream has that head does not, and after a
-// restack that is every commit the trunk gained since: a cost in the trunk's
-// history rather than the branch's. Bounded, a commit matched here is matched
-// there too, so an empty answer is exact; a commit listed here may still have
-// an equivalent somewhere below the bounds.
-func (c Client) Unmatched(ctx context.Context, tip, against string, bounds []string) ([]string, error) {
-	if err := safeRef(tip); err != nil {
-		return nil, err
+// It is Cherry with both sides bounded. Cherry compares head's commits with
+// everything upstream has that head does not, and after a restack that is
+// every commit the trunk gained since: a cost in the trunk's history rather
+// than the branch's. Bounded, fewer commits are there to match, so a commit
+// matched here is matched there too and an empty answer is exact; a commit
+// listed here may still have an equivalent somewhere below the bounds.
+func (c Client) Inequivalent(ctx context.Context, left, right string, bounds []string) (leftOnly, rightOnly []string, err error) {
+	if err := safeRef(left); err != nil {
+		return nil, nil, err
 	}
-	if err := safeRef(against); err != nil {
-		return nil, err
+	if err := safeRef(right); err != nil {
+		return nil, nil, err
 	}
-	args := []string{"rev-list", "--cherry-pick", "--right-only", "--no-merges", against + "..." + tip}
+	args := []string{"rev-list", "--left-right", "--cherry-mark", "--no-merges", left + "..." + right}
 	if len(bounds) != 0 {
 		args = append(args, "--not")
 		for _, ref := range bounds {
 			if err := safeRef(ref); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			args = append(args, ref)
 		}
 	}
 	output, err := c.run(ctx, args...)
 	if err != nil {
+		return nil, nil, err
+	}
+	leftOnly, rightOnly = make([]string, 0), make([]string, 0)
+	for _, line := range outputLines(output) {
+		switch {
+		case strings.HasPrefix(line, "<"):
+			leftOnly = append(leftOnly, line[1:])
+		case strings.HasPrefix(line, ">"):
+			rightOnly = append(rightOnly, line[1:])
+		}
+	}
+	return leftOnly, rightOnly, nil
+}
+
+// Refs is each of the named refs that exists, with the commit it points at --
+// only those that contain commit, when one is given. A name is matched
+// exactly, though for-each-ref would also list what sits below it. One
+// process answers which of many branches hold a commit, where asking each
+// was one per branch.
+func (c Client) Refs(ctx context.Context, refs []string, contains string) (map[string]string, error) {
+	found := make(map[string]string, len(refs))
+	if len(refs) == 0 {
+		return found, nil
+	}
+	args := []string{"for-each-ref", "--format=%(refname)%09%(objectname)"}
+	if contains != "" {
+		if err := safeRef(contains); err != nil {
+			return nil, err
+		}
+		args = append(args, "--contains="+contains)
+	}
+	for _, ref := range refs {
+		if err := safeRef(ref); err != nil {
+			return nil, err
+		}
+	}
+	output, err := c.run(ctx, append(args, refs...)...)
+	if err != nil {
 		return nil, err
 	}
-	return outputLines(output), nil
+	for _, line := range outputLines(output) {
+		ref, object, ok := strings.Cut(line, "\t")
+		if ok && slices.Contains(refs, ref) {
+			found[ref] = object
+		}
+	}
+	return found, nil
 }

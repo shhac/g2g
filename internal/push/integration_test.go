@@ -54,6 +54,8 @@ fi
 if [ "$1" = "rev-parse" ]; then printf 'dddddddddddddddddddddddddddddddddddddddd\n'; exit 0; fi
 if [ "$1" = "rev-list" ]; then printf '0\t1\n'; exit 0; fi
 if [ "$1" = "cherry" ]; then printf '+ 1111111111111111111111111111111111111111\n'; exit 0; fi
+# No sync points recorded yet.
+if [ "$1" = "for-each-ref" ]; then exit 0; fi
 exit 9`,
 	})
 	var debug bytes.Buffer

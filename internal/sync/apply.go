@@ -66,9 +66,9 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		// the remote holds, and the continue that finishes it is restack's,
 		// which records nothing.
 		if recorder, ok := s.Git.(syncpoint.ReadRecorder); ok {
-			syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, collection.Branch, localgit.SyncPoint{
+			syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, map[string]localgit.SyncPoint{collection.Branch: {
 				Tip: plan.Published[collection.Branch], Local: collection.To, Command: "pull", Dropped: collection.Dropped,
-			})
+			}})
 		}
 		// The version taken begins on the parent as it was published, and the
 		// replay planned it from there. Recording that is what lets a replay

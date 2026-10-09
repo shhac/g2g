@@ -2,7 +2,9 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,6 +94,77 @@ func (c Client) SyncHistory(ctx context.Context, remote, branch string, limit in
 	return points, nil
 }
 
+// SyncHistories is SyncHistory for many branches at once: each branch's sync
+// points, newest first, keyed by branch, leaving out those with none. Two
+// processes whatever the number of branches -- which sync refs exist, and
+// every one of their reflogs in one walk -- where asking per branch was two
+// each. A ref named that does not exist fails the whole walk, which is why the
+// first question is asked.
+//
+// One unreadable reflog fails the walk for all of them, so a failed walk is
+// asked again one ref at a time: what could be read comes back with the
+// error, and a caller that can do without one branch's history does.
+func (c Client) SyncHistories(ctx context.Context, remote string, branches []string) (map[string][]SyncPoint, error) {
+	if err := safeRef(remote); err != nil {
+		return nil, err
+	}
+	prefix := syncedPrefix + remote + "/"
+	output, err := c.run(ctx, "for-each-ref", "--format=%(refname)", prefix)
+	if err != nil {
+		return nil, err
+	}
+	existing := outputLines(output)
+	refs := make([]string, 0, len(branches))
+	for _, branch := range branches {
+		if ref := prefix + branch; slices.Contains(existing, ref) && !slices.Contains(refs, ref) {
+			refs = append(refs, ref)
+		}
+	}
+	histories := make(map[string][]SyncPoint, len(refs))
+	if len(refs) == 0 {
+		return histories, nil
+	}
+	args := append([]string{"log", "-g", "--date=unix", "--format=%H%x09%gD%x09%gs"}, refs...)
+	output, err = c.run(ctx, append(args, "--")...)
+	if err != nil {
+		return c.syncHistoriesEach(ctx, remote, refs, prefix)
+	}
+	for _, line := range outputLines(output) {
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) != 3 {
+			continue
+		}
+		ref, _, found := strings.Cut(fields[1], "@{")
+		if !found || !strings.HasPrefix(ref, prefix) {
+			continue
+		}
+		if point, ok := parseSyncLine(line); ok {
+			branch := strings.TrimPrefix(ref, prefix)
+			histories[branch] = append(histories[branch], point)
+		}
+	}
+	return histories, nil
+}
+
+// syncHistoriesEach is SyncHistories one ref at a time, for when the walk over
+// all of them failed.
+func (c Client) syncHistoriesEach(ctx context.Context, remote string, refs []string, prefix string) (map[string][]SyncPoint, error) {
+	histories := make(map[string][]SyncPoint, len(refs))
+	failed := make([]error, 0)
+	for _, ref := range refs {
+		branch := strings.TrimPrefix(ref, prefix)
+		history, err := c.SyncHistory(ctx, remote, branch, maxSyncHistory)
+		if err != nil {
+			failed = append(failed, err)
+			continue
+		}
+		if len(history) != 0 {
+			histories[branch] = history
+		}
+	}
+	return histories, errors.Join(failed...)
+}
+
 // parseSyncLine reads one reflog line: the tip, the selector carrying the
 // time, and the message g2g wrote. A line a person or another tool wrote
 // carries no local tip and is not a sync point.
@@ -145,6 +218,53 @@ func (c Client) Describes(ctx context.Context, branch string, point SyncPoint) (
 		return false, err
 	}
 	return slices.Contains(outputLines(output), point.Local), nil
+}
+
+// DescribesAll is Describes for many branches at once: every branch's reflog
+// in one walk, and the ancestry question only for a branch whose reflog does
+// not hold the tip its sync point recorded. That tip was the branch's own when
+// it was recorded, so its reflog nearly always does, and asking per branch was
+// three processes for each one rewritten since.
+func (c Client) DescribesAll(ctx context.Context, points map[string]SyncPoint) (map[string]bool, error) {
+	described := make(map[string]bool, len(points))
+	branches := slices.Sorted(maps.Keys(points))
+	refs := make([]string, 0, len(branches))
+	for _, branch := range branches {
+		if err := safeRef(branch); err != nil {
+			return nil, err
+		}
+		if points[branch].Local != "" {
+			refs = append(refs, "refs/heads/"+branch)
+		}
+	}
+	if len(refs) == 0 {
+		return described, nil
+	}
+	args := append([]string{"log", "-g", "--ignore-missing", "--format=%gD%x09%H"}, refs...)
+	output, err := c.run(ctx, append(args, "--")...)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range outputLines(output) {
+		selector, commit, found := strings.Cut(line, "\t")
+		ref, _, selected := strings.Cut(selector, "@{")
+		branch := strings.TrimPrefix(ref, "refs/heads/")
+		if found && selected && points[branch].Local == commit {
+			described[branch] = true
+		}
+	}
+	for _, branch := range branches {
+		point := points[branch]
+		if described[branch] || point.Local == "" {
+			continue
+		}
+		contains, err := c.IsAncestor(ctx, point.Local, branch)
+		if err != nil {
+			return nil, err
+		}
+		described[branch] = contains
+	}
+	return described, nil
 }
 
 // ForgetSync removes a branch's sync points for every remote, with their

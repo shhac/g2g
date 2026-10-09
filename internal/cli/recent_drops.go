@@ -9,6 +9,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // recentDrops is how long status keeps naming commits a pull or push dropped.
@@ -16,27 +17,26 @@ import (
 // holds them keeps them reachable for about 30 days more.
 const recentDrops = 7 * 24 * time.Hour
 
-// syncHistory reads a branch's sync points, newest first.
-type syncHistory interface {
-	SyncHistory(ctx context.Context, remote, branch string, limit int) ([]localgit.SyncPoint, error)
-}
+// recentHistory is how much of each branch's sync-point history the note
+// looks through: enough for a week of pulls and pushes.
+const recentHistory = 10
 
 // noteRecentDrops names commits a pull or push took off a shown branch in the
 // last week, from the sync points' own history, with the command that brings
 // one back. Somebody who did not read the pull that dropped them finds them
 // here. Read from local refs alone, as everything else status says.
 func noteRecentDrops(ctx context.Context, view stackView, published push.Known, remote string, discovery graph.Discovery, now time.Time) stackView {
-	history, ok := published.Git.(syncHistory)
+	reader, ok := published.Git.(syncpoint.HistoryReader)
 	if !ok {
 		return view
 	}
+	// A branch whose history could not be read says nothing; the rest still
+	// do, as each did when it was asked on its own.
+	histories, _ := reader.SyncHistories(ctx, remote, discovery.Branches)
 	said := make([]string, 0)
 	for _, branch := range discovery.Branches {
-		points, err := history.SyncHistory(ctx, remote, branch, 10)
-		if err != nil {
-			continue
-		}
-		said = append(said, recentDropEntries(branch, points, now)...)
+		points := histories[branch]
+		said = append(said, recentDropEntries(branch, points[:min(len(points), recentHistory)], now)...)
 	}
 	if len(said) == 0 {
 		return view

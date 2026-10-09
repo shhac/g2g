@@ -17,12 +17,13 @@ func (s Service) recordLevel(ctx context.Context, remote string, branches []stri
 	if !ok {
 		return
 	}
+	level := map[string]localgit.SyncPoint{}
 	for _, branch := range branches {
-		if publishing[branch].Standing != Current {
-			continue
+		if publishing[branch].Standing == Current {
+			level[branch] = localgit.SyncPoint{Tip: tips[branch], Local: tips[branch], Command: "push"}
 		}
-		syncpoint.Record(ctx, recorder, "push.sync_point", remote, branch, localgit.SyncPoint{Tip: tips[branch], Local: tips[branch], Command: "push"})
 	}
+	syncpoint.Record(ctx, recorder, "push.sync_point", remote, level)
 }
 
 // recordPushed notes that this clone and the remote now agree on every branch
@@ -35,13 +36,19 @@ func (s Service) recordPushed(ctx context.Context, plan Plan, leases []localgit.
 	if !ok {
 		return
 	}
+	branches := make([]string, 0, len(leases))
 	for _, lease := range leases {
-		tip, err := s.Git.Resolve(ctx, lease.Branch)
-		if err != nil {
-			diagnostic.Event(ctx, "push.sync_point", diagnostic.Field{Key: "branch", Value: lease.Branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+		branches = append(branches, lease.Branch)
+	}
+	tips := syncpoint.Locals(ctx, s.Git, branches)
+	pushed := map[string]localgit.SyncPoint{}
+	for _, branch := range branches {
+		tip, resolved := tips[branch]
+		if !resolved {
+			diagnostic.Event(ctx, "push.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
 			continue
 		}
-		dropped := syncpoint.DroppedOn(lease.Branch, plan.Drops, plan.Moves)
-		syncpoint.Record(ctx, recorder, "push.sync_point", plan.Remote, lease.Branch, localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: dropped})
+		pushed[branch] = localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: syncpoint.DroppedOn(branch, plan.Drops, plan.Moves)}
 	}
+	syncpoint.Record(ctx, recorder, "push.sync_point", plan.Remote, pushed)
 }

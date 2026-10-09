@@ -46,7 +46,7 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 	// One process for every ref under both prefixes. Resolving them by name
 	// fails the whole batch on the first branch never pushed, which is most
 	// of them in a fresh stack, and falls back to a process per ref.
-	output, err := c.run(ctx, "for-each-ref", "--format=%(objectname) %(refname)", trackingRef(remote, ""), IsolatedRef(remote, ""))
+	output, err := c.run(ctx, "for-each-ref", "--format=%(objectname) %(refname)", TrackingRef(remote, ""), IsolatedRef(remote, ""))
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 	for _, line := range outputLines(output) {
 		if object, ref, found := strings.Cut(line, " "); found {
 			resolved[ref] = object
-			tracking = tracking || strings.HasPrefix(ref, trackingRef(remote, ""))
+			tracking = tracking || strings.HasPrefix(ref, TrackingRef(remote, ""))
 		}
 	}
 	// After every push and pull the two refs of each branch differ, so which
@@ -63,7 +63,7 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 	// sized first so each owns its element.
 	answers := make([]string, len(branches))
 	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
-		tracked, fetched := resolved[trackingRef(remote, branch)], resolved[IsolatedRef(remote, branch)]
+		tracked, fetched := resolved[TrackingRef(remote, branch)], resolved[IsolatedRef(remote, branch)]
 		if tracked == "" && tracking {
 			return nil
 		}
@@ -99,7 +99,9 @@ func (c Client) later(ctx context.Context, tracking, fetched string) (string, er
 	return fetched, nil
 }
 
-func trackingRef(remote, branch string) string {
+// TrackingRef names the user's remote-tracking ref for a branch: what
+// git fetch and git push move, and what g2g reads but never writes.
+func TrackingRef(remote, branch string) string {
 	return "refs/remotes/" + remote + "/" + branch
 }
 

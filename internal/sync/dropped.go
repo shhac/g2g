@@ -22,13 +22,6 @@ import (
 // there, and pull drops it here too -- naming it, and recording it in the sync
 // point's history, where it stays recoverable.
 
-// classifier is the Git a classification reads. The Git client is all of it;
-// a fake that is not makes pull behave as it did before sync points existed.
-type classifier interface {
-	syncpoint.Reader
-	syncpoint.Git
-}
-
 // changed is what the sync point says about one branch, once decided.
 type changed struct {
 	collection *Collection
@@ -49,24 +42,20 @@ type changed struct {
 // bySyncPoint decides a branch from what changed on each side since the two
 // last agreed, when there is a sync point for it and anything was dropped.
 func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, published, parent, begins string) (changed, error) {
-	git, ok := s.Git.(classifier)
+	// The Git client can assess; a fake that cannot makes pull behave as it
+	// did before sync points existed.
+	git, ok := s.Git.(syncpoint.Assessor)
 	if !ok {
 		return changed{unsynced: true}, nil
 	}
-	point, synced, err := syncpoint.Read(ctx, git, c.remote, branch)
-	if err != nil || !synced {
-		return changed{unsynced: true}, err
-	}
-	tracking, err := s.Git.Resolve(ctx, "refs/remotes/"+c.remote+"/"+branch)
-	if err != nil {
-		tracking = ""
-	}
-	changes, err := syncpoint.Classify(ctx, git, syncpoint.Branch{
+	changes, err := syncpoint.Assess(ctx, git, c.remote, branch, syncpoint.Branch{
 		Local: local, Remote: published, LocalParent: parent, PublishedParent: begins,
-		Sync: point, Synced: true, Tracking: tracking,
 	})
 	if err != nil {
 		return changed{}, err
+	}
+	if changes.Unsynced {
+		return changed{unsynced: true}, nil
 	}
 	kept := c.keeping(changes)
 	changes = changes.Keep(c.keep)

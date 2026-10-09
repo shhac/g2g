@@ -1,6 +1,7 @@
 package push
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/shhac/g2g/internal/landed"
@@ -210,17 +211,11 @@ func compareApart(ctx context.Context, git Comparer, branch, tip, parent, publis
 	// The remote tip is not an ancestor. Whether that loses anything is a
 	// question of content, and it is the same one status asks of a pull
 	// request's head, asked the same way.
-	theirsFrom := parent
-	if publishedParent != "" {
-		built, err := git.IsAncestor(ctx, publishedParent, tip)
-		if err != nil {
-			return Publication{}, err
-		}
-		if built {
-			theirsFrom = publishedParent
-		}
+	theirsFrom, err := builtOn(ctx, git, publishedParent, tip)
+	if err != nil {
+		return Publication{}, err
 	}
-	theirs, err := landed.Missing(ctx, git, branch, tip, theirsFrom)
+	theirs, err := landed.Missing(ctx, git, branch, tip, cmp.Or(theirsFrom, parent))
 	if err != nil {
 		return Publication{}, err
 	}
@@ -238,4 +233,18 @@ func standingApart(ours, theirs int) Standing {
 	default:
 		return Diverged
 	}
+}
+
+// builtOn is the parent's published tip when the remote's version of the
+// branch is built on it, and empty otherwise: where the remote's own work on
+// the branch begins.
+func builtOn(ctx context.Context, git Comparer, publishedParent, tip string) (string, error) {
+	if publishedParent == "" {
+		return "", nil
+	}
+	built, err := git.IsAncestor(ctx, publishedParent, tip)
+	if err != nil || !built {
+		return "", err
+	}
+	return publishedParent, nil
 }

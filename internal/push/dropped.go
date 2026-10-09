@@ -23,38 +23,27 @@ import (
 // since the agreement, still here, would be published again, which is how a
 // drop used to be undone by the next push from anyone who still had it.
 
-// classifier is the Git a sync point is read through. The Git client is all
-// of it; anything that is not compares as push did before sync points.
-type classifier interface {
-	syncpoint.Reader
-	syncpoint.Git
-}
-
 // bySyncPoint is the standing a sync point gives a branch the remote holds
 // commits of that it does not, or that holds commits the remote dropped. ok is
 // false when there is no sync point, or nothing was dropped either way, and
-// the comparison push had before stands.
+// the comparison push had before stands. publishedParent is the parent's
+// remote tip, which bounds the remote's side when its version is built on it.
 func bySyncPoint(ctx context.Context, git Comparer, remote, branch, local, tip, parent, publishedParent string) (Publication, syncpoint.Changes, bool, error) {
-	reader, ok := git.(classifier)
+	// The Git client can assess; anything that cannot compares as push did
+	// before sync points.
+	assessor, ok := git.(syncpoint.Assessor)
 	if !ok || remote == "" {
 		return Publication{}, syncpoint.Changes{Unsynced: true}, false, nil
 	}
-	point, synced, err := syncpoint.Read(ctx, reader, remote, branch)
-	if err != nil || !synced {
-		return Publication{}, syncpoint.Changes{Unsynced: true}, false, err
-	}
-	tracking, err := git.Resolve(ctx, "refs/remotes/"+remote+"/"+branch)
+	// A parent whose ancestry cannot be asked bounds nothing: the sync point
+	// is then read against the parent here, as before there was a published
+	// one to ask about.
+	begins, err := builtOn(ctx, git, publishedParent, tip)
 	if err != nil {
-		tracking = ""
+		begins = ""
 	}
-	if publishedParent != "" {
-		if built, err := reader.IsAncestor(ctx, publishedParent, tip); err != nil || !built {
-			publishedParent = ""
-		}
-	}
-	changes, err := syncpoint.Classify(ctx, reader, syncpoint.Branch{
-		Local: local, Remote: tip, LocalParent: parent, PublishedParent: publishedParent,
-		Sync: point, Synced: true, Tracking: tracking,
+	changes, err := syncpoint.Assess(ctx, assessor, remote, branch, syncpoint.Branch{
+		Local: local, Remote: tip, LocalParent: parent, PublishedParent: begins,
 	})
 	if err != nil || !changes.Dropped() {
 		return Publication{}, changes, false, err

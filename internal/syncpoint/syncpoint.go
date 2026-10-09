@@ -16,6 +16,7 @@
 package syncpoint
 
 import (
+	"cmp"
 	"context"
 	"slices"
 
@@ -59,6 +60,38 @@ type Git interface {
 	Commits(ctx context.Context, tip string, excluded []string) ([]string, error)
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
+}
+
+// Assessor is what assessing a branch reads: its sync point, the commits on
+// each side, and the remote-tracking ref a reset may have gone back to.
+type Assessor interface {
+	Reader
+	Git
+	Resolve(ctx context.Context, revision string) (string, error)
+}
+
+// Assess says what changed on each side of a branch since this clone and the
+// remote last agreed on it. sides names the branch here and on the remote and
+// each side's parent; Assess supplies the rest. A branch with no sync point
+// recorded for it reports Unsynced and nothing else, and the caller compares it
+// as it did before there were sync points.
+//
+// It is the one place a sync point is read for a decision, so pull and push
+// cannot come to mean different things by having one.
+func Assess(ctx context.Context, git Assessor, remote, branch string, sides Branch) (Changes, error) {
+	point, synced, err := Read(ctx, git, remote, branch)
+	if err != nil {
+		return Changes{}, err
+	}
+	if !synced {
+		return Changes{Unsynced: true}, nil
+	}
+	tracking, err := git.Resolve(ctx, localgit.TrackingRef(remote, branch))
+	if err != nil {
+		tracking = ""
+	}
+	sides.Sync, sides.Synced, sides.Tracking = point, true, tracking
+	return Classify(ctx, git, sides)
 }
 
 // Read is a branch's sync point when it has one recorded for it. One recorded
@@ -106,10 +139,10 @@ type Changes struct {
 	// A branch with none left is one the remote emptied, or made again under
 	// the name, rather than one it dropped a commit from.
 	Shared []string
-	// Unsynced reports a branch with no sync point to classify against, set
-	// by a caller that looked and found none. Every difference then reads as
-	// new on its own side, which is the cautious reading -- and not the "in
-	// sync" a caller asking for strictness can rely on.
+	// Unsynced reports a branch with no sync point to classify against.
+	// Every difference then reads as new on its own side, which is the
+	// cautious reading -- and not the "in sync" a caller asking for
+	// strictness can rely on.
 	Unsynced bool
 	// Stale reports commits that would have read as dropped here, but are
 	// exactly what resetting the branch to its remote-tracking ref -- older
@@ -184,11 +217,7 @@ func Classify(ctx context.Context, git Git, branch Branch) (Changes, error) {
 			shared = append(shared, commit)
 		}
 	}
-	theirsFrom := branch.LocalParent
-	if branch.PublishedParent != "" {
-		theirsFrom = branch.PublishedParent
-	}
-	theirs, _, err := git.Cherry(ctx, branch.Local, branch.Remote, theirsFrom)
+	theirs, _, err := git.Cherry(ctx, branch.Local, branch.Remote, cmp.Or(branch.PublishedParent, branch.LocalParent))
 	if err != nil {
 		return Changes{}, err
 	}

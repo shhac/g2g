@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -259,11 +260,7 @@ func (s Service) collectUnsynced(ctx context.Context, c collecting, branch, loca
 	if len(ours) == 0 && onParent {
 		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
 	}
-	theirsFrom := parent
-	if begins != "" {
-		theirsFrom = begins
-	}
-	theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), theirsFrom)
+	theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), cmp.Or(begins, parent))
 	if err != nil {
 		return verdict{}, err
 	}

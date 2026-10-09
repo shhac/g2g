@@ -67,13 +67,8 @@ func bySyncPoint(ctx context.Context, git Comparer, remote, branch, local, tip, 
 	}
 }
 
-// Drop is one commit a push names, and the branch it is about. To is the
-// branch a moved commit is in now.
-type Drop struct {
-	Branch string
-	Commit string
-	To     string
-}
+// Drop is one commit a push names, and the branch it is about.
+type Drop = syncpoint.Drop
 
 // drops lists every commit the sync points said was dropped, in branch
 // order: what this push removes, what it moves between two of its branches,

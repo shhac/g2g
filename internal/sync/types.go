@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // Git is the boundary for the steps sync performs itself.
@@ -154,13 +155,8 @@ type Collection struct {
 	Begins string
 }
 
-// Drop is one commit a pull names, and the branch it is about. To is the
-// branch a moved commit is in now.
-type Drop struct {
-	Branch string
-	Commit string
-	To     string
-}
+// Drop is one commit a pull names, and the branch it is about.
+type Drop = syncpoint.Drop
 
 // onto names the base the replay should land on. Until the base branch is
 // advanced it is still where it was, so the fetched ref is what the replay has

@@ -4,8 +4,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/restack"
-
-	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 func restackView(plan restack.Plan) stackView {
@@ -89,20 +88,16 @@ func orphanNote(view stackView, plan restack.Plan) stackView {
 // and its subject: a commit about to leave a branch is listed, never counted,
 // so it can be found again with git branch <name> <commit> if that was wrong.
 func orphanList(plan restack.Plan) string {
-	said := make([]string, 0)
+	orphans := make([]syncpoint.Drop, 0)
 	for _, step := range plan.Steps {
 		for _, orphan := range step.Orphans {
-			entry := step.Branch + " " + localgit.Short(orphan)
-			if subject := plan.Subjects[orphan]; subject != "" {
-				entry += " " + subject
-			}
-			said = append(said, entry)
+			orphans = append(orphans, syncpoint.Drop{Branch: step.Branch, Commit: orphan})
 		}
 	}
-	if len(said) == 0 {
+	if len(orphans) == 0 {
 		return ""
 	}
-	return ": " + strings.Join(said, ", ")
+	return ": " + dropList(plan.Subjects, orphans)
 }
 
 func emptiedNote(view stackView, plan restack.Plan) stackView {

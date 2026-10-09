@@ -126,6 +126,14 @@ type Branch struct {
 	Tracking string
 }
 
+// Drop is one commit a pull or push names one by one -- dropped, moved, kept
+// -- and the branch it is about. To is the branch a moved commit is in now.
+type Drop struct {
+	Branch string
+	Commit string
+	To     string
+}
+
 // Changes is what each side holds that the other does not, and why.
 type Changes struct {
 	// Mine are commits here the remote never had; New, commits on the

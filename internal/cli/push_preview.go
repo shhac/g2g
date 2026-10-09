@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
@@ -27,14 +28,11 @@ func pushView(plan push.Plan) stackView {
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
 	view = pushDropNotes(view, plan)
-	for _, list := range []struct {
-		kind  string
-		drops []push.Drop
-	}{{"dropped", plan.Drops}, {"moved", plan.Moves}, {"restoring", plan.Restores}} {
-		for _, drop := range list.drops {
-			view.Commits = append(view.Commits, stackCommit{Branch: drop.Branch, Commit: drop.Commit, Subject: plan.Subjects[drop.Commit], Kind: list.kind, To: drop.To})
-		}
-	}
+	view.Commits = slices.Concat(
+		commitRecords("dropped", plan.Subjects, plan.Drops),
+		commitRecords("moved", plan.Subjects, plan.Moves),
+		commitRecords("restoring", plan.Subjects, plan.Restores),
+	)
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
@@ -45,30 +43,16 @@ func pushView(plan push.Plan) stackView {
 // pushDropNotes list every published commit a push removes, by branch, short
 // id and subject: once the remote moves, nothing else will name them.
 func pushDropNotes(view stackView, plan push.Plan) stackView {
-	name := func(drops []push.Drop) string {
-		said := make([]string, 0, len(drops))
-		for _, drop := range drops {
-			entry := drop.Branch + " " + localgit.Short(drop.Commit)
-			if subject := plan.Subjects[drop.Commit]; subject != "" {
-				entry += " " + subject
-			}
-			if drop.To != "" {
-				entry += " (" + drop.Branch + " → " + drop.To + ")"
-			}
-			said = append(said, entry)
-		}
-		return strings.Join(said, ", ")
-	}
 	if len(plan.Drops) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s from %s that you dropped here since you last pulled or pushed: %s · to keep %s, run %s first.",
-			count(len(plan.Drops), "published commit", "published commits"), plan.Remote, name(plan.Drops),
+			count(len(plan.Drops), "published commit", "published commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
 			pick(len(plan.Drops), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
 	}
 	if len(plan.Moves) != 0 {
-		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", count(len(plan.Moves), "published commit", "published commits"), name(plan.Moves)), severityNeutral)
+		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", count(len(plan.Moves), "published commit", "published commits"), dropList(plan.Subjects, plan.Moves)), severityNeutral)
 	}
 	if len(plan.Restores) != 0 {
-		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, count(len(plan.Restores), "commit", "commits"), name(plan.Restores)), severityBad)
+		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, count(len(plan.Restores), "commit", "commits"), dropList(plan.Subjects, plan.Restores)), severityBad)
 	}
 	return view
 }

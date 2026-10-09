@@ -177,8 +177,11 @@ func (c Client) DeleteBranch(ctx context.Context, branch string) error {
 	if !slices.Contains(branches, branch) {
 		return nil
 	}
-	_, err = c.run(ctx, "branch", "-D", branch)
-	return err
+	if _, err := c.run(ctx, "branch", "-D", branch); err != nil {
+		return err
+	}
+	c.forgetSync(ctx, branch)
+	return nil
 }
 
 // SwitchBranch moves the checkout.

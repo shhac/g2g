@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"maps"
 	"slices"
 
 	localgit "github.com/shhac/g2g/internal/git"
@@ -76,6 +77,11 @@ type Plan struct {
 	// all: sync fetched exactly one ref, the base, so a branch you own was
 	// never brought down and push then refused because the remote was ahead.
 	Collect []Collection
+	// Published is what the remote held for each selected branch when this
+	// was planned, and is what an apply records as the point this clone and
+	// the remote now agree on: never read again at write time, because
+	// another worktree's pull could have fetched past it in between.
+	Published map[string]string
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. Where sync refuses it offers a choice — take the
 	// published trunk, or reconcile it yourself — and a sentence holding both
@@ -135,6 +141,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Diverged == other.Diverged &&
 		p.Supersede == other.Supersede &&
 		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
+		maps.Equal(p.Published, other.Published) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Restack.Equal(other.Restack)
 }

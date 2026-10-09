@@ -18,8 +18,14 @@ func adoptFromFlow(service align.Service, guard func(context.Context) error) app
 		render: func(writer io.Writer, plan align.AdoptPlan, p Presentation) error {
 			return writeStackView(writer, adoptFromView(plan), p)
 		},
-		guard:    guard,
-		execute:  service.ApplyAdopt,
+		guard: guard,
+		execute: func(ctx context.Context, plan align.AdoptPlan) error {
+			if err := service.ApplyAdopt(ctx, plan); err != nil {
+				return err
+			}
+			recordAdopted(ctx, service.Git, plan.Claims())
+			return nil
+		},
 		branches: func(plan align.AdoptPlan) int { return len(plan.Adopt) },
 		// Only whether there is no adoption work: the shared lifecycle gives
 		// blocked plans their own refusal path.

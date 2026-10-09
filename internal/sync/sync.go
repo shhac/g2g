@@ -9,13 +9,16 @@ package sync
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // Ready reports a service with everything it needs.
@@ -62,6 +65,8 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
+	plan.Published = ownTips(published, plan.Base, discovery.Branches)
+	s.recordLevel(ctx, remote, plan.Published)
 	if note, outside := throughOutside(take, discovery.Branches, plan.Base); outside {
 		return plan.refused(note), nil
 	}
@@ -180,4 +185,51 @@ func syncScope(scope graph.Scope) graph.Scope {
 		return scope
 	}
 	return graph.ScopeStack
+}
+
+// ownTips is what the remote holds for each selected branch but the base. A
+// trunk is never given a sync point: what pull does to one is decided by the
+// rules for a rewritten trunk, and a drop there is not anybody's to publish.
+func ownTips(published map[string]string, base string, branches []string) map[string]string {
+	own := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		if tip := published[branch]; tip != "" && branch != base {
+			own[branch] = tip
+		}
+	}
+	return own
+}
+
+// recordLevel notes the agreement a branch is already in when it holds
+// everything the remote has: level with it, or ahead of it with work to push.
+// That is a fact rather than a decision, like the fetch into g2g's own refs a
+// preview already makes, and it is what gives a branch nobody has pulled or
+// pushed through g2g a sync point to measure the next change from.
+func (s Service) recordLevel(ctx context.Context, remote string, published map[string]string) {
+	recorder, ok := s.Git.(syncpoint.ReadRecorder)
+	if !ok {
+		return
+	}
+	for _, branch := range slices.Sorted(maps.Keys(published)) {
+		local, err := s.Git.Resolve(ctx, branch)
+		if err != nil {
+			continue
+		}
+		if local != published[branch] {
+			holds, err := s.Git.IsAncestor(ctx, published[branch], local)
+			if err != nil || !holds {
+				continue
+			}
+		}
+		s.agree(ctx, recorder, remote, branch, localgit.SyncPoint{Tip: published[branch], Local: local, Command: "pull"})
+	}
+}
+
+// agree records one agreement. pull has done or decided its work by then, so a
+// recording that fails is a diagnostic: until the next one records it, the
+// cautious reading applies.
+func (s Service) agree(ctx context.Context, recorder syncpoint.ReadRecorder, remote, branch string, point localgit.SyncPoint) {
+	if err := syncpoint.Agree(ctx, recorder, remote, branch, point); err != nil {
+		diagnostic.Event(ctx, "sync.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+	}
 }

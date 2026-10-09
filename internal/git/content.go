@@ -178,3 +178,28 @@ func (c Client) supportsMergeTree(ctx context.Context) (bool, error) {
 	}
 	return major > 2 || (major == 2 && minor >= absorbedMinorVersion), nil
 }
+
+// Commits lists the commits reachable from tip and from none of excluded, by
+// id. Membership by id is the question when what matters is whether this
+// exact commit was there: a rewritten copy of it is a different commit, and
+// asking by content would let a re-added change read as one already seen.
+func (c Client) Commits(ctx context.Context, tip string, excluded []string) ([]string, error) {
+	if err := safeRef(tip); err != nil {
+		return nil, err
+	}
+	args := []string{"rev-list", tip}
+	if len(excluded) != 0 {
+		args = append(args, "--not")
+		for _, ref := range excluded {
+			if err := safeRef(ref); err != nil {
+				return nil, err
+			}
+			args = append(args, ref)
+		}
+	}
+	output, err := c.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return outputLines(output), nil
+}

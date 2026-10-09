@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // Reshaping: moving, renaming and reading a branch whose place in a stack is
@@ -123,6 +125,11 @@ func (c Client) RenameBranch(ctx context.Context, from, to string) error {
 	if from == to {
 		return fmt.Errorf("%s already has that name", from)
 	}
-	_, err := c.run(ctx, "branch", "-m", from, to)
-	return err
+	if _, err := c.run(ctx, "branch", "-m", from, to); err != nil {
+		return err
+	}
+	if err := c.MoveSync(ctx, from, to); err != nil {
+		diagnostic.Warn(ctx, "rename.sync_point", fmt.Sprintf("renamed; the sync point recorded under %s could not follow it", from))
+	}
+	return nil
 }

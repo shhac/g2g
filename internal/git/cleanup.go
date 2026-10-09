@@ -30,6 +30,7 @@ func (c Client) DeleteBranchAt(ctx context.Context, branch, tip string) error {
 	if _, err := c.run(ctx, "update-ref", "--no-deref", "-d", "refs/heads/"+branch, tip); err != nil {
 		return err
 	}
+	c.forgetSync(ctx, branch)
 	// Ref deletion is complete. Removing optional branch configuration is
 	// best-effort, as it is in Git's branch deletion; a missing section is normal.
 	if _, err := c.run(ctx, "config", "--remove-section", "branch."+branch); err != nil {

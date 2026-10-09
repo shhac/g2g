@@ -203,3 +203,36 @@ func (c Client) Commits(ctx context.Context, tip string, excluded []string) ([]s
 	}
 	return outputLines(output), nil
 }
+
+// Unmatched lists the commits in tip and not in against that have no
+// equivalent by content among against's own, both sides bounded by bounds.
+//
+// It is Cherry with the upstream side bounded too. Cherry compares head's
+// commits with everything upstream has that head does not, and after a
+// restack that is every commit the trunk gained since: a cost in the trunk's
+// history rather than the branch's. Bounded, a commit matched here is matched
+// there too, so an empty answer is exact; a commit listed here may still have
+// an equivalent somewhere below the bounds.
+func (c Client) Unmatched(ctx context.Context, tip, against string, bounds []string) ([]string, error) {
+	if err := safeRef(tip); err != nil {
+		return nil, err
+	}
+	if err := safeRef(against); err != nil {
+		return nil, err
+	}
+	args := []string{"rev-list", "--cherry-pick", "--right-only", "--no-merges", against + "..." + tip}
+	if len(bounds) != 0 {
+		args = append(args, "--not")
+		for _, ref := range bounds {
+			if err := safeRef(ref); err != nil {
+				return nil, err
+			}
+			args = append(args, ref)
+		}
+	}
+	output, err := c.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return outputLines(output), nil
+}

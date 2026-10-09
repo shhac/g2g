@@ -45,6 +45,13 @@ can be absorbed. `git.Client.Untouched` answers that from paths in
 milliseconds, and `landed.Into` asks it first. It never answers "landed", and it
 must never be used where an undercount is dangerous — `landed.Missing` counts
 work a push would drop, and path-limited counting could miss some.
+`syncpoint.Assess` follows the same rule before classifying a branch: a drop
+needs a commit the sync point holds with no equivalent on the other side, and
+whether there is one is asked by id and by a content comparison bounded on
+both sides (`git.Client.Unmatched`). Only a "maybe" pays for `Classify`, whose
+`git cherry` reads every commit the trunk gained since the remote's version —
+which, on a stack restacked and not yet pushed, doubled every command that
+compares with the remote until it was asked first.
 
 **Leave out what cannot be the answer.** Branches already merged into the trunk
 are ancestors of every branch on it, so a whole-stack adoption measured each

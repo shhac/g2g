@@ -196,3 +196,81 @@ func TestKeepReclassifiesOnlyDrops(t *testing.T) {
 		t.Errorf("Keep() kept %v, want the two drops and not the commit that was not one", which)
 	}
 }
+
+// mayHaveDropped is the cheap question Assess asks first, and its "no" must
+// never hide a drop Classify would have found. The restacked cases are what
+// it exists for: the remote's version sits on the parent's old tip, so every
+// one of its commits is one this branch has only under a new id.
+func TestMayHaveDroppedNeverHidesADrop(t *testing.T) {
+	// restack moves synthetic-a on a commit and replays synthetic-b onto it,
+	// leaving the remote's version and the sync point where they were.
+	restack := func(f fixture, drop bool) {
+		f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+		f.repo.Run("branch", "synthetic-published", "synthetic-b")
+		f.repo.Run("branch", "synthetic-published-a", "synthetic-a")
+		f.repo.Run("switch", "-q", "synthetic-a")
+		f.repo.Commit("synthetic a two", "a2.txt", "a2")
+		f.repo.Run("switch", "-q", "synthetic-b")
+		if drop {
+			f.repo.Run("reset", "-q", "--hard", "synthetic-b~1")
+		}
+		f.repo.Run("rebase", "-q", "--onto", "synthetic-a", "synthetic-published-a", "synthetic-b")
+	}
+	tests := []struct {
+		name     string
+		setup    func(fixture)
+		possible bool
+		dropped  bool
+	}{
+		{name: "restacked", setup: func(f fixture) { restack(f, false) }},
+		{name: "dropped while restacked", setup: func(f fixture) { restack(f, true) }, possible: true, dropped: true},
+		{name: "dropped upstream", possible: true, dropped: true, setup: func(f fixture) {
+			f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+			f.repo.Run("branch", "synthetic-published", "synthetic-b~1")
+			f.repo.Run("branch", "synthetic-published-a", "synthetic-a")
+		}},
+		{name: "dropped here", possible: true, dropped: true, setup: func(f fixture) {
+			f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+			f.repo.Run("branch", "synthetic-published", "synthetic-b")
+			f.repo.Run("branch", "synthetic-published-a", "synthetic-a")
+			f.repo.Run("reset", "-q", "--hard", "synthetic-b~1")
+		}},
+		// x has an equivalent in the parent now, below the bound the cheap
+		// question looks within: it cannot rule the drop out, and Classify
+		// finds there is none.
+		{name: "landed in the parent", possible: true, setup: func(f fixture) {
+			f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+			f.repo.Run("branch", "synthetic-published", "synthetic-b")
+			f.repo.Run("branch", "synthetic-published-a", "synthetic-a")
+			f.repo.Run("switch", "-q", "synthetic-a")
+			f.repo.Run("cherry-pick", "synthetic-b")
+			f.repo.Run("switch", "-q", "synthetic-b")
+			f.repo.Run("rebase", "-q", "--onto", "synthetic-a", "synthetic-published-a", "synthetic-b")
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			test.setup(f)
+			branch := Branch{
+				Local: f.repo.Revision("synthetic-b"), Remote: f.repo.Revision("synthetic-published"),
+				LocalParent: f.repo.Revision("synthetic-a"), PublishedParent: f.repo.Revision("synthetic-published-a"),
+				Sync: localgit.SyncPoint{Tip: f.repo.Revision("synthetic-synced")}, Synced: true,
+			}
+			possible, err := mayHaveDropped(context.Background(), f.client, branch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changes, err := Classify(context.Background(), f.client, branch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if possible != test.possible {
+				t.Errorf("mayHaveDropped() = %v, want %v (Classify() = %+v)", possible, test.possible, changes)
+			}
+			if changes.Dropped() != test.dropped {
+				t.Errorf("Classify() = %+v, want dropped %v", changes, test.dropped)
+			}
+		})
+	}
+}

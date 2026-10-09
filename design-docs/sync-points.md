@@ -81,6 +81,12 @@ point:
 | ✓ | ✓ | ✗ | dropped upstream |
 | ✗ | ✓ | ✓ | dropped here |
 
+`Assess` asks first, cheaply, whether either table row "dropped" could have
+anything in it — a commit the sync point holds that one side has and the other
+has no equivalent of among the branch's own commits — and classifies only when
+one could. Without that, a stack restacked onto a trunk that has moved compares
+every commit the trunk gained, on every branch; see `cost.md`.
+
 By id, never by content, because content is the dangerous direction. A change,
 its revert, and the same change made again have the content of the first; asked
 by content, the re-made one would read as dropped, and `push` would delete it

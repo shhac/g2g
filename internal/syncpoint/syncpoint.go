@@ -99,7 +99,8 @@ type Assessor interface {
 // remote last agreed on it. sides names the branch here and on the remote and
 // each side's parent; Assess supplies the rest. A branch with no sync point
 // recorded for it reports Unsynced and nothing else, and the caller compares it
-// as it did before there were sync points.
+// as it did before there were sync points. One nothing was dropped from
+// reports no changes at all, whatever else differs.
 //
 // It is the one place a sync point is read for a decision, so pull and push
 // cannot come to mean different things by having one.
@@ -111,12 +112,71 @@ func Assess(ctx context.Context, git Assessor, remote, branch string, sides Bran
 	if !synced {
 		return Changes{Unsynced: true}, nil
 	}
+	sides.Sync, sides.Synced = point, true
+	droppable, err := mayHaveDropped(ctx, git, sides)
+	if err != nil || !droppable {
+		return Changes{}, err
+	}
 	tracking, err := git.Resolve(ctx, localgit.TrackingRef(remote, branch))
 	if err != nil {
 		tracking = ""
 	}
-	sides.Sync, sides.Synced, sides.Tracking = point, true, tracking
+	sides.Tracking = tracking
 	return Classify(ctx, git, sides)
+}
+
+// mayHaveDropped reports whether Classify could find a drop on either side.
+// Every commit it calls dropped is one side's own, held by the sync point, and
+// without an equivalent on the other side; a branch with no such commit has
+// nothing to classify, and every caller asks why a commit differs only when
+// one was dropped. A false answer is exact. A true one may be a commit with
+// an equivalent below the parents, which Classify then settles.
+//
+// It exists for the cost. Classify compares by content, and after a restack a
+// branch's version here and on the remote sit on different trunks: its
+// content comparison then reads every commit the trunk gained since, on every
+// branch of a stack waiting to be pushed. These walks are bounded by the
+// branch's own commits.
+func mayHaveDropped(ctx context.Context, git Git, branch Branch) (bool, error) {
+	seen, err := git.Commits(ctx, branch.Sync.Tip, nonEmpty(branch.LocalParent, branch.PublishedParent))
+	if err != nil || len(seen) == 0 {
+		return false, err
+	}
+	held := make(map[string]bool, len(seen))
+	for _, commit := range seen {
+		held[commit] = true
+	}
+	isHeld := func(commit string) bool { return held[commit] }
+	// Here: a commit of this branch's own the remote cannot reach was
+	// rewritten, or made, since the agreement -- unless the sync point holds
+	// it, which makes it the remote's drop.
+	ours, err := git.Commits(ctx, branch.Local, nonEmpty(branch.Remote, branch.LocalParent))
+	if err != nil || slices.ContainsFunc(ours, isHeld) {
+		return true, err
+	}
+	// The remote: after a restack every commit of its version is one the
+	// sync point holds and this branch has only under a new id, so the id
+	// alone cannot settle it; content bounded at the parents can.
+	theirs, err := git.Commits(ctx, branch.Remote, nonEmpty(branch.Local, cmp.Or(branch.PublishedParent, branch.LocalParent)))
+	if err != nil || !slices.ContainsFunc(theirs, isHeld) {
+		return false, err
+	}
+	matcher, ok := git.(Matcher)
+	if !ok {
+		return true, nil
+	}
+	unmatched, err := matcher.Unmatched(ctx, branch.Remote, branch.Local, nonEmpty(branch.LocalParent, branch.PublishedParent))
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(unmatched, isHeld), nil
+}
+
+// Matcher compares by content with both sides bounded, which lets Assess
+// settle the commonest case cheaply; without it every branch the id check
+// cannot settle is classified in full.
+type Matcher interface {
+	Unmatched(ctx context.Context, tip, against string, bounds []string) ([]string, error)
 }
 
 // Read is a branch's sync point when it has one recorded for it. One recorded

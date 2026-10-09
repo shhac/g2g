@@ -40,21 +40,8 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 			return nil, err
 		}
 		head := pending.at(branch, tip)
-		if head != tip {
-			if resolvedFork, err = s.pendingFork(ctx, branch, edge.Parent, base, resolvedFork, head, pending.Begins[branch]); err != nil {
-				return nil, err
-			}
-		} else if begins := pending.Begins[branch]; begins != "" {
-			// Not moved by the caller, but told where it begins: its parent is
-			// being taken as published, and this branch already sits on that
-			// version. A commit moved out of the parent into it is its own now.
-			built, err := s.Git.IsAncestor(ctx, begins, head)
-			if err != nil {
-				return nil, err
-			}
-			if built {
-				resolvedFork = begins
-			}
+		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
+			return nil, err
 		}
 		// Old records can start below trunk commits the branch already
 		// contains. Those commits belong to the trunk, even if its local ref
@@ -166,16 +153,41 @@ func (s Service) pendingFork(ctx context.Context, branch, parent, base, fork, he
 	if forked {
 		return fork, nil
 	}
-	if begins != "" {
-		built, err := s.Git.IsAncestor(ctx, begins, head)
-		if err != nil {
-			return "", err
-		}
-		if built {
-			return begins, nil
-		}
+	started, err := s.builtOn(ctx, begins, head)
+	if err != nil || started != "" {
+		return started, err
 	}
 	return "", unmeasured{branch: branch, parent: parent}
+}
+
+// forkFor is where a branch's own commits begin for this rewrite. A branch
+// the caller moves begins where pendingFork says. One it does not move, but
+// is told where it begins, begins there when it is built on it: its parent is
+// being taken as published, and this branch already sits on that version, so
+// a commit moved out of the parent into it is its own now. Anything else
+// begins at its recorded fork point.
+func (s Service) forkFor(ctx context.Context, branch, parent, base, fork, tip, head, begins string) (string, error) {
+	if head != tip {
+		return s.pendingFork(ctx, branch, parent, base, fork, head, begins)
+	}
+	started, err := s.builtOn(ctx, begins, head)
+	if err != nil || started == "" {
+		return fork, err
+	}
+	return started, nil
+}
+
+// builtOn is begins when head is built on it, and empty when it is not or
+// there is no begins to ask about.
+func (s Service) builtOn(ctx context.Context, begins, head string) (string, error) {
+	if begins == "" {
+		return "", nil
+	}
+	built, err := s.Git.IsAncestor(ctx, begins, head)
+	if err != nil || !built {
+		return "", err
+	}
+	return begins, nil
 }
 
 // unmeasured is a branch whose incoming version cannot be given a replay range.

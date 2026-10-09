@@ -22,73 +22,70 @@ import (
 // there, and pull drops it here too -- naming it, and recording it in the sync
 // point's history, where it stays recoverable.
 
-// changed is what the sync point says about one branch, once decided.
-type changed struct {
-	collection *Collection
-	refusal    *repair.Note
-	drops      []Drop
-	moves      []Drop
-	kept       []Drop
-	left       []Drop
-	restored   []Drop
-	// decided reports a branch the sync point settled; one it did not is
-	// left to the rules pull had before sync points.
-	decided bool
-	// unsynced reports a branch that differs from the remote with no sync
-	// point to say whose the difference is.
-	unsynced bool
-}
-
 // bySyncPoint decides a branch from what changed on each side since the two
-// last agreed, when there is a sync point for it and anything was dropped.
-func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, published, parent, begins string) (changed, error) {
+// last agreed. decided is false when there is no sync point or nothing was
+// dropped either way, and the rules pull had before sync points decide it;
+// what the sync point said is still returned, for the preview.
+func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, published, parent, begins string) (verdict, bool, error) {
 	// The Git client can assess; a fake that cannot makes pull behave as it
 	// did before sync points existed.
 	git, ok := s.Git.(syncpoint.Assessor)
 	if !ok {
-		return changed{unsynced: true}, nil
+		return verdict{unsynced: true}, false, nil
 	}
 	changes, err := syncpoint.Assess(ctx, git, c.remote, branch, syncpoint.Branch{
 		Local: local, Remote: published, LocalParent: parent, PublishedParent: begins,
 	})
 	if err != nil {
-		return changed{}, err
+		return verdict{}, false, err
 	}
 	if changes.Unsynced {
-		return changed{unsynced: true}, nil
+		return verdict{unsynced: true}, false, nil
 	}
-	kept := c.keeping(changes)
-	changes = changes.Keep(c.keep)
-	result := changed{kept: drops(branch, kept)}
+	changes, kept := changes.Keep(c.keep)
+	found := verdict{kept: drops(branch, kept)}
 	if changes.Stale {
-		result.restored = drops(branch, changes.New)
+		found.restored = drops(branch, changes.New)
 	}
 	if !changes.Dropped() {
-		return result, nil
+		return found, false, nil
 	}
-	result.decided = true
-	moved, gone, err := s.moved(ctx, c, branch, changes.DroppedUpstream)
+	moves, gone, err := s.moved(ctx, c, branch, changes.DroppedUpstream)
 	if err != nil {
-		return changed{}, err
+		return verdict{}, false, err
 	}
-	switch {
-	case len(changes.DroppedUpstream) != 0 && len(changes.DroppedHere) != 0:
-		result.refusal = droppedBothWays(c, branch, changes)
-	case len(changes.DroppedUpstream) != 0 && len(changes.Mine) != 0:
-		result.refusal = yoursOverTheirDrop(c, branch, changes)
-	case len(changes.DroppedUpstream) != 0 && len(changes.Shared) == 0 && len(gone) != 0:
-		result.refusal = emptiedUpstream(c, branch, gone)
-	case len(changes.DroppedUpstream) != 0:
-		result.collection = &Collection{Branch: branch, To: published, Superseded: true, Begins: begins, Dropped: gone}
-		result.drops, result.moves = drops(branch, gone), moved
-	case len(changes.New) != 0:
-		result.refusal = droppedHereAndNew(c, branch, changes)
-	default:
+	return decide(c, branch, published, begins, changes, moves, gone, found), true, nil
+}
+
+// decide is what pull does with a branch something was dropped from, from
+// what the sync point said and nothing else.
+//
+// Each side's drop is decided on its own, and a drop meeting other work on
+// the same branch is refused rather than resolved: taking either side would
+// lose the other's.
+func decide(c collecting, branch, published, begins string, changes syncpoint.Changes, moves []Drop, gone []string, found verdict) verdict {
+	if len(changes.DroppedUpstream) == 0 {
+		if len(changes.New) != 0 {
+			found.refusal = droppedHereAndNew(c, branch, changes)
+			return found
+		}
 		// Dropped here and nothing new there: this branch is ahead of what
 		// the remote holds by a drop, which is push's to publish.
-		result.left = drops(branch, changes.DroppedHere)
+		found.left = drops(branch, changes.DroppedHere)
+		return found
 	}
-	return result, nil
+	switch {
+	case len(changes.DroppedHere) != 0:
+		found.refusal = droppedBothWays(c, branch, changes)
+	case len(changes.Mine) != 0:
+		found.refusal = yoursOverTheirDrop(c, branch, changes)
+	case len(changes.Shared) == 0 && len(gone) != 0:
+		found.refusal = emptiedUpstream(c, branch, gone)
+	default:
+		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Begins: begins, Dropped: gone}
+		found.drops, found.moves = drops(branch, gone), moves
+	}
+	return found
 }
 
 // moved splits commits the remote dropped from this branch into those another
@@ -97,20 +94,9 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 func (s Service) moved(ctx context.Context, c collecting, branch string, commits []string) ([]Drop, []string, error) {
 	moves, gone := make([]Drop, 0), make([]string, 0, len(commits))
 	for _, commit := range commits {
-		to := ""
-		for _, other := range c.branches {
-			tip := c.onRemote[other]
-			if other == branch || other == c.base || tip == "" {
-				continue
-			}
-			holds, err := s.Git.IsAncestor(ctx, commit, tip)
-			if err != nil {
-				return nil, nil, err
-			}
-			if holds {
-				to = other
-				break
-			}
+		to, err := s.holder(ctx, c, branch, commit)
+		if err != nil {
+			return nil, nil, err
 		}
 		if to == "" {
 			gone = append(gone, commit)
@@ -121,23 +107,28 @@ func (s Service) moved(ctx context.Context, c collecting, branch string, commits
 	return moves, gone, nil
 }
 
+// holder is another selected branch whose published version still holds a
+// commit, empty when none does.
+func (s Service) holder(ctx context.Context, c collecting, branch, commit string) (string, error) {
+	for _, other := range c.branches {
+		tip := c.onRemote[other]
+		if other == branch || other == c.base || tip == "" {
+			continue
+		}
+		holds, err := s.Git.IsAncestor(ctx, commit, tip)
+		if err != nil || holds {
+			return other, err
+		}
+	}
+	return "", nil
+}
+
 func drops(branch string, commits []string) []Drop {
 	named := make([]Drop, 0, len(commits))
 	for _, commit := range commits {
 		named = append(named, Drop{Branch: branch, Commit: commit})
 	}
 	return named
-}
-
-// keeping is which of the caller's --keep commits are drops of this branch.
-func (c collecting) keeping(changes syncpoint.Changes) []string {
-	kept := make([]string, 0)
-	for _, commit := range c.keep {
-		if slices.Contains(changes.DroppedUpstream, commit) || slices.Contains(changes.DroppedHere, commit) {
-			kept = append(kept, commit)
-		}
-	}
-	return kept
 }
 
 // keepCommand is the pull that keeps these commits, for the selection and

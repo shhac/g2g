@@ -170,23 +170,19 @@ func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHer
 
 // Keep reclassifies commits a person chose to keep: one dropped upstream
 // becomes theirs to publish again, and one dropped here becomes one to take
-// back. Anything not dropped is ignored; Unkept says which.
-func (c Changes) Keep(commits []string) Changes {
-	kept := c
-	kept.DroppedUpstream, kept.Mine = partition(c.DroppedUpstream, commits, c.Mine)
-	kept.DroppedHere, kept.New = partition(c.DroppedHere, commits, c.New)
-	return kept
-}
-
-// Unkept are the named commits that are not drops of this branch.
-func (c Changes) Unkept(commits []string) []string {
-	unkept := make([]string, 0)
+// back. It returns which of them were drops of this branch; anything else
+// named is not this branch's to keep.
+func (c Changes) Keep(commits []string) (Changes, []string) {
+	kept := make([]string, 0)
 	for _, commit := range commits {
-		if !slices.Contains(c.DroppedUpstream, commit) && !slices.Contains(c.DroppedHere, commit) {
-			unkept = append(unkept, commit)
+		if slices.Contains(c.DroppedUpstream, commit) || slices.Contains(c.DroppedHere, commit) {
+			kept = append(kept, commit)
 		}
 	}
-	return unkept
+	reclassified := c
+	reclassified.DroppedUpstream, reclassified.Mine = partition(c.DroppedUpstream, commits, c.Mine)
+	reclassified.DroppedHere, reclassified.New = partition(c.DroppedHere, commits, c.New)
+	return reclassified, kept
 }
 
 // partition moves the members of from named in chosen onto to.

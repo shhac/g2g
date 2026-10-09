@@ -184,14 +184,15 @@ func TestAResetToAStaleTrackingRefIsNotADrop(t *testing.T) {
 	}
 }
 
-// Keeping a drop turns it back into work on the side that still has it.
+// Keeping a drop turns it back into work on the side that still has it, and
+// says which of the named commits were this branch's drops.
 func TestKeepReclassifiesOnlyDrops(t *testing.T) {
 	changes := Changes{DroppedUpstream: []string{"up"}, DroppedHere: []string{"here"}, Mine: []string{"mine"}}
-	kept := changes.Keep([]string{"up", "here"})
+	kept, which := changes.Keep([]string{"up", "here", "mine"})
 	if !slices.Equal(kept.Mine, []string{"mine", "up"}) || !slices.Equal(kept.New, []string{"here"}) || kept.Dropped() {
 		t.Errorf("Keep() = %+v", kept)
 	}
-	if unkept := changes.Unkept([]string{"up", "mine"}); !slices.Equal(unkept, []string{"mine"}) {
-		t.Errorf("Unkept() = %v, want the commit that was not a drop", unkept)
+	if !slices.Equal(which, []string{"up", "here"}) {
+		t.Errorf("Keep() kept %v, want the two drops and not the commit that was not one", which)
 	}
 }

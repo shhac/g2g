@@ -164,12 +164,17 @@ type collected struct {
 	unsynced                           []string
 }
 
-// verdict is what collect decided about one branch: a collection, a
-// divergence, or neither, and what a sync point said about it.
+// verdict is what collect decided about one branch -- a collection, a
+// divergence, a refusal, or none of them -- and the commits a sync point named
+// on the way.
 type verdict struct {
-	collection *Collection
-	stuck      *divergence
-	changed
+	collection                         *Collection
+	stuck                              *divergence
+	refusal                            *repair.Note
+	drops, moves, kept, left, restored []Drop
+	// unsynced reports a branch that differs from the remote with no sync
+	// point to say whose the difference is.
+	unsynced bool
 }
 
 // collectOne gives one branch one of collect's five answers, each returned
@@ -207,15 +212,12 @@ func (s Service) collectOne(ctx context.Context, c collecting, branch string) (v
 	// Before the fast-forward below: a branch somebody reset back to drop a
 	// commit is an ancestor of the published version, and fast-forwarding it
 	// would put the commit back.
-	sync, err := s.bySyncPoint(ctx, c, branch, local, published, parent, begins)
-	if err != nil {
-		return verdict{}, err
-	}
-	if sync.decided {
-		return verdict{collection: sync.collection, changed: sync}, nil
+	sync, decided, err := s.bySyncPoint(ctx, c, branch, local, published, parent, begins)
+	if err != nil || decided {
+		return sync, err
 	}
 	found, err := s.collectUnsynced(ctx, c, branch, local, published, parent, begins)
-	found.changed = sync
+	found.kept, found.restored, found.unsynced = sync.kept, sync.restored, sync.unsynced
 	return found, err
 }
 

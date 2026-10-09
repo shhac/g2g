@@ -104,11 +104,20 @@ type Step struct {
 //
 // The base already had this, through Onto.ToLocation naming the ref the trunk
 // is about to be at. This is the same statement for the branches above it.
-type Pending map[string]string
+type Pending struct {
+	// Tips is where each branch the caller moves will be.
+	Tips map[string]string
+	// Begins is where the incoming version of a branch begins, when the
+	// caller knows and the recorded fork point does not say: a version
+	// somebody else published sits on the parent as they published it, which
+	// is neither the parent here nor where this clone recorded the branch
+	// forking. pull knows it, from the remote's own tip for the parent.
+	Begins map[string]string
+}
 
 // at answers where a branch will be, given where Git currently says it is.
 func (p Pending) at(branch, resolved string) string {
-	if object, moving := p[branch]; moving {
+	if object, moving := p.Tips[branch]; moving {
 		return object
 	}
 	return resolved

@@ -187,7 +187,21 @@ func (s Service) collectOne(ctx context.Context, remote, base, branch string, on
 	if len(ours) == 0 && onParent {
 		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
 	}
-	theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), parent)
+	// The published version's own work is bounded at the parent as the
+	// remote holds it, when it is built on that. Bounded at the parent here,
+	// whatever somebody else added to the parent and published -- or this
+	// clone added to it and has not -- counted as this branch's: two people
+	// each moving a different branch of one stack read as both moving this
+	// one, and the only way offered through discarded one of them.
+	begins, err := s.publishedParent(ctx, parent, published, onRemote)
+	if err != nil {
+		return verdict{}, err
+	}
+	theirsFrom := parent
+	if begins != "" {
+		theirsFrom = begins
+	}
+	theirs, err := landed.Missing(ctx, s.Git, branch, localgit.IsolatedRef(remote, branch), theirsFrom)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -211,17 +225,34 @@ func (s Service) collectOne(ctx context.Context, remote, base, branch string, on
 	// and the replay decides whether it can tell which of that version's
 	// commits are the branch's.
 	if len(ours) == 0 {
-		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}}, nil
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Begins: begins}}, nil
 	}
 	if take.AppliesTo(branch, parents) {
 		// Asked for explicitly, and the commits it costs are carried so the
 		// preview can name every one before anything happens.
-		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Discards: ours}}, nil
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Discards: ours, Begins: begins}}, nil
 	}
 	// Both sides moved, so say both. "You have work the remote does not" is
 	// true of every ordinary commit, and a reader who has just made one has
 	// no way to tell that from this.
 	return verdict{stuck: &divergence{Branch: branch, Ours: len(ours), Theirs: theirs}}, nil
+}
+
+// publishedParent is the parent as the remote holds it, when the published
+// version of the branch is built on it, and empty otherwise. It is the
+// remote's own answer from this run, never the fetched ref alone: a parent the
+// remote does not hold leaves the fetched ref stale or absent, and asking Git
+// about an absent ref fails the whole pull.
+func (s Service) publishedParent(ctx context.Context, parent, published string, onRemote map[string]string) (string, error) {
+	tip := onRemote[parent]
+	if tip == "" {
+		return "", nil
+	}
+	built, err := s.Git.IsAncestor(ctx, tip, published)
+	if err != nil || !built {
+		return "", err
+	}
+	return tip, nil
 }
 
 // fetchList is the base and the selection, each named once. The base is
@@ -247,7 +278,7 @@ func fetchList(base string, branches []string) []string {
 func collectionsEqual(left, right []Collection) bool {
 	return slices.EqualFunc(left, right, func(a, b Collection) bool {
 		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
-			slices.Equal(a.Discards, b.Discards)
+			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards)
 	})
 }
 

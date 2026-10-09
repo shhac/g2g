@@ -437,3 +437,31 @@ func TestPlanTrackNamingAStrandedParentMakesItATrunk(t *testing.T) {
 		t.Error("the plan changes nothing, so track reports it as already done")
 	}
 }
+
+// A branch replaced by a version that begins somewhere else is recorded as
+// beginning there, pinned, and a pin that fails puts the record back.
+func TestReforkRecordsWhereAReplacedBranchBeginsOrPutsTheGraphBack(t *testing.T) {
+	ctx := context.Background()
+	service, store := newService(t, stackGit(), forest())
+	pinner := &memoryPinner{}
+	service.Refs = pinner
+
+	if err := service.Refork(ctx, "synthetic-auth", "synthetic-published-parent"); err != nil {
+		t.Fatalf("Refork() error = %v", err)
+	}
+	if got := store.graph.Edges["synthetic-auth"].ForkPoint; got != "synthetic-published-parent" {
+		t.Errorf("fork point = %q, want the published parent", got)
+	}
+	if pinner.pins["synthetic-auth"] != "synthetic-published-parent" {
+		t.Errorf("pins = %v, want the new fork point pinned", pinner.pins)
+	}
+
+	before := store.graph.Edges["synthetic-auth"].ForkPoint
+	service.Refs = &memoryPinner{failPin: "synthetic-auth"}
+	if err := service.Refork(ctx, "synthetic-auth", "synthetic-elsewhere"); err == nil {
+		t.Fatal("Refork() error = nil with the pin failing")
+	}
+	if got := store.graph.Edges["synthetic-auth"].ForkPoint; got != before {
+		t.Errorf("fork point = %q after a failed pin, want %q put back", got, before)
+	}
+}

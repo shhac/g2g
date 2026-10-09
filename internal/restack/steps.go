@@ -41,7 +41,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		}
 		head := pending.at(branch, tip)
 		if head != tip {
-			if resolvedFork, err = s.pendingFork(ctx, branch, edge.Parent, base, resolvedFork, head); err != nil {
+			if resolvedFork, err = s.pendingFork(ctx, branch, edge.Parent, base, resolvedFork, head, pending.Begins[branch]); err != nil {
 				return nil, err
 			}
 		}
@@ -131,8 +131,16 @@ func (s Service) resolveStep(ctx context.Context, branch, parent, forkPoint stri
 // already sits on its parent's new tip begins there; one that still contains
 // its recorded fork point, as a reviewer's commit on top does, begins there;
 // and one that contains neither gives no range holding only its own commits,
-// which is refused rather than guessed.
-func (s Service) pendingFork(ctx context.Context, branch, parent, base, fork, head string) (string, error) {
+// which is refused rather than guessed — unless the caller knows where it
+// begins.
+//
+// That is a version somebody else published on the parent as they published
+// it: the remote's own tip for the parent, which this clone has since moved
+// past or away from. It is asked last, and only believed when the version
+// really is built on it. Whatever the parent held there and no longer holds
+// here is then the parent's dropped work, and classifyOrphans names it like
+// any other.
+func (s Service) pendingFork(ctx context.Context, branch, parent, base, fork, head, begins string) (string, error) {
 	onParent, err := s.Git.IsAncestor(ctx, base, head)
 	if err != nil {
 		return "", err
@@ -146,6 +154,15 @@ func (s Service) pendingFork(ctx context.Context, branch, parent, base, fork, he
 	}
 	if forked {
 		return fork, nil
+	}
+	if begins != "" {
+		built, err := s.Git.IsAncestor(ctx, begins, head)
+		if err != nil {
+			return "", err
+		}
+		if built {
+			return begins, nil
+		}
 	}
 	return "", unmeasured{branch: branch, parent: parent}
 }

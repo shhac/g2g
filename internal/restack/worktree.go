@@ -28,7 +28,7 @@ type WorktreeReader interface {
 // re-records fork points and moves no ref at all, and a collapse onto the
 // commit a branch already points at moves nothing either.
 func moving(steps []Step, absorb bool, pending Pending) []string {
-	branches := slices.Sorted(maps.Keys(pending))
+	branches := slices.Sorted(maps.Keys(pending.Tips))
 	if absorb {
 		return branches
 	}

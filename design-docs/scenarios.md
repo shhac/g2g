@@ -158,6 +158,31 @@ this is unpublished work like any other and it leaves it to `push`. The second
 sync of the day, and every `land` of three branches over a bottom branch with
 more than one commit, refused until it did.
 
+## Two people on one stack
+
+**shared stack.** Alice publishes `main ← A ← B ← C`. Bob makes the branches
+local and adopts the chain (`adopt --scope path`, or `github adopt --scope
+path` from the pull requests), commits to B and restacks; Alice commits to A
+and restacks. Whoever pushes second is refused, because their stack lacks the
+other's commit, and `pull` then has to bring them back into step — in either
+order — before a plain `push` succeeds. The journeys are in
+`internal/cli/shared_stack_journey_test.go`.
+
+Both orders used to stop there. A branch's published version was measured
+against the parent *here*, so the commit Alice added to A and published read as
+B's own — Bob's B was "both moved" and the only offer discarded his commit —
+and when Bob published first, his B sat on the A Alice had since moved past,
+so the replay could not tell which of its commits were B's. `pull` now
+measures a published branch against its parent *as the remote holds it*, when
+it is built on that, and replays from there. The parent's commits stay the
+parent's in both directions.
+
+A conflict between the two (both touch the same lines) stops the pull's replay
+like any other, and `restack --continue` finishes it. The resolution rewrites
+the other person's commit, so `push` then refuses, saying a conflict-resolved
+replay changed the published patch: replacing it is a decision to make having
+looked.
+
 ## Merges that land out of order
 
 **middle merges first.** `main ← A ← B ← C` and B lands, carrying A with it.

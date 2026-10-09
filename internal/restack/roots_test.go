@@ -15,7 +15,7 @@ import (
 func TestEachRootIsReplayedFromItsOwnForkPoint(t *testing.T) {
 	git := forestGit()
 	service, _, _ := newService(git, forest())
-	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, nil)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, Pending{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestAFailedReplayPutsBackEveryRootItHadMoved(t *testing.T) {
 	git := forestGit()
 	git.replayFails = "synthetic-x"
 	service, _, journal := newService(git, forest())
-	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, nil)
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, Pending{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestOntoRefusesASelectionWithSeveralRoots(t *testing.T) {
 	git.objects["synthetic-release"] = "release-tip"
 	service, _, _ := newService(git, forest())
 
-	plan, err := service.Plan(context.Background(), selection(), ToBranch("synthetic-release"), false, nil)
+	plan, err := service.Plan(context.Background(), selection(), ToBranch("synthetic-release"), false, Pending{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestALocationMovesEveryRoot(t *testing.T) {
 	git.objects["refs/synthetic/fetched"] = "trunk-fetched"
 	service, _, _ := newService(git, adopted)
 
-	plan, err := service.Plan(context.Background(), selection(), ToLocation("refs/synthetic/fetched"), false, nil)
+	plan, err := service.Plan(context.Background(), selection(), ToLocation("refs/synthetic/fetched"), false, Pending{})
 	if err != nil {
 		t.Fatal(err)
 	}

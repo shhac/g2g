@@ -90,7 +90,7 @@ func (r realStack) amend(branch, file, content string) {
 
 func (r realStack) plan(selection graph.Selection) Plan {
 	r.t.Helper()
-	plan, err := r.service.Plan(context.Background(), selection, Onto{}, false, nil)
+	plan, err := r.service.Plan(context.Background(), selection, Onto{}, false, Pending{})
 	if err != nil {
 		r.t.Fatalf("Plan() error = %v", err)
 	}
@@ -256,7 +256,7 @@ func publishedRestack(t *testing.T) (r realStack, published map[string]string) {
 // nobody needed.
 func TestABranchTheCallerMovesIsMeasuredWhereItWillBe(t *testing.T) {
 	r, published := publishedRestack(t)
-	pending := Pending{"synthetic-a": published["synthetic-a"], "synthetic-b": published["synthetic-b"]}
+	pending := Pending{Tips: map[string]string{"synthetic-a": published["synthetic-a"], "synthetic-b": published["synthetic-b"]}}
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
 		ToLocation("synthetic-published-main"), false, pending)
 	if err != nil {
@@ -297,7 +297,7 @@ func TestABranchTheCallerMovesKeepsARecordedForkItStillContains(t *testing.T) {
 	r.Run("switch", "-q", "-c", "synthetic-reviewed-a", "synthetic-a")
 	r.Commit("synthetic review", "review.txt", "review")
 	r.Run("switch", "-q", "synthetic-published-main")
-	pending := Pending{"synthetic-a": r.Revision("synthetic-reviewed-a")}
+	pending := Pending{Tips: map[string]string{"synthetic-a": r.Revision("synthetic-reviewed-a")}}
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
 		ToLocation("synthetic-published-main"), false, pending)
 	if err != nil {
@@ -314,7 +314,7 @@ func TestABranchTheCallerMovesKeepsARecordedForkItStillContains(t *testing.T) {
 	}
 
 	r.Run("update-ref", "refs/heads/synthetic-main", published["synthetic-main"])
-	r.Run("update-ref", "refs/heads/synthetic-a", pending["synthetic-a"])
+	r.Run("update-ref", "refs/heads/synthetic-a", pending.Tips["synthetic-a"])
 	if err := r.service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -361,7 +361,7 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	r, published := publishedRestack(t)
 	r.Run("switch", "-q", "--orphan", "synthetic-unrelated")
 	r.Commit("synthetic unrelated", "unrelated.txt", "unrelated")
-	pending := Pending{"synthetic-a": r.Revision("synthetic-unrelated")}
+	pending := Pending{Tips: map[string]string{"synthetic-a": r.Revision("synthetic-unrelated")}}
 
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
 		ToLocation(published["synthetic-main"]), false, pending)
@@ -370,6 +370,18 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(plan.Blocked(), "synthetic-a") {
 		t.Errorf("Blocked = %q, want a refusal naming synthetic-a", plan.Blocked())
+	}
+
+	// A start the caller names is believed only when the version really is
+	// built on it.
+	pending.Begins = map[string]string{"synthetic-a": published["synthetic-main"]}
+	plan, err = r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
+		ToLocation(published["synthetic-main"]), false, pending)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if !strings.Contains(plan.Blocked(), "synthetic-a") {
+		t.Errorf("Blocked = %q with a start the version is not built on, want the refusal", plan.Blocked())
 	}
 }
 
@@ -383,7 +395,7 @@ func TestAMissingBranchIsRefusedWithUntrackAsTheWayOut(t *testing.T) {
 	r.Run("switch", "-q", "synthetic-main")
 	r.Run("branch", "-q", "-D", "synthetic-b")
 
-	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, nil)
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, Pending{})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

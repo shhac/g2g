@@ -102,6 +102,12 @@ type Collection struct {
 	// none of yours, and it is a reset rather than a fast-forward, so it is
 	// named rather than treated as the same thing.
 	Superseded bool
+	// Begins is where the published version's own commits begin, when it is
+	// built on the parent as the remote holds it rather than on the parent
+	// here: somebody published this branch before this clone moved its
+	// parent on. Without it the replay could not tell which of the published
+	// version's commits are the branch's.
+	Begins string
 }
 
 // onto names the base the replay should land on. Until the base branch is
@@ -143,14 +149,17 @@ func (p Plan) Equal(other Plan) bool {
 // sync would move it underneath that worktree.
 func (p Plan) pending() restack.Pending {
 	if len(p.Collect) == 0 && p.onto() == "" {
-		return nil
+		return restack.Pending{}
 	}
-	moving := make(restack.Pending, len(p.Collect)+1)
+	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: map[string]string{}}
 	for _, collection := range p.Collect {
-		moving[collection.Branch] = collection.To
+		moving.Tips[collection.Branch] = collection.To
+		if collection.Begins != "" {
+			moving.Begins[collection.Branch] = collection.Begins
+		}
 	}
 	if onto := p.onto(); onto != "" {
-		moving[p.Base] = onto
+		moving.Tips[p.Base] = onto
 	}
 	return moving
 }

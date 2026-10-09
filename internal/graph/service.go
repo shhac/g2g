@@ -226,6 +226,32 @@ func (s Service) rollbackGraph(ctx context.Context, previous Graph, applyErr err
 	return applyErr
 }
 
+// Refork records where a branch's own commits begin now, when something other
+// than a restack has replaced the branch with a version that begins somewhere
+// else: pull taking a version somebody else published on the parent as they
+// published it. A fork point left describing the old version is not in the
+// new one, and a restack that stopped and was continued would refuse it.
+func (s Service) Refork(ctx context.Context, branch, forkPoint string) error {
+	adopted, err := s.Store.Load(ctx)
+	if err != nil {
+		return err
+	}
+	edge, tracked := adopted.Edges[branch]
+	if !tracked || edge.ForkPoint == forkPoint {
+		return nil
+	}
+	updated := adopted.Clone()
+	edge.ForkPoint = forkPoint
+	updated.Edges[branch] = edge
+	if err := s.Store.Save(ctx, updated); err != nil {
+		return err
+	}
+	if err := s.pin(ctx, branch, forkPoint); err != nil {
+		return s.rollbackGraph(ctx, adopted, err)
+	}
+	return nil
+}
+
 // pin keeps a fork point reachable. A repository without a pinner still
 // records the fork point; it is only unprotected against collection.
 func (s Service) pin(ctx context.Context, branch, forkPoint string) error {

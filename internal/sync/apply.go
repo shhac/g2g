@@ -58,6 +58,15 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			return stop(err)
 		}
 		moved = append(moved, collection.Branch)
+		// The version taken begins on the parent as it was published, and the
+		// replay planned it from there. Recording that is what lets a replay
+		// that stops on a conflict be continued: --continue plans again from
+		// the record, and the old fork point is not in this version.
+		if collection.Begins != "" {
+			if err := s.Graph.Refork(ctx, collection.Branch, collection.Begins); err != nil {
+				return stop(err)
+			}
+		}
 	}
 	if len(plan.Restack.Steps) != 0 {
 		if err := s.Restack.Apply(ctx, plan.Restack); err != nil {

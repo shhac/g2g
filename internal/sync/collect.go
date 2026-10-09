@@ -9,6 +9,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/parallel"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
 )
@@ -103,12 +104,21 @@ func (s Service) compare(ctx context.Context, base, remote string, published map
 // The branches both sides moved come back rather than a refusal, because the
 // way out names the selection it came from and only the caller has that.
 func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
+	// Each branch is its own reads and none depends on another, so they are
+	// asked at once, into a slice sized first so each owns one element, and
+	// merged in the selection's order.
+	verdicts := make([]verdict, len(c.branches))
+	err := parallel.Each(ctx, c.branches, func(ctx context.Context, index int, branch string) error {
+		found, err := s.collectOne(ctx, c, branch)
+		verdicts[index] = found
+		return err
+	})
+	if err != nil {
+		return collected{}, err
+	}
 	found := collected{collections: make([]Collection, 0, len(c.branches)), stuck: make([]divergence, 0)}
-	for _, branch := range c.branches {
-		verdict, err := s.collectOne(ctx, c, branch)
-		if err != nil {
-			return collected{}, err
-		}
+	for index, branch := range c.branches {
+		verdict := verdicts[index]
 		if verdict.collection != nil {
 			found.collections = append(found.collections, *verdict.collection)
 		}

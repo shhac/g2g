@@ -65,6 +65,9 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if len(steps) == 0 {
 		return plan, nil
 	}
+	if plan.Subjects, err = s.subjects(ctx, plan.Orphaned()); err != nil {
+		return Plan{}, err
+	}
 	if plan.Absorb && !plan.Absorbable() {
 		return plan.refused(repair.Note{Reason: "commits the parent dropped were rewritten rather than removed, so absorbing them would duplicate work the parent still carries"}), nil
 	}
@@ -198,4 +201,21 @@ func ontoOneRoot(roots []string, parent string) repair.Note {
 		Reason: fmt.Sprintf("--onto moves one branch and what is stacked on it, and this selection has %d roots: %s", len(roots), strings.Join(roots, ", ")),
 		Ways:   ways,
 	}
+}
+
+// subjects names the commits a preview is about to list, when Git can say.
+func (s Service) subjects(ctx context.Context, ids []string) (map[string]string, error) {
+	describer, ok := s.Git.(Describer)
+	if !ok || len(ids) == 0 {
+		return nil, nil
+	}
+	commits, err := describer.Describe(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	named := make(map[string]string, len(commits))
+	for _, commit := range commits {
+		named[commit.ID] = commit.Subject
+	}
+	return named, nil
 }

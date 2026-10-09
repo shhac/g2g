@@ -416,8 +416,10 @@ func TestRestackReportsCommitsTheParentDropped(t *testing.T) {
 		t.Fatalf("restack: %v\n%s", err, stdout)
 	}
 
-	if !strings.Contains(stdout, "dropped") {
-		t.Errorf("output does not report the dropped commit:\n%s", stdout)
+	// Named, not counted: once the branch moves nothing else will say which
+	// commit it was.
+	if !strings.Contains(stdout, "they will be dropped here too: synthetic-b "+gitOutput(t, "rev-parse", "--short=12", "synthetic-a@{1}")+" a2.") {
+		t.Errorf("output does not name the dropped commit:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "--absorb") {
 		t.Errorf("output does not offer to keep it:\n%s", stdout)

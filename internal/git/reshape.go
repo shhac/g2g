@@ -47,6 +47,31 @@ func (c Client) Unpublished(ctx context.Context, branch, since string) ([]Commit
 	return commits, nil
 }
 
+// Describe names each commit with its subject, in the order given, in one
+// read. A preview that drops, moves or keeps commits lists every one of them
+// by what it is, because once a ref has moved nothing here will name them
+// again.
+func (c Client) Describe(ctx context.Context, ids []string) ([]Commit, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	for _, id := range ids {
+		if err := safeRef(id); err != nil {
+			return nil, err
+		}
+	}
+	output, err := c.run(ctx, append([]string{"log", "--no-walk=unsorted", "--format=%H%x09%s"}, ids...)...)
+	if err != nil {
+		return nil, err
+	}
+	commits := make([]Commit, 0, len(ids))
+	for _, line := range outputLines(output) {
+		id, subject, _ := strings.Cut(line, "\t")
+		commits = append(commits, Commit{ID: id, Subject: subject})
+	}
+	return commits, nil
+}
+
 // RemoteTracking names the remote-tracking refs that carry branch's name, as
 // "remote/branch". A local read: it reports what the last fetch recorded,
 // which is what a person sees in git branch -r.

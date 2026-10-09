@@ -126,3 +126,20 @@ func runGitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	return gitExec(t, append([]string{"-C", dir}, args...)...)
 }
+
+func TestDescribeNamesEachCommitInTheOrderGiven(t *testing.T) {
+	repo, client := publishedRepo(t)
+	local, pushed := repo.Revision("synthetic-work"), repo.Revision("synthetic-work~1")
+
+	commits, err := client.Describe(context.Background(), []string{pushed, local})
+	if err != nil {
+		t.Fatalf("Describe() error = %v", err)
+	}
+	want := []Commit{{ID: pushed, Subject: "synthetic pushed"}, {ID: local, Subject: "synthetic local"}}
+	if !slices.Equal(commits, want) {
+		t.Errorf("Describe() = %+v, want %+v", commits, want)
+	}
+	if none, err := client.Describe(context.Background(), nil); err != nil || len(none) != 0 {
+		t.Errorf("Describe(nil) = %v, %v, want nothing asked", none, err)
+	}
+}

@@ -41,6 +41,13 @@ type Git interface {
 	UpdateBranch(context.Context, string, string) error
 }
 
+// Describer names commits by their subjects. It is optional: without it a
+// preview still says how many commits a parent dropped, as it did before it
+// could say which.
+type Describer interface {
+	Describe(ctx context.Context, ids []string) ([]localgit.Commit, error)
+}
+
 // Service rewrites stacks so their contents match their recorded structure.
 type Service struct {
 	Git     Git
@@ -164,6 +171,10 @@ type Plan struct {
 	// Held reports a refusal because a branch that would move is checked out
 	// in another worktree.
 	Held bool
+	// Subjects names each orphan by its subject, so a preview can list what
+	// it is about to drop rather than count it. Derived from the orphans'
+	// ids, which Equal already compares.
+	Subjects map[string]string
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. Most of restack's refusals are states rather than
 	// choices and name no way out.

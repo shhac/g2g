@@ -70,17 +70,37 @@ func orphanNote(view stackView, plan restack.Plan) stackView {
 	if len(orphans) == 0 {
 		return view
 	}
-	dropped := count(len(orphans), "commit", "commits")
+	dropped, listed := count(len(orphans), "commit", "commits"), orphanList(plan)
 	if plan.Absorb {
-		return view.note("Keeps "+dropped+" the parent dropped, by re-recording where the branch forks. Nothing is rewritten.", severityWarn)
+		return view.note("Keeps "+dropped+" the parent dropped, by re-recording where the branch forks"+listed+". Nothing is rewritten.", severityWarn)
 	}
-	note := "The parent dropped " + dropped + " this branch still carries; they will be dropped here too."
+	note := "The parent dropped " + dropped + " this branch still carries; they will be dropped here too" + listed + "."
 	if plan.Absorbable() {
 		return view.note(note+" Use --absorb to keep them instead.", severityWarn)
 	}
 	// A rewritten commit still exists in the parent under a new object id, so
 	// keeping the old copy would duplicate it.
 	return view.note(note+" They cannot be absorbed: the parent rewrote rather than removed them.", severityWarn)
+}
+
+// orphanList names each orphan by the branch still carrying it, its short id
+// and its subject: a commit about to leave a branch is listed, never counted,
+// so it can be found again with git branch <name> <commit> if that was wrong.
+func orphanList(plan restack.Plan) string {
+	said := make([]string, 0)
+	for _, step := range plan.Steps {
+		for _, orphan := range step.Orphans {
+			entry := step.Branch + " " + shortObject(orphan)
+			if subject := plan.Subjects[orphan]; subject != "" {
+				entry += " " + subject
+			}
+			said = append(said, entry)
+		}
+	}
+	if len(said) == 0 {
+		return ""
+	}
+	return ": " + strings.Join(said, ", ")
 }
 
 func emptiedNote(view stackView, plan restack.Plan) stackView {

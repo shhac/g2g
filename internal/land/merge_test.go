@@ -43,7 +43,7 @@ func TestMergeRetriesOnlyTheBaseChangeAndKeepsItsHeadPinned(t *testing.T) {
 			w.service.GitHub = retry
 			waits := 0
 			w.service.pause = func(context.Context, time.Duration) error { waits++; return nil }
-			err := w.service.mergeReady(context.Background(), plan, plan.Steps[0], "one-tip")
+			err := w.service.mergeReady(context.Background(), plan, plan.Steps[0], "one-tip", w.github.states[plan.Steps[0].Number])
 			if refusals < 3 && err != nil {
 				t.Fatal(err)
 			}
@@ -90,7 +90,7 @@ func TestMergeRetryRechecksReviewProtectionConflictAndIdentity(t *testing.T) {
 			retry := &retryGitHub{fakeGitHub: w.github, refuse: 1, afterRefusal: func() { change(w) }}
 			w.service.GitHub = retry
 			w.service.pause = func(context.Context, time.Duration) error { return nil }
-			err := w.service.mergeReady(context.Background(), plan, plan.Steps[0], "one-tip")
+			err := w.service.mergeReady(context.Background(), plan, plan.Steps[0], "one-tip", w.github.states[plan.Steps[0].Number])
 			if err == nil || retry.calls != 1 {
 				t.Fatalf("error = %v, attempts = %d; unsafe retry", err, retry.calls)
 			}
@@ -108,13 +108,13 @@ func TestMergeDoesNotRetryOtherFailuresOrOutliveCancellation(t *testing.T) {
 			retry := &retryGitHub{fakeGitHub: w.github, refuse: 1}
 			w.service.GitHub = retry
 			w.service.pause = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
-			err := w.service.mergeReady(ctx, plan, plan.Steps[0], "one-tip")
+			err := w.service.mergeReady(ctx, plan, plan.Steps[0], "one-tip", w.github.states[plan.Steps[0].Number])
 			if !errors.Is(err, context.Canceled) || retry.calls != 1 {
 				t.Fatalf("error = %v, calls = %d", err, retry.calls)
 			}
 		} else {
 			w.github.mergeErr = errors.New("synthetic ambiguous transport failure")
-			err := w.service.mergeReady(ctx, plan, plan.Steps[0], "one-tip")
+			err := w.service.mergeReady(ctx, plan, plan.Steps[0], "one-tip", w.github.states[plan.Steps[0].Number])
 			if !errors.Is(err, w.github.mergeErr) || len(w.events.only("merge:")) != 1 {
 				t.Fatalf("retried ambiguous error: %v %v", err, w.events.seen)
 			}

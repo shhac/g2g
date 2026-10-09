@@ -11,7 +11,7 @@ import (
 // mergeReady retries only the explicit base-change refusal, at most twice.
 // Each retry waits for recomputation and rechecks approval, protection, head
 // and base. The merge itself is pinned to the head this descent published.
-func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip string) error {
+func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip string, state githubstack.MergeState) error {
 	wait := s.pause
 	if wait == nil {
 		wait = pause
@@ -20,7 +20,7 @@ func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip strin
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		now, err := s.recheck(ctx, plan, step, tip)
+		now, err := s.recheck(ctx, plan, step, tip, state)
 		if err != nil {
 			return err
 		}
@@ -40,7 +40,7 @@ func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip strin
 		if err := wait(ctx, settleFirst); err != nil {
 			return err
 		}
-		if err := s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {
+		if state, err = s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {
 			return err
 		}
 	}

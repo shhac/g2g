@@ -97,23 +97,26 @@ func settle(ctx context.Context, wait pauser, what string, ask func(context.Cont
 	}
 }
 
-// settlePush waits until GitHub is looking at what was just pushed.
+// settlePush waits until GitHub is looking at what was just pushed, and
+// answers with the merge state that said so.
 //
 // Three facts, not one. headRefOid says GitHub has the commit; baseRefName
 // says the merge will go where it is meant to; mergeable says GitHub has
 // finished working out whether it can merge at all, which it reports as
 // UNKNOWN while it thinks. None of them is about CI.
-func (s Service) settlePush(ctx context.Context, step Step, tip string, remote string) error {
+func (s Service) settlePush(ctx context.Context, step Step, tip string, remote string) (githubstack.MergeState, error) {
+	var settled githubstack.MergeState
 	err := settle(ctx, s.pause, fmt.Sprintf("GitHub to see %s at %s", step.Branch, shortID(tip)), func(ctx context.Context) (bool, error) {
 		state, err := s.state(ctx, step.Number)
 		if err != nil {
 			return false, err
 		}
+		settled = state
 		return state.HeadOID == tip && state.Base == step.Base && state.Mergeable != githubstack.MergeableUnknown, nil
 	})
 	var unsettled *NotSettled
 	if !errors.As(err, &unsettled) {
-		return err
+		return settled, err
 	}
 	// Which of the two failed. "Waiting for GitHub" reads as propagation lag,
 	// and the answer to that is to wait longer -- so a push that never reached
@@ -129,13 +132,13 @@ func (s Service) settlePush(ctx context.Context, step Step, tip string, remote s
 	defer cancel()
 	tips, readErr := s.Git.RemoteTips(diagnose, remote, []string{step.Branch})
 	if readErr != nil {
-		return err
+		return settled, err
 	}
 	if published, present := tips[step.Branch]; !present || published != tip {
-		return fmt.Errorf("%s is not on %s at %s (it has %s), so GitHub was never going to see it · the push did not take effect",
+		return settled, fmt.Errorf("%s is not on %s at %s (it has %s), so GitHub was never going to see it · the push did not take effect",
 			step.Branch, remote, shortID(tip), describeTip(published))
 	}
-	return err
+	return settled, err
 }
 
 // describeTip names a tip a remote does not have, so the sentence above reads

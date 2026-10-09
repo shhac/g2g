@@ -149,7 +149,8 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	if err != nil {
 		return false, err
 	}
-	if err := s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {
+	settled, err := s.settlePush(ctx, step, tip, plan.Options.Remote)
+	if err != nil {
 		return false, err
 	}
 	// Decided again, immediately before the one act that cannot be undone. The
@@ -163,20 +164,18 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	// asked GitHub for a merge it refuses, having been given --admin to pass.
 	// The plan's forecast still counts, so the merge is never less than the
 	// recipe said it would be.
-	if err := s.mergeReady(ctx, plan, step, tip); err != nil {
+	if err := s.mergeReady(ctx, plan, step, tip, settled); err != nil {
 		return false, err
 	}
 	return true, s.settleMerge(ctx, plan, step)
 }
 
 // recheck decides this branch again against the world as it is now, and
-// answers with that decision.
-func (s Service) recheck(ctx context.Context, plan Plan, step Step, expectedTip string) (Step, error) {
+// answers with that decision. state is the pull request's merge state as the
+// wait that came before it last read it, moments ago: reading it again would
+// be the same question asked twice, at a request per branch.
+func (s Service) recheck(ctx context.Context, plan Plan, step Step, expectedTip string, state githubstack.MergeState) (Step, error) {
 	prs, err := s.GitHub.Inspect(ctx, []string{step.Branch})
-	if err != nil {
-		return Step{}, err
-	}
-	state, err := s.state(ctx, step.Number)
 	if err != nil {
 		return Step{}, err
 	}

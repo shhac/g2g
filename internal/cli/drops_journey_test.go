@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -89,6 +90,19 @@ func TestJourneyACommitDroppedUpstreamIsDroppedOnPull(t *testing.T) {
 	preview := mustRun(t, "pull")
 	if !strings.Contains(preview, "synthetic-b "+x[:12]+" synthetic x.txt") {
 		t.Errorf("the preview does not name the commit it drops:\n%s", preview)
+	}
+	// A machine gets each one as a record, not a sentence to parse.
+	var document struct {
+		Commits []struct{ Branch, Commit, Subject, Kind string } `json:"commits"`
+	}
+	if err := json.Unmarshal([]byte(mustRun(t, "pull", "--json")), &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Commits) != 1 || document.Commits[0].Commit != x || document.Commits[0].Kind != "dropped" || document.Commits[0].Subject != "synthetic x.txt" {
+		t.Errorf("--json commits = %+v, want x dropped", document.Commits)
+	}
+	if porcelain := mustRun(t, "pull", "--porcelain"); !strings.Contains(porcelain, "commit\tdropped\tsynthetic-b\t"+x+"\t\tsynthetic x.txt") {
+		t.Errorf("--porcelain does not carry the commit record:\n%s", porcelain)
 	}
 	mustRun(t, "pull", "--apply")
 	s.assertClean(s.Local)

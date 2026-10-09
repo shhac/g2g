@@ -1402,6 +1402,14 @@ branch no source describes is a state, not a refusal.
 `github comment` run writes, with its body in `--json`; porcelain says what happens to
 each comment but not its text, since a body is many lines.
 
+`commits` names each commit a `pull` or `push` drops, moves, keeps or refuses
+to put back, with `branch`, `commit` (the full id), `subject`, `kind` and, for
+a move, `to`. `kind` is `dropped`, `moved`, `kept`, `left` (dropped here, for
+`push` to publish), `restored` (put back after a reset to a stale tracking ref)
+or `restoring` (one `push` refuses to put back). In porcelain each is a
+`commit` record — kind, branch, id, destination, then the subject last, since
+it is the one field a person wrote.
+
 Schema 2 narrowed `blocked` to the reason alone. It used to carry the label a
 person is shown in front of it, which differed between commands; that label is
 the renderer's now. Schema 3 made `operation` the command's path, because the

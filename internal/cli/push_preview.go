@@ -27,6 +27,14 @@ func pushView(plan push.Plan) stackView {
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
 	view = pushDropNotes(view, plan)
+	for _, list := range []struct {
+		kind  string
+		drops []push.Drop
+	}{{"dropped", plan.Drops}, {"moved", plan.Moves}, {"restoring", plan.Restores}} {
+		for _, drop := range list.drops {
+			view.Commits = append(view.Commits, stackCommit{Branch: drop.Branch, Commit: drop.Commit, Subject: plan.Subjects[drop.Commit], Kind: list.kind, To: drop.To})
+		}
+	}
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)

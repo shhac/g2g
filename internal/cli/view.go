@@ -54,6 +54,22 @@ type stackView struct {
 	// eight copies of nearly the same text is not a preview anyone reads.
 	Comments []stackComment
 	Excerpt  *stackExcerpt
+	// Commits are commits a pull or push names one by one -- dropped, moved,
+	// kept -- for a machine, which should not have to parse them out of a
+	// note.
+	Commits []stackCommit
+}
+
+// stackCommit is one commit a run names, and what happens to it. Kind is one
+// of the values a consumer switches on: "dropped" (by this run), "moved" (to
+// To), "kept", "left" (a drop for push to publish), "restored" (put back after
+// a stale reset), "restoring" (one push refuses to put back).
+type stackCommit struct {
+	Branch  string
+	Commit  string
+	Subject string
+	Kind    string
+	To      string
 }
 
 // stackComment is one pull request's comment and what a run does with it.

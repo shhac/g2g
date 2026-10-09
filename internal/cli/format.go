@@ -63,6 +63,17 @@ type jsonDocument struct {
 	// Comments are the pull request comments a run writes, each with the body
 	// it would carry. Additive, so it leaves schemaVersion alone.
 	Comments []jsonComment `json:"comments,omitempty"`
+	// Commits are the commits a pull or push drops, moves, keeps or refuses
+	// to put back, one each. Additive, so it leaves schemaVersion alone.
+	Commits []jsonCommit `json:"commits,omitempty"`
+}
+
+type jsonCommit struct {
+	Branch  string `json:"branch"`
+	Commit  string `json:"commit"`
+	Subject string `json:"subject,omitempty"`
+	Kind    string `json:"kind"`
+	To      string `json:"to,omitempty"`
 }
 
 type jsonComment struct {
@@ -150,6 +161,9 @@ func (v stackView) document() jsonDocument {
 	for _, written := range v.Comments {
 		doc.Comments = append(doc.Comments, jsonComment{PullRequest: written.PullRequest, Branch: written.Branch, Action: written.Action, Reason: plainCommands(written.Reason), Body: written.Body})
 	}
+	for _, named := range v.Commits {
+		doc.Commits = append(doc.Commits, jsonCommit(named))
+	}
 	return doc
 }
 
@@ -207,6 +221,11 @@ func writePorcelain(writer io.Writer, view stackView) error {
 	// happens to each comment and --json is where its text is.
 	for _, written := range doc.Comments {
 		records = append(records, []string{"comment", porcelainNumber(written.PullRequest), written.Branch, written.Action, written.Reason})
+	}
+	// The subject goes last: it is the one field that can hold anything a
+	// person wrote, so a reader splitting on tabs keeps the rest intact.
+	for _, named := range doc.Commits {
+		records = append(records, []string{"commit", named.Kind, named.Branch, named.Commit, named.To, strings.ReplaceAll(named.Subject, "\t", " ")})
 	}
 
 	var out strings.Builder

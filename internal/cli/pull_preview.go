@@ -13,6 +13,9 @@ import (
 // it would stop as easily as what it would do.
 func pullView(plan syncer.Plan) stackView {
 	view := graphView(plan.Restack.Discovery, "pull")
+	// Before a refusal returns, since a strict one is refused for exactly
+	// these commits and a machine reading it needs them.
+	view.Commits = pullCommits(plan)
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
 	}
@@ -26,6 +29,20 @@ func pullView(plan syncer.Plan) stackView {
 	view = dropNotes(view, plan)
 	view = view.note(replayNote(plan.Restack), severityNeutral)
 	return view
+}
+
+// pullCommits are the commits a pull names, for a machine.
+func pullCommits(plan syncer.Plan) []stackCommit {
+	named := make([]stackCommit, 0)
+	for _, list := range []struct {
+		kind  string
+		drops []syncer.Drop
+	}{{"dropped", plan.Drops}, {"moved", plan.Moves}, {"kept", plan.Kept}, {"left", plan.Left}, {"restored", plan.Restored}} {
+		for _, drop := range list.drops {
+			named = append(named, stackCommit{Branch: drop.Branch, Commit: drop.Commit, Subject: plan.Subjects[drop.Commit], Kind: list.kind, To: drop.To})
+		}
+	}
+	return named
 }
 
 // dropNotes list every commit a pull drops, moves, keeps or leaves, by branch,

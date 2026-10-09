@@ -64,8 +64,11 @@ func TestASyncPointMovesWithARenameAndGoesWithTheBranch(t *testing.T) {
 	repo, client := publishedRepo(t)
 	repo.Run("remote", "add", "origin", repo.Dir)
 	ctx := context.Background()
-	tip := repo.Revision("synthetic-work")
-	if err := client.RecordSync(ctx, "origin", "synthetic-work", SyncPoint{Tip: tip, Local: tip, Command: "push"}); err != nil {
+	tip, dropped := repo.Revision("synthetic-work"), repo.Revision("synthetic-work~1")
+	if err := client.RecordSync(ctx, "origin", "synthetic-work", SyncPoint{Tip: dropped, Local: dropped, Command: "push"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RecordSync(ctx, "origin", "synthetic-work", SyncPoint{Tip: tip, Local: tip, Command: "pull", Dropped: []string{dropped}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,6 +80,12 @@ func TestASyncPointMovesWithARenameAndGoesWithTheBranch(t *testing.T) {
 	}
 	if point, ok, err := client.ReadSync(ctx, "origin", "synthetic-renamed"); err != nil || !ok || point.Tip != tip || point.Local != tip {
 		t.Errorf("ReadSync(new name) = %+v, %v, %v", point, ok, err)
+	}
+	// The whole history moves: it is what keeps a dropped commit reachable
+	// and lets status name it.
+	history, err := client.SyncHistory(ctx, "origin", "synthetic-renamed", 10)
+	if err != nil || len(history) != 2 || history[0].Command != "pull" || !slices.Equal(history[0].Dropped, []string{dropped}) || history[1].Tip != dropped {
+		t.Errorf("SyncHistory(new name) = %+v, %v, want both points carried, newest first", history, err)
 	}
 
 	if err := client.ForgetSync(ctx, "synthetic-renamed"); err != nil {

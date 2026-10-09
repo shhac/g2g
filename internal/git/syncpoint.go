@@ -175,8 +175,12 @@ func (c Client) forgetSync(ctx context.Context, branch string) {
 	}
 }
 
-// MoveSync carries a branch's latest sync point to its new name, for every
-// remote. The commits are the same ones, so the agreement still holds.
+// MoveSync carries a branch's sync points to its new name, for every remote:
+// the whole history, oldest first, since the history is what keeps every
+// commit a pull or push dropped reachable. The commits are the same ones, so
+// every agreement still holds. Each entry is dated by the move rather than
+// when it was first recorded, which a reflog written with update-ref cannot
+// say otherwise.
 func (c Client) MoveSync(ctx context.Context, from, to string) error {
 	if err := safeRef(from); err != nil {
 		return err
@@ -189,16 +193,17 @@ func (c Client) MoveSync(ctx context.Context, from, to string) error {
 		return err
 	}
 	for _, remote := range remotes {
-		point, ok, err := c.ReadSync(ctx, remote, from)
+		history, err := c.SyncHistory(ctx, remote, from, maxSyncHistory)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if len(history) == 0 {
 			continue
 		}
-		point.Command, point.Dropped = "rename", nil
-		if err := c.RecordSync(ctx, remote, to, point); err != nil {
-			return err
+		for index := len(history) - 1; index >= 0; index-- {
+			if err := c.RecordSync(ctx, remote, to, history[index]); err != nil {
+				return err
+			}
 		}
 		if err := c.deleteRef(ctx, SyncedRef(remote, from)); err != nil {
 			return err
@@ -206,6 +211,11 @@ func (c Client) MoveSync(ctx context.Context, from, to string) error {
 	}
 	return nil
 }
+
+// maxSyncHistory bounds how much of a sync point's history a rename carries.
+// A branch pulled and pushed through g2g a few times a day stays well inside
+// it for longer than git keeps the entries.
+const maxSyncHistory = 1000
 
 func (c Client) remotes(ctx context.Context) ([]string, error) {
 	output, err := c.run(ctx, "remote")

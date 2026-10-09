@@ -49,7 +49,8 @@ failure: the push or pull has happened, and until the next agreement records it
 the cautious reading applies.
 
 Deleting a branch through g2g forgets its sync points; renaming one carries
-them. That lives in the Git client's own delete and rename, so no command that
+them — the whole history, so what it keeps reachable stays reachable, each entry
+dated by the rename since `update-ref` cannot write an older date. That lives in the Git client's own delete and rename, so no command that
 deletes a branch can forget to.
 
 A trunk never has one. What `pull` does to a trunk is decided by the rules for a

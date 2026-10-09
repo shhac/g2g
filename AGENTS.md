@@ -374,7 +374,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   is also what a remote-dropped commit looks like; and a recording that fails
   after the command's own work is a diagnostic, never a failure. The Git
   client's own delete and rename forget and carry them, so no command can
-  forget to. A trunk never has one.
+  forget to. A trunk never has one. Three things exist once: `syncpoint.Assess`
+  is the only place a sync point is read for a decision (pull and push each
+  had a copy, and each set `Unsynced` by convention), `syncpoint.Record` is
+  the only agree-then-diagnose wrapper, and `localgit.Short` is the only
+  short-id rule — the ids a preview prints are the ones `--keep` is asked for.
   `published` names a side, not a place: the branch as the git remote
   `--remote` names holds it (one of `git remote`'s names, `origin` by
   default). It never means GitHub — a value naming `github` would promise a

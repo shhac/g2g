@@ -4,6 +4,7 @@ import (
 	"context"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/syncpoint"
 )
 
@@ -23,8 +24,9 @@ type levelRecorder interface {
 // they have since dropped from work of this clone's own, which is the whole of
 // what a later pull needs to drop it here too rather than publish it again.
 // Read from local refs alone, as status does; adoption asks nothing of the
-// network. A recording that fails is left for the next pull or push to make.
-func recordAdopted(ctx context.Context, git any, branches []string) {
+// network. A recording that fails is a diagnostic, left for the next pull or
+// push to make.
+func recordAdopted(ctx context.Context, git graph.Ancestry, branches []string) {
 	recorder, ok := git.(levelRecorder)
 	if !ok || len(branches) == 0 {
 		return
@@ -38,6 +40,6 @@ func recordAdopted(ctx context.Context, git any, branches []string) {
 		if err != nil || tips[branch] == "" || tips[branch] != local {
 			continue
 		}
-		_ = syncpoint.Agree(ctx, recorder, localgit.DefaultRemote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "adopt"})
+		syncpoint.Record(ctx, recorder, "adopt.sync_point", localgit.DefaultRemote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "adopt"})
 	}
 }

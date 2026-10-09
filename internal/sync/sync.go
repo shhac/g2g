@@ -240,16 +240,7 @@ func (s Service) recordLevel(ctx context.Context, remote string, published map[s
 		if err != nil || local != published[branch] {
 			continue
 		}
-		s.agree(ctx, recorder, remote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "pull"})
-	}
-}
-
-// agree records one agreement. pull has done or decided its work by then, so a
-// recording that fails is a diagnostic: until the next one records it, the
-// cautious reading applies.
-func (s Service) agree(ctx context.Context, recorder syncpoint.ReadRecorder, remote, branch string, point localgit.SyncPoint) {
-	if err := syncpoint.Agree(ctx, recorder, remote, branch, point); err != nil {
-		diagnostic.Event(ctx, "sync.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+		syncpoint.Record(ctx, recorder, "sync.sync_point", remote, branch, localgit.SyncPoint{Tip: local, Local: local, Command: "pull"})
 	}
 }
 

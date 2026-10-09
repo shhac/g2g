@@ -20,6 +20,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 )
 
@@ -53,6 +54,30 @@ func Agree(ctx context.Context, git ReadRecorder, remote, branch string, point l
 		return nil
 	}
 	return git.RecordSync(ctx, remote, branch, point)
+}
+
+// Record is Agree for a command whose own work has already happened. A
+// recording that fails is a diagnostic named by event, never a failure: the
+// push or pull stands, and until the next agreement records it the cautious
+// reading applies.
+func Record(ctx context.Context, git ReadRecorder, event, remote, branch string, point localgit.SyncPoint) {
+	if err := Agree(ctx, git, remote, branch, point); err != nil {
+		diagnostic.Event(ctx, event, diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+	}
+}
+
+// DroppedOn is the commits a list of drops names on one branch, which is what
+// the agreement recorded for that branch carries.
+func DroppedOn(branch string, lists ...[]Drop) []string {
+	named := make([]string, 0)
+	for _, list := range lists {
+		for _, drop := range list {
+			if drop.Branch == branch {
+				named = append(named, drop.Commit)
+			}
+		}
+	}
+	return named
 }
 
 // Git is what classifying a branch reads, all of it local.

@@ -305,10 +305,7 @@ func (s Service) recordLevel(ctx context.Context, remote string, branches []stri
 		if publishing[branch].Standing != Current {
 			continue
 		}
-		point := localgit.SyncPoint{Tip: tips[branch], Local: tips[branch], Command: "push"}
-		if err := syncpoint.Agree(ctx, recorder, remote, branch, point); err != nil {
-			diagnostic.Event(ctx, "push.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
-		}
+		syncpoint.Record(ctx, recorder, "push.sync_point", remote, branch, localgit.SyncPoint{Tip: tips[branch], Local: tips[branch], Command: "push"})
 	}
 }
 
@@ -324,21 +321,12 @@ func (s Service) recordPushed(ctx context.Context, plan Plan, leases []localgit.
 	}
 	for _, lease := range leases {
 		tip, err := s.Git.Resolve(ctx, lease.Branch)
-		if err == nil {
-			dropped := make([]string, 0)
-			for _, drop := range slices.Concat(plan.Drops, plan.Moves) {
-				if drop.Branch == lease.Branch {
-					dropped = append(dropped, drop.Commit)
-				}
-			}
-			err = syncpoint.Agree(ctx, recorder, plan.Remote, lease.Branch, localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: dropped})
-		}
 		if err != nil {
-			diagnostic.Event(ctx, "push.sync_point",
-				diagnostic.Field{Key: "branch", Value: lease.Branch},
-				diagnostic.Field{Key: "decision", Value: "not recorded"},
-			)
+			diagnostic.Event(ctx, "push.sync_point", diagnostic.Field{Key: "branch", Value: lease.Branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
+			continue
 		}
+		dropped := syncpoint.DroppedOn(lease.Branch, plan.Drops, plan.Moves)
+		syncpoint.Record(ctx, recorder, "push.sync_point", plan.Remote, lease.Branch, localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: dropped})
 	}
 }
 

@@ -66,7 +66,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		// the remote holds, and the continue that finishes it is restack's,
 		// which records nothing.
 		if recorder, ok := s.Git.(syncpoint.ReadRecorder); ok {
-			s.agree(ctx, recorder, plan.Remote, collection.Branch, localgit.SyncPoint{
+			syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, collection.Branch, localgit.SyncPoint{
 				Tip: plan.Published[collection.Branch], Local: collection.To, Command: "pull", Dropped: collection.Dropped,
 			})
 		}
@@ -110,13 +110,9 @@ func (s Service) recordAgreed(ctx context.Context, plan Plan) {
 		if err != nil {
 			continue
 		}
-		dropped := make([]string, 0)
-		for _, drop := range plan.Drops {
-			if drop.Branch == branch {
-				dropped = append(dropped, drop.Commit)
-			}
-		}
-		s.agree(ctx, recorder, plan.Remote, branch, localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: dropped})
+		syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, branch, localgit.SyncPoint{
+			Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Drops),
+		})
 	}
 }
 

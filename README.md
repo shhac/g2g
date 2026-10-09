@@ -635,9 +635,13 @@ Two things a restack reports rather than doing quietly:
 - **A branch it empties.** If everything a branch carried is already upstream
   it collapses onto its base and its pull request would show no changes.
 - **Commits the parent dropped.** They are dropped from the child too by
-  default. Where every one of them was genuinely removed rather than
-  rewritten, `--absorb` keeps them as the child's own instead — which rewrites
-  nothing and only re-records where the branch forks.
+  default, and the preview names each one by branch, short id and subject.
+  Where every one of them was genuinely removed rather than rewritten,
+  `--absorb` keeps them as the child's own instead — which rewrites nothing
+  and only re-records where the branch forks. Moving a branch back by hand
+  (`git branch -f A A~1`) so its tip commit belongs to the branch above is the
+  same state: `status` names both restacks rather than advising a `pull`,
+  which would put the commit back on the branch you moved.
 
 A branch you rebased by hand is refused rather than replayed: its recorded
 fork point is no longer in its history, so the replay range would silently

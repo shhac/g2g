@@ -194,6 +194,28 @@ func TestFoldOfAPublishedBranchSaysItsPullRequestWillReadAsMerged(t *testing.T) 
 	}
 }
 
+// Moving a branch back by hand, so its tip commit belongs to the branch above
+// it, leaves the remote ahead of it. Advising a pull there would put the commit
+// back and undo the move; status names the two restacks that finish it.
+func TestStatusOfABranchMovedBackPastItsChildsCommitsNamesTheRestacks(t *testing.T) {
+	w := reshapeWorld(t)
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b")
+	w.git(w.Local, "branch", "-f", "synthetic-a", "synthetic-a~1")
+
+	graph := mustRun(t, "status", "--branch", "synthetic-b")
+	for _, want := range []string{
+		"synthetic-a was moved back past 1 commit synthetic-b still carries",
+		"g2g restack --branch synthetic-b --absorb",
+	} {
+		if !strings.Contains(graph, want) {
+			t.Errorf("status omits %q:\n%s", want, graph)
+		}
+	}
+	if strings.Contains(graph, "has work synthetic-a does not") {
+		t.Errorf("status advises pulling the moved commit back onto synthetic-a:\n%s", graph)
+	}
+}
+
 // Folding the branch you stand on switches to the parent once the parent has
 // arrived at the same commit, which cannot disturb anything.
 func TestFoldingTheCheckedOutBranchLeavesYouOnTheParent(t *testing.T) {

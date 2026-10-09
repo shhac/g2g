@@ -17,6 +17,12 @@ type Publication struct {
 	// would drop. Counting those by commit id called every replayed commit
 	// somebody else's, so a restacked stack could never be published.
 	Ours, Theirs int
+	// CarriedBy names a branch stacked on this one that already holds the
+	// remote's tip: this branch was moved back by hand past commits its child
+	// still carries, so the remote being ahead is not somebody else's work to
+	// pull. Compare never sets it, because it does not know the structure; a
+	// caller that does says so.
+	CarriedBy string
 }
 
 // Standing is one of the ways a branch and the remote's tip can differ. They

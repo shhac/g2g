@@ -8,6 +8,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -41,7 +42,49 @@ func readPublished(ctx context.Context, published push.Known, remote string, nam
 	if errors.Is(err, localgit.ErrNoSuchRemote) && !named {
 		return nil, nil
 	}
-	return publishing, err
+	if err != nil {
+		return nil, err
+	}
+	return publishing, carried(ctx, published, remote, discovery, publishing)
+}
+
+// carried marks a branch the remote is ahead of only because it was moved
+// back by hand past commits a branch stacked on it still carries. Advising a
+// pull there would put those commits back on it and undo the move; what the
+// person has to decide is whether the child keeps them, which is restack's
+// --absorb.
+func carried(ctx context.Context, published push.Known, remote string, discovery graph.Discovery, publishing map[string]push.Publication) error {
+	behind := make([]string, 0)
+	for branch, publication := range publishing {
+		if publication.Standing == push.Behind {
+			behind = append(behind, branch)
+		}
+	}
+	if len(behind) == 0 {
+		return nil
+	}
+	tips, err := published.Git.KnownTips(ctx, remote, behind)
+	if err != nil {
+		return err
+	}
+	for _, branch := range behind {
+		publication := publishing[branch]
+		for _, child := range discovery.Graph.Children(branch) {
+			if discovery.States[child] == graph.StateBranchMissing {
+				continue
+			}
+			holds, err := published.Git.IsAncestor(ctx, tips[branch], child)
+			if err != nil {
+				return err
+			}
+			if holds {
+				publication.CarriedBy = child
+				publishing[branch] = publication
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // publishedMark is one branch against its remote, in the words git status uses.
@@ -112,6 +155,11 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 			unknown = append(unknown, node.Branch)
 		case publication.Standing == push.Diverged:
 			diverged = append(diverged, node.Branch)
+		case publication.CarriedBy != "":
+			view = view.note(fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
+				node.Branch, count(publication.Theirs, "commit", "commits"), publication.CarriedBy,
+				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy)+" --absorb"), publication.CarriedBy,
+				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy))), severityWarn)
 		case publication.Standing == push.Behind:
 			behind = append(behind, node.Branch)
 		// A trunk is published by landing on it, never by pushing it.

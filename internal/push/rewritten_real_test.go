@@ -158,9 +158,16 @@ func TestAConflictResolvedReplayOffersAnObservedLeaseWithoutBlamingTheRemote(t *
 	if !strings.Contains(plan.Repair.Ways[0].Effect, "conflict-resolved replay") {
 		t.Fatalf("missing explanation: %+v", plan.Repair)
 	}
-	for branch, tip := range map[string]string{"synthetic-lower": oldLower, "synthetic-top": oldTop} {
-		if !strings.Contains(plan.Repair.Ways[1].Command, "--force-with-lease=refs/heads/"+branch+":"+tip) {
-			t.Fatalf("replacement lost observed lease: %s", plan.Repair.Ways[1].Command)
-		}
+	if !strings.Contains(plan.Repair.Ways[1].Command, "--force-with-lease=refs/heads/synthetic-lower:"+oldLower) {
+		t.Fatalf("replacement lost observed lease: %s", plan.Repair.Ways[1].Command)
+	}
+	// The resolution changed synthetic-lower's commit, not synthetic-top's:
+	// measured from the parent as published, top's own work is intact, and it
+	// is an ordinary replay rather than a second branch to replace.
+	if top := plan.Publishing["synthetic-top"]; top.Standing != Rewritten {
+		t.Errorf("synthetic-top = %+v, want it read as replayed, its parent's change being the parent's", top)
+	}
+	if strings.Contains(plan.Repair.Ways[1].Command, oldTop) {
+		t.Errorf("replacement names synthetic-top, whose own work is intact: %s", plan.Repair.Ways[1].Command)
 	}
 }

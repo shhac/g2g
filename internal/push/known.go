@@ -25,5 +25,5 @@ func (k Known) Compare(ctx context.Context, remote string, branches []string, be
 	if err != nil {
 		return nil, err
 	}
-	return Compare(ctx, k.Git, branches, tips, below)
+	return Compare(ctx, k.Git, remote, branches, tips, below)
 }

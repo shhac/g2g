@@ -32,10 +32,12 @@ Where the recorded answer is not the answer we want, the entry says so.
 it matches. `push`.
 
 **history reverter.** You decide your last commit was wrong and drop it
-locally. It is already published, so the remote is ahead of you. `push`
-refuses, because the alternative is rewinding published history on a guess —
-and names `git push --force-with-lease`, which is what you meant. No g2g
-command does that, so the preview has to say the one that does.
+locally. It is already published, so the remote is ahead of you. Your own push
+published it, so the sync point says you had it: that is your drop, and `push`
+publishes it, naming the commit. Without a sync point — a branch published with
+plain git — nothing says whose the remote's extra commit is, so `push` refuses,
+because the alternative is rewinding published history on a guess, and names
+`git push --force-with-lease`, which is what you meant.
 
 **where do I stand.** Before deciding whether to push or pull you want to know
 which branches differ from the remote, without asking it. `status` answers from

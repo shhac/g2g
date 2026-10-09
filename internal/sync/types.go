@@ -160,9 +160,11 @@ func (p Plan) onto() string {
 }
 
 // Nothing reports a plan with no step to take: the base is level and there is
-// nothing to replay.
+// nothing to replay. A commit kept with --keep is a step even when nothing
+// moves: the apply is what records that this clone has seen it dropped and
+// kept it, without which the next push would refuse to publish it.
 func (p Plan) Nothing() bool {
-	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Starts) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Starts) == 0 && len(p.Kept) == 0 && len(p.Restack.Steps) == 0
 }
 
 // Equal compares every fact that changes what the sync does.

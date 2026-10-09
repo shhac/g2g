@@ -26,9 +26,41 @@ func pushView(plan push.Plan) stackView {
 		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
+	view = pushDropNotes(view, plan)
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
+	}
+	return view
+}
+
+// pushDropNotes list every published commit a push removes, by branch, short
+// id and subject: once the remote moves, nothing else will name them.
+func pushDropNotes(view stackView, plan push.Plan) stackView {
+	name := func(drops []push.Drop) string {
+		said := make([]string, 0, len(drops))
+		for _, drop := range drops {
+			entry := drop.Branch + " " + shortObject(drop.Commit)
+			if subject := plan.Subjects[drop.Commit]; subject != "" {
+				entry += " " + subject
+			}
+			if drop.To != "" {
+				entry += " (" + drop.Branch + " → " + drop.To + ")"
+			}
+			said = append(said, entry)
+		}
+		return strings.Join(said, ", ")
+	}
+	if len(plan.Drops) != 0 {
+		view = view.note(fmt.Sprintf("Drops %s from %s that you dropped here since you last pulled or pushed: %s · to keep %s, run %s first.",
+			count(len(plan.Drops), "published commit", "published commits"), plan.Remote, name(plan.Drops),
+			pick(len(plan.Drops), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
+	}
+	if len(plan.Moves) != 0 {
+		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", count(len(plan.Moves), "published commit", "published commits"), name(plan.Moves)), severityNeutral)
+	}
+	if len(plan.Restores) != 0 {
+		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, count(len(plan.Restores), "commit", "commits"), name(plan.Restores)), severityBad)
 	}
 	return view
 }
@@ -73,6 +105,10 @@ func publicationState(publication push.Publication) (string, severity) {
 		return "up to date", severityNeutral
 	case push.Ahead:
 		return fmt.Sprintf("%s to publish", count(publication.Ours, "commit", "commits")), severityOK
+	case push.Dropping:
+		return fmt.Sprintf("drops %s you dropped here", count(publication.Dropped, "published commit", "published commits")), severityWarn
+	case push.Restoring:
+		return fmt.Sprintf("would put back %s the remote dropped · pull first", count(publication.Dropped, "commit", "commits")), severityBad
 	default:
 		// Never compared, so there is nothing to say.
 		return "", severityNeutral

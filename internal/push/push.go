@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -59,6 +60,15 @@ type Plan struct {
 	// pushed — and the last of those is a force-push the lease would reject,
 	// previewed without a word about it.
 	Publishing map[string]Publication
+	// Drops are published commits this push removes because this clone
+	// dropped them since it last agreed with the remote; Moves are such
+	// commits another branch of the push still holds, which leave one branch
+	// for another rather than the stack. Restores are commits the remote
+	// dropped that this push would put back, which refuse it. Each is listed
+	// by commit, with Subjects naming them, because once the remote moves
+	// nothing else will.
+	Drops, Moves, Restores []Drop
+	Subjects               map[string]string
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. What it names is a git command rather than a g2g one,
 	// which is exactly the case where a reader needs to see where it starts
@@ -137,14 +147,21 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	// A selection stands on one base, forked or not.
-	publishing, err := Compare(ctx, s.Git, snapshot.Branches, tips, func(branch string) (string, string) {
+	publishing, changed, err := compare(ctx, s.Git, remote, snapshot.Branches, tips, func(branch string) (string, string) {
 		return snapshot.SitsOn(branch), snapshot.Base
 	})
 	if err != nil {
 		return Plan{}, err
 	}
 	s.recordLevel(ctx, remote, snapshot.Branches, publishing, tips)
-	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing, Repair: blockedBy(remote, snapshot.Branches, publishing, tips)}
+	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing}
+	if plan.Drops, plan.Moves, plan.Restores, err = s.drops(ctx, snapshot.Branches, changed); err != nil {
+		return Plan{}, err
+	}
+	if plan.Subjects, err = s.subjects(ctx, plan); err != nil {
+		return Plan{}, err
+	}
+	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, plan.Restores)
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -162,7 +179,10 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 //
 // A pinned lease protects against movement after preview, not against knowingly
 // replacing remote-only work. That needs the user's explicit choice.
-func blockedBy(remote string, branches []string, publishing map[string]Publication, tips map[string]string) repair.Note {
+func blockedBy(remote string, branches []string, publishing map[string]Publication, tips map[string]string, restores []Drop) repair.Note {
+	if len(restores) != 0 {
+		return restoring(remote, restores)
+	}
 	rejected := make([]string, 0, len(branches))
 	for _, branch := range branches {
 		if publishing[branch].Rejected() {
@@ -198,6 +218,39 @@ func blockedBy(remote string, branches []string, publishing map[string]Publicati
 			},
 		},
 	}
+}
+
+// restoring refuses a push that would put back commits the remote dropped
+// since this clone last agreed with it. The way through is pull's: drop them
+// here too, or keep them on purpose, after which they are this clone's own
+// and publish like any other commit.
+func restoring(remote string, restores []Drop) repair.Note {
+	named, keep := make([]string, 0, len(restores)), "g2g pull"
+	for _, drop := range restores {
+		named = append(named, drop.Branch+" "+short(drop.Commit))
+		keep += " --keep " + short(drop.Commit)
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("%s dropped %s since this clone last pulled or pushed, and publishing would put %s back", remote, strings.Join(named, ", "), pickWord(len(restores), "it", "them")),
+		Ways: []repair.Step{
+			{Command: "g2g pull", Effect: "drop " + pickWord(len(restores), "it", "them") + " here too"},
+			{Command: keep, Effect: "keep " + pickWord(len(restores), "it", "them") + " as yours, then push"},
+		},
+	}
+}
+
+func short(commit string) string {
+	if len(commit) > 12 {
+		return commit[:12]
+	}
+	return commit
+}
+
+func pickWord(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+	return many
 }
 
 func (s Service) Execute(ctx context.Context, plan Plan) error {
@@ -263,7 +316,13 @@ func (s Service) recordPushed(ctx context.Context, plan Plan, leases []localgit.
 	for _, lease := range leases {
 		tip, err := s.Git.Resolve(ctx, lease.Branch)
 		if err == nil {
-			err = syncpoint.Agree(ctx, recorder, plan.Remote, lease.Branch, localgit.SyncPoint{Tip: tip, Local: tip, Command: "push"})
+			dropped := make([]string, 0)
+			for _, drop := range slices.Concat(plan.Drops, plan.Moves) {
+				if drop.Branch == lease.Branch {
+					dropped = append(dropped, drop.Commit)
+				}
+			}
+			err = syncpoint.Agree(ctx, recorder, plan.Remote, lease.Branch, localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: dropped})
 		}
 		if err != nil {
 			diagnostic.Event(ctx, "push.sync_point",
@@ -279,6 +338,9 @@ func (s Service) recordPushed(ctx context.Context, plan Plan, leases []localgit.
 // preview and apply must stop the push, not be overwritten by it.
 func (p Plan) Equal(other Plan) bool {
 	return p.Snapshot.Equal(other.Snapshot) &&
+		slices.Equal(p.Drops, other.Drops) &&
+		slices.Equal(p.Moves, other.Moves) &&
+		slices.Equal(p.Restores, other.Restores) &&
 		p.Repair.Equal(other.Repair) &&
 		maps.Equal(p.Publishing, other.Publishing) &&
 		p.Remote == other.Remote &&

@@ -106,6 +106,10 @@ func publishedMark(remote string, publication push.Publication) stackMark {
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d ahead", publication.Ours), Severity: severityWarn}
 	case push.Current:
 		return stackMark{Subject: remote, OK: true, Severity: severityOK}
+	case push.Dropping:
+		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d dropped here", publication.Dropped), Severity: severityWarn}
+	case push.Restoring:
+		return stackMark{Subject: remote, Detail: fmt.Sprintf("dropped %d still here", publication.Dropped), Severity: severityWarn}
 	default:
 		return stackMark{}
 	}
@@ -147,7 +151,7 @@ func markPublished(view stackView, acted selected, publishing map[string]push.Pu
 // the branches that are not where the remote is.
 func publishedNotes(view stackView, acted selected, publishing map[string]push.Publication) stackView {
 	remote := acted.remote
-	var ahead, behind, diverged, unknown []string
+	var ahead, behind, diverged, unknown, restoring []string
 	for _, node := range view.Nodes {
 		publication := publishing[node.Branch]
 		switch {
@@ -155,6 +159,8 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 			unknown = append(unknown, node.Branch)
 		case publication.Standing == push.Diverged:
 			diverged = append(diverged, node.Branch)
+		case publication.Standing == push.Restoring:
+			restoring = append(restoring, node.Branch)
 		case publication.CarriedBy != "":
 			view = view.note(fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
 				node.Branch, count(publication.Theirs, "commit", "commits"), publication.CarriedBy,
@@ -175,6 +181,9 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 	}
 	if len(diverged) != 0 {
 		view = view.note("Diverged from "+remote+": "+branchList(diverged)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see the ways to reconcile.", severityBad)
+	}
+	if len(restoring) != 0 {
+		view = view.note(remote+" dropped commits "+branchList(restoring)+" still "+pick(len(restoring), "has", "have")+" since you last pulled or pushed · run "+runnable(acted.aimedOr(pullCommand))+" to drop them here too, or keep them with --keep.", severityWarn)
 	}
 	if len(unknown) != 0 {
 		view = view.note(remote+" is on a commit this repository has not fetched for "+branchList(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)

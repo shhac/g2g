@@ -844,12 +844,37 @@ One the remote has that this checkout does not, by content, is refused rather
 than dropped. Unsupported atomic pushes and rejected leases fail without a
 non-atomic or unsafe-force fallback.
 
-Resolving a replay conflict can change a commit's patch, so even your own
-previously published commit may count as absent here. A subject or author match
-cannot prove that replacing it would preserve a reviewer's work. The refusal
-therefore says the published version differs, explains this possibility, and
-offers an atomic replacement command with leases pinned to the observed tips.
-Inspect the differences before choosing that replacement; it can drop work.
+What the remote has that this checkout does not is asked against the branch's
+**sync point** — where the two last agreed (see *Dropped commits* under
+`pull`):
+
+| The remote's extra commit is | `push` |
+|---|---|
+| one you had and dropped here since you last pulled or pushed | publishes the drop, naming each commit (`origin✓` afterwards) |
+| one you dropped from this branch that another pushed branch now holds | publishes it as a **move**, `A → B` |
+| one you never had | refuses, as before |
+
+And the other way: a commit **the remote dropped** since the last agreement
+that this branch still has would be published again, so `push` refuses and
+names `g2g pull` (drop it here too) and `g2g pull --keep <commit>` (keep it as
+yours, after which it publishes like any commit). Every dropped or moved commit
+is listed by branch, short id and subject, recorded in the sync point's reflog,
+and named by `status` for a week afterwards. A branch with no sync point yet is
+compared exactly as before.
+
+A conflict resolved during a pull's replay rewrites the other person's commit;
+since that clone pulled it, the original reads as dropped here and the push
+publishes the resolution, naming the original. Without a sync point — a
+resolution of a replay onto a moved trunk, say — a subject or author match
+cannot prove that replacing it would preserve a reviewer's work, so the refusal
+says the published version differs, explains this possibility, and offers an
+atomic replacement command with leases pinned to the observed tips. Inspect the
+differences before choosing that replacement; it can drop work.
+
+A branch's own commits are measured from its parent as the remote holds it,
+when the remote's version is built on that: a commit somebody published on the
+parent is the parent's, so it does not make every branch above it read as
+diverged.
 
 Each pushed branch is set to track its copy on the remote, as
 `git push --set-upstream` does, so `git status`, a bare `git pull` and

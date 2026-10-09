@@ -492,33 +492,46 @@ func TestJourneyAChildOfASupersededBranchIsReplayedOntoIt(t *testing.T) {
 // history reverter: you drop your last commit locally on purpose. It is already
 // published, so the remote is now ahead of you.
 //
-// push refuses, which is the agreed behaviour — the preview has to be loud
-// enough that you can choose the command that does what you meant.
+// Your push published it, so the sync point says you had the commit: the
+// remote being ahead by it is your drop, not somebody else's work. push
+// publishes the drop, naming the commit, rather than refusing and leaving you
+// to reach for git push --force-with-lease.
 func TestJourneyYouDropACommitYouAlreadyPublished(t *testing.T) {
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "a.txt")
 	w.commit(w.Local, "synthetic-a", "regret.txt", "regret")
 	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
 	mustRun(t, "push", "--apply")
+	regret := w.tip(w.Local, "synthetic-a")
 
 	w.git(w.Local, "reset", "-q", "--hard", "HEAD~1")
-	published := w.tip(w.Remote, "synthetic-a")
 
 	stdout := mustRun(t, "push")
-
-	if !strings.Contains(stdout, "remote has 1 commit this does not · publishing would drop it") {
-		t.Errorf("preview does not say the remote is ahead:\n%s", stdout)
+	for _, want := range []string{"drops 1 published commit you dropped here", "synthetic-a " + regret[:12] + " synthetic regret.txt"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("preview does not say %q:\n%s", want, stdout)
+		}
 	}
-	// Loud enough to act on: the command that does what you meant has to be in
-	// the preview, because no g2g command does it.
-	if !strings.Contains(stdout, "git push --atomic --force-with-lease=refs/heads/synthetic-a:"+published) {
-		t.Errorf("preview does not name the command that would republish:\n%s", stdout)
+	mustRun(t, "push", "--apply")
+	if now, want := w.tip(w.Remote, "synthetic-a"), w.tip(w.Local, "synthetic-a"); now != want {
+		t.Errorf("the remote holds %s, want the branch without the dropped commit, %s", now, want)
+	}
+
+	// Without a sync point -- a branch published with plain git -- nothing says
+	// whose the remote's extra commit is, and push refuses as it always did,
+	// naming the command that does what a person who meant it wants.
+	w.git(w.Local, "update-ref", "-d", "refs/g2g/synced/origin/synthetic-a")
+	w.commit(w.Local, "synthetic-a", "again.txt", "again")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a")
+	w.git(w.Local, "reset", "-q", "--hard", "HEAD~1")
+	published := w.tip(w.Remote, "synthetic-a")
+	stdout = mustRun(t, "push")
+	if !strings.Contains(stdout, "remote has 1 commit this does not · publishing would drop it") ||
+		!strings.Contains(stdout, "git push --atomic --force-with-lease=refs/heads/synthetic-a:"+published) {
+		t.Errorf("preview without a sync point does not refuse and name the replacement:\n%s", stdout)
 	}
 	if _, _, err := run(t, "push", "--apply"); err == nil {
-		t.Error("push rewound a published branch without being asked twice")
-	}
-	if now := w.tip(w.Remote, "synthetic-a"); now != published {
-		t.Errorf("the remote moved from %s to %s", published, now)
+		t.Error("push rewound a published branch it has no sync point for")
 	}
 }
 

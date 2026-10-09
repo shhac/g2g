@@ -5,6 +5,7 @@ import (
 
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/parallel"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // Publication is where one branch stands against the remote's tip, and so what
@@ -17,6 +18,10 @@ type Publication struct {
 	// would drop. Counting those by commit id called every replayed commit
 	// somebody else's, so a restacked stack could never be published.
 	Ours, Theirs int
+	// Dropped is how many commits the drop this standing is about takes off
+	// one side: what Dropping removes from the remote, or what Restoring
+	// would put back on it.
+	Dropped int
 	// CarriedBy names a branch stacked on this one that already holds the
 	// remote's tip: this branch was moved back by hand past commits its child
 	// still carries, so the remote being ahead is not somebody else's work to
@@ -61,12 +66,20 @@ const (
 	// replayed since it was pushed. Publishing replaces the old version and
 	// loses nothing, which is the ordinary state after a restack.
 	Rewritten
+	// Dropping means the remote holds commits this branch dropped since the
+	// two last agreed, and nothing else it lacks: publishing removes them,
+	// which is what dropping them meant.
+	Dropping
+	// Restoring means this branch still holds commits the remote dropped
+	// since the two last agreed: publishing would put them back. pull drops
+	// them here too, or keeps them as this clone's own with --keep.
+	Restoring
 )
 
 // Rejected reports a branch the lease would refuse: the remote holds something
 // this push would overwrite.
 func (p Publication) Rejected() bool {
-	return p.Standing == Unknown || p.Standing == Behind || p.Standing == Diverged
+	return p.Standing == Unknown || p.Standing == Behind || p.Standing == Diverged || p.Standing == Restoring
 }
 
 // UpToDate reports a branch the remote needs nothing from: either it already
@@ -79,7 +92,7 @@ func (p Publication) UpToDate() bool {
 // push would publish without overwriting anything: never pushed, replayed
 // since, or with work on top.
 func (p Publication) Unpublished() bool {
-	return p.Standing == New || p.Standing == Rewritten || p.Standing == Ahead
+	return p.Standing == New || p.Standing == Rewritten || p.Standing == Ahead || p.Standing == Dropping
 }
 
 // Comparer is the part of Git a comparison reads, all of it local: the tips
@@ -93,7 +106,9 @@ type Comparer interface {
 // Compare says what publishing each branch over the given remote tips would
 // do. below names the branch each one sits on and the trunk its stack stands
 // on: the first is what a squashed parent's commits would have landed in, the
-// second what a branch missing from the remote may have landed in.
+// second what a branch missing from the remote may have landed in. remote is
+// whose sync points say what was dropped since the last agreement; empty asks
+// none.
 //
 // A remote tip this repository does not have is not an error: it is what being
 // behind looks like before a fetch, and refusing to plan would be a worse
@@ -102,28 +117,40 @@ type Comparer interface {
 // Each branch is its own few process spawns and none depends on another, so
 // they are asked at once, as status's other per-branch reads are: doctor asks
 // this of every recorded branch.
-func Compare(ctx context.Context, git Comparer, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
+func Compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
+	publishing, _, err := compare(ctx, git, remote, branches, tips, below)
+	return publishing, err
+}
+
+// compare is Compare with what each sync point said, which only push's own
+// plan reads: it lists every commit a drop concerns.
+func compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, map[string]syncpoint.Changes, error) {
 	// Sized before the reads start, so each owns one element and needs no lock.
 	results := make([]Publication, len(branches))
+	changes := make([]syncpoint.Changes, len(branches))
 	err := parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		parent, trunk := below(branch)
-		publication, err := compareOne(ctx, git, branch, tips[branch], parent, trunk)
-		results[index] = publication
+		publication, changed, err := compareOne(ctx, git, remote, branch, tips[branch], parent, trunk, tips[parent])
+		results[index], changes[index] = publication, changed
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	publishing := make(map[string]Publication, len(branches))
+	changed := make(map[string]syncpoint.Changes, len(branches))
 	for index, branch := range branches {
 		publishing[branch] = results[index]
+		if changes[index].Dropped() {
+			changed[branch] = changes[index]
+		}
 	}
-	return publishing, nil
+	return publishing, changed, nil
 }
 
 // compareOne is where one branch stands against the tip the remote holds for
 // it, which is empty when the remote has no such branch.
-func compareOne(ctx context.Context, git Comparer, branch, tip, parent, trunk string) (Publication, error) {
+func compareOne(ctx context.Context, git Comparer, remote, branch, tip, parent, trunk, publishedParent string) (Publication, syncpoint.Changes, error) {
 	if tip == "" {
 		// Absent from the remote has two meanings, and they want opposite
 		// answers: work nobody has seen, or work that merged and took the
@@ -133,20 +160,38 @@ func compareOne(ctx context.Context, git Comparer, branch, tip, parent, trunk st
 		// was offered for republication.
 		upstream, err := landed.Into(ctx, git, trunk, branch, "")
 		if err != nil || !upstream {
-			return Publication{Standing: New}, err
+			return Publication{Standing: New}, syncpoint.Changes{}, err
 		}
-		return Publication{Standing: Landed}, nil
+		return Publication{Standing: Landed}, syncpoint.Changes{}, nil
 	}
 	local, err := git.Resolve(ctx, branch)
 	if err != nil {
-		return Publication{}, err
+		return Publication{}, syncpoint.Changes{}, err
 	}
 	if local == tip {
-		return Publication{Standing: Current}, nil
+		return Publication{Standing: Current}, syncpoint.Changes{}, nil
 	}
 	if _, err := git.Resolve(ctx, tip); err != nil {
-		return Publication{Standing: Unknown}, nil
+		return Publication{Standing: Unknown}, syncpoint.Changes{}, nil
 	}
+	// Before the content comparison: a drop on either side reads as being
+	// behind or diverged by it, and what decides which is whose drop it was.
+	if publication, changes, ok, err := bySyncPoint(ctx, git, remote, branch, local, tip, parent, publishedParent); err != nil || ok {
+		return publication, changes, err
+	}
+	publication, err := compareApart(ctx, git, branch, tip, parent, publishedParent)
+	return publication, syncpoint.Changes{}, err
+}
+
+// compareApart is compareOne for a branch and a remote tip that differ and no
+// sync point settles: what each holds that the other does not, by content.
+//
+// The remote's side is bounded at the parent as the remote holds it, when the
+// remote's version is built on that, as pull's is. Bounded at the parent here,
+// a commit somebody published on the parent counted as this branch's: after
+// one person replayed a stack over another's commit on the parent, every
+// branch above it read as dropping that commit, which is the parent's.
+func compareApart(ctx context.Context, git Comparer, branch, tip, parent, publishedParent string) (Publication, error) {
 	behind, ours, err := git.Divergence(ctx, tip, branch)
 	if err != nil {
 		return Publication{}, err
@@ -164,7 +209,17 @@ func compareOne(ctx context.Context, git Comparer, branch, tip, parent, trunk st
 	// The remote tip is not an ancestor. Whether that loses anything is a
 	// question of content, and it is the same one status asks of a pull
 	// request's head, asked the same way.
-	theirs, err := landed.Missing(ctx, git, branch, tip, parent)
+	theirsFrom := parent
+	if publishedParent != "" {
+		built, err := git.IsAncestor(ctx, publishedParent, tip)
+		if err != nil {
+			return Publication{}, err
+		}
+		if built {
+			theirsFrom = publishedParent
+		}
+	}
+	theirs, err := landed.Missing(ctx, git, branch, tip, theirsFrom)
 	if err != nil {
 		return Publication{}, err
 	}

@@ -61,6 +61,15 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			return stop(err)
 		}
 		moved = append(moved, collection.Branch)
+		// Taken is agreed, whatever happens to the replay after it: a pull
+		// that stops on a conflict has still brought this branch to what
+		// the remote holds, and the continue that finishes it is restack's,
+		// which records nothing.
+		if recorder, ok := s.Git.(syncpoint.ReadRecorder); ok {
+			s.agree(ctx, recorder, plan.Remote, collection.Branch, localgit.SyncPoint{
+				Tip: plan.Published[collection.Branch], Local: collection.To, Command: "pull", Dropped: collection.Dropped,
+			})
+		}
 		// The version taken begins on the parent as it was published, and the
 		// replay planned it from there. Recording that is what lets a replay
 		// that stops on a conflict be continued: --continue plans again from

@@ -152,9 +152,14 @@ func TestJourneySharedStackAConflictingPullCanBeContinued(t *testing.T) {
 		t.Error("the continued replay did not build the stack in order")
 	}
 	// Resolving rewrote Bob's commit, so his version is no longer in hers by
-	// content, and push says so rather than replacing it unasked.
-	stdout, _, err = run(t, "push", "--apply")
-	if err == nil || !strings.Contains(stdout+err.Error(), "conflict-resolved replay") {
-		t.Errorf("push after a resolved conflict: error = %v, want the resolved patch named\n%s", err, stdout)
+	// content. She pulled it, so it is a commit she had and replaced: push
+	// publishes the resolution and names Bob's original as dropped.
+	preview := mustRun(t, "push")
+	if !strings.Contains(preview, "Drops 1 published commit") || !strings.Contains(preview, "synthetic shared.txt") {
+		t.Errorf("the push preview does not name the commit the resolution replaces:\n%s", preview)
+	}
+	mustRun(t, "push", "--apply")
+	if got := s.git(s.Remote, "show", "synthetic-b:shared.txt"); got != "both" {
+		t.Errorf("the remote's shared.txt = %q, want the resolution", got)
 	}
 }

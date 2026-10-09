@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,6 +41,7 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 			return err
 		}
 		view := markPublished(statusView(discovery), selectedIn(discovery).from(remote), publishing)
+		view = noteRecentDrops(ctx, view, published, remote, discovery, time.Now())
 		view = rememberedPRs(ctx, view, discovery, observations)
 		return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
 	}

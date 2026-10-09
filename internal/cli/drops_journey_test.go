@@ -44,13 +44,40 @@ func (s sharedStack) dropX(dir string) string {
 	return x
 }
 
-// bobDropsX drops x on Bob's B and publishes that with plain git, which is
-// what a drop looks like from Alice's side whichever tool made it.
+// bobDropsX drops x on Bob's B and publishes the drop with g2g push, which
+// publishes it because Bob's sync point shows he had x and dropped it.
 func (s sharedStack) bobDropsX() string {
 	s.t.Helper()
 	x := s.dropX(s.Other)
-	s.git(s.Other, "push", "-q", "--force-with-lease", "origin", "synthetic-b")
+	s.asBob()
+	preview := mustRun(s.t, "push")
+	if !strings.Contains(preview, "Drops 1 published commit") || !strings.Contains(preview, "synthetic-b "+x[:12]+" synthetic x.txt") {
+		s.t.Errorf("Bob's push preview does not name the commit it drops:\n%s", preview)
+	}
+	mustRun(s.t, "push", "--apply")
+	if s.contains(s.Remote, x, "synthetic-b") {
+		s.t.Error("Bob's push left the dropped commit on the remote")
+	}
+	s.asAlice()
 	return x
+}
+
+// Alice has not pulled since Bob dropped x. Her push would put it back, so it
+// refuses, naming the pull that drops it and the one that keeps it.
+func TestJourneyPushRefusesToPutBackACommitTheRemoteDropped(t *testing.T) {
+	s := newDropWorld(t)
+	x := s.bobDropsX()
+	mustRun(t, "pull") // the preview fetches, so the remote's tip is here to compare
+
+	stdout, _, err := run(t, "push", "--apply")
+	if err == nil {
+		t.Fatal("Alice's push put back the commit Bob dropped")
+	}
+	for _, want := range []string{"would put it back", "g2g pull --keep " + x[:12]} {
+		if !strings.Contains(stdout+err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%s\n%v", want, stdout, err)
+		}
+	}
 }
 
 // dropped upstream: Bob dropped x and published that. Alice's pull drops it
@@ -70,6 +97,10 @@ func TestJourneyACommitDroppedUpstreamIsDroppedOnPull(t *testing.T) {
 	}
 	if push := mustRun(t, "push"); strings.Contains(push, "to publish") && strings.Contains(push, "synthetic-b") {
 		t.Errorf("Alice's push would publish synthetic-b again:\n%s", push)
+	}
+	// Named again by status, for whoever did not read the pull.
+	if status := mustRun(t, "status"); !strings.Contains(status, "Dropped recently: synthetic-b "+x[:12]+" (g2g pull, just now)") {
+		t.Errorf("status does not name the commit the pull dropped:\n%s", status)
 	}
 	// Recoverable: the sync point's history still reaches it.
 	if !strings.Contains(s.git(s.Local, "reflog", "show", "--format=%gs", "refs/g2g/synced/origin/synthetic-b"), "dropped="+x) {
@@ -114,6 +145,13 @@ func TestJourneyPullLeavesACommitDroppedHere(t *testing.T) {
 		t.Errorf("pull moved synthetic-b from %s to %s, putting the dropped commit back", before, after)
 	}
 	s.assertClean(s.Local)
+
+	// And push publishes it, because it is hers to publish.
+	mustRun(t, "push", "--apply")
+	if s.contains(s.Remote, x, "synthetic-b") {
+		t.Error("Alice's push left the commit she dropped on the remote")
+	}
+	s.assertHas(s.Remote, "synthetic-b", "y.txt")
 }
 
 // pull leaves the remote-tracking ref where it was, so after Alice pulled
@@ -179,7 +217,11 @@ func TestJourneyACommitMovedIntoTheChildStaysInTheChild(t *testing.T) {
 	mustRun(t, "adopt", "--scope", "path", "--trunk", "main", "--apply")
 	w.git(w.Other, "branch", "-f", "synthetic-a", "synthetic-a~1")
 	mustRun(t, "restack", "--branch", "synthetic-b", "--absorb", "--apply")
-	w.git(w.Other, "push", "-q", "--force-with-lease", "origin", "synthetic-a")
+	push := mustRun(t, "push")
+	if !strings.Contains(push, "Moves 1 published commit") || !strings.Contains(push, "synthetic-a → synthetic-b") {
+		t.Errorf("Bob's push preview does not say the commit moved:\n%s", push)
+	}
+	mustRun(t, "push", "--apply")
 
 	s.asAlice()
 	preview := mustRun(t, "pull")

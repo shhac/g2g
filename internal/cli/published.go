@@ -68,23 +68,30 @@ func carried(ctx context.Context, published push.Known, remote string, discovery
 		return err
 	}
 	for _, branch := range behind {
-		publication := publishing[branch]
-		for _, child := range discovery.Graph.Children(branch) {
-			if discovery.States[child] == graph.StateBranchMissing {
-				continue
-			}
-			holds, err := published.Git.IsAncestor(ctx, tips[branch], child)
-			if err != nil {
-				return err
-			}
-			if holds {
-				publication.CarriedBy = child
-				publishing[branch] = publication
-				break
-			}
+		child, err := carrierOf(ctx, published, discovery, branch, tips[branch])
+		if err != nil {
+			return err
 		}
+		publication := publishing[branch]
+		publication.CarriedBy = child
+		publishing[branch] = publication
 	}
 	return nil
+}
+
+// carrierOf is the first branch stacked on this one that holds the remote's
+// tip for it, empty when none does.
+func carrierOf(ctx context.Context, published push.Known, discovery graph.Discovery, branch, tip string) (string, error) {
+	for _, child := range discovery.Graph.Children(branch) {
+		if discovery.States[child] == graph.StateBranchMissing {
+			continue
+		}
+		holds, err := published.Git.IsAncestor(ctx, tip, child)
+		if err != nil || holds {
+			return child, err
+		}
+	}
+	return "", nil
 }
 
 // publishedMark is one branch against its remote, in the words git status uses.

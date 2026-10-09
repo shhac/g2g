@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -118,5 +120,20 @@ func TestADelegatedRefusalStillSaysWhy(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "Apply blocked\n") {
 		t.Errorf("an empty laid-out block was rendered:\n%s", output.String())
+	}
+}
+
+// status names a commit a pull or push dropped for a week, with what dropped
+// it and when, and stops naming it after that.
+func TestRecentDropEntriesNameOnlyTheLastWeeksDrops(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	points := []localgit.SyncPoint{
+		{Command: "pull", At: now.Add(-3 * time.Hour), Dropped: []string{"0123456789abcdef"}},
+		{Command: "push", At: now.Add(-2 * 24 * time.Hour)},
+		{Command: "pull", At: now.Add(-8 * 24 * time.Hour), Dropped: []string{"fedcba9876543210"}},
+	}
+	got := recentDropEntries("synthetic-b", points, now)
+	if len(got) != 1 || got[0] != "synthetic-b 0123456789ab (g2g pull, 3 hours ago)" {
+		t.Errorf("recentDropEntries() = %q, want only the drop inside the week", got)
 	}
 }

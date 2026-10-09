@@ -36,14 +36,7 @@ func noteRecentDrops(ctx context.Context, view stackView, published push.Known, 
 		if err != nil {
 			continue
 		}
-		for _, point := range points {
-			if len(point.Dropped) == 0 || now.Sub(point.At) > recentDrops {
-				continue
-			}
-			for _, commit := range point.Dropped {
-				said = append(said, fmt.Sprintf("%s %s (g2g %s, %s)", branch, localgit.Short(commit), point.Command, ago(now.Sub(point.At))))
-			}
-		}
+		said = append(said, recentDropEntries(branch, points, now)...)
 	}
 	if len(said) == 0 {
 		return view
@@ -61,4 +54,19 @@ func ago(since time.Duration) string {
 	default:
 		return count(int(since.Hours()/24), "day", "days") + " ago"
 	}
+}
+
+// recentDropEntries names each commit a branch's sync points say was dropped
+// within the window, with the command that dropped it and when.
+func recentDropEntries(branch string, points []localgit.SyncPoint, now time.Time) []string {
+	said := make([]string, 0)
+	for _, point := range points {
+		if len(point.Dropped) == 0 || now.Sub(point.At) > recentDrops {
+			continue
+		}
+		for _, commit := range point.Dropped {
+			said = append(said, fmt.Sprintf("%s %s (g2g %s, %s)", branch, localgit.Short(commit), point.Command, ago(now.Sub(point.At))))
+		}
+	}
+	return said
 }

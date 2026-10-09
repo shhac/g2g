@@ -108,6 +108,16 @@ Known, measured, and left for a change of its own:
   about to be pruned — through the same check, Untouched shortcut first, that a
   drifted branch gets. Asking each level concurrently would keep the order and
   lose the serial wait on a deep landed chain.
+- **A sync point costs about ten small reads per differing branch.** Each is
+  bounded by the branch's own commits or its reflog, so none grows with the
+  trunk, but they add up: `pull`'s per-branch collection is serial (it was
+  before sync points, at a third of the cost); recording an agreement on a
+  level branch reads the sync ref and its reflog one branch at a time where one
+  `for-each-ref` would say which need reading; whether a sync point is this
+  branch's reads the branch's whole reflog once it has been rewritten; and
+  which other branch now holds a dropped commit is one ancestry question per
+  commit per branch, where `for-each-ref --contains` would answer per commit.
+  Status's recent-drops note reads two refs per shown branch, serially.
 - **The pull request graph's first round is every local branch in one query.**
   With hundreds of stale branches that is one large request; chunking it would
   keep one slow answer from failing the command.

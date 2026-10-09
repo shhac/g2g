@@ -141,7 +141,7 @@ func compare(ctx context.Context, git Comparer, remote string, branches []string
 	changed := make(map[string]syncpoint.Changes, len(branches))
 	for index, branch := range branches {
 		publishing[branch] = results[index]
-		if changes[index].Dropped() {
+		if changes[index].Dropped() || changes[index].Unsynced {
 			changed[branch] = changes[index]
 		}
 	}
@@ -176,11 +176,12 @@ func compareOne(ctx context.Context, git Comparer, remote, branch, tip, parent, 
 	}
 	// Before the content comparison: a drop on either side reads as being
 	// behind or diverged by it, and what decides which is whose drop it was.
-	if publication, changes, ok, err := bySyncPoint(ctx, git, remote, branch, local, tip, parent, publishedParent); err != nil || ok {
+	publication, changes, ok, err := bySyncPoint(ctx, git, remote, branch, local, tip, parent, publishedParent)
+	if err != nil || ok {
 		return publication, changes, err
 	}
-	publication, err := compareApart(ctx, git, branch, tip, parent, publishedParent)
-	return publication, syncpoint.Changes{}, err
+	publication, err = compareApart(ctx, git, branch, tip, parent, publishedParent)
+	return publication, syncpoint.Changes{Unsynced: changes.Unsynced}, err
 }
 
 // compareApart is compareOne for a branch and a remote tip that differ and no

@@ -3,8 +3,10 @@ package push
 import (
 	"context"
 	"slices"
+	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
 )
 
@@ -35,11 +37,11 @@ type classifier interface {
 func bySyncPoint(ctx context.Context, git Comparer, remote, branch, local, tip, parent, publishedParent string) (Publication, syncpoint.Changes, bool, error) {
 	reader, ok := git.(classifier)
 	if !ok || remote == "" {
-		return Publication{}, syncpoint.Changes{}, false, nil
+		return Publication{}, syncpoint.Changes{Unsynced: true}, false, nil
 	}
 	point, synced, err := syncpoint.Read(ctx, reader, remote, branch)
 	if err != nil || !synced {
-		return Publication{}, syncpoint.Changes{}, false, err
+		return Publication{}, syncpoint.Changes{Unsynced: true}, false, err
 	}
 	tracking, err := git.Resolve(ctx, "refs/remotes/"+remote+"/"+branch)
 	if err != nil {
@@ -147,4 +149,36 @@ func (s Service) subjects(ctx context.Context, plan Plan) (map[string]string, er
 		named[commit.ID] = commit.Subject
 	}
 	return named, nil
+}
+
+// strictly is what --strict refuses on top of what push refuses anyway: any
+// published commit this push would drop, and any branch that differs from the
+// remote with no sync point to say whose the difference is. A move keeps its
+// commit in the stack and is not refused.
+func strictly(remote string, branches []string, publishing map[string]Publication, changed map[string]syncpoint.Changes, drops []Drop) repair.Note {
+	reasons := make([]string, 0, 2)
+	if len(drops) != 0 {
+		named := make([]string, 0, len(drops))
+		for _, drop := range drops {
+			named = append(named, drop.Branch+" "+short(drop.Commit))
+		}
+		reasons = append(reasons, "it would drop "+strings.Join(named, ", ")+" from "+remote)
+	}
+	unsynced := make([]string, 0)
+	for _, branch := range branches {
+		publication := publishing[branch]
+		if publication.Unpublished() && publication.Standing != New && changed[branch].Unsynced {
+			unsynced = append(unsynced, branch)
+		}
+	}
+	if len(unsynced) != 0 {
+		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+pickWord(len(unsynced), "differs", "differ")+" from "+remote+" with no record of where the two last agreed")
+	}
+	if len(reasons) == 0 {
+		return repair.Note{}
+	}
+	return repair.Note{
+		Reason: "--strict: " + strings.Join(reasons, "; "),
+		Ways:   []repair.Step{{Effect: "run without --strict to go ahead with what the preview lists"}},
+	}
 }

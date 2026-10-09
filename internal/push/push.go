@@ -41,6 +41,10 @@ type Service struct {
 	// Selector supplies the selection, from whichever source describes the
 	// branch. push only publishes refs, so it works with any of them.
 	Selector stack.PathSelector
+	// Strict refuses a push that would drop any published commit, or that
+	// publishes a branch with no sync point to say what changed: abort
+	// rather than plough on, for whoever asks for it.
+	Strict bool
 }
 
 type Plan struct {
@@ -69,6 +73,11 @@ type Plan struct {
 	// nothing else will.
 	Drops, Moves, Restores []Drop
 	Subjects               map[string]string
+	// Strict is what --strict would refuse on top of Repair, empty when
+	// nothing is out of step. It is worked out whether or not the push is
+	// strict, so a caller that publishes through push -- land, before its
+	// descent -- can ask it of a plan made without the flag.
+	Strict repair.Note
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. What it names is a git command rather than a g2g one,
 	// which is exactly the case where a reader needs to see where it starts
@@ -162,6 +171,10 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, plan.Restores)
+	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, plan.Drops)
+	if s.Strict && plan.Repair.Reason == "" {
+		plan.Repair = plan.Strict
+	}
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -342,6 +355,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Moves, other.Moves) &&
 		slices.Equal(p.Restores, other.Restores) &&
 		p.Repair.Equal(other.Repair) &&
+		p.Strict.Equal(other.Strict) &&
 		maps.Equal(p.Publishing, other.Publishing) &&
 		p.Remote == other.Remote &&
 		p.Upstream == other.Upstream &&

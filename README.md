@@ -760,6 +760,18 @@ keeps one instead: a commit the remote dropped stays here as yours, and the
 next `push` publishes it; one you dropped is taken back. A `--keep` naming a
 commit this pull would not drop is refused by name.
 
+**`--strict`** turns all of that into a stop. On `pull`, `push`, `submit` and
+`land` it refuses — before anything moves, exit `2` — if a commit would be
+dropped in either direction, a commit would be put back after a reset to a
+stale tracking ref, or a branch differs from the remote with no sync point to
+say whose the difference is. Moves, kept commits and one-sided additions on a
+branch with a sync point still go through. The default is to go ahead, listing
+everything; `--strict` is for whoever would rather be stopped. It cannot be
+combined with `--take`, which discards on purpose. `land --strict` asks once,
+of the stack as it stands before the first merge: the descent's own replays
+are what landing is, and stopping half way down would leave the stack partly
+landed.
+
 `pull` refuses rather than choosing when a drop meets other work on the same
 branch — your own commits on top of what the remote dropped, or a drop here
 while the remote gained something — and names `--keep` and `--take published`

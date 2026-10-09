@@ -122,6 +122,9 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 		found.kept = append(found.kept, verdict.kept...)
 		found.left = append(found.left, verdict.left...)
 		found.restored = append(found.restored, verdict.restored...)
+		if verdict.unsynced {
+			found.unsynced = append(found.unsynced, branch)
+		}
 	}
 	if len(found.stuck) != 0 || found.refusal != nil {
 		return found, nil
@@ -157,6 +160,7 @@ type collected struct {
 	refusal                            *repair.Note
 	drops, moves, kept, left, restored []Drop
 	starts                             map[string]string
+	unsynced                           []string
 }
 
 // verdict is what collect decided about one branch: a collection, a

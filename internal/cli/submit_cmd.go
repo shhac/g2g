@@ -11,6 +11,7 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
@@ -26,7 +27,7 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 		if err := options.validate(); err != nil {
 			return err
 		}
-		return options.run(cmd, service, presentation.resolve(cmd))
+		return options.run(cmd, strictSubmit(service, options.strict), presentation.resolve(cmd))
 	}
 	options.selection.register(cmd, completions, stack.ReadableSources, "local branch to submit (defaults to current branch)", "trunk to use as the submit base")
 	// A GitHub native stack is linear, so these are the two scopes that can
@@ -54,6 +55,7 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 	cmd.Flags().BoolVar(&options.link, "link", false, "also link the pull requests as a GitHub native stack (g2g land refuses a linked stack)")
 	cmd.Flags().BoolVar(&options.noComment, "no-comment", false, "do not keep the stack comment on each pull request afterwards")
 	registerNoSetUpstream(cmd, &options.noSetUpstream)
+	registerStrict(cmd, &options.strict)
 	return cmd
 }
 
@@ -65,6 +67,8 @@ type submitOptions struct {
 	link      bool
 	// noSetUpstream leaves each pushed branch's upstream as it was.
 	noSetUpstream bool
+	// strict refuses the publish if anything is out of step, as push's does.
+	strict bool
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
 	guard      func(context.Context) error
@@ -270,4 +274,17 @@ func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry
 		"Stopped part-way: "+stopped.Err.Error(),
 		done+"That stands. Rerun "+runnable(retry)+" to finish; it keeps the pull requests that exist and opens only the missing ones.",
 		stopped)
+}
+
+// strictSubmit is submit publishing through a strict push. submit owns no rule
+// about what may be published; it is push's, so the flag is push's too.
+func strictSubmit(service submit.Service, strict bool) submit.Service {
+	pusher, ok := service.Pusher.(*push.Service)
+	if !strict || !ok {
+		return service
+	}
+	strictPush := *pusher
+	strictPush.Strict = true
+	service.Pusher = &strictPush
+	return service
 }

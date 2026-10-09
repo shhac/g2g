@@ -41,6 +41,9 @@ type changed struct {
 	// decided reports a branch the sync point settled; one it did not is
 	// left to the rules pull had before sync points.
 	decided bool
+	// unsynced reports a branch that differs from the remote with no sync
+	// point to say whose the difference is.
+	unsynced bool
 }
 
 // bySyncPoint decides a branch from what changed on each side since the two
@@ -48,11 +51,11 @@ type changed struct {
 func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, published, parent, begins string) (changed, error) {
 	git, ok := s.Git.(classifier)
 	if !ok {
-		return changed{}, nil
+		return changed{unsynced: true}, nil
 	}
 	point, synced, err := syncpoint.Read(ctx, git, c.remote, branch)
 	if err != nil || !synced {
-		return changed{}, err
+		return changed{unsynced: true}, err
 	}
 	tracking, err := s.Git.Resolve(ctx, "refs/remotes/"+c.remote+"/"+branch)
 	if err != nil {
@@ -282,4 +285,38 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 		named[commit.ID] = commit.Subject
 	}
 	return named, nil
+}
+
+// strictly is what --strict refuses on top of what pull refuses anyway: a
+// commit this pull would drop, one it would put back after a reset to a stale
+// tracking ref, and a branch that differs from the remote with no sync point
+// to say whose the difference is. A move, a kept commit and a drop left for
+// push are not refused: none of them is pull changing what a branch holds
+// behind anybody's back.
+func strictly(plan Plan, unsynced []string) repair.Note {
+	reasons := make([]string, 0, 3)
+	if len(plan.Drops) != 0 {
+		reasons = append(reasons, "it would drop "+dropNames(plan.Drops))
+	}
+	if len(plan.Restored) != 0 {
+		reasons = append(reasons, "it would put back "+dropNames(plan.Restored)+", missing only after a reset to an out-of-date tracking ref")
+	}
+	if len(unsynced) != 0 {
+		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+pick(len(unsynced), "differs", "differ")+" from "+remoteName(plan.Remote)+" with no record of where the two last agreed")
+	}
+	if len(reasons) == 0 {
+		return repair.Note{}
+	}
+	return repair.Note{
+		Reason: "--strict: " + strings.Join(reasons, "; "),
+		Ways:   []repair.Step{{Effect: "run without --strict to go ahead with what the preview lists"}},
+	}
+}
+
+func dropNames(drops []Drop) string {
+	named := make([]string, 0, len(drops))
+	for _, drop := range drops {
+		named = append(named, drop.Branch+" "+shortID(drop.Commit))
+	}
+	return strings.Join(named, ", ")
 }

@@ -47,6 +47,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	cmd.Flags().BoolVar(&flags.noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
 	cmd.Flags().BoolVar(&flags.noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
 	registerNoSetUpstream(cmd, &flags.noSetUpstream)
+	registerStrict(cmd, &flags.options.Strict)
 	// Registered only so that asking for it is answered with why not: a
 	// branch left recorded under a landed, deleted one breaks every later
 	// replay. It is hidden because a help line offering it would be offering

@@ -13,7 +13,7 @@ import (
 func newPush(service push.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
 	var remote string
 	var selection stackOptions
-	var apply, noSetUpstream bool
+	var apply, noSetUpstream, strict bool
 	cmd := &cobra.Command{
 		Use:     "push",
 		GroupID: groupPublish,
@@ -26,6 +26,8 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 			}
 			root := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, selection.trunk)
 			upstream := upstreamFor(noSetUpstream)
+			service := service
+			service.Strict = strict
 			flow := applyFlow[push.Plan]{
 				plan: func(ctx context.Context) (push.Plan, error) {
 					return service.Plan(ctx, selection.Selection(), remote, upstream)
@@ -58,5 +60,14 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 	cmd.Flags().StringVar(&remote, "remote", localgit.DefaultRemote, "Git remote to push to")
 	cmd.Flags().BoolVar(&apply, "apply", false, "atomically push with --force-with-lease after revalidation")
 	registerNoSetUpstream(cmd, &noSetUpstream)
+	registerStrict(cmd, &strict)
 	return cmd
+}
+
+// registerStrict adds the flag that turns anything out of step into a
+// refusal, for every command that publishes or pulls. Off by default: a drop
+// the preview names and the lease protects is an ordinary thing to publish,
+// and a person who wants to be stopped instead says so.
+func registerStrict(cmd *cobra.Command, strict *bool) {
+	cmd.Flags().BoolVar(strict, "strict", false, "refuse if any commit would be dropped, or any branch differs from the remote with no record of where the two last agreed")
 }

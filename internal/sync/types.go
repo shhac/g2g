@@ -48,6 +48,10 @@ type Service struct {
 	Git     Git
 	Graph   graph.Service
 	Restack Restacker
+	// Strict refuses a pull that would drop or put back any commit, or that
+	// takes a branch with no sync point to say what changed: abort rather
+	// than plough on, for whoever asks for it.
+	Strict bool
 }
 
 // Plan is what a sync would do, in the order it would do it.
@@ -98,6 +102,10 @@ type Plan struct {
 	// Subjects names every commit the lists above hold, for the preview.
 	// Derived from their ids, which Equal already compares.
 	Subjects map[string]string
+	// Strict is what --strict would refuse, empty when nothing is out of
+	// step. Worked out whether or not the pull is strict, so land can ask it
+	// of the pull it plans before its descent.
+	Strict repair.Note
 	// Published is what the remote held for each selected branch when this
 	// was planned, and is what an apply records as the point this clone and
 	// the remote now agree on: never read again at write time, because
@@ -184,6 +192,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Left, other.Left) &&
 		slices.Equal(p.Restored, other.Restored) &&
 		maps.Equal(p.Starts, other.Starts) &&
+		p.Strict.Equal(other.Strict) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Restack.Equal(other.Restack)
 }

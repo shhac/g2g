@@ -29,6 +29,8 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 			return err
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(options.apply), options.selection.branch, "")
+		service := service
+		service.Strict = options.strict
 		pull := options.flow(cmd, service, chosen, guard, presentation)
 		if !options.alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, options.apply)
@@ -76,6 +78,10 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "keep")
+	registerStrict(cmd, &options.strict)
+	// --take discards on purpose, which is the opposite of asking to be
+	// stopped before anything is lost.
+	cmd.MarkFlagsMutuallyExclusive("strict", "take")
 	if pruner.Ready() {
 		cmd.MarkFlagsMutuallyExclusive("trunk-only", "prune")
 	}
@@ -88,6 +94,7 @@ type pullOptions struct {
 	take, through               string
 	keep                        []string
 	apply, alsoPrune, trunkOnly bool
+	strict                      bool
 	cleanup                     prune.Options
 }
 

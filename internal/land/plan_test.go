@@ -64,6 +64,29 @@ func TestPlanRefusesTheWholeDescentBeforeAnythingMerges(t *testing.T) {
 	}
 }
 
+// --strict asks the publish the descent would start with whether anything is
+// out of step, and refuses before the first merge; without it, the same plan
+// lands.
+func TestStrictRefusesTheDescentOnlyWhenAsked(t *testing.T) {
+	w := newWorld(t)
+	w.pusher.strict = "--strict: it would drop synthetic-two 5a8d5c2"
+	if plan := w.plan(t, Defaults()); plan.Blocked() != "" {
+		t.Fatalf("Plan() without --strict refused: %s", plan.Blocked())
+	}
+	strict := Defaults()
+	strict.Strict = true
+	plan := w.plan(t, strict)
+	if !strings.Contains(plan.Blocked(), "--strict") {
+		t.Fatalf("Blocked = %q, want the strict refusal", plan.Blocked())
+	}
+	if err := w.service.Apply(context.Background(), plan); err == nil {
+		t.Error("Apply() ran a strictly refused plan")
+	}
+	if merges := w.events.only("merge:"); len(merges) != 0 {
+		t.Errorf("merged %v while refusing", merges)
+	}
+}
+
 // GitHub will not merge a stacked pull request through gh pr merge, so a
 // linked stack stopped at its first merge with nothing changed. The preview
 // says so instead, and names the stack to unlink.

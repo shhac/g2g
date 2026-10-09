@@ -112,6 +112,13 @@ type Options struct {
 	// branches once the descent is done, so the pull requests that merged
 	// read as merged history there. On unless asked otherwise.
 	Comment bool
+	// Strict refuses the descent before anything merges if publishing or
+	// pulling the stack would drop a commit, or a branch differs from the
+	// remote with no record of where the two last agreed. It is asked once,
+	// of the stack as it stands: the descent's own replays and publishes are
+	// what landing is, and stopping half way down for them would leave a
+	// stack partly landed.
+	Strict bool
 }
 
 // Defaults are the options a bare invocation means.

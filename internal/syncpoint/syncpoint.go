@@ -106,6 +106,11 @@ type Changes struct {
 	// A branch with none left is one the remote emptied, or made again under
 	// the name, rather than one it dropped a commit from.
 	Shared []string
+	// Unsynced reports a branch with no sync point to classify against, set
+	// by a caller that looked and found none. Every difference then reads as
+	// new on its own side, which is the cautious reading -- and not the "in
+	// sync" a caller asking for strictness can rely on.
+	Unsynced bool
 	// Stale reports commits that would have read as dropped here, but are
 	// exactly what resetting the branch to its remote-tracking ref -- older
 	// than the sync point, because pull fetched past it -- leaves out. They

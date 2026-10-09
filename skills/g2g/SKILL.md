@@ -78,7 +78,20 @@ description: |
   selection, including ones the user was not thinking about.
 - `pull` has nothing to do with pull requests. It brings a stack up to date with
   its remote: fetch into g2g's own ref namespace, fast-forward the base or
-  refuse if it has diverged, and replay. It never calls `gh`.
+  refuse if it has diverged, and replay. It never calls `gh`. A published
+  branch is measured from its parent as the remote holds it, so two people
+  moving different branches of one stack reconcile in either order.
+- **Sync points** (`refs/g2g/synced/<remote>/<branch>`, read
+  `design-docs/sync-points.md`) record where this clone and the remote last
+  agreed. Against one, `pull` drops a commit the remote dropped and leaves one
+  dropped here for `push`, which publishes it; a commit the remote dropped that
+  is still here makes `push` refuse. Every such commit is listed by branch, id
+  and subject (and in `--json` `commits`); `pull --keep <commit>` keeps one;
+  `--strict` on `pull`, `push`, `submit` and `land` refuses any drop, and any
+  branch differing with no sync point. Membership in a sync point is by commit
+  id, never content.
+- `adopt --scope path` and `github adopt --scope path` record one chain — the
+  trunk up to `--branch` — for taking up one line of somebody else's stack.
 - `pull --trunk-only` advances only the selected branch's evidenced trunk,
   using the existing base-only path. It leaves stack branches and graph records
   alone, works on default or declared trunks before a stack is recorded, and

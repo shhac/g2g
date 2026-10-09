@@ -44,6 +44,9 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	if err == nil && pushed.Blocked() != "" {
 		return pushed.Repair
 	}
+	if err == nil && options.Strict && pushed.Strict.Reason != "" {
+		return pushed.Strict
+	}
 	if plan.KeepTrunk {
 		return repair.Note{}
 	}
@@ -55,6 +58,9 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	}
 	if err == nil && synced.Blocked() != "" {
 		return synced.Repair
+	}
+	if err == nil && options.Strict && synced.Strict.Reason != "" {
+		return synced.Strict
 	}
 	return repair.Note{}
 }

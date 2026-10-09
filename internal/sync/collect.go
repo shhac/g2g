@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 
@@ -116,11 +117,14 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 	if err != nil {
 		return collected{}, err
 	}
-	found := collected{collections: make([]Collection, 0, len(c.branches)), stuck: make([]divergence, 0)}
+	found := collected{collections: make([]Collection, 0, len(c.branches)), stuck: make([]divergence, 0), begins: map[string]string{}}
 	for index, branch := range c.branches {
 		verdict := verdicts[index]
 		if verdict.collection != nil {
 			found.collections = append(found.collections, *verdict.collection)
+			if verdict.begins != "" {
+				found.begins[branch] = verdict.begins
+			}
 		}
 		if verdict.stuck != nil {
 			found.stuck = append(found.stuck, *verdict.stuck)
@@ -144,7 +148,7 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 	if err != nil {
 		return collected{}, err
 	}
-	found.starts = starts
+	maps.Copy(found.begins, starts)
 	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(found.collections))})
 	return found, nil
 }
@@ -172,7 +176,7 @@ type collected struct {
 	stuck                              []divergence
 	refusal                            *repair.Note
 	drops, moves, kept, left, restored []Drop
-	starts                             map[string]string
+	begins                             map[string]string
 	unsynced                           []string
 }
 
@@ -187,6 +191,9 @@ type verdict struct {
 	// unsynced reports a branch that differs from the remote with no sync
 	// point to say whose the difference is.
 	unsynced bool
+	// begins is where the collection's published version begins, when that
+	// is the parent's published tip.
+	begins string
 }
 
 // collectOne gives one branch one of collect's five answers, each returned
@@ -298,12 +305,12 @@ func (s Service) collectUnsynced(ctx context.Context, c collecting, branch, loca
 	// and the replay decides whether it can tell which of that version's
 	// commits are the branch's.
 	if len(ours) == 0 {
-		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Begins: begins}}, nil
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true}, begins: begins}, nil
 	}
 	if take.AppliesTo(branch, parents) {
 		// Asked for explicitly, and the commits it costs are carried so the
 		// preview can name every one before anything happens.
-		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Discards: ours, Begins: begins}}, nil
+		return verdict{collection: &Collection{Branch: branch, To: published, Superseded: true, Discards: ours}, begins: begins}, nil
 	}
 	// Both sides moved, so say both. "You have work the remote does not" is
 	// true of every ordinary commit, and a reader who has just made one has

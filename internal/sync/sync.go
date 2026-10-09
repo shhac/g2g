@@ -116,7 +116,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if note, unkept := unkeptRefusal(plan); unkept {
 		return plan.refused(note), nil
 	}
-	plan.Collect, plan.Starts = found.collections, found.starts
+	plan.Collect = found.collections
+	if len(found.begins) != 0 {
+		plan.Begins = found.begins
+	}
 	plan.Strict = strictly(plan, found.unsynced)
 	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
 	if err != nil {

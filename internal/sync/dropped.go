@@ -83,7 +83,8 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 	case len(changes.Shared) == 0 && len(gone) != 0:
 		found.refusal = emptiedUpstream(c, branch, gone)
 	default:
-		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Begins: begins, Dropped: gone}
+		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Dropped: gone}
+		found.begins = begins
 		found.drops, found.moves = drops(branch, gone), moves
 	}
 	return found

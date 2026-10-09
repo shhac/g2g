@@ -92,10 +92,15 @@ type Plan struct {
 	// Every one is listed, never counted: once a ref moves nothing else will
 	// name them.
 	Drops, Moves, Kept, Left, Restored []Drop
-	// Starts are where branches this pull does not take begin, when the
-	// branch below them is taken and they are built on its published version:
-	// a commit moved from the parent into the branch is the branch's now.
-	Starts map[string]string
+	// Begins is where a branch's own commits begin once this pull has run,
+	// for the branches where that is not the fork point recorded: a branch
+	// taken whose published version is built on the parent as the remote
+	// holds it, rather than on the parent here -- somebody published it
+	// before this clone moved its parent on -- and a branch not taken whose
+	// parent is, built on that parent's published version: a commit moved
+	// from the parent into it is its own now. Without it the replay could
+	// not tell which commits are the branch's.
+	Begins map[string]string
 	// Subjects names every commit the lists above hold, for the preview.
 	// Derived from their ids, which Equal already compares.
 	Subjects map[string]string
@@ -147,12 +152,6 @@ type Collection struct {
 	// branch because the remote dropped them, as opposed to Discards, which
 	// --take costs.
 	Dropped []string
-	// Begins is where the published version's own commits begin, when it is
-	// built on the parent as the remote holds it rather than on the parent
-	// here: somebody published this branch before this clone moved its
-	// parent on. Without it the replay could not tell which of the published
-	// version's commits are the branch's.
-	Begins string
 }
 
 // Drop is one commit a pull names, and the branch it is about.
@@ -173,7 +172,7 @@ func (p Plan) onto() string {
 // moves: the apply is what records that this clone has seen it dropped and
 // kept it, without which the next push would refuse to publish it.
 func (p Plan) Nothing() bool {
-	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Starts) == 0 && len(p.Kept) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Begins) == 0 && len(p.Kept) == 0 && len(p.Restack.Steps) == 0
 }
 
 // Equal compares every fact that changes what the sync does.
@@ -192,7 +191,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.Kept, other.Kept) &&
 		slices.Equal(p.Left, other.Left) &&
 		slices.Equal(p.Restored, other.Restored) &&
-		maps.Equal(p.Starts, other.Starts) &&
+		maps.Equal(p.Begins, other.Begins) &&
 		p.Strict.Equal(other.Strict) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Restack.Equal(other.Restack)
@@ -207,18 +206,15 @@ func (p Plan) Equal(other Plan) bool {
 // the trunk checked out — the ordinary layout of a checkout with several — and
 // sync would move it underneath that worktree.
 func (p Plan) pending() restack.Pending {
-	if len(p.Collect) == 0 && len(p.Starts) == 0 && p.onto() == "" {
+	if len(p.Collect) == 0 && len(p.Begins) == 0 && p.onto() == "" {
 		return restack.Pending{}
 	}
-	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: maps.Clone(p.Starts)}
+	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: maps.Clone(p.Begins)}
 	if moving.Begins == nil {
 		moving.Begins = map[string]string{}
 	}
 	for _, collection := range p.Collect {
 		moving.Tips[collection.Branch] = collection.To
-		if collection.Begins != "" {
-			moving.Begins[collection.Branch] = collection.Begins
-		}
 	}
 	if onto := p.onto(); onto != "" {
 		moving.Tips[p.Base] = onto
@@ -232,6 +228,11 @@ func (p Plan) pending() restack.Pending {
 func collectionsEqual(left, right []Collection) bool {
 	return slices.EqualFunc(left, right, func(a, b Collection) bool {
 		return a.Branch == b.Branch && a.To == b.To && a.Superseded == b.Superseded &&
-			a.Begins == b.Begins && slices.Equal(a.Discards, b.Discards) && slices.Equal(a.Dropped, b.Dropped)
+			slices.Equal(a.Discards, b.Discards) && slices.Equal(a.Dropped, b.Dropped)
 	})
+}
+
+// taken reports a branch this pull brings to its published version.
+func (p Plan) taken(branch string) bool {
+	return slices.ContainsFunc(p.Collect, func(collection Collection) bool { return collection.Branch == branch })
 }

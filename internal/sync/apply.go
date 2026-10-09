@@ -74,8 +74,8 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		// replay planned it from there. Recording that is what lets a replay
 		// that stops on a conflict be continued: --continue plans again from
 		// the record, and the old fork point is not in this version.
-		if collection.Begins != "" {
-			if err := s.Graph.Refork(ctx, collection.Branch, collection.Begins); err != nil {
+		if begins := plan.Begins[collection.Branch]; begins != "" {
+			if err := s.Graph.Refork(ctx, collection.Branch, begins); err != nil {
 				return stop(err)
 			}
 		}
@@ -83,8 +83,11 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	// Before the replay for the same reason as a taken branch's: a branch a
 	// commit moved into begins at its parent's published tip now, and a
 	// replay that sits it there unchanged records no fork point of its own.
-	for _, branch := range slices.Sorted(maps.Keys(plan.Starts)) {
-		if err := s.Graph.Refork(ctx, branch, plan.Starts[branch]); err != nil {
+	for _, branch := range slices.Sorted(maps.Keys(plan.Begins)) {
+		if plan.taken(branch) {
+			continue
+		}
+		if err := s.Graph.Refork(ctx, branch, plan.Begins[branch]); err != nil {
 			return stop(err)
 		}
 	}

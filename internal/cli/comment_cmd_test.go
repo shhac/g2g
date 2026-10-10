@@ -37,7 +37,7 @@ func TestCommentPreviewsWithoutWriting(t *testing.T) {
 // than reading as though a comment were already there.
 func TestCommentSaysAStackOfOnePullRequestGetsNone(t *testing.T) {
 	onePullRequest := `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[]},"pr2":{"nodes":[]}}}}`
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, onePullRequest)
 

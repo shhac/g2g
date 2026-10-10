@@ -19,8 +19,8 @@ const publishedForkPoint = "4444444444444444444444444444444444444444"
 // the branches fetched here, in the order they are asked about: lower, then top,
 // then the trunk, which has no pull request of its own.
 const publishedStackJSON = `{"data":{"repository":{"nameWithOwner":"example/synthetic",` +
-	`"pr0":{"nodes":[{"number":501,"url":"https://example.test/501","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
-	`"pr1":{"nodes":[{"number":502,"url":"https://example.test/502","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]},` +
+	`"pr0":{"nodes":[{"id":"PR_synthetic_501","number":501,"url":"https://example.test/501","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+	`"pr1":{"nodes":[{"id":"PR_synthetic_502","number":502,"url":"https://example.test/502","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]},` +
 	`"pr2":{"nodes":[]}}}}`
 
 // publishedRepository has never used Graphite and records nothing yet. The
@@ -142,7 +142,7 @@ func TestAdoptFromGitHubAlongAPathRecordsOnlyThatChain(t *testing.T) {
 // the way to bring it here, and nothing is written or created.
 func TestAdoptFromGitHubRefusesARemoteOnlyBranch(t *testing.T) {
 	onlyTop := `{"data":{"repository":{"nameWithOwner":"example/synthetic",` +
-		`"pr0":{"nodes":[{"number":502,"url":"https://example.test/502","headRefName":"synthetic-top","baseRefName":"synthetic-mid","state":"OPEN"}]},` +
+		`"pr0":{"nodes":[{"id":"PR_synthetic_502","number":502,"url":"https://example.test/502","headRefName":"synthetic-top","baseRefName":"synthetic-mid","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[]}}}}`
 	recorder, common := publishedRepository(t, []string{"synthetic-top", "synthetic-trunk"}, onlyTop)
 

@@ -16,7 +16,7 @@ import (
 // These tests assert the contract at the process boundary, per command, so any
 // consolidation of that flow has something to hold it in place.
 
-const stackedPullRequests = `{"number":102,"url":"https://example.test/102","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":2}}`
+const stackedPullRequests = `{"id":"PR_synthetic_102","number":102,"url":"https://example.test/102","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":2}}`
 
 func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder {
 	t.Helper()
@@ -30,7 +30,7 @@ func lifecycleRepository(t *testing.T, topPullRequest string) *testutil.Recorder
 func lifecycleRepositoryIn(t *testing.T, topPullRequest string) (*testutil.Recorder, string) {
 	t.Helper()
 
-	lower := `{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":1}}`
+	lower := `{"id":"PR_synthetic_101","number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN","stack":{"number":42,"size":2},"stackEntry":{"position":1}}`
 	routes, common := graphiteRoutes(t, []testutil.Route{
 		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
 		{Prefix: "api graphql", Output: `{"data":{"repository":{"pr0":{"nodes":[` + lower + `]},"pr1":{"nodes":[` + topPullRequest + `]},"pr2":{"nodes":[]}}}}`},

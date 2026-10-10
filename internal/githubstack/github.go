@@ -16,6 +16,9 @@ import (
 
 // PullRequest is the GitHub information relevant to a planned stack link.
 type PullRequest struct {
+	// ID is the pull request's node id, which is what a mutation addresses.
+	// One remembered before ids were read carries none.
+	ID     string `json:"id,omitempty"`
 	Number int    `json:"number"`
 	URL    string `json:"url"`
 	Head   string `json:"headRefName"`

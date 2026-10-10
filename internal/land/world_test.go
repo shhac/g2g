@@ -25,8 +25,8 @@ type world struct {
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	seen := &events{}
-	one := githubstack.PullRequest{Number: 41, URL: "https://example.test/41", Head: "synthetic-one", HeadOID: "one-tip", Base: "synthetic-main", State: "OPEN"}
-	two := githubstack.PullRequest{Number: 42, URL: "https://example.test/42", Head: "synthetic-two", HeadOID: "two-tip", Base: "synthetic-one", State: "OPEN"}
+	one := githubstack.PullRequest{ID: "PR_synthetic_41", Number: 41, URL: "https://example.test/41", Head: "synthetic-one", HeadOID: "one-tip", Base: "synthetic-main", State: "OPEN"}
+	two := githubstack.PullRequest{ID: "PR_synthetic_42", Number: 42, URL: "https://example.test/42", Head: "synthetic-two", HeadOID: "two-tip", Base: "synthetic-one", State: "OPEN"}
 
 	git := &fakeGit{
 		events:  seen,

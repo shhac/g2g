@@ -59,7 +59,7 @@ func service(prs []githubstack.PullRequest) (Service, *fakeGitHub) {
 }
 
 func open(number int, head, base string) githubstack.PullRequest {
-	return githubstack.PullRequest{Number: number, Head: head, Base: base, State: "OPEN"}
+	return githubstack.PullRequest{ID: fmt.Sprintf("PR_synthetic_%d", number), Number: number, Head: head, Base: base, State: "OPEN"}
 }
 
 // The case the command exists for: a restack moved the stack and GitHub still

@@ -83,6 +83,7 @@ func repositoryName(output []byte) string {
 }
 
 type pullRequestNode struct {
+	ID      string `json:"id"`
 	Number  int    `json:"number"`
 	URL     string `json:"url"`
 	Head    string `json:"headRefName"`
@@ -112,7 +113,7 @@ func (n pullRequestNode) pullRequest(alias string) (PullRequest, error) {
 	if (n.Stack == nil) != (n.StackEntry == nil) {
 		return PullRequest{}, fmt.Errorf("gh api graphql response has incomplete native stack data for %s", alias)
 	}
-	pr := PullRequest{Number: n.Number, URL: n.URL, Head: n.Head, HeadOID: n.HeadOID, Base: n.Base, State: n.State}
+	pr := PullRequest{ID: n.ID, Number: n.Number, URL: n.URL, Head: n.Head, HeadOID: n.HeadOID, Base: n.Base, State: n.State}
 	if n.Stack == nil {
 		return pr, nil
 	}
@@ -203,7 +204,7 @@ func graphqlQuery(branches []string) string {
 	fields = append(fields, "nameWithOwner")
 	for index := range branches {
 		variables = append(variables, fmt.Sprintf("$head%d: String!", index))
-		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: $head%d, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName headRefOid baseRefName state isCrossRepository stack { number size } stackEntry { position } } }", index, index))
+		fields = append(fields, fmt.Sprintf("pr%d: pullRequests(headRefName: $head%d, first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { id number url headRefName headRefOid baseRefName state isCrossRepository stack { number size } stackEntry { position } } }", index, index))
 	}
 	return fmt.Sprintf("query(%s) { repository(owner: $owner, name: $name) { %s } }", strings.Join(variables, ", "), strings.Join(fields, " "))
 }

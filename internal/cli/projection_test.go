@@ -17,9 +17,9 @@ const forkedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-trunk","synthe
 // Each alias carries all three nodes; the head filter keeps the one it asked
 // about, whatever order the branches are selected in.
 const forkedNodes = `{"nodes":[` +
-	`{"number":301,"url":"https://example.test/301","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"},` +
-	`{"number":302,"url":"https://example.test/302","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"},` +
-	`{"number":303,"url":"https://example.test/303","headRefName":"synthetic-side","baseRefName":"synthetic-lower","state":"OPEN"}]}`
+	`{"id":"PR_synthetic_301","number":301,"url":"https://example.test/301","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"},` +
+	`{"id":"PR_synthetic_302","number":302,"url":"https://example.test/302","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"},` +
+	`{"id":"PR_synthetic_303","number":303,"url":"https://example.test/303","headRefName":"synthetic-side","baseRefName":"synthetic-lower","state":"OPEN"}]}`
 
 const forkedPullRequests = `{"data":{"repository":{"pr0":` + forkedNodes + `,"pr1":` + forkedNodes + `,"pr2":` + forkedNodes + `}}}`
 
@@ -87,7 +87,7 @@ func TestStatusStillReadsAFork(t *testing.T) {
 // plan with a way out has to carry one.
 func TestBlockedPlansCarryTheirRepairForAMachine(t *testing.T) {
 	missing := `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[]}}}}`
 	for _, command := range []string{"github status", "github link"} {
 		t.Run(command, func(t *testing.T) {
@@ -118,8 +118,8 @@ func TestBlockedPlansCarryTheirRepairForAMachine(t *testing.T) {
 // A blocked preview must not close by inviting an apply that will refuse.
 func TestBlockedPreviewsDoNotInviteAnApply(t *testing.T) {
 	missing := `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"},{"number":209,"url":"https://example.test/209","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
-		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"},{"id":"PR_synthetic_209","number":209,"url":"https://example.test/209","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[{"id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
 	for _, command := range []string{"github link", "github retarget"} {
 		t.Run(command, func(t *testing.T) {
 			g2gOwnedRepositoryWithPullRequests(t, ownedGraph, missing)

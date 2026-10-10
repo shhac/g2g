@@ -101,8 +101,8 @@ const ownedGraph = `{"storeSchemaVersion":1,"trunks":["synthetic-trunk","synthet
 
 func ownedPullRequestsJSON(membership string) string {
 	return `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"` + strings.Replace(membership, "POSITION", "1", 1) + `}]},` +
-		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"` + strings.Replace(membership, "POSITION", "2", 1) + `}]},` +
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"` + strings.Replace(membership, "POSITION", "1", 1) + `}]},` +
+		`"pr1":{"nodes":[{"id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"` + strings.Replace(membership, "POSITION", "2", 1) + `}]},` +
 		// The stack comment asks about the base too; no pull request is
 		// opened from it.
 		`"pr2":{"nodes":[]}}}}`
@@ -385,10 +385,10 @@ var stackCommands = []struct {
 // they are asked about, which is what reading a whole structure from pull
 // request bases asks; ownedPullRequests answers only for the two on the path.
 const ownedPullRequestsForEveryBranch = `{"data":{"repository":{` +
-	`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+	`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
 	`"pr1":{"nodes":[]},` +
 	`"pr2":{"nodes":[]},` +
-	`"pr3":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]},` +
+	`"pr3":{"nodes":[{"id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]},` +
 	`"pr4":{"nodes":[]}}}}`
 
 // The list above is hand-maintained, because each command needs its own

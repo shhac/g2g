@@ -333,8 +333,8 @@ func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
 	// synthetic-lower sits correctly on the trunk; synthetic-top still records
 	// the trunk as its base though the stack says it sits on synthetic-lower.
 	stale := `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
-		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[{"id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-trunk","state":"OPEN"}]}}}}`
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, stale)
 
 	stdout, _, err := run(t, "github", "retarget")
@@ -363,8 +363,8 @@ func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
 // to run after every restack.
 func TestRetargetIsANoOpWhenBasesAlreadyMatch(t *testing.T) {
 	aligned := `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
-		`"pr1":{"nodes":[{"number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]}}}}`
+		`"pr0":{"nodes":[{"id":"PR_synthetic_201","number":201,"url":"https://example.test/201","headRefName":"synthetic-lower","baseRefName":"synthetic-trunk","state":"OPEN"}]},` +
+		`"pr1":{"nodes":[{"id":"PR_synthetic_202","number":202,"url":"https://example.test/202","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}]}}}}`
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, ownedGraph, aligned)
 
 	stdout, _, err := run(t, "github", "retarget", "--apply")

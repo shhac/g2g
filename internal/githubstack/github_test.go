@@ -20,14 +20,15 @@ func TestClientUsesFakeGitHubCLIOnPATH(t *testing.T) {
 	t.Setenv("GH_ARGUMENTS", arguments)
 	testutil.WithFakeExecutables(t, map[string]string{
 		"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"
-if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwner":"example/fixture","pr0":{"nodes":[{"number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}\n'; fi`,
+if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwner":"example/fixture","pr0":{"nodes":[{"id":"PR_synthetic_4","number":4,"url":"https://example.test/4","headRefName":"alpha","baseRefName":"main","state":"OPEN"}]}}}}\n'; fi`,
 	})
 	client := Client{Runner: subprocess.ExecRunner{}}
 	prs, err := client.Inspect(context.Background(), []string{"alpha"})
 	if err != nil {
 		t.Fatalf("Inspect() error = %v", err)
 	}
-	if len(prs) != 1 || prs[0].Head != "alpha" {
+	// The node id is what a retarget addresses, so it is read with the rest.
+	if len(prs) != 1 || prs[0].Head != "alpha" || prs[0].ID != "PR_synthetic_4" {
 		t.Fatalf("Inspect() = %#v", prs)
 	}
 	if err := client.Link(context.Background(), "main", []string{"alpha", "beta"}); err != nil {
@@ -42,6 +43,7 @@ if [ "$1 $2" = "api graphql" ]; then printf '{"data":{"repository":{"nameWithOwn
 		// run in, so nothing here asks which one it is first.
 		`api graphql -F owner={owner} -F name={repo} -f query=query($owner: String!, $name: String!, $head0: String!) { repository(owner: $owner, name: $name)`,
 		`pr0: pullRequests(headRefName: $head0, first: 10`,
+		"{ nodes { id number ",
 		"isCrossRepository",
 		" -f head0=alpha\n",
 		"stack { number size } stackEntry { position }",

@@ -26,7 +26,7 @@ const graphiteLog = "◯  synthetic-main\n◯  synthetic-lower\n◯  synthetic-t
 
 func pullRequestsJSON(top string) string {
 	return `{"data":{"repository":{` +
-		`"pr0":{"nodes":[{"number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN"}]},` +
+		`"pr0":{"nodes":[{"id":"PR_synthetic_101","number":101,"url":"https://example.test/101","headRefName":"synthetic-lower","baseRefName":"synthetic-main","state":"OPEN"}]},` +
 		`"pr1":{"nodes":[` + top + `]},` +
 		// The stack comment asks about the base too; no pull request is
 		// opened from it.
@@ -155,7 +155,7 @@ func run(t *testing.T, args ...string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-const openTopPullRequest = `{"number":102,"url":"https://example.test/102","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}`
+const openTopPullRequest = `{"id":"PR_synthetic_102","number":102,"url":"https://example.test/102","headRefName":"synthetic-top","baseRefName":"synthetic-lower","state":"OPEN"}`
 
 func TestStatusReadsTheStackThroughRealAdapters(t *testing.T) {
 	recorder := fakeRepository(t, openTopPullRequest)

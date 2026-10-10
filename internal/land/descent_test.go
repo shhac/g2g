@@ -22,7 +22,7 @@ func threeHigh(t *testing.T) *world {
 	w.git.tips["synthetic-three"] = "three-tip"
 	w.git.objects["synthetic-three"] = "three-tip"
 	w.git.ancestors["refs/g2g/remotes/origin/synthetic-main"] = append(w.git.ancestors["refs/g2g/remotes/origin/synthetic-main"], "merge-43")
-	three := githubstack.PullRequest{Number: 43, URL: "https://example.test/43", Head: "synthetic-three", HeadOID: "three-tip", Base: "synthetic-two", State: "OPEN"}
+	three := githubstack.PullRequest{ID: "PR_synthetic_43", Number: 43, URL: "https://example.test/43", Head: "synthetic-three", HeadOID: "three-tip", Base: "synthetic-two", State: "OPEN"}
 	w.github.prs = append(w.github.prs, three)
 	w.github.states[43] = githubstack.MergeState{Number: 43, HeadOID: "three-tip", Base: "synthetic-two", State: "OPEN", Mergeable: "MERGEABLE", StateStatus: "CLEAN"}
 	w.store.graph.Edges["synthetic-three"] = graph.Edge{Parent: "synthetic-two", ForkPoint: "two-tip"}

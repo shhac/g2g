@@ -171,8 +171,8 @@ case "$1 $2" in
       fi
       merged=$(read_state "pr-$number.state" OPEN)
       base=$(read_state "pr-$number.base" main)
-      printf ',"pr%s":{"nodes":[{"number":%s,"url":"https://example.test/%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s"}]}' \
-        "$index" "$number" "$number" "$branch" "$(head_oid "$branch")" "$base" "$merged"
+      printf ',"pr%s":{"nodes":[{"id":"PR_%s","number":%s,"url":"https://example.test/%s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s"}]}' \
+        "$index" "$number" "$number" "$number" "$branch" "$(head_oid "$branch")" "$base" "$merged"
       index=$((index + 1))
     done
     printf '}}}\n'

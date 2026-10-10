@@ -278,6 +278,25 @@ func TestStoppedBeforeAnythingChangedIsNotPartWay(t *testing.T) {
 	}
 }
 
+// GitHub refusing to move a base stops the descent before that pull request
+// merges, naming it: merged where it points now, its work would land in a
+// branch that has already gone.
+func TestARefusedRetargetStopsBeforeThatMerge(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.github.retargetErr = errors.New("synthetic retarget refusal")
+
+	err := w.service.Apply(context.Background(), plan)
+
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !strings.Contains(err.Error(), "#42") || !strings.Contains(err.Error(), "synthetic retarget refusal") {
+		t.Fatalf("Apply() error = %v, want a stop naming #42 and GitHub's reason", err)
+	}
+	if got := w.events.only("merge:"); !slices.Equal(got, []string{"merge:41:squash:admin=false"}) {
+		t.Errorf("merges = %v, want #41 alone, and #42 never asked", got)
+	}
+}
+
 type failingSecondMerge struct {
 	*fakeGitHub
 	failFor int

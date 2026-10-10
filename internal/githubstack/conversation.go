@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/shhac/g2g/internal/diagnostic"
 )
 
 // Conversation is one pull request as its comments need it: where a new one is
@@ -265,32 +263,4 @@ func parseConversations(output []byte, pending []conversationPage, marker string
 		}
 	}
 	return next, nil
-}
-
-// AddComment adds a comment to the pull request with this node id.
-//
-// The body travels as a raw field, which gh passes through as a string: it
-// reads no file for a value starting with @ and fills no {owner} placeholder,
-// so a body is posted exactly as written.
-func (c Client) AddComment(ctx context.Context, subject, body string) error {
-	if subject == "" || body == "" {
-		return fmt.Errorf("a pull request and a comment body are required")
-	}
-	diagnostic.Event(ctx, "github.comment_add", diagnostic.Field{Key: "subject", Value: subject})
-	_, err := c.runAs(ctx, "gh api graphql addComment …", "api", "graphql",
-		"-f", "query=mutation($subject: ID!, $body: String!) { addComment(input: {subjectId: $subject, body: $body}) { clientMutationId } }",
-		"-f", "subject="+subject, "-f", "body="+body)
-	return err
-}
-
-// UpdateComment replaces the body of the comment with this node id.
-func (c Client) UpdateComment(ctx context.Context, id, body string) error {
-	if id == "" || body == "" {
-		return fmt.Errorf("a comment and a comment body are required")
-	}
-	diagnostic.Event(ctx, "github.comment_update", diagnostic.Field{Key: "comment", Value: id})
-	_, err := c.runAs(ctx, "gh api graphql updateIssueComment …", "api", "graphql",
-		"-f", "query=mutation($id: ID!, $body: String!) { updateIssueComment(input: {id: $id, body: $body}) { clientMutationId } }",
-		"-f", "id="+id, "-f", "body="+body)
-	return err
 }

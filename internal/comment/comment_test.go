@@ -48,7 +48,13 @@ type fakeGitHub struct {
 	conversations map[int]githubstack.Conversation
 	asked         [][]int
 	sent          []string
-	failOn        int
+	// requests counts the calls the writes arrived in.
+	requests int
+	// failOn refuses the write at that position among all sent, counting from
+	// one, as GitHub refuses one alias of a document and applies the rest;
+	// whole fails every write of a call, as a request that never arrived does.
+	failOn int
+	whole  error
 }
 
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
@@ -69,20 +75,23 @@ func (f *fakeGitHub) Conversations(_ context.Context, numbers []int, marker stri
 	return found, nil
 }
 
-func (f *fakeGitHub) AddComment(_ context.Context, subject, _ string) error {
-	return f.send("add " + subject)
-}
-
-func (f *fakeGitHub) UpdateComment(_ context.Context, id, _ string) error {
-	return f.send("update " + id)
-}
-
-func (f *fakeGitHub) send(what string) error {
-	f.sent = append(f.sent, what)
-	if f.failOn != 0 && len(f.sent) == f.failOn {
-		return errors.New("synthetic write failure")
+func (f *fakeGitHub) WriteComments(_ context.Context, writes []githubstack.CommentWrite) ([]error, error) {
+	f.requests++
+	outcomes := make([]error, len(writes))
+	for index, write := range writes {
+		what := "add " + write.Subject
+		if write.Comment != "" {
+			what = "update " + write.Comment
+		}
+		f.sent = append(f.sent, what)
+		switch {
+		case f.whole != nil:
+			outcomes[index] = f.whole
+		case f.failOn != 0 && len(f.sent) == f.failOn:
+			outcomes[index] = errors.New("synthetic write failure")
+		}
 	}
-	return nil
+	return outcomes, f.whole
 }
 
 // chain is trunk ← one ← two ← three, the ordinary stack.
@@ -421,7 +430,7 @@ func TestPlanAddsNothingToAStackOfOne(t *testing.T) {
 	}
 }
 
-func TestExecuteSendsEachChangeInOrderAndStopsAtAFailure(t *testing.T) {
+func TestExecuteSendsEveryChangeInOrderInOneRequest(t *testing.T) {
 	github := chainGitHub()
 	github.conversations[12] = conversation(12, "synthetic-two", "OPEN", Marker+" stale")
 	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
@@ -435,14 +444,23 @@ func TestExecuteSendsEachChangeInOrderAndStopsAtAFailure(t *testing.T) {
 	if strings.Join(github.sent, ", ") != "add PR_synthetic_11, update IC_synthetic_12_0, add PR_synthetic_13" {
 		t.Errorf("sent = %v", github.sent)
 	}
-
-	github.sent, github.failOn = nil, 2
-	err = service.Execute(context.Background(), planned)
-	if err == nil || !strings.Contains(err.Error(), "#12") {
-		t.Fatalf("Execute() error = %v, want the failing pull request named", err)
+	if github.requests != 1 {
+		t.Errorf("sent in %d requests, want one", github.requests)
 	}
-	if len(github.sent) != 2 {
-		t.Errorf("sent = %v, want it to stop at the failure", github.sent)
+
+	// GitHub applies the rest of a request after refusing one write, so the
+	// one after the refusal is written too, and the failure names #12.
+	github.sent, github.requests, github.failOn = nil, 0, 2
+	err = service.Execute(context.Background(), planned)
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !strings.Contains(err.Error(), "#12: synthetic write failure") {
+		t.Fatalf("Execute() error = %v, want a stop naming the refused pull request", err)
+	}
+	if !slices.Equal(stopped.Written, []int{11, 13}) || len(stopped.Failed) != 1 || stopped.Failed[0].Number != 12 {
+		t.Errorf("Stopped = %+v, want #11 and #13 written and #12 refused", stopped)
+	}
+	if len(github.sent) != 3 {
+		t.Errorf("sent = %v, want every write sent despite the refusal", github.sent)
 	}
 }
 
@@ -544,9 +562,10 @@ func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
 	}
 }
 
-// A run that fails after writing some comments reports which, because those
-// stay written; one that fails on the first is an ordinary failure.
-func TestExecuteReportsWhatItWroteBeforeStopping(t *testing.T) {
+// A run that writes some comments and not others reports both, because those
+// written stay written. One that writes none is an ordinary failure, whether
+// GitHub refused each write or the request failed as a whole.
+func TestExecuteReportsWhatItWroteAndWhatItCouldNot(t *testing.T) {
 	github := chainGitHub()
 	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
 	planned, err := service.Plan(context.Background(), stack.Selection{})
@@ -556,13 +575,20 @@ func TestExecuteReportsWhatItWroteBeforeStopping(t *testing.T) {
 	github.failOn = 3
 	err = service.Execute(context.Background(), planned)
 	var stopped *Stopped
-	if !errors.As(err, &stopped) || !slices.Equal(stopped.Written, []int{11, 12}) || stopped.Failed != 13 {
-		t.Fatalf("Execute() = %v, want stopped at #13 after #11 and #12", err)
+	if !errors.As(err, &stopped) || !slices.Equal(stopped.Written, []int{11, 12}) || len(stopped.Failed) != 1 || stopped.Failed[0].Number != 13 {
+		t.Fatalf("Execute() = %v, want #11 and #12 written and #13 not", err)
 	}
 
-	github.sent, github.failOn = nil, 1
-	if err := service.Execute(context.Background(), planned); err == nil || errors.As(err, &stopped) {
-		t.Errorf("a failure on the first write = %v, want an ordinary error", err)
+	whole := errors.New("synthetic request failure")
+	github.sent, github.failOn, github.whole = nil, 0, whole
+	if err := service.Execute(context.Background(), planned); !errors.Is(err, whole) || errors.As(err, &stopped) {
+		t.Errorf("a request that failed as a whole = %v, want its own ordinary error", err)
+	}
+
+	single := Plan{Writes: []Write{{Number: 21, Action: ActionCreate, Subject: "PR_synthetic_21", Body: "synthetic"}}}
+	github.sent, github.failOn, github.whole = nil, 1, nil
+	if err := service.Execute(context.Background(), single); err == nil || errors.As(err, &stopped) || !strings.Contains(err.Error(), "#21: synthetic write failure") {
+		t.Errorf("a refusal of the only write = %v, want an ordinary error naming it", err)
 	}
 }
 

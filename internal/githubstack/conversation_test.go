@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -136,53 +134,6 @@ func TestConversationsRefusesWhatItCannotTrust(t *testing.T) {
 				t.Fatal("Conversations() succeeded, want a refusal")
 			}
 		})
-	}
-}
-
-// The body is posted exactly as written: a raw field, never a typed one that
-// would read a file for a leading @ or fill in {owner}.
-func TestCommentMutationsSendTheBodyAsARawField(t *testing.T) {
-	body := "@synthetic-file {owner} body\nsecond line"
-	runner := &scriptedRunner{responses: []string{`{}`, `{}`}}
-	client := Client{Runner: runner}
-	if err := client.AddComment(context.Background(), "PR_synthetic", body); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.UpdateComment(context.Background(), "IC_synthetic", body); err != nil {
-		t.Fatal(err)
-	}
-	for index, want := range []struct{ mutation, variable string }{
-		{"addComment(input: {subjectId: $subject, body: $body})", "subject=PR_synthetic"},
-		{"updateIssueComment(input: {id: $id, body: $body})", "id=IC_synthetic"},
-	} {
-		argv := strings.Join(runner.argv[index], "\x00")
-		for _, fragment := range []string{"gh\x00api\x00graphql", want.mutation, "-f\x00" + want.variable, "-f\x00body=" + body} {
-			if !strings.Contains(argv, fragment) {
-				t.Errorf("call %d = %q, missing %q", index, runner.argv[index], fragment)
-			}
-		}
-		if strings.Contains(argv, "-F\x00body") {
-			t.Errorf("call %d sent the body as a typed field: %q", index, runner.argv[index])
-		}
-	}
-}
-
-// A failed write names the mutation and never repeats the body back.
-func TestCommentMutationFailureDoesNotEchoTheBody(t *testing.T) {
-	arguments := filepath.Join(t.TempDir(), "gh-arguments")
-	t.Setenv("GH_ARGUMENTS", arguments)
-	testutil.WithFakeExecutables(t, map[string]string{
-		"gh": `printf '%s\n' "$*" >> "$GH_ARGUMENTS"; echo 'synthetic refusal' >&2; exit 1`,
-	})
-	err := Client{Runner: subprocess.ExecRunner{}}.UpdateComment(context.Background(), "IC_synthetic", "synthetic private body")
-	if err == nil {
-		t.Fatal("UpdateComment() succeeded against a failing gh")
-	}
-	if strings.Contains(err.Error(), "synthetic private body") || !strings.Contains(err.Error(), "updateIssueComment") {
-		t.Errorf("error = %q, want the mutation named and the body omitted", err)
-	}
-	if called, readErr := os.ReadFile(arguments); readErr != nil || !strings.Contains(string(called), "api graphql") {
-		t.Errorf("gh was not invoked as expected: %q, %v", called, readErr)
 	}
 }
 

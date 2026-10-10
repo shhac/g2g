@@ -140,7 +140,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 			diagnostic.Field{Key: "from", Value: step.From},
 			diagnostic.Field{Key: "to", Value: step.Base},
 		)
-		if err := s.GitHub.Retarget(ctx, step.Number, step.Base); err != nil {
+		if err := s.retarget(ctx, step); err != nil {
 			return false, err
 		}
 		*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
@@ -168,6 +168,22 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 		return false, err
 	}
 	return true, s.settleMerge(ctx, plan, step)
+}
+
+// retarget points one pull request at its base. It is one change on its own,
+// unlike github retarget's, because the base it moves to exists as a target
+// only once the merge below it has happened; sent as a mutation by node id it
+// is still one request, where gh pr edit spent several looking the pull
+// request up first.
+func (s Service) retarget(ctx context.Context, step Step) error {
+	outcomes, err := s.GitHub.Retarget(ctx, []githubstack.BaseChange{{ID: step.ID, Number: step.Number, Base: step.Base}})
+	if err != nil {
+		return err
+	}
+	if outcomes[0] != nil {
+		return fmt.Errorf("GitHub did not point #%d at %s: %w", step.Number, step.Base, outcomes[0])
+	}
+	return nil
 }
 
 // recheck decides this branch again against the world as it is now, and

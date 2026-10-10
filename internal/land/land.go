@@ -43,7 +43,7 @@ type GitHub interface {
 	Inspect(ctx context.Context, branches []string) ([]githubstack.PullRequest, error)
 	Mergeability(ctx context.Context, numbers []int) (githubstack.Mergeability, error)
 	Merge(ctx context.Context, number int, method githubstack.Method, admin bool, head string) error
-	Retarget(ctx context.Context, number int, base string) error
+	Retarget(ctx context.Context, changes []githubstack.BaseChange) ([]error, error)
 }
 
 // The three services landing composes. Each is an interface rather than the

@@ -79,13 +79,12 @@ func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conv
 			// what tells them apart and first match wins.
 			{Prefix: mergeabilityPrefix, Output: ownedMergeability},
 			{Prefix: stackCommentsPrefix, Output: conversations},
-			{Prefix: commentMutationPrefix, Output: `{"data":{}}`},
+			{Prefix: mutationPrefix, Output: appliedMutations},
 			{Prefix: "api graphql", Output: pullRequests},
 			{Prefix: "pr merge"},
 			{Prefix: "pr create"},
 			{Prefix: "stack link"},
 			{Prefix: "stack unstack"},
-			{Prefix: "pr edit"},
 		}...),
 	})
 	return recorder, common

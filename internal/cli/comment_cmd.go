@@ -2,12 +2,12 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/comment"
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
@@ -69,11 +69,12 @@ func newComment(service comment.Service, completions stack.Completions, guard fu
 	return cmd
 }
 
-// stoppedMidComment says which comments were written before the run failed.
+// stoppedMidComment says which comments were written and which were not, each
+// with why.
 func stoppedMidComment(cmd *cobra.Command, stopped *comment.Stopped, retry string, p Presentation) error {
 	written := "Wrote the comment on " + pullRequestList(stopped.Written) + ", and " + words.Pick(len(stopped.Written), "it stays", "they stay") + "."
 	return writeStoppedPartWay(cmd, p,
-		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed, stopped.Err),
+		"Stopped part-way, with the comment not written on "+githubstack.DescribeUnapplied(stopped.Failed),
 		written+" Rerun "+runnable(retry)+" to finish; it edits rather than adds.",
 		stopped)
 }

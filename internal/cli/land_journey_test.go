@@ -142,20 +142,54 @@ case "$1 $2" in
     done
     printf '}}}\n'
     ;;
-  *"addComment("*|*"updateIssueComment("*)
-    # One comment per pull request, which is all this tool keeps: the subject
-    # is PR_<number> and the comment is IC_<number>, so either names the file.
-    target=""
-    for arg in "$@"; do
-      case "$arg" in
-      subject=PR_*) target="${arg#subject=PR_}" ;;
-      id=IC_*) target="${arg#id=IC_}" ;;
-      esac
+  *"query=mutation "*)
+    # Every write of the document is applied, in alias order, as GitHub
+    # applies them: each alias's variables end in its position, so subject0
+    # or comment0 with body0 is one write and pullRequest1 with base1 another.
+    # A pull request's id is PR_<number> and its one comment's IC_<number>, so
+    # either names the files. A refusal fails its own alias and no other, and
+    # gh exits non-zero for any refusal in the answer.
+    data=""
+    errors=""
+    index=0
+    while :; do
+      kind=""
+      target=""
+      value=""
+      for arg in "$@"; do
+        case "$arg" in
+        "subject$index="*) kind=comment; target="${arg#subject$index=PR_}" ;;
+        "comment$index="*) kind=comment; target="${arg#comment$index=IC_}" ;;
+        "pullRequest$index="*) kind=retarget; target="${arg#pullRequest$index=PR_}" ;;
+        esac
+      done
+      [ -n "$kind" ] || break
+      for arg in "$@"; do
+        case "$arg" in
+        "body$index="*) value="${arg#body$index=}" ;;
+        "base$index="*) value="${arg#base$index=}" ;;
+        esac
+      done
+      [ -z "$data" ] || data="$data,"
+      if [ -f "$state_dir/refuse-$kind-$target" ]; then
+        rm -f "$state_dir/refuse-$kind-$target"
+        [ -z "$errors" ] || errors="$errors,"
+        errors="$errors{\"type\":\"FORBIDDEN\",\"path\":[\"w$index\"],\"message\":\"synthetic refusal: #$target is not writable right now\"}"
+        data="$data\"w$index\":null"
+      else
+        case "$kind" in
+        comment) printf '%s' "$value" > "$state_dir/comment-$target" ;;
+        retarget) printf '%s\n' "$value" > "$state_dir/pr-$target.base" ;;
+        esac
+        data="$data\"w$index\":{\"clientMutationId\":null}"
+      fi
+      index=$((index + 1))
     done
-    for arg in "$@"; do
-      case "$arg" in body=*) printf '%s' "${arg#body=}" > "$state_dir/comment-$target" ;; esac
-    done
-    printf '{"data":{}}\n'
+    if [ -n "$errors" ]; then
+      printf '{"data":{%s},"errors":[%s]}\n' "$data" "$errors"
+      exit 1
+    fi
+    printf '{"data":{%s}}\n' "$data"
     ;;
   *)
     printf '{"data":{"repository":{"nameWithOwner":"example/synthetic"'
@@ -180,12 +214,11 @@ case "$1 $2" in
   esac
   ;;
 "pr edit")
-  number="$3"
-  shift 3
-  while [ "$#" -gt 0 ]; do
-    if [ "$1" = "--base" ]; then printf '%s\n' "$2" > "$state_dir/pr-$number.base"; fi
-    shift
-  done
+  # A base moves through the mutation above. gh pr edit spent requests
+  # looking the pull request up first, and reaching for it again is the
+  # regression this refuses.
+  printf 'synthetic: gh pr edit is not how a base moves\n' >&2
+  exit 97
   ;;
 "pr merge")
   number="$3"

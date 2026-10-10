@@ -32,25 +32,42 @@ func (fakeSelector) Select(context.Context, stack.Selection, string) (stack.Snap
 	}, nil
 }
 
+// fakeGitHub answers a retarget the way GitHub answers one document: every
+// change is attempted, a refused one fails alone, and a whole failure fails
+// them all.
 type fakeGitHub struct {
-	prs       []githubstack.PullRequest
-	retargets []string
-	err       error
-	// failAfter makes the (failAfter+1)th call fail, so a test can reach the
-	// partial-success case rather than only the first-call-fails one.
-	failAfter int
+	prs []githubstack.PullRequest
+	// calls holds each call's changes, as "#n:id->base".
+	calls [][]string
+	// refuse names the pull requests GitHub declines; whole fails the call.
+	refuse map[int]error
+	whole  error
 }
 
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
 	return f.prs, nil
 }
 
-func (f *fakeGitHub) Retarget(_ context.Context, number int, base string) error {
-	f.retargets = append(f.retargets, fmt.Sprintf("#%d->%s", number, base))
-	if f.err != nil && len(f.retargets) > f.failAfter {
-		return f.err
+func (f *fakeGitHub) Retarget(_ context.Context, changes []githubstack.BaseChange) ([]error, error) {
+	call := make([]string, 0, len(changes))
+	outcomes := make([]error, len(changes))
+	for index, change := range changes {
+		call = append(call, fmt.Sprintf("#%d:%s->%s", change.Number, change.ID, change.Base))
+		outcomes[index] = f.refuse[change.Number]
+		if f.whole != nil {
+			outcomes[index] = f.whole
+		}
 	}
-	return nil
+	f.calls = append(f.calls, call)
+	return outcomes, f.whole
+}
+
+func (f *fakeGitHub) retargeted() string {
+	calls := make([]string, 0, len(f.calls))
+	for _, call := range f.calls {
+		calls = append(calls, strings.Join(call, ";"))
+	}
+	return strings.Join(calls, " | ")
 }
 
 func service(prs []githubstack.PullRequest) (Service, *fakeGitHub) {
@@ -89,7 +106,7 @@ func TestPlanMovesABaseThatNoLongerMatchesTheStack(t *testing.T) {
 	if err := svc.Execute(context.Background(), plan); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if got := strings.Join(github.retargets, ";"); got != "#2->synthetic-lower" {
+	if got := github.retargeted(); got != "#2:PR_synthetic_2->synthetic-lower" {
 		t.Errorf("retargeted %q, want only the mismatched pull request", got)
 	}
 }
@@ -112,8 +129,8 @@ func TestPlanDoesNothingWhenEveryBaseAlreadyMatches(t *testing.T) {
 	if err := svc.Execute(context.Background(), plan); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if len(github.retargets) != 0 {
-		t.Errorf("retargeted %v, want nothing", github.retargets)
+	if len(github.calls) != 0 {
+		t.Errorf("retargeted %v, want nothing", github.calls)
 	}
 }
 
@@ -154,8 +171,8 @@ func TestPlanBlocksOnAnAmbiguousBranch(t *testing.T) {
 	if err := svc.Execute(context.Background(), plan); err == nil {
 		t.Error("Execute() error = nil for a blocked plan")
 	}
-	if len(github.retargets) != 0 {
-		t.Errorf("a blocked plan retargeted %v", github.retargets)
+	if len(github.calls) != 0 {
+		t.Errorf("a blocked plan retargeted %v", github.calls)
 	}
 }
 
@@ -172,36 +189,6 @@ func TestPlanIgnoresASupersededPullRequest(t *testing.T) {
 	}
 	if !plan.NothingToRetarget() {
 		t.Errorf("plan has work for a merged pull request: %+v", plan.Changes)
-	}
-}
-
-// Stopping at the first refusal leaves the bases that did move where they now
-// correctly are; putting them back would undo the only part that worked.
-func TestExecuteStopsAtTheFirstRefusal(t *testing.T) {
-	svc, github := service([]githubstack.PullRequest{
-		open(1, "synthetic-lower", "synthetic-elsewhere"),
-		open(2, "synthetic-top", "synthetic-trunk"),
-	})
-	github.err = fmt.Errorf("synthetic GitHub refusal")
-
-	plan, err := svc.Plan(context.Background(), stack.Selection{})
-	if err != nil {
-		t.Fatalf("Plan() error = %v", err)
-	}
-	if len(plan.Changes) != 2 {
-		t.Fatalf("Changes = %+v, want two so a stop is observable", plan.Changes)
-	}
-	err = svc.Execute(context.Background(), plan)
-	if err == nil {
-		t.Fatal("Execute() error = nil when GitHub refused")
-	}
-	// Nothing moved, so this is the ordinary failure and not a stop part-way.
-	var stopped *Stopped
-	if errors.As(err, &stopped) {
-		t.Errorf("Execute() = %v, a stop part-way when nothing had moved", err)
-	}
-	if len(github.retargets) != 1 {
-		t.Errorf("made %d calls, want to stop after the first refusal", len(github.retargets))
 	}
 }
 
@@ -231,36 +218,87 @@ func TestAnUnconfiguredServiceRefuses(t *testing.T) {
 	}
 }
 
-// Execute's doc says it does not unwind, because a base already moved is
-// correct and putting it back would undo the only part that worked. The
-// existing stop-at-first-refusal test fails on call one, so it never reaches
-// the partial success that sentence is actually about.
-func TestExecuteLeavesTheBasesThatAlreadyMoved(t *testing.T) {
+// twoMoves is a plan with both bases wrong, so what one refusal does to the
+// other is observable.
+func twoMoves(t *testing.T) (Service, *fakeGitHub, Plan) {
+	t.Helper()
 	svc, github := service([]githubstack.PullRequest{
 		open(1, "synthetic-lower", "synthetic-elsewhere"),
 		open(2, "synthetic-top", "synthetic-trunk"),
 	})
-	github.err = fmt.Errorf("synthetic GitHub refusal")
-	github.failAfter = 1
-
 	plan, err := svc.Plan(context.Background(), stack.Selection{})
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if len(plan.Changes) != 2 {
-		t.Fatalf("Changes = %+v, want two so partial success is observable", plan.Changes)
+		t.Fatalf("Changes = %+v, want two", plan.Changes)
 	}
+	return svc, github, plan
+}
 
-	err = svc.Execute(context.Background(), plan)
+// Every base moves in one request, each addressed by the node id the plan read.
+func TestExecuteMovesEveryBaseInOneRequest(t *testing.T) {
+	svc, github, plan := twoMoves(t)
+	if err := svc.Execute(context.Background(), plan); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := github.retargeted(); got != "#1:PR_synthetic_1->synthetic-trunk;#2:PR_synthetic_2->synthetic-lower" {
+		t.Errorf("retargeted %q, want both in one call, bottom-up", got)
+	}
+}
+
+// GitHub applies the rest of a request after refusing one change, so a
+// refusal no longer stops the run. The first change failing and the second
+// moving is the case that used to stop before the second was tried: now it
+// moved, it stays, and the run is a stop part-way naming the one that did not.
+func TestExecuteReportsEveryChangeItCouldNotMake(t *testing.T) {
+	svc, github, plan := twoMoves(t)
+	github.refuse = map[int]error{1: fmt.Errorf("synthetic refusal of #1")}
+
+	err := svc.Execute(context.Background(), plan)
 	var stopped *Stopped
 	if !errors.As(err, &stopped) {
-		t.Fatalf("Execute() error = %v, want a stop part-way after the first move", err)
+		t.Fatalf("Execute() error = %v, want a stop part-way", err)
 	}
-	if len(stopped.Moved) != 1 || stopped.Moved[0].Number != 1 || stopped.Failed.Number != 2 {
-		t.Errorf("Stopped = %+v, want #1 moved and #2 failed", stopped)
+	if len(stopped.Moved) != 1 || stopped.Moved[0].Number != 2 {
+		t.Errorf("Moved = %+v, want #2", stopped.Moved)
 	}
-	// The first move happened and stays; the second was attempted and failed.
-	if got := strings.Join(github.retargets, ";"); got != "#1->synthetic-trunk;#2->synthetic-lower" {
-		t.Errorf("retargeted %q, want the first to have moved and the second attempted", got)
+	if len(stopped.Failed) != 1 || stopped.Failed[0].Change.Number != 1 || !strings.Contains(stopped.Failed[0].Err.Error(), "synthetic refusal of #1") {
+		t.Errorf("Failed = %+v, want #1 with GitHub's reason", stopped.Failed)
+	}
+	if !strings.Contains(err.Error(), "#1: synthetic refusal of #1") {
+		t.Errorf("error = %v, want the refused change named with its reason", err)
+	}
+	if len(github.calls) != 1 {
+		t.Errorf("made %d calls, want one", len(github.calls))
+	}
+}
+
+// Nothing moved is the ordinary failure, whether GitHub refused each change
+// or the request failed as a whole, and it names every change it could not
+// make.
+func TestExecuteThatMovesNothingIsAnOrdinaryFailure(t *testing.T) {
+	whole := fmt.Errorf("synthetic request failure")
+	for name, arrange := range map[string]func(*fakeGitHub){
+		"each refused": func(github *fakeGitHub) {
+			github.refuse = map[int]error{1: fmt.Errorf("synthetic refusal"), 2: fmt.Errorf("synthetic refusal")}
+		},
+		"whole request": func(github *fakeGitHub) { github.whole = whole },
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc, github, plan := twoMoves(t)
+			arrange(github)
+			err := svc.Execute(context.Background(), plan)
+			var stopped *Stopped
+			if err == nil || errors.As(err, &stopped) {
+				t.Fatalf("Execute() = %v, want an ordinary failure", err)
+			}
+			if github.whole != nil && !errors.Is(err, whole) {
+				t.Errorf("error = %v, want the request's own failure", err)
+			}
+			if github.whole == nil && !strings.Contains(err.Error(), "#1 and #2: synthetic refusal") {
+				t.Errorf("error = %v, want both named once with their shared reason", err)
+			}
+		})
 	}
 }

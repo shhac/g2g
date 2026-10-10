@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -67,8 +66,8 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 	return cmd
 }
 
-// stoppedMidRetarget says which bases moved before the run failed. It makes no
-// call of its own: the mutation budget may be what ran out.
+// stoppedMidRetarget says which bases moved and which did not, each with why.
+// It makes no call of its own: the mutation budget may be what ran out.
 func stoppedMidRetarget(cmd *cobra.Command, stopped *retarget.Stopped, retry string, p Presentation) error {
 	numbers := make([]int, 0, len(stopped.Moved))
 	for _, change := range stopped.Moved {
@@ -76,7 +75,7 @@ func stoppedMidRetarget(cmd *cobra.Command, stopped *retarget.Stopped, retry str
 	}
 	moved := "Moved the base of " + pullRequestList(numbers) + ", and " + words.Pick(len(numbers), "it stays", "they stay") + " moved."
 	return writeStoppedPartWay(cmd, p,
-		fmt.Sprintf("Stopped part-way at #%d: %s", stopped.Failed.Number, stopped.Err),
+		"Stopped part-way, with the base not moved on "+retarget.Describe(stopped.Failed),
 		moved+" Rerun "+runnable(retry)+" to finish; it moves only the bases still wrong.",
 		stopped)
 }

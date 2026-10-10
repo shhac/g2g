@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -58,11 +59,39 @@ const mergeabilityJSON = `{"data":{"repository":{"squashMergeAllowed":true,"merg
 
 const mergeabilityPrefix = "api graphql -F owner={owner} -F name={repo} -f query=query Mergeability("
 
-// The stack comment's read and its two writes share the endpoint too.
+// The stack comment's read and every write share the endpoint too. A write is
+// one alias of a named mutation document, up to twenty to a document, so a
+// prefix counts documents — requests — and mutationAliases counts writes.
 const (
-	stackCommentsPrefix   = "api graphql -F owner={owner} -F name={repo} -f query=query StackComments("
-	commentMutationPrefix = "api graphql -f query=mutation("
+	stackCommentsPrefix    = "api graphql -F owner={owner} -F name={repo} -f query=query StackComments("
+	mutationPrefix         = "api graphql -f query=mutation "
+	commentMutationPrefix  = mutationPrefix + "WriteStackComments("
+	retargetMutationPrefix = mutationPrefix + "RetargetPullRequests("
 )
+
+// appliedMutations is GitHub's answer to a document whose every write applied.
+// It names more aliases than any one test sends, and the client reads only the
+// ones it sent, so one static answer serves every document.
+var appliedMutations = func() string {
+	aliases := make([]string, 0, 20)
+	for index := 0; index < 20; index++ {
+		aliases = append(aliases, fmt.Sprintf(`"w%d":{"clientMutationId":null}`, index))
+	}
+	return `{"data":{` + strings.Join(aliases, ",") + `}}`
+}()
+
+// mutationAliases counts the writes of one mutation — addComment,
+// updateIssueComment, updatePullRequest — across every document sent.
+func mutationAliases(recorder *testutil.Recorder, mutation string) int {
+	alias := regexp.MustCompile(`\bw[0-9]+: ` + regexp.QuoteMeta(mutation) + `\(`)
+	total := 0
+	for _, call := range recorder.Calls() {
+		if strings.HasPrefix(call, "gh "+mutationPrefix) {
+			total += len(alias.FindAllString(call, -1))
+		}
+	}
+	return total
+}
 
 func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Route, string) {
 	t.Helper()
@@ -124,7 +153,7 @@ func commentRoutes() []testutil.Route {
 	return []testutil.Route{
 		{Prefix: asking(101), Output: `{"data":{"repository":{` + conversation("c0", 101, "synthetic-lower") + `,` + conversation("c1", 102, "synthetic-top") + `}}}`},
 		{Prefix: asking(102), Output: `{"data":{"repository":{` + conversation("c0", 102, "synthetic-top") + `}}}`},
-		{Prefix: commentMutationPrefix, Output: `{"data":{}}`},
+		{Prefix: mutationPrefix, Output: appliedMutations},
 	}
 }
 
@@ -138,7 +167,6 @@ func fakeRepository(t *testing.T, topPullRequests string) *testutil.Recorder {
 		{Prefix: mergeabilityPrefix, Output: mergeabilityJSON},
 		{Prefix: "api graphql", Output: pullRequestsJSON(topPullRequests)},
 		{Prefix: "pr merge"},
-		{Prefix: "pr edit"},
 		{Prefix: "pr create"},
 		{Prefix: "stack link"},
 	})
@@ -345,8 +373,13 @@ func TestSubmitKeepsTheStackCommentsUnlessToldNotTo(t *testing.T) {
 			if err != nil {
 				t.Fatalf("submit --apply: %v\n%s", err, stdout)
 			}
-			if got := recorder.Count("gh " + commentMutationPrefix); got != test.want {
-				t.Errorf("comment writes = %d, want %d:\n%s", got, test.want, strings.Join(recorder.Calls(), "\n"))
+			// Both counted, deliberately: one comment per pull request, and
+			// all of them in one request.
+			if got := mutationAliases(recorder, "addComment"); got != test.want {
+				t.Errorf("comments added = %d, want %d:\n%s", got, test.want, strings.Join(recorder.Calls(), "\n"))
+			}
+			if got, want := recorder.Count("gh "+commentMutationPrefix), min(test.want, 1); got != want {
+				t.Errorf("comment requests = %d, want %d:\n%s", got, want, strings.Join(recorder.Calls(), "\n"))
 			}
 			if test.want != 0 {
 				recorder.AssertOrder("git push --atomic", "gh "+stackCommentsPrefix, "gh "+commentMutationPrefix)

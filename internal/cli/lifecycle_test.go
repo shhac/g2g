@@ -190,7 +190,7 @@ func TestNoMutatingCommandProceedsDuringAnInterruptedRestack(t *testing.T) {
 		{name: "track", args: []string{"track", "--branch", "synthetic-top", "--parent", "synthetic-lower", "--apply"}, store: true},
 		{name: "untrack", args: []string{"untrack", "--branch", "synthetic-top", "--apply"}, store: true},
 		{name: "adopt", args: []string{"adopt", "--trunk", "synthetic-main", "--apply"}, store: true},
-		{name: "github retarget", args: []string{"github", "retarget", "--apply"}, mutation: "gh pr edit"},
+		{name: "github retarget", args: []string{"github", "retarget", "--apply"}, mutation: "gh " + retargetMutationPrefix},
 		{name: "graphite mirror", args: []string{"graphite", "mirror", "--apply"}, mutation: "gt track"},
 		{name: "graphite adopt", args: []string{"graphite", "adopt", "--apply"}, store: true},
 		// A second read path through the same command: a guard wired to one

@@ -49,11 +49,19 @@ func TestEveryGraphQLDocumentIsValidAgainstGitHubsSchema(t *testing.T) {
 				return err
 			},
 		},
-		{name: "add a comment", call: func(c Client) error {
-			return c.AddComment(context.Background(), "PR_synthetic_11", "synthetic body")
+		{name: "add and update comments in one document", call: func(c Client) error {
+			_, err := c.WriteComments(context.Background(), []CommentWrite{
+				{Subject: "PR_synthetic_11", Body: "synthetic body"},
+				{Comment: "IC_synthetic_12", Body: "synthetic body"},
+			})
+			return err
 		}},
-		{name: "update a comment", call: func(c Client) error {
-			return c.UpdateComment(context.Background(), "IC_synthetic_11", "synthetic body")
+		{name: "retarget pull requests in one document", call: func(c Client) error {
+			_, err := c.Retarget(context.Background(), []BaseChange{
+				{ID: "PR_synthetic_11", Number: 11, Base: "synthetic-trunk"},
+				{ID: "PR_synthetic_12", Number: 12, Base: "synthetic-lower"},
+			})
+			return err
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

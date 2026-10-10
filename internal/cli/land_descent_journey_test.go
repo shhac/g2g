@@ -325,14 +325,21 @@ func TestJourneyLandTouchesTheRemoteLinearly(t *testing.T) {
 	}
 	// Everything above the bottom is aimed at the trunk before its turn, and
 	// nothing else is moved: the bottom one is already there.
+	// Each is its own request of one change, because the base it moves to is
+	// only right once the merge below has happened.
 	retargets := matching(log, func(line string) bool {
-		return strings.HasPrefix(line, "pr edit ") && strings.HasSuffix(line, " --base main")
+		return strings.HasPrefix(line, retargetMutationPrefix) && strings.HasSuffix(line, " -f base0=main")
 	})
 	if got := len(retargets); got != 2 {
 		t.Errorf("%d pull requests retargeted to the trunk, want one per branch above the bottom:\n%s", got, dump)
 	}
-	if got := len(matching(log, prefixed("pr edit "))); got != len(retargets) {
+	if got := len(matching(log, prefixed(retargetMutationPrefix))); got != len(retargets) {
 		t.Errorf("a pull request was edited other than to aim it at the trunk:\n%s", dump)
+	}
+	for _, number := range []string{"42", "43"} {
+		if got := readState(t, state, "pr-"+number+".base"); got != "main" {
+			t.Errorf("#%s is based on %q, want the trunk it was retargeted to", number, got)
+		}
 	}
 
 	// Each branch above the bottom is republished exactly once, after the
@@ -499,6 +506,56 @@ func TestJourneyLandCanKeepTheRemoteBranches(t *testing.T) {
 	}
 	if local := w.git(w.Local, "branch", "--format=%(refname:short)"); strings.Contains(local, "synthetic-a") {
 		t.Errorf("synthetic-a survives locally, which --no-delete-remote does not ask for:\n%s", local)
+	}
+	w.assertClean(w.Local)
+}
+
+// Every comment of a stack goes to GitHub in one request, and GitHub applies
+// the rest of a request after refusing one write. So a refusal on the bottom
+// pull request -- which used to stop the run before the other two were tried
+// -- leaves those two written, for real, and the run stops part-way naming
+// the one that was not. The rerun writes that one and leaves the others be.
+func TestJourneyARefusedCommentLeavesTheRestWritten(t *testing.T) {
+	w := newWorld(t)
+	threeBranchStack(t, w, "synthetic-c", 1)
+	state := landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b", "synthetic-c")
+	flag(t, state, "refuse-comment-41", "")
+
+	stdout, stderr, err := run(t, "github", "comment", "--apply")
+	if !cli.StoppedPartWayForTest(err) {
+		t.Fatalf("comment with #41 refused: err = %v, want the part-way status\n%s%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "not written on #41: synthetic refusal") || !strings.Contains(stdout, "Wrote the comment on #42 and #43") {
+		t.Errorf("the report does not say what was and was not written:\n%s", stdout)
+	}
+	if got := readState(t, state, "comment-41"); got != "" {
+		t.Errorf("#41 carries a comment GitHub refused:\n%s", got)
+	}
+	written := map[string]string{}
+	for _, number := range []string{"42", "43"} {
+		written[number] = readState(t, state, "comment-"+number)
+		if !strings.Contains(written[number], "#41") || !strings.Contains(written[number], "#43") {
+			t.Errorf("#%s does not carry the stack's comment:\n%s", number, written[number])
+		}
+	}
+	if got := len(matching(calls(t, state), prefixed(commentMutationPrefix))); got != 1 {
+		t.Errorf("%d comment requests, want all three writes in one", got)
+	}
+
+	mustRun(t, "github", "comment", "--apply")
+
+	if got := readState(t, state, "comment-41"); !strings.Contains(got, "#42") {
+		t.Errorf("the rerun did not write #41's comment:\n%s", got)
+	}
+	for number, before := range written {
+		if got := readState(t, state, "comment-"+number); got != before {
+			t.Errorf("the rerun rewrote #%s's comment, which was already current", number)
+		}
+	}
+	documents := matching(calls(t, state), prefixed(commentMutationPrefix))
+	last := calls(t, state)[documents[len(documents)-1]]
+	if !strings.Contains(last, "w0: addComment(") || strings.Contains(last, "w1: ") {
+		t.Errorf("the rerun sent %q, want #41's comment alone", last)
 	}
 	w.assertClean(w.Local)
 }

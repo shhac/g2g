@@ -143,6 +143,8 @@ type fakeGitHub struct {
 	allowed  githubstack.Allowed
 	asked    int
 	mergeErr error
+	// retargetErr is GitHub refusing to move a base.
+	retargetErr error
 	// settleOn runs after the first question, standing in for GitHub catching
 	// up with a push it had not yet observed.
 	settleOn func()
@@ -188,17 +190,33 @@ func (f *fakeGitHub) Merge(_ context.Context, number int, method githubstack.Met
 	return nil
 }
 
-func (f *fakeGitHub) Retarget(_ context.Context, number int, base string) error {
-	f.events.record(fmt.Sprintf("retarget:%d:%s", number, base))
-	state := f.states[number]
-	state.Base = base
-	f.states[number] = state
-	for index, pr := range f.prs {
-		if pr.Number == number {
-			f.prs[index].Base = base
+// Retarget moves a base only for the node id the pull request was read with,
+// as GitHub would, so a step that lost its id on the way is refused rather
+// than quietly moved.
+func (f *fakeGitHub) Retarget(_ context.Context, changes []githubstack.BaseChange) ([]error, error) {
+	outcomes := make([]error, len(changes))
+	for position, change := range changes {
+		number, base := change.Number, change.Base
+		f.events.record(fmt.Sprintf("retarget:%d:%s", number, base))
+		if f.retargetErr != nil {
+			outcomes[position] = f.retargetErr
+			continue
+		}
+		known := slices.ContainsFunc(f.prs, func(pr githubstack.PullRequest) bool { return pr.Number == number && pr.ID == change.ID })
+		if !known {
+			outcomes[position] = fmt.Errorf("synthetic: no pull request has node id %q", change.ID)
+			continue
+		}
+		state := f.states[number]
+		state.Base = base
+		f.states[number] = state
+		for index, pr := range f.prs {
+			if pr.Number == number {
+				f.prs[index].Base = base
+			}
 		}
 	}
-	return nil
+	return outcomes, nil
 }
 
 type fakePusher struct {

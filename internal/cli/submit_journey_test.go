@@ -46,7 +46,7 @@ func TestJourneySubmitExistingPullRequestsPublishesAndPreservesBases(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(calls), "pr create") || strings.Contains(string(calls), "pr edit") {
+	if strings.Contains(string(calls), "pr create") || strings.Contains(string(calls), "updatePullRequest(") {
 		t.Fatalf("existing PRs were mutated: %s", calls)
 	}
 	w.assertClean(w.Local)

@@ -9,6 +9,7 @@ package retarget
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,10 +20,10 @@ import (
 )
 
 // GitHub is the surface retargeting needs: read the pull requests on a path,
-// and point one at a different base.
+// and point them at different bases.
 type GitHub interface {
 	Inspect(ctx context.Context, branches []string) ([]githubstack.PullRequest, error)
-	Retarget(ctx context.Context, number int, base string) error
+	Retarget(ctx context.Context, changes []githubstack.BaseChange) ([]error, error)
 }
 
 // Service resolves a stack and reconciles its pull request bases with it.
@@ -36,6 +37,8 @@ type Service struct {
 type Change struct {
 	Branch string
 	Number int
+	// ID is the pull request's node id, which the change addresses.
+	ID string
 	// From is the base GitHub currently records; To is the branch the resolved
 	// stack says this one sits on.
 	From string
@@ -90,7 +93,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("retarget service is not fully configured")
 	}
-	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "gh pr edit")
+	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "g2g github retarget")
 	if err != nil {
 		return Plan{}, err
 	}
@@ -110,6 +113,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 			plan.Changes = append(plan.Changes, Change{
 				Branch: step.Branch,
 				Number: step.Resolution.Open.Number,
+				ID:     step.Resolution.Open.ID,
 				From:   step.Resolution.Open.Base,
 				To:     step.ExpectedBase,
 			})
@@ -130,28 +134,52 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	return plan, nil
 }
 
-// Stopped is a retarget that failed after moving at least one base. Those
-// moves are on GitHub and stay, so the run is neither a failure to retry from
+// Stopped is a retarget that moved some bases and not others. Those it moved
+// are on GitHub and stay, so the run is neither a failure to retry from
 // scratch nor a success.
 type Stopped struct {
-	// Moved are the changes made before the failure, in order.
+	// Moved are the changes GitHub applied, in order.
 	Moved []Change
-	// Failed is the change the run stopped on.
-	Failed Change
+	// Failed are the changes it did not, in order, each with why.
+	Failed []Failure
+	// Err is what failed the run: the request that failed as a whole, or
+	// every refusal joined.
+	Err error
+}
+
+// Failure is one change GitHub did not apply, and why.
+type Failure struct {
+	Change Change
 	Err    error
 }
 
 func (s *Stopped) Error() string {
-	return fmt.Sprintf("stopped at #%d after moving %d: %v", s.Failed.Number, len(s.Moved), s.Err)
+	moved := make([]int, 0, len(s.Moved))
+	for _, change := range s.Moved {
+		moved = append(moved, change.Number)
+	}
+	return fmt.Sprintf("moved the base of %s but not of %s", githubstack.NamePullRequests(moved), Describe(s.Failed))
 }
 
 func (s *Stopped) Unwrap() error { return s.Err }
 
-// Execute points each pull request at its recorded parent, bottom-up.
+// Describe names every change that failed and why, a shared reason once.
+func Describe(failed []Failure) string {
+	unapplied := make([]githubstack.Unapplied, 0, len(failed))
+	for _, failure := range failed {
+		unapplied = append(unapplied, githubstack.Unapplied{Number: failure.Change.Number, Err: failure.Err})
+	}
+	return githubstack.DescribeUnapplied(unapplied)
+}
+
+// Execute points each pull request at its recorded parent, bottom-up, in as
+// few requests as GitHub needs.
 //
-// It stops at the first refusal rather than unwinding. A base already moved is
-// correct, and putting it back would undo the only part that worked. A failure
-// before anything moved is an ordinary error; one after is a Stopped.
+// GitHub applies every change in a request whatever happened to the one
+// before, so a refusal does not stop the run: it moves every base it can and
+// reports each one it could not. Nothing is unwound -- a base already moved is
+// correct, and putting it back would undo the part that worked. Nothing moved
+// is an ordinary error; some moved is a Stopped.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if plan.Blocked() != "" {
 		return fmt.Errorf("cannot retarget: %s", plan.Blocked())
@@ -159,13 +187,34 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if err := plan.Snapshot.RequireActionable("g2g github retarget"); err != nil {
 		return err
 	}
-	for index, change := range plan.Changes {
-		if err := s.GitHub.Retarget(ctx, change.Number, change.To); err != nil {
-			if index == 0 {
-				return err
-			}
-			return &Stopped{Moved: plan.Changes[:index], Failed: change, Err: err}
-		}
+	if len(plan.Changes) == 0 {
+		return nil
 	}
-	return nil
+	changes := make([]githubstack.BaseChange, 0, len(plan.Changes))
+	for _, change := range plan.Changes {
+		changes = append(changes, githubstack.BaseChange{ID: change.ID, Number: change.Number, Base: change.To})
+	}
+	outcomes, whole := s.GitHub.Retarget(ctx, changes)
+	stopped := &Stopped{Moved: []Change{}, Failed: []Failure{}, Err: whole}
+	refusals := make([]error, 0)
+	for index, change := range plan.Changes {
+		if outcomes[index] == nil {
+			stopped.Moved = append(stopped.Moved, change)
+			continue
+		}
+		stopped.Failed = append(stopped.Failed, Failure{Change: change, Err: outcomes[index]})
+		refusals = append(refusals, outcomes[index])
+	}
+	switch {
+	case len(stopped.Failed) == 0:
+		return nil
+	case len(stopped.Moved) != 0:
+		if stopped.Err == nil {
+			stopped.Err = errors.Join(refusals...)
+		}
+		return stopped
+	case whole != nil:
+		return whole
+	}
+	return fmt.Errorf("no base was moved: %s", Describe(stopped.Failed))
 }

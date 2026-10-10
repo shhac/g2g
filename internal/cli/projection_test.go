@@ -33,7 +33,7 @@ func TestProjectingCommandsRefuseAFork(t *testing.T) {
 		mutation string
 	}{
 		{args: []string{"github", "link", "--branch", "synthetic-lower", "--apply"}, mutation: "gh stack link"},
-		{args: []string{"github", "retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh pr edit"},
+		{args: []string{"github", "retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh " + retargetMutationPrefix},
 		{args: []string{"submit", "--branch", "synthetic-lower"}, mutation: "git push"},
 	} {
 		t.Run(test.args[0], func(t *testing.T) {

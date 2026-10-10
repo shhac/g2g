@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/comment"
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
-	"github.com/shhac/g2g/internal/words"
 )
 
 // commentView draws the stack with what happens to each pull request's
@@ -79,14 +79,9 @@ func commentNodes(plan comment.Plan) []stackNode {
 	return nodes
 }
 
-// pullRequestList names pull requests the way every other list here is read.
-func pullRequestList(numbers []int) string {
-	named := make([]string, 0, len(numbers))
-	for _, number := range numbers {
-		named = append(named, fmt.Sprintf("#%d", number))
-	}
-	return words.List(named)
-}
+// pullRequestList names pull requests the way every other list here is read,
+// and the way a stopped write names them in its own error.
+func pullRequestList(numbers []int) string { return githubstack.NamePullRequests(numbers) }
 
 // commentMark is what happens to one comment, said as the one axis it is.
 func commentMark(write comment.Write) stackMark {

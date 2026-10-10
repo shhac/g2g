@@ -12,6 +12,7 @@ package comment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -36,12 +37,11 @@ const command = "g2g github comment"
 const historyRounds = 6
 
 // GitHub is what keeping the comment needs: the pull requests on the stack,
-// their conversations, and the two writes.
+// their conversations, and the writes.
 type GitHub interface {
 	Inspect(ctx context.Context, branches []string) ([]githubstack.PullRequest, error)
 	Conversations(ctx context.Context, numbers []int, marker string) ([]githubstack.Conversation, error)
-	AddComment(ctx context.Context, subject, body string) error
-	UpdateComment(ctx context.Context, id, body string) error
+	WriteComments(ctx context.Context, writes []githubstack.CommentWrite) ([]error, error)
 }
 
 // Service resolves a stack and keeps the comment on each of its pull requests.
@@ -241,54 +241,76 @@ func (s Service) wholeStack(ctx context.Context, selection stack.Selection) (sta
 	return whole, snapshot, nil
 }
 
-// Stopped is a run that wrote some comments and then failed on one.
+// Stopped is a run that wrote some comments and not others.
 //
-// Those comments are written and correct, so reporting the run as not applied
-// would be wrong about the part that worked; rerunning edits the rest rather
-// than adding to them.
+// Those it wrote are correct, so reporting the run as not applied would be
+// wrong about the part that worked; rerunning edits them rather than adding
+// to them, and writes the rest.
 type Stopped struct {
-	// Written are the pull requests whose comment was sent, in order.
+	// Written are the pull requests whose comment GitHub applied, in order.
 	Written []int
-	// Failed is the pull request the run stopped on.
-	Failed int
-	Err    error
+	// Failed are those whose comment it did not, in order, each with why.
+	Failed []githubstack.Unapplied
+	// Err is what failed the run: the request that failed as a whole, or
+	// every refusal joined.
+	Err error
 }
 
 func (s *Stopped) Error() string {
-	return fmt.Sprintf("stopped at #%d after writing %d: %v", s.Failed, len(s.Written), s.Err)
+	return fmt.Sprintf("wrote the comment on %s but not on %s", githubstack.NamePullRequests(s.Written), githubstack.DescribeUnapplied(s.Failed))
 }
 
 func (s *Stopped) Unwrap() error { return s.Err }
 
-// Execute sends each write in order and stops at the first that fails.
+// Execute sends every write, in order, in as few requests as GitHub needs.
 //
-// Nothing is unwound. A failure before anything was sent is an ordinary error;
-// one after is a Stopped, because some of the run happened.
+// GitHub applies every write in a request whatever happened to the one before,
+// so a refusal does not stop the run: it writes every comment it can and
+// reports each one it could not. Nothing is unwound. Nothing written is an
+// ordinary error; some written is a Stopped, because some of the run happened.
 func (s Service) Execute(ctx context.Context, plan Plan) error {
 	if plan.Blocked() != "" {
 		return fmt.Errorf("cannot keep the stack comments: %s", plan.Blocked())
 	}
-	written := make([]int, 0, plan.Changing())
+	sending := make([]Write, 0, plan.Changing())
+	writes := make([]githubstack.CommentWrite, 0, plan.Changing())
 	for _, write := range plan.Writes {
 		if !write.Changes() {
 			continue
 		}
-		if err := s.send(ctx, write); err != nil {
-			if len(written) == 0 {
-				return fmt.Errorf("#%d: %w", write.Number, err)
-			}
-			return &Stopped{Written: written, Failed: write.Number, Err: err}
+		sending = append(sending, write)
+		if write.Action == ActionCreate {
+			writes = append(writes, githubstack.CommentWrite{Subject: write.Subject, Body: write.Body})
+			continue
 		}
-		written = append(written, write.Number)
+		writes = append(writes, githubstack.CommentWrite{Comment: write.Comment, Body: write.Body})
 	}
-	return nil
-}
-
-func (s Service) send(ctx context.Context, write Write) error {
-	if write.Action == ActionCreate {
-		return s.GitHub.AddComment(ctx, write.Subject, write.Body)
+	if len(writes) == 0 {
+		return nil
 	}
-	return s.GitHub.UpdateComment(ctx, write.Comment, write.Body)
+	outcomes, whole := s.GitHub.WriteComments(ctx, writes)
+	stopped := &Stopped{Written: []int{}, Failed: []githubstack.Unapplied{}, Err: whole}
+	refusals := make([]error, 0)
+	for index, write := range sending {
+		if outcomes[index] == nil {
+			stopped.Written = append(stopped.Written, write.Number)
+			continue
+		}
+		stopped.Failed = append(stopped.Failed, githubstack.Unapplied{Number: write.Number, Err: outcomes[index]})
+		refusals = append(refusals, outcomes[index])
+	}
+	switch {
+	case len(stopped.Failed) == 0:
+		return nil
+	case len(stopped.Written) != 0:
+		if stopped.Err == nil {
+			stopped.Err = errors.Join(refusals...)
+		}
+		return stopped
+	case whole != nil:
+		return whole
+	}
+	return fmt.Errorf("no comment was written: %s", githubstack.DescribeUnapplied(stopped.Failed))
 }
 
 // Keep plans the stack's comments and writes them in one step, for a command

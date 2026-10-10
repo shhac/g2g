@@ -67,16 +67,22 @@ func TestCommentApplyAddsOneCommentToEachPullRequest(t *testing.T) {
 	if !strings.Contains(stdout, "Commented.") {
 		t.Errorf("apply does not confirm:\n%s", stdout)
 	}
-	if got := recorder.Count("gh " + commentMutationPrefix + "$subject"); got != 2 {
-		t.Fatalf("addComment calls = %d, want one per pull request:\n%s", got, strings.Join(recorder.Calls(), "\n"))
+	if got := mutationAliases(recorder, "addComment"); got != 2 {
+		t.Fatalf("comments added = %d, want one per pull request:\n%s", got, strings.Join(recorder.Calls(), "\n"))
+	}
+	if got := recorder.Count("gh " + commentMutationPrefix); got != 1 {
+		t.Errorf("comment requests = %d, want both comments in one", got)
 	}
 	calls := strings.Join(recorder.Calls(), "\n")
-	for _, want := range []string{"-f subject=PR_synthetic_201 -f body=<!-- g2g:stack-comment rev=", "-f subject=PR_synthetic_202 -f body=<!-- g2g:stack-comment rev="} {
+	for _, want := range []string{"-f subject0=PR_synthetic_201 -f body0=<!-- g2g:stack-comment rev=", "-f subject1=PR_synthetic_202 -f body1=<!-- g2g:stack-comment rev="} {
 		if !strings.Contains(calls, want) {
 			t.Errorf("no write %q in:\n%s", want, calls)
 		}
 	}
-	recorder.AssertNone("gh "+commentMutationPrefix+"$id", "gh pr ", "git push", "gt ")
+	if got := mutationAliases(recorder, "updateIssueComment"); got != 0 {
+		t.Errorf("comments edited = %d, want none where there was nothing to edit", got)
+	}
+	recorder.AssertNone("gh pr ", "git push", "gt ")
 }
 
 // A pull request that already carries the comment is edited, never given a
@@ -92,15 +98,18 @@ func TestCommentApplyEditsTheCommentItFinds(t *testing.T) {
 	if _, _, err := run(t, "github", "comment", "--apply"); err != nil {
 		t.Fatalf("comment --apply: %v", err)
 	}
-	edited := recorder.Find("gh " + commentMutationPrefix + "$id")
-	if !strings.Contains(edited, "-f id=IC_synthetic_stale -f body=<!-- g2g:stack-comment rev=") {
+	edited := recorder.Find("gh " + commentMutationPrefix)
+	if !strings.Contains(edited, "w0: updateIssueComment(") || !strings.Contains(edited, "-f comment0=IC_synthetic_stale -f body0=<!-- g2g:stack-comment rev=") {
 		t.Errorf("edit = %q, want the stale comment replaced", edited)
 	}
 	if strings.Contains(strings.Join(recorder.Calls(), "\n"), "IC_synthetic_reviewer") {
 		t.Error("a comment without the marker was touched")
 	}
-	if got := recorder.Count("gh " + commentMutationPrefix + "$subject"); got != 1 {
-		t.Errorf("addComment calls = %d, want only #202 given a new comment", got)
+	if got := mutationAliases(recorder, "addComment"); got != 1 {
+		t.Errorf("comments added = %d, want only #202 given a new comment", got)
+	}
+	if got := recorder.Count("gh " + commentMutationPrefix); got != 1 {
+		t.Errorf("comment requests = %d, want the edit and the addition in one", got)
 	}
 }
 
@@ -133,29 +142,33 @@ func TestCommentJSONCarriesEveryBody(t *testing.T) {
 	}
 }
 
-// A write that fails after another succeeded is reported as what it is: the
-// first comment is written and stays, the run stopped, and rerunning finishes.
-func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
-	second := testutil.Route{
-		Prefix: commentMutationPrefix + "$subject: ID!, $body: String!) { addComment(input: {subjectId: $subject, body: $body}) { clientMutationId } } -f subject=PR_synthetic_202",
-		Stderr: "synthetic refusal", Exit: 1,
-	}
-	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, second)
+// A document GitHub answered for in part: it refused the first write and
+// applied the second, and gh exits non-zero for the refusal. The refused
+// first write used to stop the run before the second was tried.
+const firstCommentRefused = `{"data":{"w0":null,"w1":{"clientMutationId":null}},` +
+	`"errors":[{"type":"FORBIDDEN","path":["w0"],"message":"synthetic refusal"}]}`
 
-	stdout, stderr, err := run(t, "github", "comment", "--branch", "synthetic-top", "--apply")
+// A refused write no longer stops the run: GitHub applied the rest of the
+// request, so the report says which comment was written, which was not and
+// why, and that rerunning finishes.
+func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
+	refused := testutil.Route{Prefix: commentMutationPrefix, Output: firstCommentRefused, Exit: 1}
+	recorder, _ := g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, refused)
+
+	stdout, _, err := run(t, "github", "comment", "--branch", "synthetic-top", "--apply")
 	if err == nil {
-		t.Fatalf("comment --apply succeeded with a failing write:\n%s", stdout)
-	}
-	// Nothing else prints what gh said once a run stops part-way.
-	if !strings.Contains(stderr, "synthetic refusal") {
-		t.Errorf("stderr does not carry gh's output:\n%s", stderr)
+		t.Fatalf("comment --apply succeeded with a refused write:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "Not applied") {
 		t.Errorf("a run that wrote a comment says nothing was applied:\n%s", stdout)
 	}
 	// The retry keeps the stack the run was aimed at; a bare one would keep
 	// whichever stack the checkout is on.
-	for _, want := range []string{"Stopped part-way at #202", "Wrote the comment on #201", "Rerun g2g github comment --branch synthetic-top --apply"} {
+	for _, want := range []string{
+		"Stopped part-way, with the comment not written on #201: synthetic refusal",
+		"Wrote the comment on #202, and it stays.",
+		"Rerun g2g github comment --branch synthetic-top --apply",
+	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("report missing %q:\n%s", want, stdout)
 		}
@@ -163,8 +176,26 @@ func TestCommentApplyThatStopsPartWaySaysWhatItWrote(t *testing.T) {
 	if !cli.StoppedPartWayForTest(err) {
 		t.Errorf("error = %v, want the part-way status", err)
 	}
-	if got := recorder.Count("gh " + commentMutationPrefix + "$subject"); got != 2 {
-		t.Errorf("addComment calls = %d, want the first sent and the second attempted", got)
+	if documents, writes := recorder.Count("gh "+commentMutationPrefix), mutationAliases(recorder, "addComment"); documents != 1 || writes != 2 {
+		t.Errorf("%d requests carrying %d additions, want both in one", documents, writes)
+	}
+}
+
+// A request that never reached GitHub wrote nothing, which is the ordinary
+// failure, with what gh said on stderr.
+func TestCommentApplyThatWritesNothingIsNotApplied(t *testing.T) {
+	failed := testutil.Route{Prefix: commentMutationPrefix, Stderr: "synthetic: could not reach GitHub", Exit: 1}
+	g2gOwnedRepositoryWithConversations(t, ownedGraph, ownedPullRequests, ownedConversations, failed)
+
+	stdout, stderr, err := run(t, "github", "comment", "--apply")
+	if err == nil || cli.StoppedPartWayForTest(err) {
+		t.Fatalf("error = %v, want an ordinary failure", err)
+	}
+	if !strings.Contains(stdout, "Not applied") {
+		t.Errorf("a run that wrote nothing does not say so:\n%s", stdout)
+	}
+	if !strings.Contains(stdout+stderr, "synthetic: could not reach GitHub") {
+		t.Errorf("what gh said is lost:\n%s\n%s", stdout, stderr)
 	}
 }
 

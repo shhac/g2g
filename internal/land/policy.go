@@ -16,6 +16,8 @@ type Step struct {
 	Branch string
 	Number int
 	URL    string
+	// ID is the pull request's node id, which pointing it at Base addresses.
+	ID string
 
 	// Base is where the pull request has to point for its merge to put this
 	// branch's work into the trunk rather than into the branch below it.
@@ -88,7 +90,7 @@ func classify(in facts) (Step, repair.Note) {
 	if in.Landed {
 		step.Landed = true
 		if open := in.Step.Resolution.Open; open != nil {
-			step.Number, step.URL = open.Number, open.URL
+			step.Number, step.URL, step.ID = open.Number, open.URL, open.ID
 		}
 		return step, repair.Note{}
 	}
@@ -132,7 +134,7 @@ func classify(in facts) (Step, repair.Note) {
 	}
 
 	open := in.Step.Resolution.Open
-	step.Number, step.URL = open.Number, open.URL
+	step.Number, step.URL, step.ID = open.Number, open.URL, open.ID
 	if open.Base != step.Base {
 		step.From = open.Base
 	}

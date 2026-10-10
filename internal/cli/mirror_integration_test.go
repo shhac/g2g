@@ -344,17 +344,18 @@ func TestRetargetMovesOnlyTheMismatchedBase(t *testing.T) {
 	if !strings.Contains(stdout, "base synthetic-trunk → synthetic-lower") {
 		t.Errorf("preview does not name the base it would move:\n%s", stdout)
 	}
-	recorder.AssertNone("gh pr edit")
+	recorder.AssertNone("gh " + mutationPrefix)
 
 	if _, _, err := run(t, "github", "retarget", "--apply"); err != nil {
 		t.Fatalf("retarget --apply: %v", err)
 	}
-	edited := recorder.Find("gh pr edit")
-	if !strings.Contains(edited, "202") || !strings.Contains(edited, "--base synthetic-lower") {
+	edited := recorder.Find("gh " + retargetMutationPrefix)
+	if !strings.Contains(edited, "w0: updatePullRequest(input: {pullRequestId: $pullRequest0, baseRefName: $base0})") ||
+		!strings.Contains(edited, "-f pullRequest0=PR_synthetic_202 -f base0=synthetic-lower") {
 		t.Errorf("recorded %q, want #202 pointed at synthetic-lower", edited)
 	}
 	// The pull request already sitting where it belongs is left alone.
-	if strings.Contains(edited, "201") {
+	if strings.Contains(edited, "201") || mutationAliases(recorder, "updatePullRequest") != 1 {
 		t.Errorf("recorded %q, want the correct pull request untouched", edited)
 	}
 }
@@ -374,5 +375,5 @@ func TestRetargetIsANoOpWhenBasesAlreadyMatch(t *testing.T) {
 	if !strings.Contains(stdout, "Nothing to do") {
 		t.Errorf("an aligned stack does not report a no-op:\n%s", stdout)
 	}
-	recorder.AssertNone("gh pr edit")
+	recorder.AssertNone("gh "+mutationPrefix, "gh pr ")
 }

@@ -379,6 +379,10 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   had a copy, and each set `Unsynced` by convention), `syncpoint.Record` is
   the only agree-then-diagnose wrapper, and `localgit.Short` is the only
   short-id rule — the ids a preview prints are the ones `--keep` is asked for.
+  Sync points are read for a whole selection at once (`syncpoint.LoadLatest`
+  and `Latest.Describe`, two or three processes however wide the stack) and
+  recorded together (`syncpoint.Record` takes every agreement a command
+  makes); asking per branch was the cost of every preview.
   `published` names a side, not a place: the branch as the git remote
   `--remote` names holds it (one of `git remote`'s names, `origin` by
   default). It never means GitHub — a value naming `github` would promise a
@@ -510,7 +514,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Eight things exist once and must not be reimplemented locally. Each was found as
+Nine things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -545,6 +549,11 @@ property the original had.
   and a placeholder such as `<branch>` never does. About fifty commands across
   a dozen packages had spliced names in raw while one function in `land` quoted
   and its neighbour two lines down did not.
+- `internal/words` — agreeing with a count (`Pick`, `Count`) and listing names
+  as a subject ("a, b and c"). Five packages carried their own `pick`, one of
+  them named `pickWord`, and two their own list join. It depends on nothing,
+  so any package may use it; a join that only says "a, b, c" is a different
+  sentence and stays where it is.
 - `selected.aim` with a `suggestable` in `internal/cli/next.go` — pointing a
   follow-up command at what a command acted on: `--branch` only when it was
   named, `--scope` only when the command's default would not reach the

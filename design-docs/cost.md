@@ -74,6 +74,16 @@ one `rev-parse` of every revision, one aliased GraphQL query per round. What is
 per pair — divergence, ancestry, cherry — runs through `parallel.Each` into a
 slice sized first, so nothing needs a lock.
 
+**Ask GitHub less as a wait drags on.** Every GitHub request draws on one
+allowance per account, shared with everything else that account runs. A wait
+that has gone on for a minute -- a merge queue, slow checks -- is not about to
+answer in seconds, so `land`'s settle loops widen from eight seconds to thirty
+once they have waited that long, counted in time waited so a test sees the
+same sequence. A request refused for coming too often is waited out at that
+slow pace rather than stopping a descent part-way, and named if the budget
+runs out first. A state a wait has just read is handed on rather than read
+again: `recheck` decides from the merge state `settlePush` settled on.
+
 ## Still expensive
 
 Known, measured, and left for a change of its own:
@@ -108,16 +118,20 @@ Known, measured, and left for a change of its own:
   about to be pruned — through the same check, Untouched shortcut first, that a
   drifted branch gets. Asking each level concurrently would keep the order and
   lose the serial wait on a deep landed chain.
-- **A sync point costs about ten small reads per differing branch.** Each is
-  bounded by the branch's own commits or its reflog, so none grows with the
-  trunk, but they add up: `pull`'s per-branch collection is serial (it was
-  before sync points, at a third of the cost); recording an agreement on a
-  level branch reads the sync ref and its reflog one branch at a time where one
-  `for-each-ref` would say which need reading; whether a sync point is this
-  branch's reads the branch's whole reflog once it has been rewritten; and
-  which other branch now holds a dropped commit is one ancestry question per
-  commit per branch, where `for-each-ref --contains` would answer per commit.
-  Status's recent-drops note reads two refs per shown branch, serially.
+- **A sync point is read for the whole selection, and two things are still
+  per branch.** Every branch's sync-point history comes back from one
+  `for-each-ref` and one `git log -g` over all of them
+  (`git.Client.SyncHistories`), whether each was recorded for the branch that
+  has its name now from one walk of their reflogs (`DescribesAll`), and a
+  command records every agreement it makes after one read of what is there
+  (`syncpoint.Record`). What stays per branch is the drop pre-check — the
+  sync point's own commits, and one bounded comparison of both sides — and,
+  only when something was dropped, the full classification. Status reads the
+  histories twice, once to compare and once for its recent-drops note.
+- **A sync point's history is carried across a rename one entry at a time.**
+  A ref can be updated only once in a transaction, so `MoveSync` is one
+  `update-ref` per agreement it carries. Renames are rare and the history is
+  bounded by reflog expiry.
 - **The pull request graph's first round is every local branch in one query.**
   With hundreds of stale branches that is one large request; chunking it would
   keep one slow answer from failing the command.

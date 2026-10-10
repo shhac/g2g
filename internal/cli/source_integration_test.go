@@ -66,6 +66,7 @@ func g2gOwnedRepositoryWithConversations(t *testing.T, graph, pullRequests, conv
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			// status compares with what the remote last held here, and nothing is known.
 			{Prefix: "for-each-ref --format=%(objectname) %(refname) refs/remotes/"},
+			{Prefix: "for-each-ref --format=%(refname) refs/g2g/synced/"},
 			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},
@@ -271,6 +272,7 @@ func dualSourceRepository(t *testing.T) *testutil.Recorder {
 			{Prefix: "remote get-url", Output: "https://example.test/synthetic.git"},
 			// status compares with what the remote last held here, and nothing is known.
 			{Prefix: "for-each-ref --format=%(objectname) %(refname) refs/remotes/"},
+			{Prefix: "for-each-ref --format=%(refname) refs/g2g/synced/"},
 			{Prefix: "ls-remote"},
 			{Prefix: "push"},
 		},

@@ -132,11 +132,7 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 		if verdict.refusal != nil && found.refusal == nil {
 			found.refusal = verdict.refusal
 		}
-		found.drops = append(found.drops, verdict.drops...)
-		found.moves = append(found.moves, verdict.moves...)
-		found.kept = append(found.kept, verdict.kept...)
-		found.left = append(found.left, verdict.left...)
-		found.restored = append(found.restored, verdict.restored...)
+		found.commits = append(found.commits, verdict.commits...)
 		if verdict.unsynced {
 			found.unsynced = append(found.unsynced, branch)
 		}
@@ -172,22 +168,23 @@ type collecting struct {
 
 // collected is what collect decided across the selection.
 type collected struct {
-	collections                        []Collection
-	stuck                              []divergence
-	refusal                            *repair.Note
-	drops, moves, kept, left, restored []Drop
-	begins                             map[string]string
-	unsynced                           []string
+	collections []Collection
+	stuck       []divergence
+	refusal     *repair.Note
+	// commits are every commit a sync point named, branch by branch.
+	commits  []Drop
+	begins   map[string]string
+	unsynced []string
 }
 
 // verdict is what collect decided about one branch -- a collection, a
 // divergence, a refusal, or none of them -- and the commits a sync point named
 // on the way.
 type verdict struct {
-	collection                         *Collection
-	stuck                              *divergence
-	refusal                            *repair.Note
-	drops, moves, kept, left, restored []Drop
+	collection *Collection
+	stuck      *divergence
+	refusal    *repair.Note
+	commits    []Drop
 	// unsynced reports a branch that differs from the remote with no sync
 	// point to say whose the difference is.
 	unsynced bool
@@ -236,7 +233,9 @@ func (s Service) collectOne(ctx context.Context, c collecting, branch string) (v
 		return sync, err
 	}
 	found, err := s.collectUnsynced(ctx, c, branch, local, published, parent, begins)
-	found.kept, found.restored, found.unsynced = sync.kept, sync.restored, sync.unsynced
+	// Undecided, the sync point can still have named commits kept, and ones a
+	// reset to a stale tracking ref left out.
+	found.commits, found.unsynced = sync.commits, sync.unsynced
 	return found, err
 }
 

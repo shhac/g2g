@@ -16,6 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 // Ready reports a service with everything it needs.
@@ -103,7 +104,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Drops, plan.Moves, plan.Kept, plan.Left, plan.Restored = found.drops, found.moves, found.kept, found.left, found.restored
+	plan.Commits = syncpoint.Grouped(found.commits)
 	if plan.Subjects, err = s.describe(ctx, plan); err != nil {
 		return Plan{}, err
 	}

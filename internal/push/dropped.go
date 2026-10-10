@@ -73,29 +73,27 @@ func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, bra
 // Drop is one commit a push names, and the branch it is about.
 type Drop = syncpoint.Drop
 
-// drops lists every commit the sync points said was dropped, in branch
-// order: what this push removes, what it moves between two of its branches,
-// and what it would put back.
-func (s Service) drops(ctx context.Context, branches []string, changed map[string]syncpoint.Changes) (dropped, moved, restored []Drop, err error) {
-	dropped, moved, restored = []Drop{}, []Drop{}, []Drop{}
+// drops lists every commit the sync points said was dropped, branch by
+// branch: what this push removes, what it moves between two of its
+// branches, and what it would put back.
+func (s Service) drops(ctx context.Context, branches []string, changed map[string]syncpoint.Changes) ([]Drop, error) {
+	commits := make([]Drop, 0)
 	for _, branch := range branches {
 		changes := changed[branch]
-		for _, commit := range changes.DroppedUpstream {
-			restored = append(restored, Drop{Branch: branch, Commit: commit})
-		}
+		commits = append(commits, syncpoint.Named(syncpoint.Restoring, branch, changes.DroppedUpstream)...)
 		for _, commit := range changes.DroppedHere {
 			to, err := s.holding(ctx, branches, branch, commit)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, err
 			}
-			if to == "" {
-				dropped = append(dropped, Drop{Branch: branch, Commit: commit})
-				continue
+			kind := syncpoint.Dropped
+			if to != "" {
+				kind = syncpoint.Moved
 			}
-			moved = append(moved, Drop{Branch: branch, Commit: commit, To: to})
+			commits = append(commits, Drop{Kind: kind, Branch: branch, Commit: commit, To: to})
 		}
 	}
-	return dropped, moved, restored, nil
+	return syncpoint.Grouped(commits), nil
 }
 
 // holding is another branch of the push that still holds a commit, which
@@ -144,7 +142,7 @@ func (s Service) subjects(ctx context.Context, plan Plan) (map[string]string, er
 		return nil, nil
 	}
 	ids := make([]string, 0)
-	for _, drop := range slices.Concat(plan.Drops, plan.Moves, plan.Restores) {
+	for _, drop := range plan.Commits {
 		if !slices.Contains(ids, drop.Commit) {
 			ids = append(ids, drop.Commit)
 		}

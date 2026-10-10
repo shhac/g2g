@@ -13,7 +13,7 @@ import (
 // left the stack named as dropped.
 func TestDecideTakesOnlyAClearDropAndRefusesEveryMix(t *testing.T) {
 	c := collecting{remote: "origin", command: "g2g pull", takeCommand: "g2g pull --take published"}
-	moved := []Drop{{Branch: "synthetic-b", Commit: "m0000000000000", To: "synthetic-c"}}
+	moved := []Drop{{Kind: syncpoint.Moved, Branch: "synthetic-b", Commit: "m0000000000000", To: "synthetic-c"}}
 	for _, test := range []struct {
 		name    string
 		changes syncpoint.Changes
@@ -38,11 +38,11 @@ func TestDecideTakesOnlyAClearDropAndRefusesEveryMix(t *testing.T) {
 					t.Errorf("decide() = %+v, want a refusal naming %q", got, test.refuses)
 				}
 			case test.takes:
-				if got.collection == nil || got.collection.To != "published-tip" || len(got.drops) != len(test.gone) || got.refusal != nil {
+				if got.collection == nil || got.collection.To != "published-tip" || len(syncpoint.Of(got.commits, syncpoint.Dropped)) != len(test.gone) || got.refusal != nil {
 					t.Errorf("decide() = %+v, want the published version taken, dropping %v", got, test.gone)
 				}
 			default:
-				if len(got.left) != test.left || got.collection != nil || got.refusal != nil {
+				if len(syncpoint.Of(got.commits, syncpoint.Left)) != test.left || got.collection != nil || got.refusal != nil {
 					t.Errorf("decide() = %+v, want %d left for push", got, test.left)
 				}
 			}

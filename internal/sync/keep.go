@@ -8,6 +8,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -32,7 +33,7 @@ func (s Service) resolveKeep(ctx context.Context, keep []string) ([]string, erro
 func unkeptRefusal(plan Plan) (repair.Note, bool) {
 	unkept := make([]string, 0)
 	for _, commit := range plan.Keep {
-		if !slices.ContainsFunc(plan.Kept, func(drop Drop) bool { return drop.Commit == commit }) {
+		if !slices.ContainsFunc(syncpoint.Of(plan.Commits, syncpoint.Kept), func(drop Drop) bool { return drop.Commit == commit }) {
 			unkept = append(unkept, localgit.Short(commit))
 		}
 	}

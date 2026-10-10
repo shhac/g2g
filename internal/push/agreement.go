@@ -48,7 +48,7 @@ func (s Service) recordPushed(ctx context.Context, plan Plan, leases []localgit.
 			diagnostic.Event(ctx, "push.sync_point", diagnostic.Field{Key: "branch", Value: branch}, diagnostic.Field{Key: "decision", Value: "not recorded"})
 			continue
 		}
-		pushed[branch] = localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: syncpoint.DroppedOn(branch, plan.Drops, plan.Moves)}
+		pushed[branch] = localgit.SyncPoint{Tip: tip, Local: tip, Command: "push", Dropped: syncpoint.DroppedOn(branch, plan.Commits, syncpoint.Dropped, syncpoint.Moved)}
 	}
 	syncpoint.Record(ctx, recorder, "push.sync_point", plan.Remote, pushed)
 }

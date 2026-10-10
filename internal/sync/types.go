@@ -82,16 +82,16 @@ type Plan struct {
 	// id. Each must be a drop this pull would otherwise make, in either
 	// direction, or the plan refuses it by name.
 	Keep []string
-	// Drops are commits this pull takes off a branch here because the remote
-	// no longer has them, measured against where the two last agreed. Moves
-	// are commits that left one branch and are in another, which are not
-	// drops. Kept are drops the caller kept. Left are commits dropped here and
-	// still on the remote, which this pull leaves for push to publish.
-	// Restored are commits a branch lacked only because it was reset to a
-	// remote-tracking ref older than its sync point, which the pull puts back.
-	// Every one is listed, never counted: once a ref moves nothing else will
-	// name them.
-	Drops, Moves, Kept, Left, Restored []Drop
+	// Commits are every commit a sync point told this pull about, each with
+	// what the pull does to it: dropped from a branch here because the remote
+	// no longer has it, measured against where the two last agreed; moved,
+	// having left one branch for another, which is not a drop; kept, a drop
+	// the caller kept; left, dropped here and still on the remote, for push
+	// to publish; or restored, missing only because the branch was reset to a
+	// remote-tracking ref older than its sync point, which the pull puts
+	// back. Each kind together, in that order. Every one is listed, never
+	// counted: once a ref moves nothing else will name them.
+	Commits []Drop
 	// Begins is where a branch's own commits begin once this pull has run,
 	// for the branches where that is not the fork point recorded: a branch
 	// taken whose published version is built on the parent as the remote
@@ -172,7 +172,7 @@ func (p Plan) onto() string {
 // moves: the apply is what records that this clone has seen it dropped and
 // kept it, without which the next push would refuse to publish it.
 func (p Plan) Nothing() bool {
-	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Begins) == 0 && len(p.Kept) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Begins) == 0 && len(syncpoint.Of(p.Commits, syncpoint.Kept)) == 0 && len(p.Restack.Steps) == 0
 }
 
 // Equal compares every fact that changes what the sync does.
@@ -186,11 +186,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
 		maps.Equal(p.Published, other.Published) &&
 		slices.Equal(p.Keep, other.Keep) &&
-		slices.Equal(p.Drops, other.Drops) &&
-		slices.Equal(p.Moves, other.Moves) &&
-		slices.Equal(p.Kept, other.Kept) &&
-		slices.Equal(p.Left, other.Left) &&
-		slices.Equal(p.Restored, other.Restored) &&
+		slices.Equal(p.Commits, other.Commits) &&
 		maps.Equal(p.Begins, other.Begins) &&
 		p.Strict.Equal(other.Strict) &&
 		p.Repair.Equal(other.Repair) &&

@@ -12,6 +12,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 type Git interface {
@@ -59,15 +60,16 @@ type Plan struct {
 	// pushed — and the last of those is a force-push the lease would reject,
 	// previewed without a word about it.
 	Publishing map[string]Publication
-	// Drops are published commits this push removes because this clone
-	// dropped them since it last agreed with the remote; Moves are such
-	// commits another branch of the push still holds, which leave one branch
-	// for another rather than the stack. Restores are commits the remote
-	// dropped that this push would put back, which refuse it. Each is listed
-	// by commit, with Subjects naming them, because once the remote moves
-	// nothing else will.
-	Drops, Moves, Restores []Drop
-	Subjects               map[string]string
+	// Commits are every commit a sync point told this push about, each with
+	// what the push does to it: dropped, a published commit this clone
+	// dropped since it last agreed with the remote; moved, such a commit
+	// another branch of the push still holds, which leaves one branch for
+	// another rather than the stack; or restoring, a commit the remote
+	// dropped that this push would put back, which refuses it. Each kind
+	// together, in that order. Each is listed by commit, with Subjects naming
+	// them, because once the remote moves nothing else will.
+	Commits  []Drop
+	Subjects map[string]string
 	// Strict is what --strict would refuse on top of Repair, empty when
 	// nothing is out of step. It is worked out whether or not anybody asked,
 	// and Strictly is how a caller that did makes it the refusal.
@@ -169,14 +171,14 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	}
 	s.recordLevel(ctx, remote, snapshot.Branches, publishing, tips)
 	plan := Plan{Snapshot: snapshot, Remote: remote, RemoteTips: tips, Upstream: upstream, Publishing: publishing}
-	if plan.Drops, plan.Moves, plan.Restores, err = s.drops(ctx, snapshot.Branches, changed); err != nil {
+	if plan.Commits, err = s.drops(ctx, snapshot.Branches, changed); err != nil {
 		return Plan{}, err
 	}
 	if plan.Subjects, err = s.subjects(ctx, plan); err != nil {
 		return Plan{}, err
 	}
-	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, plan.Restores)
-	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, plan.Drops)
+	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, syncpoint.Of(plan.Commits, syncpoint.Restoring))
+	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, syncpoint.Of(plan.Commits, syncpoint.Dropped))
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
@@ -270,9 +272,7 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 // preview and apply must stop the push, not be overwritten by it.
 func (p Plan) Equal(other Plan) bool {
 	return p.Snapshot.Equal(other.Snapshot) &&
-		slices.Equal(p.Drops, other.Drops) &&
-		slices.Equal(p.Moves, other.Moves) &&
-		slices.Equal(p.Restores, other.Restores) &&
+		slices.Equal(p.Commits, other.Commits) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Strict.Equal(other.Strict) &&
 		maps.Equal(p.Publishing, other.Publishing) &&

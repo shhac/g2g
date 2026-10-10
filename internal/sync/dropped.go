@@ -45,9 +45,9 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 		return verdict{unsynced: true}, false, nil
 	}
 	changes, kept := changes.Keep(c.keep)
-	found := verdict{kept: drops(branch, kept)}
+	found := verdict{commits: syncpoint.Named(syncpoint.Kept, branch, kept)}
 	if changes.Stale {
-		found.restored = drops(branch, changes.New)
+		found.commits = append(found.commits, syncpoint.Named(syncpoint.Restored, branch, changes.New)...)
 	}
 	if !changes.Dropped() {
 		return found, false, nil
@@ -73,7 +73,7 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 		}
 		// Dropped here and nothing new there: this branch is ahead of what
 		// the remote holds by a drop, which is push's to publish.
-		found.left = drops(branch, changes.DroppedHere)
+		found.commits = append(found.commits, syncpoint.Named(syncpoint.Left, branch, changes.DroppedHere)...)
 		return found
 	}
 	switch {
@@ -86,7 +86,7 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 	default:
 		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Dropped: gone}
 		found.begins = begins
-		found.drops, found.moves = drops(branch, gone), moves
+		found.commits = append(append(found.commits, syncpoint.Named(syncpoint.Dropped, branch, gone)...), moves...)
 	}
 	return found
 }
@@ -112,7 +112,7 @@ func (s Service) moved(ctx context.Context, c collecting, branch string, commits
 			gone = append(gone, commit)
 			continue
 		}
-		moves = append(moves, Drop{Branch: branch, Commit: commit, To: to})
+		moves = append(moves, Drop{Kind: syncpoint.Moved, Branch: branch, Commit: commit, To: to})
 	}
 	return moves, gone, nil
 }
@@ -182,14 +182,6 @@ func (s Service) fetchedTips(ctx context.Context, c collecting, branch string) (
 		}
 	}
 	return fetched, nil
-}
-
-func drops(branch string, commits []string) []Drop {
-	named := make([]Drop, 0, len(commits))
-	for _, commit := range commits {
-		named = append(named, Drop{Branch: branch, Commit: commit})
-	}
-	return named
 }
 
 func listed(commits []string) string {
@@ -290,11 +282,9 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 		return nil, nil
 	}
 	ids := make([]string, 0)
-	for _, list := range [][]Drop{plan.Drops, plan.Moves, plan.Kept, plan.Left, plan.Restored} {
-		for _, drop := range list {
-			if !slices.Contains(ids, drop.Commit) {
-				ids = append(ids, drop.Commit)
-			}
+	for _, drop := range plan.Commits {
+		if !slices.Contains(ids, drop.Commit) {
+			ids = append(ids, drop.Commit)
 		}
 	}
 	if len(ids) == 0 {
@@ -311,11 +301,11 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 // behind anybody's back.
 func strictly(plan Plan, unsynced []string) repair.Note {
 	reasons := make([]string, 0, 3)
-	if len(plan.Drops) != 0 {
-		reasons = append(reasons, "it would drop "+dropNames(plan.Drops))
+	if dropped := syncpoint.Of(plan.Commits, syncpoint.Dropped); len(dropped) != 0 {
+		reasons = append(reasons, "it would drop "+dropNames(dropped))
 	}
-	if len(plan.Restored) != 0 {
-		reasons = append(reasons, "it would put back "+dropNames(plan.Restored)+", missing only after a reset to an out-of-date tracking ref")
+	if restored := syncpoint.Of(plan.Commits, syncpoint.Restored); len(restored) != 0 {
+		reasons = append(reasons, "it would put back "+dropNames(restored)+", missing only after a reset to an out-of-date tracking ref")
 	}
 	if len(unsynced) != 0 {
 		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+words.Pick(len(unsynced), "differs", "differ")+" from "+remoteName(plan.Remote)+" with no record of where the two last agreed")

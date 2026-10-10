@@ -58,7 +58,7 @@ func (s Service) recordAgreed(ctx context.Context, plan Plan) {
 	}
 	agreed := map[string]localgit.SyncPoint{}
 	for branch, local := range syncpoint.Locals(ctx, s.Git, slices.Sorted(maps.Keys(plan.Published))) {
-		agreed[branch] = localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Drops)}
+		agreed[branch] = localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Commits, syncpoint.Dropped)}
 	}
 	syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, agreed)
 }

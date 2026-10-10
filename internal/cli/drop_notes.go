@@ -28,10 +28,10 @@ func dropList(subjects map[string]string, drops []syncpoint.Drop) string {
 
 // commitRecords are the same commits for a machine, one record each, tagged
 // with what happens to them.
-func commitRecords(kind string, subjects map[string]string, drops []syncpoint.Drop) []stackCommit {
+func commitRecords(subjects map[string]string, drops []syncpoint.Drop) []stackCommit {
 	records := make([]stackCommit, 0, len(drops))
 	for _, drop := range drops {
-		records = append(records, stackCommit{Branch: drop.Branch, Commit: drop.Commit, Subject: subjects[drop.Commit], Kind: kind, To: drop.To})
+		records = append(records, stackCommit{Branch: drop.Branch, Commit: drop.Commit, Subject: subjects[drop.Commit], Kind: string(drop.Kind), To: drop.To})
 	}
 	return records
 }

@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -29,11 +29,7 @@ func pushView(plan push.Plan) stackView {
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
 	view = pushDropNotes(view, plan)
-	view.Commits = slices.Concat(
-		commitRecords("dropped", plan.Subjects, plan.Drops),
-		commitRecords("moved", plan.Subjects, plan.Moves),
-		commitRecords("restoring", plan.Subjects, plan.Restores),
-	)
+	view.Commits = commitRecords(plan.Subjects, plan.Commits)
 	view = view.note("Atomic push: all selected refs advance together or none do.", severityNeutral)
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
@@ -44,16 +40,17 @@ func pushView(plan push.Plan) stackView {
 // pushDropNotes list every published commit a push removes, by branch, short
 // id and subject: once the remote moves, nothing else will name them.
 func pushDropNotes(view stackView, plan push.Plan) stackView {
-	if len(plan.Drops) != 0 {
+	of := func(kind syncpoint.Kind) []syncpoint.Drop { return syncpoint.Of(plan.Commits, kind) }
+	if dropped := of(syncpoint.Dropped); len(dropped) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s from %s that you dropped here since you last pulled or pushed: %s · to keep %s, run %s first.",
-			words.Count(len(plan.Drops), "published commit", "published commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
-			words.Pick(len(plan.Drops), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
+			words.Count(len(dropped), "published commit", "published commits"), plan.Remote, dropList(plan.Subjects, dropped),
+			words.Pick(len(dropped), "it", "them"), runnable("g2g pull --keep <commit>")), severityWarn)
 	}
-	if len(plan.Moves) != 0 {
-		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", words.Count(len(plan.Moves), "published commit", "published commits"), dropList(plan.Subjects, plan.Moves)), severityNeutral)
+	if moved := of(syncpoint.Moved); len(moved) != 0 {
+		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", words.Count(len(moved), "published commit", "published commits"), dropList(plan.Subjects, moved)), severityNeutral)
 	}
-	if len(plan.Restores) != 0 {
-		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, words.Count(len(plan.Restores), "commit", "commits"), dropList(plan.Subjects, plan.Restores)), severityBad)
+	if restoring := of(syncpoint.Restoring); len(restoring) != 0 {
+		view = view.note(fmt.Sprintf("%s dropped %s you still have: %s.", plan.Remote, words.Count(len(restoring), "commit", "commits"), dropList(plan.Subjects, restoring)), severityBad)
 	}
 	return view
 }

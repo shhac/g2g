@@ -2,10 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
 
 	"github.com/shhac/g2g/internal/restack"
@@ -37,35 +37,30 @@ func pullView(plan syncer.Plan) stackView {
 
 // pullCommits are the commits a pull names, for a machine.
 func pullCommits(plan syncer.Plan) []stackCommit {
-	return slices.Concat(
-		commitRecords("dropped", plan.Subjects, plan.Drops),
-		commitRecords("moved", plan.Subjects, plan.Moves),
-		commitRecords("kept", plan.Subjects, plan.Kept),
-		commitRecords("left", plan.Subjects, plan.Left),
-		commitRecords("restored", plan.Subjects, plan.Restored),
-	)
+	return commitRecords(plan.Subjects, plan.Commits)
 }
 
 // dropNotes list every commit a pull drops, moves, keeps or leaves, by branch,
 // short id and subject. A count would not do: once a ref moves nothing else
 // will name them, and the list is what makes one findable again.
 func dropNotes(view stackView, plan syncer.Plan) stackView {
-	if len(plan.Drops) != 0 {
+	of := func(kind syncpoint.Kind) []syncpoint.Drop { return syncpoint.Of(plan.Commits, kind) }
+	if dropped := of(syncpoint.Dropped); len(dropped) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s %s no longer has, removed there since this clone last pulled or pushed: %s · keep any with %s · each stays reachable through the sync point's reflog for about 30 days, and %s recovers one.",
-			words.Count(len(plan.Drops), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Drops),
+			words.Count(len(dropped), "commit", "commits"), plan.Remote, dropList(plan.Subjects, dropped),
 			runnable("g2g pull --keep <commit>"), runnable("git branch <name> <commit>")), severityWarn)
 	}
-	if len(plan.Moves) != 0 {
-		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", words.Count(len(plan.Moves), "commit", "commits"), plan.Remote, dropList(plan.Subjects, plan.Moves)), severityNeutral)
+	if moved := of(syncpoint.Moved); len(moved) != 0 {
+		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", words.Count(len(moved), "commit", "commits"), plan.Remote, dropList(plan.Subjects, moved)), severityNeutral)
 	}
-	if len(plan.Kept) != 0 {
-		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", words.Count(len(plan.Kept), "commit", "commits"), dropList(plan.Subjects, plan.Kept)), severityNeutral)
+	if kept := of(syncpoint.Kept); len(kept) != 0 {
+		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", words.Count(len(kept), "commit", "commits"), dropList(plan.Subjects, kept)), severityNeutral)
 	}
-	if len(plan.Restored) != 0 {
-		view = view.note(fmt.Sprintf("Puts back %s missing only because the branch was reset to a remote-tracking ref older than the last pull: %s.", words.Count(len(plan.Restored), "commit", "commits"), dropList(plan.Subjects, plan.Restored)), severityWarn)
+	if restored := of(syncpoint.Restored); len(restored) != 0 {
+		view = view.note(fmt.Sprintf("Puts back %s missing only because the branch was reset to a remote-tracking ref older than the last pull: %s.", words.Count(len(restored), "commit", "commits"), dropList(plan.Subjects, restored)), severityWarn)
 	}
-	if len(plan.Left) != 0 {
-		view = view.note(fmt.Sprintf("Leaves %s you dropped and %s still has, for %s to publish: %s.", words.Count(len(plan.Left), "commit", "commits"), plan.Remote, runnable("g2g push"), dropList(plan.Subjects, plan.Left)), severityNeutral)
+	if left := of(syncpoint.Left); len(left) != 0 {
+		view = view.note(fmt.Sprintf("Leaves %s you dropped and %s still has, for %s to publish: %s.", words.Count(len(left), "commit", "commits"), plan.Remote, runnable("g2g push"), dropList(plan.Subjects, left)), severityNeutral)
 	}
 	return view
 }

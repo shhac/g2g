@@ -257,10 +257,21 @@ separate question, answered by content (`landed.Into`).
 
 ## Completed boundary: retargeting pull-request bases
 
-`g2g github retarget` uses `gh pr edit <number> --base <branch>` to make open pull
-requests match the resolved linear path. It previews the affected pull requests
-and their old and new bases, revalidates before `--apply`, changes only bases
-that disagree, and refuses a branch with more than one open pull request.
+`g2g github retarget` sends `updatePullRequest(input: {pullRequestId, baseRefName})`
+mutations, addressed by the node id the pull request read returns, to make open
+pull requests match the resolved linear path. Every change goes in one aliased
+document, at most twenty to a document, where it was a `gh pr edit` each — and
+`gh pr edit` looks the pull request up before editing it. It previews the
+affected pull requests and their old and new bases, revalidates before
+`--apply`, changes only bases that disagree, and refuses a branch with more than
+one open pull request. A change whose pull request was read without a node id
+refuses the whole call, naming it, before anything is sent.
+
+GitHub applies every change in a document whatever happened to the one before,
+so a refusal does not stop the run: every base that can move does, each one that
+could not is named with GitHub's reason, and the run exits `3` when some moved.
+`land` moves one base at a time through the same call, because each is only
+right once the merge below it has happened.
 
 It remains separate from `submit` and `restack`: changing what a merge will do
 is a different mutation from creating a pull request or replaying local refs.

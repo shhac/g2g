@@ -266,8 +266,8 @@ the current `--apply` flow.
 
 `3` is `pull` stopping on a conflict mid-replay, `pull --prune` whose prune
 refused after the pull had happened, `land` stopping part-way down a stack
-after something merged, `github comment` stopping after writing some of its
-comments, `github retarget` stopping after moving some bases, `submit` failing
+after something merged, `github comment` writing some of its comments and not
+others, `github retarget` moving some bases and not others, `submit` failing
 after its push or after opening a pull request, `create -m` whose commit failed
 after the branch was recorded, and a `delete`, `fold` or `rename` that could
 not put back what it had done. A
@@ -977,18 +977,23 @@ g2g github retarget --apply
 It is separate from `submit` deliberately. Creating a pull request and changing
 what an existing one will merge into are different classes of act, and the
 second wants its own preview — every line names the pull request, the base it
-has, and the base it would get. It writes through `gh pr edit <number> --base
-<branch>`.
+has, and the base it would get. It sends every move as one GraphQL request —
+an `updatePullRequest` per pull request, addressed by the node id the preview
+read — rather than a `gh pr edit` each, which looks the pull request up before
+editing it. A long stack is split into requests of twenty.
 
 It touches only the pull requests whose base disagrees with the resolved stack,
 leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
 
-It moves the bases bottom-up and stops at the first `gh` refusal without moving
-any back, because a base already moved is right. A run that stops after moving
-some exits `3`, naming the ones that moved and the retry, which moves only what
-is still wrong.
+It moves the bases bottom-up. GitHub applies every move in a request whatever
+happened to the one before, so a refusal no longer stops the run: it moves
+every base it can, names each one it could not with GitHub's reason, and moves
+none back, because a base already moved is right. A run that moved some and not
+others exits `3`, naming both and the retry, which moves only what is still
+wrong; one that moved none is an ordinary failure. A request that fails as a
+whole — `gh` not signed in, GitHub unreachable — stops there.
 
 #### github link and github unlink
 
@@ -1113,6 +1118,14 @@ branch with two open pull requests refuses the run. A stack that lists only one
 pull request gets no comment, since one pull request is not a stack, and the
 preview says so; one already there is kept up to date.
 
+Every comment the run adds or edits goes to GitHub in one GraphQL request,
+twenty to a request on a longer stack, rather than one request per pull request.
+GitHub applies every write in a request whatever happened to the one before, so
+a comment GitHub refuses does not stop the others: the run writes every one it
+can, names each it could not with GitHub's reason, and exits `3` when some were
+written. Rerunning is safe — it finds the written comments by their marker and
+leaves them, and writes the rest.
+
 `submit` and `land` keep the comments too, as their last act, because they
 change which pull requests the stack is made of: `submit` once the pull
 requests are opened, `land` on what remains above the branches it
@@ -1163,6 +1176,12 @@ Commands this would run, in order
    8  gh pr merge 42 --squash --admin  · land synthetic-two
    …
 ```
+
+The `gh pr edit` line is what to run by hand. `land` itself moves the base with
+one `updatePullRequest` request addressed by the pull request's node id, which
+does the same thing without `gh pr edit`'s look-ups first. It still moves one
+base at a time, because each base is only right once the merge below it has
+happened.
 
 **It needs the stack in g2g's own graph.** Landing reads pull requests from
 whichever source describes the stack, and then replays, reparents and forgets in

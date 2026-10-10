@@ -426,7 +426,11 @@ description: |
   records only from comments the viewer can edit. Marker and data line fields
   are read by name; a data line with no `v=` is the bare list 0.43.0 and earlier wrote.
   Writes are `addComment`/`updateIssueComment` by node id with the body as a
-  raw `-f` field; errors must not echo the body. Local PR observations are
+  raw `-f` field, all of a run's in one aliased mutation document
+  (`githubstack.Client.WriteComments`, twenty to a document); errors must not
+  echo the body. A refused write fails alone and the rest are written, so a
+  run reports every comment written and every one not, exiting `3` when some
+  were. Local PR observations are
   supplemental history, never authority for rewriting these comments.
   `submit` and `land` keep the
   comments as their last act through `comment.Service.Keep` unless
@@ -439,10 +443,19 @@ description: |
   and `land` reaches for the same client method rather than growing its own —
   a child's base only goes stale during a descent, once the branch below it has
   merged, and every move it makes appears in the preview. It writes
-  through exactly `gh pr edit <number> --base <branch>`, moves only the bases
-  that disagree with the resolved stack, and refuses a branch with more than one
-  open pull request rather than choosing between them. Do not fold it into
-  `submit` or run it as the tail of `restack`.
+  through `githubstack.Client.Retarget` — `updatePullRequest` mutations by the
+  node id `Inspect` reads, every change in one aliased document, `land` sending
+  one at a time — moves only the bases that disagree with the resolved stack,
+  reports every base it could not move rather than stopping at the first, and
+  refuses a branch with more than one open pull request rather than choosing
+  between them. `land`'s recipe still prints `gh pr edit`, as advice to a
+  person. Do not fold it into `submit` or run it as the tail of `restack`.
+- Writes once per pull request go through `githubstack.Client.mutate`: one
+  aliased document per twenty, values as raw `-f` variables, the answer read
+  per alias even when gh exits non-zero, and only an answer with no data a
+  `*CommandError` for the whole document. A new per-pull-request write belongs
+  there and in `schema_test.go`. `gh pr create` and `gh pr merge` are
+  deliberately not batched.
 
 ## Develop and test
 

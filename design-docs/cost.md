@@ -74,6 +74,15 @@ one `rev-parse` of every revision, one aliased GraphQL query per round. What is
 per pair — divergence, ancestry, cherry — runs through `parallel.Each` into a
 slice sized first, so nothing needs a lock.
 
+Writes batch too. The stack comments and `github retarget`'s bases are one
+aliased mutation document of up to twenty writes (`githubstack.Client.mutate`),
+where each was a request per pull request: a comment run on fifteen pull
+requests was fifteen requests and is one, and a retarget of fifteen was fifteen
+`gh pr edit`s — each with look-ups of its own before the edit — and is one. A
+document's answer is read per alias, because GitHub applies the rest after
+refusing one. `gh pr create` and `gh pr merge` stay one call each: which merge
+queue a merge goes through, and what `--admin` bypasses, are gh's to decide.
+
 **Ask GitHub less as a wait drags on.** Every GitHub request draws on one
 allowance per account, shared with everything else that account runs. A wait
 that has gone on for a minute -- a merge queue, slow checks -- is not about to
@@ -95,7 +104,7 @@ Known, measured, and left for a change of its own:
   the current trunk after every step, which is what makes a descent that stops
   part-way safe to leave. What reaches the remote stays linear: each merge
   pushes exactly the next branch (`publish` refuses a plan holding any other),
-  retargets its one pull request, and reads the remote a fixed handful of
+  retargets its one pull request in one request, and reads the remote a fixed handful of
   times — land's own tip check, push's, and the pull's `ls-remote` and fetch; the stack comments are kept once, at the end. Keep it that way — a
   change that pushed the replayed branches above as it went would make the
   remote quadratic too. A pull fetches only refs that have moved since g2g last

@@ -225,8 +225,26 @@ Writing is `addComment` and `updateIssueComment`, addressed by node id. The REST
 comment id would do as well, except that GitHub's comment ids have outgrown the
 GraphQL `Int` that reports them. The body travels as a raw `-f` field, which gh
 passes through as a string: it reads no file for a value starting with `@` and
-fills no `{owner}` placeholder. A failed write names the mutation and never
+fills no `{owner}` placeholder. A failed write names the operation and never
 repeats the body back.
+
+Every write of a run goes in one document, `WriteStackComments`, one aliased
+mutation per pull request (`w0`, `w1`, …) with each value its own variable, and
+at most twenty to a document. It was a request per pull request, which on a long
+stack is what spends an account's allowance. GitHub runs a document's mutations
+one after another in the order written and runs every one whatever happened to
+the one before, so the answer is read per alias: one with data was applied, one
+that is `null` was not, and the error whose path starts with its alias says why.
+gh exits non-zero whenever the answer carries an error, so the exit status alone
+says nothing about what was applied; only an answer with no data at all — gh
+not signed in, GitHub unreachable, a rate limit — fails the document as a whole,
+and that stops the run before any later document.
+
+So a refusal no longer stops a run at the first pull request: it writes every
+comment it can and names each it could not. Some written is a stop part-way
+(exit `3`), none written an ordinary failure. Rerunning is what finishes it,
+and is safe for the same reason it always was — the comments written are found
+by their marker and are current, so only the rest is sent.
 
 ## Kept by submit and land, too
 

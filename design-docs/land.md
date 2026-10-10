@@ -97,7 +97,11 @@ it is relying on a race.
 
 This is the one place `land` changes what a merge will do, which is otherwise
 `github retarget`'s alone. It uses the same client method rather than growing its own,
-and every base it would move is named in the preview.
+and every base it would move is named in the preview. That method sends
+`updatePullRequest` addressed by the node id the pull request read returned;
+`github retarget` batches its changes into one request, and `land` sends a
+batch of one, because each base is only right once the merge below it has
+happened. The recipe still says `gh pr edit`, which is what a person would run.
 
 ## Reparent before forgetting
 

@@ -226,10 +226,9 @@ func (s Service) Abort(ctx context.Context) error {
 		}
 		moving = append(moving, branch)
 	}
-	if held, err := s.HeldElsewhere(ctx, moving); err != nil {
-		return err
-	} else if held.Reason != "" {
-		return fmt.Errorf("the restack cannot be aborted: %s · switch that worktree to another branch, or close it, then run g2g restack --abort", held.Reason)
+	// A failure to ask is not a refusal, as for the rewrite itself.
+	if held, _ := worktree.Read(ctx, s.Git, worktree.Refuse, moving); len(held) != 0 {
+		return fmt.Errorf("the restack cannot be aborted: %s · switch that worktree to another branch, or close it, then run g2g restack --abort", worktree.Refusal(held.Of(moving)).Reason)
 	}
 	inProgress, err := s.Git.RebaseInProgress(ctx)
 	if err != nil {

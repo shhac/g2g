@@ -76,7 +76,7 @@ func TestReadAsksOnlyTheWorktreesHoldingTheBranchesInQuestion(t *testing.T) {
 		},
 		clean: map[string]bool{"/synthetic/a": true, "/synthetic/b": false},
 	}
-	held, err := Read(context.Background(), git, []string{"synthetic-a", "synthetic-c", "synthetic-d", "synthetic-free"})
+	held, err := Read(context.Background(), git, Follow, []string{"synthetic-a", "synthetic-c", "synthetic-d", "synthetic-free"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,21 +100,19 @@ func TestReadAsksOnlyTheWorktreesHoldingTheBranchesInQuestion(t *testing.T) {
 }
 
 func TestReadWithoutAReaderHoldsNothing(t *testing.T) {
-	held, err := Read(context.Background(), struct{}{}, []string{"synthetic-a"})
+	held, err := Read(context.Background(), struct{}{}, Follow, []string{"synthetic-a"})
 	if err != nil || len(held) != 0 {
 		t.Errorf("Read() = %v, %v, want nothing held", held, err)
 	}
 }
 
-func TestWithNeverLetsAFollowOverruleALeave(t *testing.T) {
+func TestWithNamesABranchFollowedByBothOnce(t *testing.T) {
 	a := Holder{Branch: "synthetic-a", Path: "/synthetic/a", Clean: true}
 	b := Holder{Branch: "synthetic-b", Path: "/synthetic/b", Clean: true}
-	merged := Outcome{Follow: []Holder{b, a}}.With(Outcome{Leave: []Holder{b}})
-	if !merged.Equal(Outcome{Follow: []Holder{a}, Leave: []Holder{b}}) {
+	c := Holder{Branch: "synthetic-c", Path: "/synthetic/c"}
+	merged := Outcome{Follow: []Holder{b, a}}.With(Outcome{Follow: []Holder{b}, Leave: []Holder{c}})
+	if !merged.Equal(Outcome{Follow: []Holder{a, b}, Leave: []Holder{c}}) {
 		t.Errorf("With() = %+v", merged)
-	}
-	if _, follows := merged.Follows("synthetic-b"); follows || !merged.Leaves("synthetic-b") {
-		t.Error("a branch one side leaves was followed")
 	}
 }
 
@@ -157,5 +155,18 @@ func TestSplitSortsEachHeldBranchOnce(t *testing.T) {
 		if refuses := tc.policy.Refuses(); refuses != (tc.refuse != "") {
 			t.Errorf("%q.Refuses() = %t", tc.policy, refuses)
 		}
+	}
+}
+
+// A policy that refuses whatever it finds has no use for cleanliness, and
+// asking would cost a git status per held worktree.
+func TestReadDoesNotAskCleanlinessForARefusal(t *testing.T) {
+	git := &reader{holders: map[string]Holder{"synthetic-a": {Path: "/synthetic/a"}}, clean: map[string]bool{"/synthetic/a": true}}
+	held, err := Read(context.Background(), git, Refuse, []string{"synthetic-a"})
+	if err != nil || len(held) != 1 || held["synthetic-a"].Clean {
+		t.Fatalf("Read() = %v, %v", held, err)
+	}
+	if len(git.asked) != 0 {
+		t.Errorf("asked %v, want nothing", git.asked)
 	}
 }

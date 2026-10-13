@@ -224,6 +224,8 @@ func (p Plan) pending() restack.Pending {
 	if onto := p.onto(); onto != "" {
 		moving.Tips[p.Base] = onto
 	}
+	// Decided here already; the replay brings along again any it replays.
+	moving.Follow = p.Worktrees.Follow
 	return moving
 }
 

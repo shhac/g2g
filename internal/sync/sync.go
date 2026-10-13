@@ -109,21 +109,25 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	own, fixed, note, err := s.held(ctx, &plan, collecting, found)
-	if err != nil {
-		return Plan{}, err
+	// A failure to ask is not a refusal: a pull that was safe before the
+	// question existed stays as safe without an answer.
+	held, _ := worktree.Read(ctx, s.Git, worktrees, append(moves(plan, found), stuckBranches(found)...))
+	decided := decideHeld(plan, found, held, discovery.Branches)
+	if decided.refusal.Reason != "" {
+		return plan.refused(decided.refusal), nil
 	}
-	if note.Reason != "" {
-		return plan.refused(note), nil
+	if decided.trunkLeft {
+		plan.Advance, plan.Supersede = false, false
 	}
-	if len(fixed) != 0 {
+	if len(decided.fixed) != 0 {
 		// Asked again with the left branches fixed, so what sits on them is
 		// decided against where they will actually be.
-		collecting.fixed = fixed
+		collecting.fixed = decided.fixed
 		if found, err = s.collect(ctx, collecting); err != nil {
 			return Plan{}, err
 		}
 	}
+	plan.Worktrees = decided.outcome
 	plan.Commits = syncpoint.Grouped(found.commits)
 	if plan.Subjects, err = s.describe(ctx, plan); err != nil {
 		return Plan{}, err
@@ -146,7 +150,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Worktrees = own.With(plan.Restack.Worktrees)
+	plan.Worktrees = plan.Worktrees.With(plan.Restack.Worktrees)
 	// Its structure comes with it. A refusal that arrives from the step this
 	// delegates to is no less actionable for having been delegated, and
 	// carrying only the sentence handed every machine reader a null where the

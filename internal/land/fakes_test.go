@@ -59,6 +59,9 @@ type fakeGit struct {
 	dirty     error
 	deleteErr error
 	switchErr error
+	// held are the branches other worktrees have checked out, and clean the
+	// ones whose worktree has nothing uncommitted.
+	held, clean map[string]bool
 }
 
 func (f *fakeGit) CurrentBranch(context.Context) (string, error)   { return f.current, nil }
@@ -375,19 +378,16 @@ func instant(context.Context, time.Duration) error {
 
 var attempts atomic.Int64
 
-type fakeHolds struct {
-	held  map[string]bool
-	clean map[string]bool
-	asked []string
+// HoldersElsewhere answers from held: each branch another worktree has, in a
+// worktree clean only where clean says so.
+func (f *fakeGit) HoldersElsewhere(context.Context) (map[string]worktree.Holder, error) {
+	holders := make(map[string]worktree.Holder, len(f.held))
+	for branch := range f.held {
+		holders[branch] = worktree.Holder{Branch: branch, Path: "/synthetic/worktrees/" + branch}
+	}
+	return holders, nil
 }
 
-func (f *fakeHolds) Holders(_ context.Context, branches []string) (worktree.Held, error) {
-	f.asked = branches
-	held := worktree.Held{}
-	for _, branch := range branches {
-		if f.held[branch] {
-			held[branch] = worktree.Holder{Branch: branch, Path: "/synthetic/worktrees/" + branch, Clean: f.clean[branch]}
-		}
-	}
-	return held, nil
+func (f *fakeGit) WorktreeClean(_ context.Context, path string) (bool, error) {
+	return f.clean[strings.TrimPrefix(path, "/synthetic/worktrees/")], nil
 }

@@ -168,9 +168,6 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 // branch checked out anywhere, and so is one the policy would leave, because
 // a descent cannot leave part of itself behind.
 func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan Plan) (keeping, repair.Note) {
-	if s.Holds == nil {
-		return keeping{}, repair.Note{}
-	}
 	cannotTell := func(err error) repair.Note {
 		return repair.Note{Reason: "cannot tell whether another worktree has a branch this would move: " + err.Error()}
 	}
@@ -178,13 +175,14 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan P
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
-	held, err := s.Holds.Holders(ctx, branches)
+	held, err := worktree.Read(ctx, s.Git, plan.Options.Worktrees, branches)
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
-	blocked, follow := make([]worktree.Holder, 0), make([]worktree.Holder, 0)
-	for _, holder := range held.Of(branches) {
-		if !plan.Options.Worktrees.Moves(holder) || plan.deletes(holder.Branch) {
+	split := plan.Options.Worktrees.Split(held, branches)
+	blocked, follow := slices.Concat(split.Leave, split.Refuse), make([]worktree.Holder, 0, len(split.Follow))
+	for _, holder := range split.Follow {
+		if plan.deletes(holder.Branch) {
 			blocked = append(blocked, holder)
 			continue
 		}
@@ -247,15 +245,12 @@ type keeping struct {
 // keepsTrunk is the one way past a trunk that cannot be moved. A single branch
 // can merge without advancing the trunk here, provided there is no survivor
 // whose contents would need replaying afterwards and nothing but the trunk is
-// in the way. Refuse means refuse, so it is not offered then.
+// in the way -- and the policy would leave the trunk rather than refuse it.
 func (s Service) keepsTrunk(ctx context.Context, recorded graph.Graph, plan Plan, blocked []worktree.Holder) (keeping, error) {
-	if plan.Options.Worktrees == worktree.Refuse || plan.Options.Worktrees == "" {
-		return keeping{}, nil
-	}
 	if len(plan.Branches) != 1 || len(recorded.Children(plan.Target)) != 0 {
 		return keeping{}, nil
 	}
-	if len(blocked) != 1 || blocked[0].Branch != plan.Trunk {
+	if len(blocked) != 1 || blocked[0].Branch != plan.Trunk || !plan.Options.Worktrees.Leaves(blocked[0]) {
 		return keeping{}, nil
 	}
 	current, err := s.Git.CurrentBranch(ctx)

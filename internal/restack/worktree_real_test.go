@@ -260,3 +260,37 @@ func TestAbortRefusesAFollowedBranchCommittedToSince(t *testing.T) {
 		t.Error("abort reset the commit made in the followed worktree")
 	}
 }
+
+// A branch the caller moves is the caller's to decide about. When it follows
+// one the rewrite then replays, the rewrite brings that worktree along again
+// -- it never asks whether to.
+func TestARewriteBringsAlongABranchItsCallerFollows(t *testing.T) {
+	r, held := heldStack(t)
+	// As git worktree list names it, which is where a caller's holder comes
+	// from: the temporary directory is reached through a symlink here.
+	path, err := filepath.EvalSymlinks(held.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder := worktree.Holder{Branch: "synthetic-b", Path: path, Clean: true}
+	pending := Pending{Tips: map[string]string{"synthetic-b": r.Revision("synthetic-b")}, Follow: []worktree.Holder{holder}}
+	// Refuse, so a decision of the rewrite's own about synthetic-b would
+	// show as a refusal.
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, pending, worktree.Refuse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Blocked() != "" {
+		t.Fatalf("Blocked = %q, want the caller's decision taken", plan.Blocked())
+	}
+	if _, follows := plan.Worktrees.Follows("synthetic-b"); !follows {
+		t.Fatalf("Worktrees = %+v, want synthetic-b followed", plan.Worktrees)
+	}
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	clean(t, held)
+	if r.Try("merge-base", "--is-ancestor", "synthetic-main", "synthetic-b") != nil {
+		t.Error("synthetic-b was not replayed")
+	}
+}

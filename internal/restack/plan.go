@@ -47,29 +47,35 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// first of several roots is what it used to do, silently.
 		return plan.refused(ontoOneRoot(roots, onto.Parent)), nil
 	}
-	steps, err := s.steps(ctx, discovery, onto, pending, nil)
-	var unmeasurable unmeasured
-	if errors.As(err, &unmeasurable) {
-		return plan.refused(unmeasurable.note()), nil
-	}
+	steps, note, err := s.measure(ctx, discovery, onto, pending, nil)
 	if err != nil {
 		return Plan{}, err
+	}
+	if note.Reason != "" {
+		return plan.refused(note), nil
 	}
 	// Only what will actually move can strand another worktree, so the check
-	// waits for the steps. Asking it of the whole selection refused a path
-	// restack because the trunk it never touches was checked out elsewhere.
-	steps, held, err := s.held(ctx, plan, steps, pending)
-	if errors.As(err, &unmeasurable) {
-		return plan.refused(unmeasurable.note()), nil
-	}
-	if err != nil {
-		return Plan{}, err
-	}
-	plan.Worktrees = held.outcome
-	if held.refusal.Reason != "" {
+	// waits for the steps. A failure to ask is not a refusal: a rewrite that
+	// was safe before the question existed stays as safe without an answer.
+	held, _ := worktree.Read(ctx, s.Git, worktrees, own(steps, absorb, pending))
+	left, note := leaving(plan, worktrees.Split(held, own(steps, absorb, pending)))
+	if note.Reason != "" {
 		plan.Held = true
-		return plan.refused(held.refusal), nil
+		return plan.refused(note), nil
 	}
+	if len(left) != 0 {
+		// Leaving a branch changes what sits on it: a child that was moving
+		// only because its parent was is now measured against where the
+		// parent actually is. The set that moves can only shrink, so nothing
+		// held that was not asked about appears the second time.
+		if steps, note, err = s.measure(ctx, discovery, onto, pending, fixed(left)); err != nil {
+			return Plan{}, err
+		}
+		if note.Reason != "" {
+			return plan.refused(note), nil
+		}
+	}
+	plan.Worktrees = worktree.NewOutcome(following(plan, held, steps, pending), left)
 	plan.Steps = steps
 	if len(steps) == 0 {
 		return plan, nil
@@ -103,6 +109,27 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		diagnostic.Field{Key: "orphans", Value: fmt.Sprint(len(plan.Orphaned()))},
 	)
 	return plan, nil
+}
+
+// measure works out the steps, with the branches in fixed left where they
+// are, and turns a branch whose replay range cannot be told into the refusal
+// it is.
+func (s Service) measure(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending, fixed map[string]bool) ([]Step, repair.Note, error) {
+	steps, err := s.steps(ctx, discovery, onto, pending, fixed)
+	var unmeasurable unmeasured
+	if errors.As(err, &unmeasurable) {
+		return nil, unmeasurable.note(), nil
+	}
+	return steps, repair.Note{}, err
+}
+
+// fixed is the set of branches a rewrite leaves where they are.
+func fixed(left []worktree.Holder) map[string]bool {
+	branches := make(map[string]bool, len(left))
+	for _, holder := range left {
+		branches[holder.Branch] = true
+	}
+	return branches
 }
 
 // blockedReason refuses any selection whose recorded structure cannot be

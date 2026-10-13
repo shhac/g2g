@@ -388,17 +388,19 @@ func TestProtectedNamesTheBranchesTheirReplayWillBlock(t *testing.T) {
 // worktree. Each step's own sync refuses the same thing, but only once there
 // is something to move — after the first merge, which does not come back.
 func TestPlanRefusesADescentThatWouldMoveABranchOpenElsewhere(t *testing.T) {
+	// The trunk, and the branch at the top of the stack: each is something a
+	// descent moves, which is what has to be asked about.
+	for _, branch := range []string{"synthetic-main", "synthetic-two"} {
+		w := newWorld(t)
+		w.git.held = map[string]bool{branch: true}
+		plan := w.plan(t, Defaults())
+		if !strings.Contains(plan.Blocked(), branch) {
+			t.Errorf("Blocked = %q, want %s open elsewhere refused", plan.Blocked(), branch)
+		}
+	}
 	w := newWorld(t)
-	holds := &fakeHolds{held: map[string]bool{"synthetic-main": true}}
-	w.service.Holds = holds
-
+	w.git.held = map[string]bool{"synthetic-main": true}
 	plan := w.plan(t, Defaults())
-	if !strings.Contains(plan.Blocked(), "synthetic-main") {
-		t.Fatalf("Blocked = %q, want the trunk open elsewhere refused", plan.Blocked())
-	}
-	if !slices.Equal(holds.asked, []string{"synthetic-main", "synthetic-one", "synthetic-two"}) {
-		t.Errorf("asked about %v, want the trunk and the whole stack", holds.asked)
-	}
 	for _, way := range plan.Repair.Ways {
 		if strings.Contains(way.Effect, "--scope") {
 			t.Errorf("way %q suggests narrowing, which a descent cannot use", way.Effect)
@@ -414,7 +416,7 @@ func TestALeafWithSurvivorsStillRefusesATrunkHeldElsewhere(t *testing.T) {
 	snapshot.Ancestry = []string{"synthetic-main", "synthetic-one"}
 	snapshot.Scope = shape.ScopePath
 	w.service.Selector = fakeSelector{snapshot: snapshot}
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	w.git.held = map[string]bool{"synthetic-main": true}
 	plan := w.plan(t, Defaults())
 	if plan.Blocked() == "" || plan.KeepTrunk {
 		t.Fatalf("plan = %+v, want survivors protected", plan)
@@ -428,7 +430,7 @@ func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
 	snapshot.Target = "synthetic-one"
 	snapshot.Branches = []string{"synthetic-one"}
 	w.service.Selector = fakeSelector{snapshot: snapshot}
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true, "synthetic-one": true}}
+	w.git.held = map[string]bool{"synthetic-main": true, "synthetic-one": true}
 	plan := w.plan(t, Defaults())
 	if plan.Blocked() == "" || plan.KeepTrunk {
 		t.Fatalf("plan = %+v, want held leaf protected", plan)
@@ -439,7 +441,7 @@ func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
 // brings it along, so it is no reason to refuse or to leave the trunk behind.
 func TestACleanWorktreeOnTheTrunkIsFollowed(t *testing.T) {
 	w := newWorld(t)
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}, clean: map[string]bool{"synthetic-main": true}}
+	w.git.held, w.git.clean = map[string]bool{"synthetic-main": true}, map[string]bool{"synthetic-main": true}
 	plan := w.plan(t, Defaults())
 	if plan.Blocked() != "" || plan.KeepTrunk {
 		t.Fatalf("Blocked = %q, KeepTrunk = %t, want the trunk followed", plan.Blocked(), plan.KeepTrunk)
@@ -448,7 +450,7 @@ func TestACleanWorktreeOnTheTrunkIsFollowed(t *testing.T) {
 
 func TestRefuseRefusesEvenACleanWorktree(t *testing.T) {
 	w := newWorld(t)
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}, clean: map[string]bool{"synthetic-main": true}}
+	w.git.held, w.git.clean = map[string]bool{"synthetic-main": true}, map[string]bool{"synthetic-main": true}
 	options := Defaults()
 	options.Worktrees = worktree.Refuse
 	plan := w.plan(t, options)
@@ -461,7 +463,7 @@ func TestRefuseRefusesEvenACleanWorktree(t *testing.T) {
 // a descent past a landed branch another worktree has.
 func TestALandedBranchAnotherWorktreeHasIsRefusedEvenWhenClean(t *testing.T) {
 	w := newWorld(t)
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-one": true}, clean: map[string]bool{"synthetic-one": true}}
+	w.git.held, w.git.clean = map[string]bool{"synthetic-one": true}, map[string]bool{"synthetic-one": true}
 	plan := w.plan(t, Defaults())
 	if !strings.Contains(plan.Blocked(), "landing deletes it") {
 		t.Fatalf("Blocked = %q, want the deletion named", plan.Blocked())
@@ -486,7 +488,7 @@ func TestKeepingTheTrunkIsALeaveSoRefuseRefusesIt(t *testing.T) {
 	snapshot.Target = "synthetic-one"
 	snapshot.Branches = []string{"synthetic-one"}
 	w.service.Selector = fakeSelector{snapshot: snapshot}
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	w.git.held = map[string]bool{"synthetic-main": true}
 	if plan := w.plan(t, Defaults()); plan.Blocked() != "" || !plan.KeepTrunk {
 		t.Fatalf("follow: Blocked = %q, KeepTrunk = %t, want the dirty trunk kept", plan.Blocked(), plan.KeepTrunk)
 	}

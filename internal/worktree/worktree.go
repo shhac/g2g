@@ -179,11 +179,12 @@ type Reader interface {
 
 // Read is which of branches another worktree holds, and whether each of those
 // worktrees is clean. Only the worktrees holding one of branches are asked,
-// so a repository with a dozen worktrees pays for the ones that matter.
+// so a repository with a dozen worktrees pays for the ones that matter, and a
+// policy that refuses whatever it finds does not ask at all.
 //
 // A worktree whose cleanliness cannot be read counts as having changes: a
 // directory that has gone, or a Git that fails there, is not one to move.
-func Read(ctx context.Context, git any, branches []string) (Held, error) {
+func Read(ctx context.Context, git any, policy Policy, branches []string) (Held, error) {
 	reader, ok := git.(Reader)
 	if !ok || len(branches) == 0 {
 		return Held{}, nil
@@ -192,26 +193,35 @@ func Read(ctx context.Context, git any, branches []string) (Held, error) {
 	if err != nil {
 		return nil, err
 	}
+	clean := cleanliness(ctx, reader)
 	held := Held{}
-	clean := map[string]bool{}
 	for _, branch := range branches {
 		holder, taken := holders[branch]
 		if !taken {
 			continue
 		}
 		holder.Branch = branch
-		if holder.Busy == "" {
-			known, asked := clean[holder.Path]
-			if !asked {
-				known, err = reader.WorktreeClean(ctx, holder.Path)
-				known = known && err == nil
-				clean[holder.Path] = known
-			}
-			holder.Clean = known
-		}
+		holder.Clean = holder.Busy == "" && !policy.Refuses() && clean(holder.Path)
 		held[branch] = holder
 	}
 	return held, nil
+}
+
+// cleanliness asks each worktree once, however many branches it holds, and
+// answers false for one it could not ask.
+func cleanliness(ctx context.Context, reader Reader) func(string) bool {
+	known := map[string]bool{}
+	return func(path string) bool {
+		if clean, asked := known[path]; asked {
+			return clean
+		}
+		clean, err := reader.WorktreeClean(ctx, path)
+		if err != nil {
+			clean = false
+		}
+		known[path] = clean
+		return clean
+	}
 }
 
 // Outcome is what a plan does about held branches: the ones it moves along
@@ -222,10 +232,10 @@ type Outcome struct {
 	Leave  []Holder
 }
 
-// NewOutcome orders what it is given, so two plans that would do the same
-// compare equal however they were assembled.
+// NewOutcome orders what it is given, a branch named twice appearing once, so
+// two plans that would do the same compare equal however they were assembled.
 func NewOutcome(follow, leave []Holder) Outcome {
-	return Outcome{}.With(Outcome{Follow: follow, Leave: leave})
+	return Outcome{Follow: sorted(follow), Leave: sorted(leave)}
 }
 
 // Empty reports a plan no other worktree is involved in.
@@ -239,22 +249,11 @@ func (o Outcome) Equal(other Outcome) bool {
 	return slices.Equal(o.Follow, other.Follow) && slices.Equal(o.Leave, other.Leave)
 }
 
-// With is this outcome and another, a branch either names appearing once,
-// in branch order. A branch one side follows and the other leaves is left:
-// nothing that leaves a branch may be overruled by something that did not
-// look.
+// With is this outcome and another. Each comes from a caller that decides
+// only the branches it moves itself, so no branch is followed by one and left
+// by the other; one followed by both is the same holder, named once.
 func (o Outcome) With(other Outcome) Outcome {
-	leave := map[string]Holder{}
-	for _, holder := range slices.Concat(o.Leave, other.Leave) {
-		leave[holder.Branch] = holder
-	}
-	follow := map[string]Holder{}
-	for _, holder := range slices.Concat(o.Follow, other.Follow) {
-		if _, left := leave[holder.Branch]; !left {
-			follow[holder.Branch] = holder
-		}
-	}
-	return Outcome{Follow: sorted(follow), Leave: sorted(leave)}
+	return NewOutcome(slices.Concat(o.Follow, other.Follow), slices.Concat(o.Leave, other.Leave))
 }
 
 // Follows reports a branch this outcome moves along with its worktree.
@@ -271,13 +270,17 @@ func (o Outcome) Leaves(branch string) bool {
 	return slices.ContainsFunc(o.Leave, func(holder Holder) bool { return holder.Branch == branch })
 }
 
-func sorted(holders map[string]Holder) []Holder {
+func sorted(holders []Holder) []Holder {
 	if len(holders) == 0 {
 		return nil
 	}
-	ordered := make([]Holder, 0, len(holders))
-	for _, branch := range slices.Sorted(maps.Keys(holders)) {
-		ordered = append(ordered, holders[branch])
+	byBranch := make(map[string]Holder, len(holders))
+	for _, holder := range holders {
+		byBranch[holder.Branch] = holder
+	}
+	ordered := make([]Holder, 0, len(byBranch))
+	for _, branch := range slices.Sorted(maps.Keys(byBranch)) {
+		ordered = append(ordered, byBranch[branch])
 	}
 	return ordered
 }

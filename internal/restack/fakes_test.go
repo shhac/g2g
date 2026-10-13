@@ -6,6 +6,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // The rewrite boundary, the two stores, and the fixtures every test here builds
@@ -400,16 +401,23 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-// holdingGit reports branches other worktrees have checked out.
+// holdingGit reports branches other worktrees have checked out, each in a
+// worktree with changes.
 type holdingGit struct {
 	*fakeGit
 	elsewhere map[string]string
 	err       error
 }
 
-func (g holdingGit) CheckedOutElsewhere(context.Context) (map[string]string, error) {
-	return g.elsewhere, g.err
+func (g holdingGit) HoldersElsewhere(context.Context) (map[string]worktree.Holder, error) {
+	holders := make(map[string]worktree.Holder, len(g.elsewhere))
+	for branch, path := range g.elsewhere {
+		holders[branch] = worktree.Holder{Branch: branch, Path: path}
+	}
+	return holders, g.err
 }
+
+func (g holdingGit) WorktreeClean(context.Context, string) (bool, error) { return false, nil }
 
 // Absorbed answers of a whole branch what Cherry answers per commit, which is
 // what a squash merge needs. Nothing here is absorbed unless a case says so.

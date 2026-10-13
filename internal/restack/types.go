@@ -114,6 +114,10 @@ type Pending struct {
 	// is neither the parent here nor where this clone recorded the branch
 	// forking. pull knows it, from the remote's own tip for the parent.
 	Begins map[string]string
+	// Follow are the branches the caller moves that another worktree holds
+	// and that it brings along. The caller decided about each; a rewrite
+	// that then replays one brings the worktree along again afterwards.
+	Follow []worktree.Holder
 }
 
 // at answers where a branch will be, given where Git currently says it is.

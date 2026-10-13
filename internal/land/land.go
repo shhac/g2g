@@ -66,12 +66,6 @@ type (
 		Plan(ctx context.Context, selection graph.Selection) (prune.Plan, error)
 		Apply(ctx context.Context, plan prune.Plan) error
 	}
-	// Holds says which of these branches another worktree has checked out,
-	// and whether each of those worktrees is clean. It is restack's own
-	// question, asked here of everything a descent will move.
-	Holds interface {
-		Holders(ctx context.Context, branches []string) (worktree.Held, error)
-	}
 )
 
 // Service takes a stack down onto its trunk.
@@ -83,9 +77,6 @@ type Service struct {
 	Pusher   Pusher
 	Syncer   Syncer
 	Pruner   Pruner
-	// Holds is optional: a build that cannot ask lands exactly as safely as it
-	// did before the check existed.
-	Holds Holds
 
 	// pause is the clock the two waits use. Nil is the real one; a test
 	// supplies its own so the suite does not spend the wall time.

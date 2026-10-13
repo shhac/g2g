@@ -239,7 +239,7 @@ func keptTrunkWorld(t *testing.T) *world {
 	snapshot.Branches = []string{"synthetic-one"}
 	snapshot.Ancestry = []string{"synthetic-main", "synthetic-one"}
 	w.service.Selector = fakeSelector{snapshot: snapshot}
-	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	w.git.held = map[string]bool{"synthetic-main": true}
 	w.service.Graph.Git = untrackingGit{w.git}
 	w.git.current = "synthetic-one"
 	return w

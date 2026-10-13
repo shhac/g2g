@@ -506,12 +506,12 @@ func TestARewriteRefusesABranchAnotherWorktreeHasCheckedOut(t *testing.T) {
 		},
 		{
 			// A caller that moves a ref before the rewrite strands a worktree
-			// on it just as surely as the rewrite would.
-			name:      "a branch the caller will move is held",
+			// on it just as surely as the rewrite would, so the caller decides
+			// about it before asking -- sync's decideHeld is where that is pinned.
+			// Deciding again here could only disagree.
+			name:      "a branch the caller will move is the caller's to decide",
 			elsewhere: map[string]string{"synthetic-trunk": "/synthetic/other"},
 			pending:   Pending{Tips: map[string]string{"synthetic-trunk": "trunk-newer"}},
-			blocked:   true,
-			held:      "synthetic-trunk",
 		},
 		{name: "no other worktree"},
 		{

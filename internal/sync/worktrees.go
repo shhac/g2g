@@ -10,66 +10,87 @@ import (
 	"github.com/shhac/g2g/internal/worktree"
 )
 
-// held decides each branch this pull would move itself -- the base it
-// advances, the branches it collects -- while another worktree holds it.
-//
-// What it leaves is fixed for the collection that follows, so nothing above a
-// left branch is planned as though it had been taken. A trunk left behind
-// fixes every branch: each one's published version is built on the trunk the
-// remote has, and taking it onto the trunk here would drag that trunk's
-// commits in as the branch's own. Then the pull replays only what is stale
-// against the trunk as it is here.
-//
-// Refuse decides nothing here. The moves reach the replay as pending, which
-// refuses a held one exactly as it always has.
-func (s Service) held(ctx context.Context, plan *Plan, c collecting, found collected) (worktree.Outcome, map[string]bool, repair.Note, error) {
-	if plan.Policy == worktree.Refuse || plan.Policy == "" {
-		return worktree.Outcome{}, nil, repair.Note{}, nil
-	}
-	moves := make([]string, 0, len(found.collections)+len(found.stuck)+1)
+// heldDecision is what a pull does about the branches it would move itself
+// while another worktree holds them.
+type heldDecision struct {
+	// outcome is the branches this pull moves with their worktrees, and the
+	// ones it leaves where they are.
+	outcome worktree.Outcome
+	// fixed are the branches the collection leaves alone, so nothing above
+	// one is planned as though it had been taken.
+	fixed map[string]bool
+	// trunkLeft means the base stays where it is: it is not advanced, and
+	// nothing is collected onto a trunk it does not have.
+	trunkLeft bool
+	refusal   repair.Note
+}
+
+// moves are the branches a pull moves itself: the base it advances and the
+// branches it collects.
+func moves(plan Plan, found collected) []string {
+	branches := make([]string, 0, len(found.collections)+1)
 	if plan.Advance || plan.Supersede {
-		moves = append(moves, plan.Base)
+		branches = append(branches, plan.Base)
 	}
 	for _, collection := range found.collections {
-		moves = append(moves, collection.Branch)
+		branches = append(branches, collection.Branch)
 	}
-	// A branch both sides moved is refused; one another worktree has is not
-	// this pull's to decide, so leaving it is the way through.
+	return branches
+}
+
+// stuckBranches are the branches both sides moved, which a pull refuses.
+func stuckBranches(found collected) []string {
+	branches := make([]string, 0, len(found.stuck))
 	for _, stuck := range found.stuck {
-		moves = append(moves, stuck.Branch)
+		branches = append(branches, stuck.Branch)
 	}
-	held, err := worktree.Read(ctx, s.Git, moves)
-	if err != nil || len(held) == 0 {
-		return worktree.Outcome{}, nil, repair.Note{}, err
+	return branches
+}
+
+// decideHeld is what the policy makes of the held branches a pull would move
+// itself, and of the ones it would refuse as diverged.
+//
+// Every one of them is this pull's to decide, before it asks the replay
+// anything: the replay plans on top of where they will be, and deciding twice
+// could only disagree. Refusing reads the same as the replay's own refusal.
+// A branch both sides moved is refused anyway, so only leaving it gets
+// anywhere: another worktree has it, and this pull need not touch it.
+//
+// A trunk left behind fixes every branch: each one's published version is
+// built on the trunk the remote has, and taking it onto the trunk here would
+// drag that trunk's commits in as the branch's own. Then the pull replays
+// only what is stale against the trunk as it is here.
+func decideHeld(plan Plan, found collected, held worktree.Held, selected []string) heldDecision {
+	split := plan.Policy.Split(held, moves(plan, found))
+	if len(split.Refuse) != 0 {
+		return heldDecision{refusal: worktree.Refusal(split.Refuse)}
 	}
-	follow, left := make([]worktree.Holder, 0), make([]worktree.Holder, 0)
-	fixed := map[string]bool{}
-	for _, holder := range held.Of(moves) {
-		switch {
-		case plan.Policy.Moves(holder):
-			follow = append(follow, holder)
-		case plan.Policy.Leaves(holder):
+	left := split.Leave
+	for _, stuck := range found.stuck {
+		if holder, taken := held[stuck.Branch]; taken && plan.Policy.Leaves(holder) {
 			left = append(left, holder)
-			fixed[holder.Branch] = true
 		}
 	}
 	if len(left) == 0 {
-		return worktree.NewOutcome(follow, nil), nil, repair.Note{}, nil
+		return heldDecision{outcome: worktree.NewOutcome(split.Follow, nil)}
 	}
-	if note := discardsLeft(*plan, found, left); note.Reason != "" {
-		return worktree.Outcome{}, nil, note, nil
+	if note := discardsLeft(plan, found, left); note.Reason != "" {
+		return heldDecision{refusal: note}
+	}
+	fixed := map[string]bool{}
+	for _, holder := range left {
+		fixed[holder.Branch] = true
 	}
 	if note := movedAcross(found.commits, fixed); note.Reason != "" {
-		return worktree.Outcome{}, nil, note, nil
+		return heldDecision{refusal: note}
 	}
-	if fixed[plan.Base] {
-		plan.Advance, plan.Supersede = false, false
-		for _, branch := range c.branches {
-			fixed[branch] = true
-		}
-		follow = nil
+	if !fixed[plan.Base] {
+		return heldDecision{outcome: worktree.NewOutcome(split.Follow, left), fixed: fixed}
 	}
-	return worktree.NewOutcome(follow, left), fixed, repair.Note{}, nil
+	for _, branch := range selected {
+		fixed[branch] = true
+	}
+	return heldDecision{outcome: worktree.NewOutcome(nil, left), fixed: fixed, trunkLeft: true}
 }
 
 // discardsLeft refuses a --take that would discard commits from a branch this
@@ -84,7 +105,7 @@ func discardsLeft(plan Plan, found collected, left []worktree.Holder) repair.Not
 		if discards {
 			return repair.Note{
 				Reason: fmt.Sprintf("--take would replace %s, and %s", holder.Branch, holder.Why()),
-				Ways:   []repair.Step{{Effect: "commit or put those changes away there, then run this again"}},
+				Ways:   []repair.Step{worktree.PutAway},
 			}
 		}
 	}
@@ -106,7 +127,7 @@ func movedAcross(commits []Drop, fixed map[string]bool) repair.Note {
 		}
 		return repair.Note{
 			Reason: fmt.Sprintf("a commit moved from %s to %s, and %s is held by another worktree with changes, so taking one side of the move without the other would lose it or duplicate it", drop.Branch, drop.To, stays),
-			Ways:   []repair.Step{{Effect: "commit or put those changes away there, then run this again"}},
+			Ways:   []repair.Step{worktree.PutAway},
 		}
 	}
 	return repair.Note{}

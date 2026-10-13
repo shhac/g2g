@@ -347,8 +347,10 @@ Abort checks every tip it would restore before touching Git's active rebase.
 A completed branch may have been opened in another worktree meanwhile; refusing
 leaves both the rebase and journal intact, rather than stranding that checkout.
 An unchanged branch held elsewhere does not prevent abort, and neither does
-one this restack brought along with its worktree: that worktree is brought
-back the same way.
+one this restack brought along with its worktree while that branch is still
+where the restack left it: that worktree is brought back the same way. One
+somebody has committed to since holds work an abort would reset away, so it
+refuses like any other.
 
 The remaining queue is deliberately absent. It is re-derived from the refs on
 every invocation, which is what makes a user's own `git rebase --continue` or

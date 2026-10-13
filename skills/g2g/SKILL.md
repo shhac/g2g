@@ -104,8 +104,9 @@ description: |
   is finished later by `g2g restack` (or `g2g pull --trunk-only` for a trunk)
   run in that worktree. `--worktrees skip` leaves every such branch;
   `--worktrees refuse` refuses instead. `land` cannot leave part of a descent,
-  so a branch it would leave refuses it, and a branch it deletes is refused
-  while another worktree has it.
+  so a branch it would leave refuses it — except a lone branch with nothing
+  above it, which lands while the trunk stays — and a branch it deletes is
+  refused while another worktree has it.
 - `land` retries GitHub's explicit base-change refusal at most twice, checking
   readiness again and pinning every merge with `--match-head-commit`. Other
   errors stop. A single branch with no children can land while the trunk is

@@ -203,8 +203,9 @@ path is visible as part of the whole rather than instead of it.
 handling they waited on existed. A wide rewrite is far more likely to reach a
 branch checked out in another worktree, and a rewrite moves a ref without
 checking anything out, so nothing stopped it corrupting that worktree's view.
-`git.Client.CheckedOutElsewhere` is that handling, and `internal/worktree`
-decides what to do about it: a clean worktree is brought along, one with
+`git.Client.HoldersElsewhere` finds those branches, including one a worktree
+is part-way through rebasing or bisecting, and `internal/worktree` decides
+what to do about it: a clean worktree is brought along, one with
 changes keeps its branch, and `--worktrees refuse` refuses, naming the branch
 and the worktree (`design-docs/worktrees.md`). `restack` offers `branch | path | subtree | stack |
 trunk`.

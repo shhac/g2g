@@ -623,7 +623,8 @@ A stopped restack exits `3`, including when `--continue` hits another conflict.
 Run recovery from the worktree that started it: linked worktrees share the
 journal but not Git's rebase state. Abort refuses to rewind a completed branch
 that another worktree has since checked out; release that branch there and
-retry `g2g restack --abort`.
+retry `g2g restack --abort`. A worktree the restack brought along is brought
+back with its branch, unless somebody has committed there since.
 
 This is g2g's only resumable operation, so **every other command that
 changes anything refuses while a restack is unfinished** — mid-restack a
@@ -652,7 +653,11 @@ branch where it is, and the rest of the stack still moves. `--worktrees
 follow|skip|refuse` chooses (`follow` is the default; `skip` leaves every such
 branch; `refuse` moves nothing), on `restack`, `pull` and `land` alike. The
 preview names every worktree it brings along and every branch it leaves,
-with the command that finishes one later. See
+with the command that finishes one later; a leave the preview named exits
+`0`. A replay that has moved a branch and then cannot bring its worktree
+along reports the `git -C … read-tree` command that finishes it and exits
+`3`; `pull`'s own moves bring the worktree first, so one that will not come
+along stops that move instead. See
 [design-docs/worktrees.md](design-docs/worktrees.md).
 
 #### Pull

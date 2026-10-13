@@ -51,13 +51,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	// is no "mine": pull moves toward this checkout and push moves toward the
 	// remote, so that choice is already made by which command you run.
 	cmd.Flags().StringVar(&options.take, "take", "", "resolve a divergence by taking one side: published, each branch as --remote holds it (discards local commits it does not have)")
-	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(syncer.Sides))
-		for _, value := range syncer.Sides {
-			values = append(values, string(value))
-		}
-		return values, nil
-	}))
+	_ = cmd.RegisterFlagCompletionFunc("take", completionCallback(staticCompletions(syncer.Sides)))
 	// A boundary on that choice, so it can be made for the part of the stack
 	// you rebased elsewhere without being made for the part you did not.
 	// Everything above it keeps the default, which is to refuse rather than

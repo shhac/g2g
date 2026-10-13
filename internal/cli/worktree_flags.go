@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/worktree"
@@ -16,13 +14,7 @@ func registerWorktrees(cmd *cobra.Command, into *worktree.Policy) {
 	*into = worktree.Follow
 	cmd.Flags().Var(policyValue{into}, "worktrees",
 		"a branch another worktree has checked out: follow moves it when that worktree is clean and brings its files along, leaving one with changes; skip leaves every such branch; refuse moves nothing")
-	_ = cmd.RegisterFlagCompletionFunc("worktrees", completionCallback(func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(worktree.Policies))
-		for _, policy := range worktree.Policies {
-			values = append(values, string(policy))
-		}
-		return values, nil
-	}))
+	_ = cmd.RegisterFlagCompletionFunc("worktrees", completionCallback(staticCompletions(worktree.Policies)))
 }
 
 // policyValue parses --worktrees when the flag is read, so a value nobody

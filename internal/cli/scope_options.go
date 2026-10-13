@@ -64,12 +64,12 @@ func (o *scopeOptions) registerScopeOf(cmd *cobra.Command, target suggestable, v
 }
 
 // staticCompletions offers exactly the values a command registered, which is
-// what keeps completion from proposing a scope the same command would refuse.
-func staticCompletions(scopes []shape.Scope) func(context.Context, string) ([]string, error) {
+// what keeps completion from proposing a value the same command would refuse.
+func staticCompletions[T ~string](accepted []T) func(context.Context, string) ([]string, error) {
 	return func(context.Context, string) ([]string, error) {
-		values := make([]string, 0, len(scopes))
-		for _, scope := range scopes {
-			values = append(values, string(scope))
+		values := make([]string, 0, len(accepted))
+		for _, value := range accepted {
+			values = append(values, string(value))
 		}
 		return values, nil
 	}

@@ -51,11 +51,16 @@ func Parse(value string) (Policy, error) {
 			return policy, nil
 		}
 	}
+	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(Names(), ", "))
+}
+
+// Names are the values a caller may name, as they are typed.
+func Names() []string {
 	names := make([]string, 0, len(Policies))
 	for _, policy := range Policies {
 		names = append(names, string(policy))
 	}
-	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(names, ", "))
+	return names
 }
 
 // Holder is another worktree with a branch checked out.
@@ -86,6 +91,64 @@ func (p Policy) Moves(holder Holder) bool { return p == Follow && holder.Clean }
 // Leaves reports a held branch this policy leaves where it is.
 func (p Policy) Leaves(holder Holder) bool {
 	return p == Skip || (p == Follow && !holder.Clean)
+}
+
+// Refuses reports a policy that refuses rather than moving or leaving
+// anything, which is what a caller that never chose gets.
+func (p Policy) Refuses() bool { return p != Follow && p != Skip }
+
+// Split is held branches sorted by what a policy does with each: moved with
+// its worktree, left where it is, or refused. Every held branch is in exactly
+// one, in the order branches gives.
+type Split struct {
+	Follow, Leave, Refuse []Holder
+}
+
+// Split sorts the holders among branches by what this policy does with each.
+// A caller with a rule of its own -- a branch it deletes, one another caller
+// moves -- applies it to the answer.
+func (p Policy) Split(held Held, branches []string) Split {
+	var split Split
+	for _, holder := range held.Of(branches) {
+		switch {
+		case p.Moves(holder):
+			split.Follow = append(split.Follow, holder)
+		case p.Leaves(holder):
+			split.Leave = append(split.Leave, holder)
+		default:
+			split.Refuse = append(split.Refuse, holder)
+		}
+	}
+	return split
+}
+
+// The ways out of a held branch, worded once for every command that offers
+// them.
+var (
+	// SwitchAway frees the branch.
+	SwitchAway = repair.Step{Effect: "switch that worktree to another branch, or close it"}
+	// PutAway makes the worktree clean, so it can be brought along.
+	PutAway = repair.Step{Effect: "commit or put those changes away there, then run this again"}
+)
+
+// Refusal is the refusal for branches a command will not move because other
+// worktrees hold them, naming each and where.
+//
+// The ways out name no command, because the same refusal reaches commands that
+// accept different scopes. It used to suggest g2g restack --scope path, which
+// was the command that had just refused, and which pull does not accept.
+func Refusal(holders []Holder) repair.Note {
+	held := make([]string, 0, len(holders))
+	for _, holder := range holders {
+		held = append(held, fmt.Sprintf("%s (%s)", holder.Branch, holder.Path))
+	}
+	return repair.Note{
+		Reason: fmt.Sprintf("checked out in another worktree: %s · moving it would leave that worktree describing a commit it no longer has", strings.Join(held, ", ")),
+		Ways: []repair.Step{
+			SwitchAway,
+			{Effect: "select less with --branch or --scope, so nothing that has to move is checked out there"},
+		},
+	}
 }
 
 // Held maps each branch another worktree has checked out to that worktree.

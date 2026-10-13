@@ -125,3 +125,37 @@ func TestNotBroughtNamesTheCommandThatFinishesIt(t *testing.T) {
 		t.Errorf("error = %q, want it to contain %q", err, want)
 	}
 }
+
+// Every held branch lands in exactly one of the three, and a policy nobody
+// chose refuses.
+func TestSplitSortsEachHeldBranchOnce(t *testing.T) {
+	held := Held{
+		"synthetic-clean": {Branch: "synthetic-clean", Path: "/synthetic/clean", Clean: true},
+		"synthetic-dirty": {Branch: "synthetic-dirty", Path: "/synthetic/dirty"},
+	}
+	branches := []string{"synthetic-free", "synthetic-dirty", "synthetic-clean"}
+	names := func(holders []Holder) string {
+		said := make([]string, 0, len(holders))
+		for _, holder := range holders {
+			said = append(said, holder.Branch)
+		}
+		return strings.Join(said, ",")
+	}
+	for _, tc := range []struct {
+		policy                Policy
+		follow, leave, refuse string
+	}{
+		{Follow, "synthetic-clean", "synthetic-dirty", ""},
+		{Skip, "", "synthetic-dirty,synthetic-clean", ""},
+		{Refuse, "", "", "synthetic-dirty,synthetic-clean"},
+		{"", "", "", "synthetic-dirty,synthetic-clean"},
+	} {
+		split := tc.policy.Split(held, branches)
+		if got := [3]string{names(split.Follow), names(split.Leave), names(split.Refuse)}; got != [3]string{tc.follow, tc.leave, tc.refuse} {
+			t.Errorf("%q.Split() = %q, want %q", tc.policy, got, [3]string{tc.follow, tc.leave, tc.refuse})
+		}
+		if refuses := tc.policy.Refuses(); refuses != (tc.refuse != "") {
+			t.Errorf("%q.Refuses() = %t", tc.policy, refuses)
+		}
+	}
+}

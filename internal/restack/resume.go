@@ -211,17 +211,20 @@ func (s Service) Abort(ctx context.Context) error {
 	}
 	// Refuse before aborting Git's current invocation or restoring any tip.
 	// Completed branches may have been opened elsewhere since the last pass.
-	// A worktree this restack brought along is brought back the same way,
-	// so only the others are a reason to refuse.
 	var moving []string
 	for _, branch := range slices.Sorted(maps.Keys(record.Original)) {
-		if _, followed := record.Followed[branch]; followed {
+		tip, err := s.Git.Resolve(ctx, branch)
+		if err == nil && tip == record.Original[branch] {
 			continue
 		}
-		tip, err := s.Git.Resolve(ctx, branch)
-		if err != nil || tip != record.Original[branch] {
-			moving = append(moving, branch)
+		// A worktree this restack brought along is brought back the same
+		// way -- while its branch is still where the restack left it. One
+		// somebody has committed to since holds work an abort would reset
+		// away, so it refuses like any other.
+		if tree, followed := record.Followed[branch]; followed && err == nil && tip == tree.Tip {
+			continue
 		}
+		moving = append(moving, branch)
 	}
 	if held, err := s.HeldElsewhere(ctx, moving); err != nil {
 		return err

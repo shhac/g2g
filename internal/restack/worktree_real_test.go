@@ -211,3 +211,52 @@ func TestContinueBringsAlongAWorktreeARestackLeftBehind(t *testing.T) {
 		t.Error("the journal outlived the continue")
 	}
 }
+
+// stranded is a restack that died after moving a followed branch and bringing
+// its worktree along, with the journal still there.
+func stranded(t *testing.T) (realStack, testutil.GitRepo, string) {
+	t.Helper()
+	r, held := heldStack(t)
+	ctx := context.Background()
+	original := r.Revision("synthetic-b")
+	plan := r.planWith(worktree.Follow)
+	record, err := r.service.begin(ctx, plan, checkout{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.replay(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.settleFollowed(ctx, &record); err != nil {
+		t.Fatal(err)
+	}
+	return r, held, original
+}
+
+func TestAbortBringsAFollowedWorktreeBack(t *testing.T) {
+	r, held, original := stranded(t)
+	if err := r.service.Abort(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r.Revision("synthetic-b") != original {
+		t.Error("synthetic-b was not put back")
+	}
+	clean(t, held)
+	if _, err := os.Stat(filepath.Join(held.Dir, "main.txt")); !os.IsNotExist(err) {
+		t.Errorf("the followed worktree's files were not brought back: %v", err)
+	}
+}
+
+// Somebody committed in the followed worktree after the restack died: an
+// abort would reset that commit away, so it refuses as for any held branch.
+func TestAbortRefusesAFollowedBranchCommittedToSince(t *testing.T) {
+	r, held, _ := stranded(t)
+	held.Commit("synthetic work after the restack", "after.txt", "after")
+	committed := r.Revision("synthetic-b")
+	if err := r.service.Abort(context.Background()); err == nil || !strings.Contains(err.Error(), "another worktree") {
+		t.Fatalf("Abort() = %v, want the held branch refused", err)
+	}
+	if r.Revision("synthetic-b") != committed {
+		t.Error("abort reset the commit made in the followed worktree")
+	}
+}

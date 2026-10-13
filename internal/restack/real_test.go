@@ -90,7 +90,7 @@ func (r realStack) amend(branch, file, content string) {
 
 func (r realStack) plan(selection graph.Selection) Plan {
 	r.t.Helper()
-	plan, err := r.service.Plan(context.Background(), selection, Onto{}, false, Pending{})
+	plan, err := r.service.Plan(context.Background(), selection, Onto{}, false, Pending{}, "")
 	if err != nil {
 		r.t.Fatalf("Plan() error = %v", err)
 	}
@@ -258,7 +258,7 @@ func TestABranchTheCallerMovesIsMeasuredWhereItWillBe(t *testing.T) {
 	r, published := publishedRestack(t)
 	pending := Pending{Tips: map[string]string{"synthetic-a": published["synthetic-a"], "synthetic-b": published["synthetic-b"]}}
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
-		ToLocation("synthetic-published-main"), false, pending)
+		ToLocation("synthetic-published-main"), false, pending, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -299,7 +299,7 @@ func TestABranchTheCallerMovesKeepsARecordedForkItStillContains(t *testing.T) {
 	r.Run("switch", "-q", "synthetic-published-main")
 	pending := Pending{Tips: map[string]string{"synthetic-a": r.Revision("synthetic-reviewed-a")}}
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
-		ToLocation("synthetic-published-main"), false, pending)
+		ToLocation("synthetic-published-main"), false, pending, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -364,7 +364,7 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	pending := Pending{Tips: map[string]string{"synthetic-a": r.Revision("synthetic-unrelated")}}
 
 	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
-		ToLocation(published["synthetic-main"]), false, pending)
+		ToLocation(published["synthetic-main"]), false, pending, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -376,7 +376,7 @@ func TestABranchTheCallerMovesToAnUnrelatedCommitIsRefused(t *testing.T) {
 	// built on it.
 	pending.Begins = map[string]string{"synthetic-a": published["synthetic-main"]}
 	plan, err = r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack},
-		ToLocation(published["synthetic-main"]), false, pending)
+		ToLocation(published["synthetic-main"]), false, pending, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -395,7 +395,7 @@ func TestAMissingBranchIsRefusedWithUntrackAsTheWayOut(t *testing.T) {
 	r.Run("switch", "-q", "synthetic-main")
 	r.Run("branch", "-q", "-D", "synthetic-b")
 
-	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, Pending{})
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack}, Onto{}, false, Pending{}, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}

@@ -44,12 +44,17 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	// the last step and was not one: where it held, index was already the last
 	// index, so both branches named the same branch.
 	target := plan.Steps[len(plan.Steps)-1].Branch
-	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, target), plan.Options.Remote, syncer.TakeNothing)
+	synced, err := s.Syncer.Plan(ctx, syncSelection(plan, target), plan.Options.Remote, syncer.TakeNothing, plan.Options.Worktrees)
 	if err != nil {
 		return false, err
 	}
 	if synced.Blocked() != "" {
 		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", synced.Blocked())
+	}
+	// A worktree that picked up changes since the descent began: its branch
+	// would be left on a trunk that no longer exists upstream.
+	if len(synced.Worktrees.Leave) != 0 {
+		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", leftBehind(synced).Sentence())
 	}
 	if synced.Nothing() {
 		return false, nil
@@ -148,8 +153,11 @@ func (s Service) remove(ctx context.Context, plan Plan, step Step) {
 	// stack from its top ends standing on the last one deleted.
 	if current, err := s.Git.CurrentBranch(ctx); err == nil && current == step.Branch {
 		switchAway := func() error { return s.Git.SwitchBranch(ctx, plan.Trunk) }
-		if plan.KeepTrunk {
+		switch {
+		case plan.KeepTrunk:
 			switchAway = func() error { return s.Git.SwitchDetached(ctx, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk)) }
+		case plan.Detach:
+			switchAway = func() error { return s.Git.SwitchDetached(ctx, plan.Trunk) }
 		}
 		if err := switchAway(); err != nil {
 			diagnostic.Warn(ctx, "land.switch", fmt.Sprintf("could not move off %s to %s: %v", step.Branch, plan.Trunk, err))

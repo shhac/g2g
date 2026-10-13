@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/restack"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // syncCLIGit is the remote half of a sync: what the base is now, what the
@@ -84,7 +85,7 @@ type syncCLIRestack struct {
 	reparented bool
 }
 
-func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool, _ restack.Pending) (restack.Plan, error) {
+func (r *syncCLIRestack) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool, _ restack.Pending, _ worktree.Policy) (restack.Plan, error) {
 	r.scopes = append(r.scopes, string(selection.Scope))
 	// sync asks for a location, never a parent: recording the fetched ref as a
 	// parent is what left every synced branch hanging from refs/g2g/.

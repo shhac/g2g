@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/testutil"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // fakeGit answers the remote and ancestry questions sync asks. Whether the
@@ -160,7 +161,7 @@ type stubRestacker struct {
 	selections []graph.Selection
 }
 
-func (s *stubRestacker) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool, pending restack.Pending) (restack.Plan, error) {
+func (s *stubRestacker) Plan(_ context.Context, selection graph.Selection, onto restack.Onto, _ bool, pending restack.Pending, _ worktree.Policy) (restack.Plan, error) {
 	s.onto = append(s.onto, onto.Object)
 	s.selections = append(s.selections, selection)
 	if onto.Reparents() {
@@ -208,7 +209,7 @@ func TestPlanFetchesButAdvancesNothing(t *testing.T) {
 	git := behindGit()
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -234,7 +235,7 @@ func TestPlanRefusesADivergedBase(t *testing.T) {
 	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -262,7 +263,7 @@ func TestPlanLeavesATrunkThatIsOnlyAheadAlone(t *testing.T) {
 	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -277,7 +278,7 @@ func TestApplyRefusesABlockedPlan(t *testing.T) {
 	git.ancestors[localgit.IsolatedRef("origin", "synthetic-trunk")] = nil
 	git.ownCommits = map[string][]string{"synthetic-trunk": {"synthetic-commit-only-here"}}
 	service, store := newService(git, nil)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +302,7 @@ func TestPlanLeavesALevelBaseAlone(t *testing.T) {
 	git.objects[localgit.IsolatedRef("origin", "synthetic-trunk")] = "trunk-old"
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -317,7 +318,7 @@ func TestPlanToleratesABaseTheRemoteDoesNotHave(t *testing.T) {
 	delete(git.objects, localgit.IsolatedRef("origin", "synthetic-trunk"))
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -334,7 +335,7 @@ func TestPlanIgnoresAFetchedRefTheRemoteNoLongerHas(t *testing.T) {
 	git.absentOnRemote = map[string]bool{"synthetic-trunk": true}
 	service, _ := newService(git, nil)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -348,7 +349,7 @@ func TestPlanRequiresSomethingToSync(t *testing.T) {
 	store := &memoryStore{graph: graph.New()}
 	service := Service{Git: git, Graph: graph.Service{Git: stubAncestry{git}, Store: store}, Restack: &stubRestacker{}}
 
-	_, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	_, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err == nil {
 		t.Fatal("Plan() error = nil with no recorded structure")
 	}
@@ -365,7 +366,7 @@ func TestPlanBranchScopeAdvancesTheBaseAlone(t *testing.T) {
 	service, _ := newService(git, restacker)
 	selection := graph.Selection{Branch: "synthetic-trunk", Scope: graph.ScopeBranch}
 
-	plan, err := service.Plan(context.Background(), selection, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), selection, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -391,7 +392,7 @@ func TestPlanBranchScopeAdvancesTheBaseAlone(t *testing.T) {
 func TestPlanBranchScopeRefusesAStackedBranch(t *testing.T) {
 	service, _ := newService(behindGit(), nil)
 
-	_, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch}, "origin", TakeNothing)
+	_, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch}, "origin", TakeNothing, "")
 	if err == nil || !strings.Contains(err.Error(), "only a base") {
 		t.Fatalf("Plan() error = %v, want the stacked branch refused", err)
 	}
@@ -402,13 +403,13 @@ func TestPlanValidatesTheRemote(t *testing.T) {
 	git.remoteErr = errors.New("no such remote")
 	service, _ := newService(git, nil)
 
-	if _, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "nowhere", TakeNothing); err == nil {
+	if _, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "nowhere", TakeNothing, ""); err == nil {
 		t.Fatal("Plan() error = nil for an unknown remote")
 	}
 }
 
 func TestUnconfiguredServiceRefuses(t *testing.T) {
-	if _, err := (Service{}).Plan(context.Background(), graph.Selection{}, "origin", TakeNothing); err == nil {
+	if _, err := (Service{}).Plan(context.Background(), graph.Selection{}, "origin", TakeNothing, ""); err == nil {
 		t.Fatal("Plan() error = nil for an unconfigured service")
 	}
 }
@@ -419,7 +420,7 @@ func TestApplyAdvancesTheBaseBeforeReplaying(t *testing.T) {
 	git := behindGit()
 	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
 	service, _ := newService(git, restacker)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +448,7 @@ func TestPruneIsSkippedWhenNotAskedFor(t *testing.T) {
 		Steps: []restack.Step{{Branch: "synthetic-a", Collapses: true}},
 	}}
 	service, store := newService(git, restacker)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +468,7 @@ func TestApplyDoesNotTouchALevelBase(t *testing.T) {
 	git := behindGit()
 	git.objects[localgit.IsolatedRef("origin", "synthetic-trunk")] = "trunk-old"
 	service, _ := newService(git, nil)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +501,7 @@ func TestApplyStopsAtTheFirstStepThatFails(t *testing.T) {
 				applyErr: test.applyErr,
 			}
 			service, store := newService(git, restacker)
-			plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+			plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 			if err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}
@@ -530,7 +531,7 @@ func TestRevalidateRefusesAPlanThatMovedUnderneath(t *testing.T) {
 	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
 	service, _ := newService(git, restacker)
 
-	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
@@ -538,7 +539,7 @@ func TestRevalidateRefusesAPlanThatMovedUnderneath(t *testing.T) {
 	// there now replays a different one.
 	restacker.plan = restack.Plan{Steps: []restack.Step{{Branch: "synthetic-c"}}}
 
-	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)); !errors.Is(err, testutil.ErrReplanned) {
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")); !errors.Is(err, testutil.ErrReplanned) {
 		t.Fatal("Replan() error = nil for a plan that changed underneath")
 	}
 }
@@ -550,11 +551,11 @@ func TestRevalidateAcceptsAnUnchangedPlan(t *testing.T) {
 	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-b"}}}}
 	service, _ := newService(git, restacker)
 
-	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	preview, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	validated, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing))
+	validated, err := testutil.Replan(preview)(service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, ""))
 	if err != nil {
 		t.Fatalf("Replan() error = %v", err)
 	}
@@ -583,7 +584,7 @@ func TestAForkedConflictNamesASyncForEachLine(t *testing.T) {
 	}}
 	service, _ := newService(behindGit(), restacker)
 
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,7 +604,7 @@ func TestApplyThatFailsAfterAdvancingSaysWhatMoved(t *testing.T) {
 	git := behindGit()
 	restacker := &stubRestacker{plan: restack.Plan{Steps: []restack.Step{{Branch: "synthetic-a"}}}, applyErr: errors.New("synthetic replay failure")}
 	service, _ := newService(git, restacker)
-	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing)
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +643,7 @@ func TestPlanFetchesOnlyWhatHasMoved(t *testing.T) {
 			service, _ := newService(git, nil)
 			service.Git = fetchedGit{fakeGit: git, isolated: test.isolated}
 
-			if _, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing); err != nil {
+			if _, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", TakeNothing, ""); err != nil {
 				t.Fatalf("Plan() error = %v", err)
 			}
 			if got := strings.Join(git.fetched, ","); got != test.want {
@@ -656,7 +657,7 @@ func TestPlanTrunkSelectsTheRecordedRootWithoutReplayingItsBranches(t *testing.T
 	git := behindGit()
 	restacker := &stubRestacker{}
 	service, _ := newService(git, restacker)
-	plan, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin")
+	plan, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-b"}, "origin", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +668,7 @@ func TestPlanTrunkSelectsTheRecordedRootWithoutReplayingItsBranches(t *testing.T
 
 func TestPlanTrunkDoesNotGuessAnUnrecordedFeatureBranchIsATrunk(t *testing.T) {
 	service, _ := newService(behindGit(), &stubRestacker{})
-	_, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-unknown"}, "origin")
+	_, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-unknown"}, "origin", "")
 	if err == nil || !strings.Contains(err.Error(), "no recorded trunk") {
 		t.Fatalf("error = %v", err)
 	}
@@ -679,14 +680,14 @@ func TestRevalidateTrunkChecksTheTrunkAgainBeforeApplying(t *testing.T) {
 			git := behindGit()
 			service, _ := newService(git, nil)
 			selection := graph.Selection{Branch: "synthetic-b"}
-			preview, err := service.PlanTrunk(context.Background(), selection, "origin")
+			preview, err := service.PlanTrunk(context.Background(), selection, "origin", "")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if moved {
 				git.objects["synthetic-trunk"] = "trunk-new"
 			}
-			current, err := testutil.Replan(preview)(service.PlanTrunk(context.Background(), selection, "origin"))
+			current, err := testutil.Replan(preview)(service.PlanTrunk(context.Background(), selection, "origin", ""))
 			if moved {
 				if err == nil {
 					t.Fatal("accepted a trunk that moved after the preview")

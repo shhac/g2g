@@ -17,6 +17,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Ready reports a service with everything it needs.
@@ -37,7 +38,10 @@ func (s Service) Ready() bool {
 // Plan works out the whole sequence without performing any of it. The fetch is
 // the one step that reaches the network, and it writes only into g2g's own
 // ref namespace, so previewing costs the repository nothing.
-func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string, take Take) (Plan, error) {
+//
+// worktrees is what to do about a branch another worktree holds; the zero
+// value refuses, as pull did before there was a choice.
+func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string, take Take, worktrees worktree.Policy) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
@@ -55,7 +59,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err := requireBase(selection, discovery); err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Remote: remote, Base: discovery.Branches[0]}
+	plan := Plan{Remote: remote, Base: discovery.Branches[0], Policy: worktrees}
 
 	// The base and everything selected, in one fetch. Fetching only the base is
 	// what left a reviewer's commit unreachable from here.
@@ -95,14 +99,30 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	found, err := s.collect(ctx, collecting{
+	collecting := collecting{
 		remote: remote, base: plan.Base, branches: discovery.Branches, onRemote: published, take: take,
 		parents: parents, forks: forkPoints(discovery), keep: plan.Keep,
 		command: command, takeCommand: command + " --take " + string(SidePublished),
 		latest: latest,
-	})
+	}
+	found, err := s.collect(ctx, collecting)
 	if err != nil {
 		return Plan{}, err
+	}
+	own, fixed, note, err := s.held(ctx, &plan, collecting, found)
+	if err != nil {
+		return Plan{}, err
+	}
+	if note.Reason != "" {
+		return plan.refused(note), nil
+	}
+	if len(fixed) != 0 {
+		// Asked again with the left branches fixed, so what sits on them is
+		// decided against where they will actually be.
+		collecting.fixed = fixed
+		if found, err = s.collect(ctx, collecting); err != nil {
+			return Plan{}, err
+		}
 	}
 	plan.Commits = syncpoint.Grouped(found.commits)
 	if plan.Subjects, err = s.describe(ctx, plan); err != nil {
@@ -122,10 +142,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		plan.Begins = found.begins
 	}
 	plan.Strict = strictly(plan, found.unsynced)
-	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending())
+	plan.Restack, err = s.Restack.Plan(ctx, selection, restack.ToLocation(plan.onto()), false, plan.pending(), worktrees)
 	if err != nil {
 		return Plan{}, err
 	}
+	plan.Worktrees = own.With(plan.Restack.Worktrees)
 	// Its structure comes with it. A refusal that arrives from the step this
 	// delegates to is no less actionable for having been delegated, and
 	// carrying only the sentence handed every machine reader a null where the

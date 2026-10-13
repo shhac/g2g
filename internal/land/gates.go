@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
 	"github.com/shhac/g2g/internal/words"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // blockedBefore is everything that refuses the whole descent before any of it
@@ -37,7 +38,7 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	if held.Reason != "" {
 		return held
 	}
-	plan.KeepTrunk, plan.Detach = kept.trunk, kept.detach
+	plan.KeepTrunk, plan.Detach, plan.Follow = kept.trunk, kept.detach, kept.follow
 	// An error planning the push is not a refusal here: each cycle plans its
 	// own publish again before its merge, so the same error stops the descent
 	// before anything has merged.
@@ -51,7 +52,7 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	if plan.KeepTrunk {
 		return repair.Note{}
 	}
-	synced, err := s.Syncer.Plan(ctx, syncSelection(*plan, discovery.Target), options.Remote, syncer.TakeNothing)
+	synced, err := s.Syncer.Plan(ctx, syncSelection(*plan, discovery.Target), options.Remote, syncer.TakeNothing, options.Worktrees)
 	if err != nil && plan.declared() {
 		// Nothing about a base alone makes sync unable to answer, so a failure
 		// here is one the advance after the merge would meet too.
@@ -59,6 +60,9 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	}
 	if err == nil && synced.Blocked() != "" {
 		return synced.Repair
+	}
+	if err == nil && len(synced.Worktrees.Leave) != 0 {
+		return leftBehind(synced)
 	}
 	if err == nil && options.Strict && synced.Strict.Reason != "" {
 		return synced.Strict
@@ -151,13 +155,18 @@ func linkedOnGitHub(discovery stack.Discovery) repair.Note {
 }
 
 // heldElsewhere refuses a descent that would move a branch another worktree
-// has checked out: the trunk it advances, the branches it merges and deletes,
-// and those above it that it replays.
+// has checked out and cannot bring along: the trunk it advances, the branches
+// it merges and deletes, and those above it that it replays.
 //
 // Each step's own sync refuses the same thing, but only once there is
 // something to move — after the first merge, which does not come back. Asking
 // sync up front found nothing while the trunk was level, so a descent with the
 // trunk open in another worktree merged its bottom branch and then stopped.
+//
+// A clean worktree the policy follows is no obstacle: each step's pull brings
+// it along. A branch the descent deletes is, because Git will not delete a
+// branch checked out anywhere, and so is one the policy would leave, because
+// a descent cannot leave part of itself behind.
 func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan Plan) (keeping, repair.Note) {
 	if s.Holds == nil {
 		return keeping{}, repair.Note{}
@@ -169,14 +178,25 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan P
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
-	held, err := s.Holds.HeldElsewhere(ctx, branches)
+	held, err := s.Holds.Holders(ctx, branches)
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
-	if held.Reason == "" {
-		return keeping{}, repair.Note{}
+	blocked, follow := make([]worktree.Holder, 0), make([]worktree.Holder, 0)
+	for _, holder := range held.Of(branches) {
+		if !plan.Options.Worktrees.Moves(holder) || plan.deletes(holder.Branch) {
+			blocked = append(blocked, holder)
+			continue
+		}
+		follow = append(follow, holder)
 	}
-	kept, err := s.keepsTrunk(ctx, recorded, plan, branches)
+	if len(blocked) == 0 {
+		// A branch the descent deletes is stepped off first, and the trunk
+		// cannot be checked out here while another worktree has it.
+		trunkThere := slices.ContainsFunc(follow, func(holder worktree.Holder) bool { return holder.Branch == plan.Trunk })
+		return keeping{follow: follow, detach: trunkThere && plan.Options.DeleteLocal}, repair.Note{}
+	}
+	kept, err := s.keepsTrunk(ctx, recorded, plan, blocked)
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
@@ -186,24 +206,57 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan P
 	// Narrowing the selection is no way out here: a descent moves the whole
 	// stack whatever was selected, because the replay after each merge takes
 	// everything above it.
-	return keeping{}, repair.Note{Reason: held.Reason, Ways: []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}}
+	return keeping{}, heldRefusal(plan, blocked)
+}
+
+// deletes reports a branch this descent deletes locally once it has landed.
+func (p Plan) deletes(branch string) bool {
+	return p.Options.DeleteLocal && slices.Contains(p.Branches, branch)
+}
+
+// heldRefusal says, for each branch in the way, why it cannot be moved, and
+// the ways past them all.
+func heldRefusal(plan Plan, blocked []worktree.Holder) repair.Note {
+	why := make([]string, 0, len(blocked))
+	ways := []repair.Step{{Effect: "switch that worktree to another branch, or close it"}}
+	follows := false
+	for _, holder := range blocked {
+		switch {
+		case plan.deletes(holder.Branch):
+			why = append(why, fmt.Sprintf("%s is checked out in %s, and landing deletes it", holder.Branch, holder.Path))
+		case holder.Clean:
+			why = append(why, fmt.Sprintf("%s is checked out in %s", holder.Branch, holder.Path))
+			follows = true
+		default:
+			why = append(why, fmt.Sprintf("%s is checked out in another worktree, and %s", holder.Branch, holder.Why()))
+		}
+	}
+	if follows {
+		ways = append(ways, repair.Step{Effect: "run it with --worktrees follow, which brings a clean worktree along"})
+	}
+	return repair.Note{Reason: strings.Join(why, "; "), Ways: ways}
 }
 
 // keeping is a descent leaving a trunk another worktree holds where it is,
 // and whether this checkout steps off the branch it deletes onto the merge.
-type keeping struct{ trunk, detach bool }
+type keeping struct {
+	trunk, detach bool
+	follow        []worktree.Holder
+}
 
-// keepsTrunk is the one way past a trunk held elsewhere. A single branch can
-// merge without advancing the trunk here, provided there is no survivor whose
-// contents would need replaying afterwards and nothing but the trunk is held.
-func (s Service) keepsTrunk(ctx context.Context, recorded graph.Graph, plan Plan, branches []string) (keeping, error) {
+// keepsTrunk is the one way past a trunk that cannot be moved. A single branch
+// can merge without advancing the trunk here, provided there is no survivor
+// whose contents would need replaying afterwards and nothing but the trunk is
+// in the way. Refuse means refuse, so it is not offered then.
+func (s Service) keepsTrunk(ctx context.Context, recorded graph.Graph, plan Plan, blocked []worktree.Holder) (keeping, error) {
+	if plan.Options.Worktrees == worktree.Refuse || plan.Options.Worktrees == "" {
+		return keeping{}, nil
+	}
 	if len(plan.Branches) != 1 || len(recorded.Children(plan.Target)) != 0 {
 		return keeping{}, nil
 	}
-	others := slices.DeleteFunc(slices.Clone(branches), func(branch string) bool { return branch == plan.Trunk })
-	held, err := s.Holds.HeldElsewhere(ctx, others)
-	if err != nil || held.Reason != "" {
-		return keeping{}, err
+	if len(blocked) != 1 || blocked[0].Branch != plan.Trunk {
+		return keeping{}, nil
 	}
 	current, err := s.Git.CurrentBranch(ctx)
 	if err != nil {
@@ -266,4 +319,18 @@ func moving(recorded graph.Graph, target, base string) ([]string, error) {
 		branches = append(branches, base)
 	}
 	return branches, nil
+}
+
+// leftBehind refuses a descent whose pull would leave a branch where it is.
+// A descent cannot: the branch above the next merge has to be on the trunk the
+// merge produced.
+func leftBehind(synced syncer.Plan) repair.Note {
+	why := make([]string, 0, len(synced.Worktrees.Leave))
+	for _, holder := range synced.Worktrees.Leave {
+		why = append(why, holder.Branch+": "+holder.Why())
+	}
+	return repair.Note{
+		Reason: "landing has to move branches another worktree holds and cannot bring along · " + strings.Join(why, "; "),
+		Ways:   []repair.Step{{Effect: "commit or put those changes away there, then run this again"}},
+	}
 }

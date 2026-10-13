@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/push"
 	syncer "github.com/shhac/g2g/internal/sync"
 	"github.com/shhac/g2g/internal/words"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -78,6 +79,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "keep")
 	registerStrict(cmd, &options.strict)
+	registerWorktrees(cmd, &options.worktrees)
 	// --take discards on purpose, which is the opposite of asking to be
 	// stopped before anything is lost.
 	cmd.MarkFlagsMutuallyExclusive("strict", "take")
@@ -94,6 +96,7 @@ type pullOptions struct {
 	keep                        []string
 	apply, alsoPrune, trunkOnly bool
 	strict                      bool
+	worktrees                   string
 	cleanup                     prune.Options
 }
 
@@ -110,6 +113,9 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 		return syncer.Take{}, err
 	}
 	chosen.Keep = o.keep
+	if _, err := worktree.Parse(o.worktrees); err != nil {
+		return syncer.Take{}, err
+	}
 	// Machine output is one document, and this writes two reports.
 	if o.alsoPrune && presentation.machine() {
 		return syncer.Take{}, errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")
@@ -119,7 +125,7 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 
 // flow chooses the trunk or stack plan and the promise its preview makes.
 func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
-	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, guard, presentation, o.alsoPrune)
+	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, worktree.Policy(o.worktrees), guard, presentation, o.alsoPrune)
 	if o.strict {
 		plan := pull.plan
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
@@ -129,7 +135,7 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 	}
 	if o.trunkOnly {
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
-			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote)
+			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote, worktree.Policy(o.worktrees))
 		}
 		pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
 		pull.notices.noOp = "The trunk is already up to date."
@@ -144,7 +150,7 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 
 // pullFlow is pull's safety sequence over one selection. thenPrune says a
 // prune follows it, which changes what a preview promises and what comes next.
-func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Selection, remote string, chosen syncer.Take, guard func(context.Context) error, p Presentation, thenPrune bool) applyFlow[syncer.Plan] {
+func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Selection, remote string, chosen syncer.Take, worktrees worktree.Policy, guard func(context.Context) error, p Presentation, thenPrune bool) applyFlow[syncer.Plan] {
 	notices := flowNotices{
 		preview:  "Rerun with --apply to bring the stack up to date.",
 		noOp:     "The stack is already up to date.",
@@ -162,13 +168,14 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 	return applyFlow[syncer.Plan]{
 		guard: guard,
 		plan: func(ctx context.Context) (syncer.Plan, error) {
-			return service.Plan(ctx, selection, remote, chosen)
+			return service.Plan(ctx, selection, remote, chosen, worktrees)
 		},
 		revalidation: revalidation{"sync", "plan"},
 		render:       func(w io.Writer, plan syncer.Plan, p Presentation) error { return writeStackView(w, pullView(plan), p) },
 		execute:      service.Apply,
 		branches:     func(plan syncer.Plan) int { return len(plan.Restack.Steps) + 1 },
 		noOp:         func(plan syncer.Plan) bool { return plan.Nothing() },
+		noOpSays:     func(plan syncer.Plan) string { return leftOnly(plan.Worktrees) },
 		blocked:      syncer.Plan.Blocked,
 		suggest:      suggest,
 		// A pull is a sequence, so it can stop between steps. It deliberately
@@ -176,6 +183,9 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		// regardless, and the replay is resumable through the command that
 		// owns it.
 		interrupted: func(ctx context.Context, _ syncer.Plan, cause error) (bool, error) {
+			if handled, report := worktreeNotBrought(cmd, cause, p); handled {
+				return true, report
+			}
 			if stopped, err := service.Restack.InProgress(ctx); err == nil && stopped {
 				return true, stoppedMidSync(cmd, p)
 			}

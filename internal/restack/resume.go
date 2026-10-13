@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Continue resumes an interrupted restack.
@@ -30,6 +32,9 @@ func (s Service) Continue(ctx context.Context) error {
 			return err
 		}
 	} else if err := s.recoverCheckout(ctx, record); err != nil {
+		return err
+	}
+	if err := s.settleFollowed(ctx, &record); err != nil {
 		return err
 	}
 	return s.finish(ctx, record)
@@ -59,6 +64,13 @@ const (
 func (s Service) finish(ctx context.Context, record Record) error {
 	for pass := 0; ; pass++ {
 		outcome, err := s.finishPass(ctx, &record, pass)
+		var notBrought *worktree.NotBrought
+		if errors.As(err, &notBrought) {
+			// The rewrite is done; only another worktree's files are behind,
+			// and the error says how to bring them. Leaving the journal would
+			// refuse every other command over a restack with nothing left.
+			return errors.Join(err, s.conclude(ctx, record))
+		}
 		if err != nil {
 			return err
 		}
@@ -122,11 +134,14 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 	if err != nil {
 		return finishComplete, err
 	}
+	if err := s.journalFollowed(ctx, record, plan); err != nil {
+		return finishComplete, err
+	}
 	if err := s.checkpoint(ctx, record, standing); err != nil {
 		return finishComplete, err
 	}
 	if plan.inPlace() {
-		if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
+		if err := s.rewriteInPlace(ctx, plan, standing, record); err != nil {
 			return finishComplete, err
 		}
 		if len(plan.rewriting()) == 0 {
@@ -158,7 +173,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	}
 	// No pending: a resume runs after whatever the caller was going to
 	// move has already moved.
-	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{})
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{}, worktree.Policy(record.Worktrees))
 	if err != nil {
 		return Plan{}, err
 	}
@@ -196,8 +211,13 @@ func (s Service) Abort(ctx context.Context) error {
 	}
 	// Refuse before aborting Git's current invocation or restoring any tip.
 	// Completed branches may have been opened elsewhere since the last pass.
+	// A worktree this restack brought along is brought back the same way,
+	// so only the others are a reason to refuse.
 	var moving []string
 	for _, branch := range slices.Sorted(maps.Keys(record.Original)) {
+		if _, followed := record.Followed[branch]; followed {
+			continue
+		}
 		tip, err := s.Git.Resolve(ctx, branch)
 		if err != nil || tip != record.Original[branch] {
 			moving = append(moving, branch)
@@ -241,6 +261,9 @@ func (s Service) Abort(ctx context.Context) error {
 		return err
 	}
 	if err := s.resettle(ctx, standing); err != nil {
+		return err
+	}
+	if err := s.settleFollowed(ctx, &record); err != nil {
 		return err
 	}
 	return s.conclude(ctx, record)

@@ -12,7 +12,11 @@ import (
 
 // steps builds the ordered rewrite, parents before children so each child is
 // measured against the base its parent will actually have.
-func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending) ([]Step, error) {
+//
+// A branch in fixed stays where it is: another worktree holds it and this
+// rewrite leaves it there. It gets no step and is not counted as being
+// rewritten, so what sits on it is measured against where it actually is.
+func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending, fixed map[string]bool) ([]Step, error) {
 	steps := make([]Step, 0, len(discovery.Branches))
 	// A branch whose parent is being rewritten has to be rewritten too, even
 	// though it still sits exactly where its fork point says. Judging each
@@ -26,7 +30,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 	roots := selectionRoots(discovery)
 	for _, branch := range discovery.Branches {
 		edge, tracked := discovery.Graph.Edges[branch]
-		if !tracked {
+		if !tracked || fixed[branch] {
 			continue
 		}
 		parent := edge.Parent

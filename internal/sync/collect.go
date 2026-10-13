@@ -164,6 +164,10 @@ type collecting struct {
 	command, takeCommand string
 	// latest is each branch's newest sync point, read once for the selection.
 	latest syncpoint.Latest
+	// fixed are branches this pull leaves where they are, because another
+	// worktree holds them. Nothing is collected for one, so nothing above it
+	// is planned as though it had been.
+	fixed map[string]bool
 }
 
 // collected is what collect decided across the selection.
@@ -197,7 +201,7 @@ type verdict struct {
 // where it is decided.
 func (s Service) collectOne(ctx context.Context, c collecting, branch string) (verdict, error) {
 	remote, base, onRemote, parents := c.remote, c.base, c.onRemote, c.parents
-	if branch == base || onRemote[branch] == "" {
+	if branch == base || onRemote[branch] == "" || c.fixed[branch] {
 		// Not on the remote at all, which is ordinary for work in progress.
 		return verdict{}, nil
 	}

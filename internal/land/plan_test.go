@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/testutil"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Nothing may merge until every branch has been found landable. Discovering the
@@ -431,5 +432,67 @@ func TestKeepingTheTrunkStillRefusesTheLeafHeldElsewhere(t *testing.T) {
 	plan := w.plan(t, Defaults())
 	if plan.Blocked() == "" || plan.KeepTrunk {
 		t.Fatalf("plan = %+v, want held leaf protected", plan)
+	}
+}
+
+// A clean worktree on the trunk is the ordinary layout, and each step's pull
+// brings it along, so it is no reason to refuse or to leave the trunk behind.
+func TestACleanWorktreeOnTheTrunkIsFollowed(t *testing.T) {
+	w := newWorld(t)
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}, clean: map[string]bool{"synthetic-main": true}}
+	plan := w.plan(t, Defaults())
+	if plan.Blocked() != "" || plan.KeepTrunk {
+		t.Fatalf("Blocked = %q, KeepTrunk = %t, want the trunk followed", plan.Blocked(), plan.KeepTrunk)
+	}
+}
+
+func TestRefuseRefusesEvenACleanWorktree(t *testing.T) {
+	w := newWorld(t)
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}, clean: map[string]bool{"synthetic-main": true}}
+	options := Defaults()
+	options.Worktrees = worktree.Refuse
+	plan := w.plan(t, options)
+	if !strings.Contains(plan.Blocked(), "synthetic-main") {
+		t.Fatalf("Blocked = %q, want the held trunk refused", plan.Blocked())
+	}
+}
+
+// Git will not delete a branch checked out anywhere, so following cannot get
+// a descent past a landed branch another worktree has.
+func TestALandedBranchAnotherWorktreeHasIsRefusedEvenWhenClean(t *testing.T) {
+	w := newWorld(t)
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-one": true}, clean: map[string]bool{"synthetic-one": true}}
+	plan := w.plan(t, Defaults())
+	if !strings.Contains(plan.Blocked(), "landing deletes it") {
+		t.Fatalf("Blocked = %q, want the deletion named", plan.Blocked())
+	}
+}
+
+// The up-front pull would leave a branch: a descent cannot leave part of
+// itself behind, so it refuses before anything merges.
+func TestADescentWhosePullWouldLeaveABranchRefuses(t *testing.T) {
+	w := newWorld(t)
+	w.syncer.leaves = []string{"synthetic-two"}
+	plan := w.plan(t, Defaults())
+	if !strings.Contains(plan.Blocked(), "synthetic-two") {
+		t.Fatalf("Blocked = %q, want the branch the pull would leave named", plan.Blocked())
+	}
+}
+
+func TestKeepingTheTrunkIsALeaveSoRefuseRefusesIt(t *testing.T) {
+	w := newWorld(t)
+	w.store.graph = w.store.graph.Untrack("synthetic-two")
+	snapshot := w.service.Selector.(fakeSelector).snapshot
+	snapshot.Target = "synthetic-one"
+	snapshot.Branches = []string{"synthetic-one"}
+	w.service.Selector = fakeSelector{snapshot: snapshot}
+	w.service.Holds = &fakeHolds{held: map[string]bool{"synthetic-main": true}}
+	if plan := w.plan(t, Defaults()); plan.Blocked() != "" || !plan.KeepTrunk {
+		t.Fatalf("follow: Blocked = %q, KeepTrunk = %t, want the dirty trunk kept", plan.Blocked(), plan.KeepTrunk)
+	}
+	options := Defaults()
+	options.Worktrees = worktree.Refuse
+	if plan := w.plan(t, options); plan.Blocked() == "" || plan.KeepTrunk {
+		t.Fatalf("refuse: Blocked = %q, KeepTrunk = %t, want it refused", plan.Blocked(), plan.KeepTrunk)
 	}
 }

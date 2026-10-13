@@ -66,6 +66,9 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // moves. Worktree identity is optional for injected Git implementations.
 func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Record, error) {
 	record := s.record(plan, standing)
+	if err := s.journalFollowed(ctx, &record, plan); err != nil {
+		return Record{}, err
+	}
 	if locator, ok := s.Git.(WorktreeLocator); ok {
 		var err error
 		record.Worktree, err = locator.WorktreeDir(ctx)
@@ -88,6 +91,7 @@ func (s Service) record(plan Plan, standing checkout) Record {
 	record := Record{
 		OntoParent:     plan.Onto.Parent,
 		Absorb:         plan.Absorb,
+		Worktrees:      string(plan.Policy),
 		Branch:         plan.Target,
 		Scope:          string(plan.Scope),
 		ReturnTo:       standing.Branch,

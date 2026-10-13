@@ -159,6 +159,12 @@ type Outcome struct {
 	Leave  []Holder
 }
 
+// NewOutcome orders what it is given, so two plans that would do the same
+// compare equal however they were assembled.
+func NewOutcome(follow, leave []Holder) Outcome {
+	return Outcome{}.With(Outcome{Follow: follow, Leave: leave})
+}
+
 // Empty reports a plan no other worktree is involved in.
 func (o Outcome) Empty() bool { return len(o.Follow) == 0 && len(o.Leave) == 0 }
 
@@ -225,6 +231,18 @@ type Mover interface {
 func Bring(ctx context.Context, git any, holder Holder, from, to string) error {
 	if from == to {
 		return nil
+	}
+	// The other worktree may have switched branch since it was asked about,
+	// and bringing it along then would lay this branch's change over
+	// whatever it is on now.
+	if reader, ok := git.(Reader); ok {
+		holders, err := reader.HoldersElsewhere(ctx)
+		if err != nil {
+			return &NotBrought{Holder: holder, From: from, To: to, Err: err}
+		}
+		if holders[holder.Branch].Path != holder.Path {
+			return nil
+		}
 	}
 	mover, ok := git.(Mover)
 	if !ok {

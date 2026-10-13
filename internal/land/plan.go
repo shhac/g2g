@@ -13,6 +13,7 @@ import (
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Plan is the whole descent, decided before any of it runs.
@@ -46,9 +47,14 @@ type Plan struct {
 	// KeepTrunk leaves a trunk held by another worktree in place. This is
 	// possible only for one branch with nothing above it to replay.
 	KeepTrunk bool
-	// Detach moves this checkout onto the fetched merge before deleting its
-	// current branch, since the local trunk is unavailable for checkout.
+	// Detach moves this checkout onto the trunk detached before deleting its
+	// current branch, since another worktree has the trunk checked out: the
+	// fetched merge when the trunk is kept, the trunk itself when it is
+	// followed.
 	Detach bool
+	// Follow are the branches another clean worktree holds that the descent
+	// moves anyway, each step's pull bringing that worktree along.
+	Follow []worktree.Holder
 }
 
 // Republish is one branch above the descent, to publish once it is over.
@@ -91,6 +97,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Trunk == other.Trunk &&
 		p.Declaration == other.Declaration &&
 		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
+		slices.Equal(p.Follow, other.Follow) &&
 		p.Repair.Equal(other.Repair) &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above) &&

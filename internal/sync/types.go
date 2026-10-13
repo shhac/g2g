@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/syncpoint"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Git is the boundary for the steps sync performs itself.
@@ -38,7 +39,7 @@ type Git interface {
 // itself because sync's own job is ordering, and ordering should be testable
 // without standing up a rewrite engine.
 type Restacker interface {
-	Plan(ctx context.Context, selection graph.Selection, onto restack.Onto, absorb bool, pending restack.Pending) (restack.Plan, error)
+	Plan(ctx context.Context, selection graph.Selection, onto restack.Onto, absorb bool, pending restack.Pending, worktrees worktree.Policy) (restack.Plan, error)
 	Apply(ctx context.Context, plan restack.Plan) error
 	InProgress(ctx context.Context) (bool, error)
 }
@@ -55,6 +56,12 @@ type Service struct {
 type Plan struct {
 	Restack restack.Plan
 	Remote  string
+	// Policy is what the caller asked for about a branch another worktree
+	// holds, and Worktrees what came of it across the whole pull: the
+	// branches that move with their worktrees, and the ones left where they
+	// are -- by this pull's own moves and by the replay after them.
+	Policy    worktree.Policy
+	Worktrees worktree.Outcome
 	// Base is the branch the selection is rooted on, and Advance reports that
 	// the remote has moved past where it currently is.
 	Base    string
@@ -178,6 +185,8 @@ func (p Plan) Nothing() bool {
 // Equal compares every fact that changes what the sync does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
+		p.Policy == other.Policy &&
+		p.Worktrees.Equal(other.Worktrees) &&
 		collectionsEqual(p.Collect, other.Collect) &&
 		p.Base == other.Base &&
 		p.Advance == other.Advance &&

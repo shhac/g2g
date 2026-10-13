@@ -23,7 +23,10 @@ func pullView(plan syncer.Plan) stackView {
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
 	}
-	view = view.note(baseNote(plan), baseSeverity(plan))
+	if !plan.Worktrees.Leaves(plan.Base) {
+		view = view.note(baseNote(plan), baseSeverity(plan))
+	}
+	view = worktreeNotes(view, plan.Worktrees, plan.Policy, "g2g restack", plan.Base)
 	if note := collectNote(plan); note != "" {
 		view = view.note(note, severityOK)
 	}

@@ -30,6 +30,12 @@ func landView(plan land.Plan) stackView {
 			view = view.note("This checkout will be detached at the merged commit before its branch is deleted.", severityNeutral)
 		}
 	}
+	for _, holder := range plan.Follow {
+		view = view.note(fmt.Sprintf("%s is checked out in %s, which has nothing uncommitted, so it moves there too as the descent goes.", holder.Branch, holder.Path), severityNeutral)
+	}
+	if plan.Detach && !plan.KeepTrunk {
+		view = view.note(fmt.Sprintf("This checkout will be detached at %s before a branch it stands on is deleted, since another worktree has %s checked out.", plan.Trunk, plan.Trunk), severityNeutral)
+	}
 	if note := declaredMethodNote(plan); note != "" {
 		view = view.note(note, severityNeutral)
 	}

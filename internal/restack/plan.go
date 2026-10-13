@@ -12,6 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Ready reports a service with everything it needs.
@@ -25,7 +26,11 @@ func (s Service) Ready() bool {
 }
 
 // Plan works out what has to be replayed, without changing anything.
-func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, pending Pending) (Plan, error) {
+//
+// worktrees is what to do about a branch that would move while another
+// worktree has it checked out; the zero value refuses, as every rewrite did
+// before there was a choice.
+func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto, absorb bool, pending Pending, worktrees worktree.Policy) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("restack service is not fully configured")
 	}
@@ -33,7 +38,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Discovery: discovery, Onto: onto, Absorb: absorb}
+	plan := Plan{Discovery: discovery, Onto: onto, Absorb: absorb, Policy: worktrees}
 	if blocked := s.blockedReason(discovery); blocked.Reason != "" {
 		return plan.refused(blocked), nil
 	}
@@ -42,7 +47,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// first of several roots is what it used to do, silently.
 		return plan.refused(ontoOneRoot(roots, onto.Parent)), nil
 	}
-	steps, err := s.steps(ctx, discovery, onto, pending)
+	steps, err := s.steps(ctx, discovery, onto, pending, nil)
 	var unmeasurable unmeasured
 	if errors.As(err, &unmeasurable) {
 		return plan.refused(unmeasurable.note()), nil
@@ -53,13 +58,17 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	// Only what will actually move can strand another worktree, so the check
 	// waits for the steps. Asking it of the whole selection refused a path
 	// restack because the trunk it never touches was checked out elsewhere.
-	held, err := s.HeldElsewhere(ctx, moving(steps, absorb, pending))
+	steps, held, err := s.held(ctx, plan, steps, pending)
+	if errors.As(err, &unmeasurable) {
+		return plan.refused(unmeasurable.note()), nil
+	}
 	if err != nil {
 		return Plan{}, err
 	}
-	if held.Reason != "" {
+	plan.Worktrees = held.outcome
+	if held.refusal.Reason != "" {
 		plan.Held = true
-		return plan.refused(held), nil
+		return plan.refused(held.refusal), nil
 	}
 	plan.Steps = steps
 	if len(steps) == 0 {
@@ -77,6 +86,10 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	}
 	plan.Updates, plan.Clean = updates, clean
 	plan.Predicted, plan.Unpredicted = unpredicted == "", unpredicted
+	if note := plan.followedHere(); note.Reason != "" {
+		plan.Held = true
+		return plan.refused(note), nil
+	}
 	if plan.Predicted && !clean && !plan.chain() {
 		// The resumable engine rewrites one line of descent per invocation, so
 		// a conflicting fork would need several and a journal that tracks

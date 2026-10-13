@@ -43,6 +43,15 @@ type Record struct {
 	// Absorb records whether the user chose to keep commits their parent
 	// dropped, so continuing does not silently change that decision.
 	Absorb bool `json:"absorb,omitempty"`
+	// Worktrees is what the restack was asked to do about a branch another
+	// worktree holds, so continuing leaves the same branches where they are.
+	// A journal written before it was recorded refuses, as restack then did.
+	Worktrees string `json:"worktrees,omitempty"`
+	// Followed is each worktree this restack brings along with its branch,
+	// and the commit that worktree's index describes. It is written before
+	// the branch moves and after each worktree is brought, so a restack that
+	// dies between the two, or is aborted, can still put the files right.
+	Followed map[string]FollowedTree `json:"followed,omitempty"`
 	// Branch and Scope are the selection, so continuing covers the same set.
 	Branch string `json:"branch,omitempty"`
 	Scope  string `json:"scope,omitempty"`
@@ -63,6 +72,13 @@ type Record struct {
 	// progress -- so --abort has to put those back as well as the tips, or it
 	// leaves every branch recorded as forking where it no longer does.
 	Structure map[string]RecordedEdge `json:"structure,omitempty"`
+}
+
+// FollowedTree is another worktree a restack brings along, and the commit its
+// index and files describe.
+type FollowedTree struct {
+	Path string `json:"path"`
+	Tip  string `json:"tip"`
 }
 
 // RecordedEdge is the part of a branch's edge a restack rewrites.

@@ -15,9 +15,9 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
-	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Git is the local half: what is here, what the remote has, and the two ref
@@ -58,7 +58,7 @@ type (
 	}
 	// Syncer advances the base and replays what is left onto it.
 	Syncer interface {
-		Plan(ctx context.Context, selection graph.Selection, remote string, take syncer.Take) (syncer.Plan, error)
+		Plan(ctx context.Context, selection graph.Selection, remote string, take syncer.Take, worktrees worktree.Policy) (syncer.Plan, error)
 		Apply(ctx context.Context, plan syncer.Plan) error
 	}
 	// Pruner forgets a branch whose work Git says is upstream.
@@ -66,10 +66,11 @@ type (
 		Plan(ctx context.Context, selection graph.Selection) (prune.Plan, error)
 		Apply(ctx context.Context, plan prune.Plan) error
 	}
-	// Holds says which of these branches another worktree has checked out.
-	// It is restack's own check, asked here of everything a descent will move.
+	// Holds says which of these branches another worktree has checked out,
+	// and whether each of those worktrees is clean. It is restack's own
+	// question, asked here of everything a descent will move.
 	Holds interface {
-		HeldElsewhere(ctx context.Context, branches []string) (repair.Note, error)
+		Holders(ctx context.Context, branches []string) (worktree.Held, error)
 	}
 )
 
@@ -112,6 +113,11 @@ type Options struct {
 	// branches once the descent is done, so the pull requests that merged
 	// read as merged history there. On unless asked otherwise.
 	Comment bool
+	// Worktrees is what to do about a branch the descent moves while another
+	// worktree holds it. A descent cannot leave part of itself behind, so a
+	// branch the policy would leave refuses it, except the one way a lone
+	// branch can land without moving the trunk at all.
+	Worktrees worktree.Policy
 	// Strict refuses the descent before anything merges if publishing or
 	// pulling the stack would drop a commit, or a branch differs from the
 	// remote with no record of where the two last agreed. It is asked once,
@@ -123,7 +129,7 @@ type Options struct {
 
 // Defaults are the options a bare invocation means.
 func Defaults() Options {
-	return Options{Remote: localgit.DefaultRemote, Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Comment: true}
+	return Options{Remote: localgit.DefaultRemote, Method: githubstack.MethodSquash, DeleteRemote: true, DeleteLocal: true, Comment: true, Worktrees: worktree.Follow}
 }
 
 // Ready reports a service with everything it needs.

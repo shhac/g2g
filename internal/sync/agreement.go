@@ -56,8 +56,17 @@ func (s Service) recordAgreed(ctx context.Context, plan Plan) {
 	if !ok {
 		return
 	}
+	// A branch left where it is, because another worktree holds it, was not
+	// reconciled: recording the remote's tip as agreed would make whatever
+	// the remote has and it does not read, next time, as dropped here.
+	// A trunk left behind leaves every branch on it unreconciled, because
+	// none of them was collected.
+	if plan.Worktrees.Leaves(plan.Base) {
+		return
+	}
+	reconciled := slices.DeleteFunc(slices.Sorted(maps.Keys(plan.Published)), plan.Worktrees.Leaves)
 	agreed := map[string]localgit.SyncPoint{}
-	for branch, local := range syncpoint.Locals(ctx, s.Git, slices.Sorted(maps.Keys(plan.Published))) {
+	for branch, local := range syncpoint.Locals(ctx, s.Git, reconciled) {
 		agreed[branch] = localgit.SyncPoint{Tip: plan.Published[branch], Local: local, Command: "pull", Dropped: syncpoint.DroppedOn(branch, plan.Commits, syncpoint.Dropped)}
 	}
 	syncpoint.Record(ctx, recorder, "sync.sync_point", plan.Remote, agreed)

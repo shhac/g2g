@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // applyInPlace journals a rewrite that needs no working tree before it moves
@@ -19,12 +20,17 @@ import (
 // while it exists, which is right while branches may have moved and wrong once
 // they are back where they were.
 func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout) error {
-	if _, err := s.begin(ctx, plan, standing); err != nil {
+	record, err := s.begin(ctx, plan, standing)
+	if err != nil {
 		return err
 	}
-	if err := s.rewriteInPlace(ctx, plan, standing); err != nil {
+	if err := s.rewriteInPlace(ctx, plan, standing, &record); err != nil {
+		// A worktree left behind is reported, not undone: every branch is
+		// where it was meant to go, and the journal would only make every
+		// other command refuse over a rewrite that has finished.
 		var back putBack
-		if errors.As(err, &back) {
+		var notBrought *worktree.NotBrought
+		if errors.As(err, &back) || errors.As(err, &notBrought) {
 			if clearErr := s.Journal.Clear(ctx); clearErr != nil {
 				return errors.Join(err, clearErr)
 			}
@@ -42,7 +48,7 @@ func (s Service) applyInPlace(ctx context.Context, plan Plan, standing checkout)
 // and others not, reported as "Not applied" over refs that had moved. So it
 // notes where every branch it may move points before it starts, and on any
 // failure before the checkout is touched puts them back and says so.
-func (s Service) rewriteInPlace(ctx context.Context, plan Plan, standing checkout) error {
+func (s Service) rewriteInPlace(ctx context.Context, plan Plan, standing checkout, record *Record) error {
 	before, err := s.tips(ctx, plan)
 	if err != nil {
 		return err
@@ -57,7 +63,13 @@ func (s Service) rewriteInPlace(ctx context.Context, plan Plan, standing checkou
 	if err := s.resettle(ctx, standing); err != nil {
 		return err
 	}
-	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
+	if err := s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting()); err != nil {
+		return err
+	}
+	// Other worktrees last, once the rewrite is recorded: failing to bring
+	// one along leaves its files behind, which its error says how to fix,
+	// and nothing about the stack itself unfinished.
+	return s.settleFollowed(ctx, record)
 }
 
 // replay collapses what has nothing left, then replays each independent root

@@ -182,6 +182,10 @@ func (c Client) SwitchTreeIn(ctx context.Context, path, from, to string) error {
 	if err := safeRef(to); err != nil {
 		return err
 	}
+	// Stat data the other worktree has not refreshed reads as a change to
+	// read-tree, which then refuses a tree that is in fact clean. Refreshing
+	// fails when something really has changed; read-tree is what says so.
+	_, _ = c.run(ctx, "-C", path, "update-index", "-q", "--refresh")
 	_, err := c.run(ctx, "-C", path, "read-tree", "-m", "-u", from, to)
 	return err
 }

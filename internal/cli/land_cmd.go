@@ -14,6 +14,7 @@ import (
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 func newLand(service land.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -49,6 +50,7 @@ func newLand(service land.Service, comments comment.Service, completions stack.C
 	cmd.Flags().BoolVar(&flags.noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
 	registerNoSetUpstream(cmd, &flags.noSetUpstream)
 	registerStrict(cmd, &flags.options.Strict)
+	registerWorktrees(cmd, &flags.worktrees)
 	// Registered only so that asking for it is answered with why not: a
 	// branch left recorded under a landed, deleted one breaks every later
 	// replay. It is hidden because a help line offering it would be offering
@@ -64,6 +66,7 @@ type landOptions struct {
 	selection stackOptions
 	options   land.Options
 	method    string
+	worktrees string
 	apply     bool
 	// Cleanups default to on; each flag names the cleanup to leave out.
 	noDeleteRemote, noDeleteLocal, noForget, noComment, noSetUpstream bool
@@ -83,6 +86,9 @@ func (o landOptions) chosen(cmd *cobra.Command, comments comment.Service) (land.
 	options.DeleteRemote, options.DeleteLocal = !o.noDeleteRemote, !o.noDeleteLocal
 	options.Comment = !o.noComment && comments.Ready()
 	options.Upstream = upstreamFor(o.noSetUpstream)
+	if options.Worktrees, err = worktree.Parse(o.worktrees); err != nil {
+		return land.Options{}, err
+	}
 	if o.noForget {
 		// A branch recorded under one that has merged and been deleted makes
 		// later status and replay measure against a structure that is gone.

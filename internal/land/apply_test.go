@@ -437,3 +437,22 @@ func TestAPublishBeforeARefusedMergeIsPartWay(t *testing.T) {
 		t.Errorf("stopped = %+v, want the publish counted", stopped)
 	}
 }
+
+// A worktree that picks up changes partway down a descent: the pull after the
+// first merge would leave its branch behind, which a descent cannot do, so it
+// stops there with what merged standing.
+func TestAWorktreeThatGainsChangesMidDescentStopsIt(t *testing.T) {
+	w := newWorld(t)
+	plan := w.plan(t, Defaults())
+	w.syncer.leaves = []string{"synthetic-two"}
+
+	err := w.service.Apply(context.Background(), plan)
+
+	var stopped *Stopped
+	if !errors.As(err, &stopped) || !stopped.PartWay() {
+		t.Fatalf("Apply() error = %v, want a stop part-way", err)
+	}
+	if !strings.Contains(err.Error(), "synthetic-two") {
+		t.Errorf("error %q does not name the branch it would have left", err)
+	}
+}

@@ -68,7 +68,9 @@ func TestJourneyLandALeafLeavesATrunkHeldElsewhereUntouched(t *testing.T) {
 			w.git(w.Local, "worktree", "add", "-q", held, "main")
 			old := w.tip(w.Local, "main")
 			landingGitHubStack(t, w.Remote, "synthetic-a")
-			args := []string{"land", "--branch", "synthetic-a", "--no-comment"}
+			// skip, so the trunk's clean worktree is left rather than followed:
+			// this is the descent that never touches the local trunk.
+			args := []string{"land", "--branch", "synthetic-a", "--no-comment", "--worktrees", "skip"}
 			if keepLocal {
 				args = append(args, "--no-delete-local")
 			}
@@ -133,7 +135,7 @@ func TestJourneyLandRetriesABaseChangeBeforePerformingTheRealMerge(t *testing.T)
 	}
 }
 
-func TestJourneyTrunkOnlyPullRefusesATrunkHeldElsewhere(t *testing.T) {
+func TestJourneyTrunkOnlyPullRefusesOrFollowsATrunkHeldElsewhere(t *testing.T) {
 	w := newWorld(t)
 	w.branchOff("main", "synthetic-a", "a.txt")
 	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
@@ -142,7 +144,7 @@ func TestJourneyTrunkOnlyPullRefusesATrunkHeldElsewhere(t *testing.T) {
 	old := w.tip(w.Local, "main")
 	w.commit(w.Other, "main", "colleague.txt", "synthetic upstream")
 	w.git(w.Other, "push", "-q", "origin", "main")
-	out, _, err := run(t, "pull", "--trunk-only", "--apply")
+	out, _, err := run(t, "pull", "--trunk-only", "--worktrees", "refuse", "--apply")
 	if err == nil || !strings.Contains(out, "checked out in another worktree") {
 		t.Fatalf("pull error = %v, output = %s", err, out)
 	}
@@ -151,4 +153,41 @@ func TestJourneyTrunkOnlyPullRefusesATrunkHeldElsewhere(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 	w.assertClean(held)
+
+	mustRun(t, "pull", "--trunk-only", "--apply")
+	if w.tip(w.Local, "main") != w.tip(w.Remote, "main") {
+		t.Fatal("trunk-only pull did not follow the clean worktree's trunk")
+	}
+	w.assertClean(w.Local)
+	w.assertClean(held)
+}
+
+// Landing a leaf while the trunk sits clean in another worktree: the trunk
+// advances there with the merge, and this checkout, standing on the branch
+// that is deleted, is detached at the trunk rather than switched to it.
+func TestJourneyLandALeafFollowsATrunkHeldInACleanWorktree(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a")
+	held := filepath.Join(t.TempDir(), "synthetic-held")
+	w.git(w.Local, "worktree", "add", "-q", held, "main")
+	landingGitHubStack(t, w.Remote, "synthetic-a")
+
+	mustRun(t, "land", "--branch", "synthetic-a", "--no-comment", "--apply")
+
+	if w.tip(w.Local, "main") != w.tip(w.Remote, "main") {
+		t.Fatal("the held trunk was not advanced to the merge")
+	}
+	w.assertClean(w.Local)
+	w.assertClean(held)
+	if _, err := os.Stat(filepath.Join(held, "a.txt")); err != nil {
+		t.Errorf("the trunk's worktree was not brought along: %v", err)
+	}
+	if current := w.git(w.Local, "branch", "--show-current"); current != "" {
+		t.Errorf("checkout = %q, want detached at the trunk", current)
+	}
+	if w.git(w.Local, "branch", "--list", "synthetic-a") != "" {
+		t.Error("the landed branch was not deleted")
+	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // The world landing acts on, injected.
@@ -286,15 +287,21 @@ type fakeSyncer struct {
 	conflicting string
 	// selections is what each sync was asked to bring up to date.
 	selections []graph.Selection
+	// leaves are branches the sync would leave where they are, because
+	// another worktree with changes holds them.
+	leaves []string
 }
 
-func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string, _ syncer.Take) (syncer.Plan, error) {
+func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string, _ syncer.Take, _ worktree.Policy) (syncer.Plan, error) {
 	f.selections = append(f.selections, selection)
 	plan := syncer.Plan{Repair: repair.Note{Reason: f.blocked}, Base: "synthetic-main", Advance: !f.nothing}
 	plan.Restack.Discovery = graph.Discovery{Target: selection.Branch}
 	if f.conflicting != "" {
 		plan.Restack.Steps = []restack.Step{{Branch: f.conflicting}}
 		plan.Restack.Predicted = true
+	}
+	for _, branch := range f.leaves {
+		plan.Worktrees.Leave = append(plan.Worktrees.Leave, worktree.Holder{Branch: branch, Path: "/synthetic/worktrees/" + branch})
 	}
 	return plan, nil
 }
@@ -370,15 +377,17 @@ var attempts atomic.Int64
 
 type fakeHolds struct {
 	held  map[string]bool
+	clean map[string]bool
 	asked []string
 }
 
-func (f *fakeHolds) HeldElsewhere(_ context.Context, branches []string) (repair.Note, error) {
+func (f *fakeHolds) Holders(_ context.Context, branches []string) (worktree.Held, error) {
 	f.asked = branches
+	held := worktree.Held{}
 	for _, branch := range branches {
 		if f.held[branch] {
-			return repair.Note{Reason: "checked out in another worktree: " + branch}, nil
+			held[branch] = worktree.Holder{Branch: branch, Path: "/synthetic/worktrees/" + branch, Clean: f.clean[branch]}
 		}
 	}
-	return repair.Note{}, nil
+	return held, nil
 }

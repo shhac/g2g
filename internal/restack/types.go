@@ -16,6 +16,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // Git is the rewrite boundary. It is the only interface in g2g permitted to
@@ -180,6 +181,11 @@ type Plan struct {
 	// Held reports a refusal because a branch that would move is checked out
 	// in another worktree.
 	Held bool
+	// Policy is what the caller asked for about such a branch, and Worktrees
+	// what that came to: the branches that move with their worktrees, and
+	// the ones left where they are.
+	Policy    worktree.Policy
+	Worktrees worktree.Outcome
 	// Subjects names each orphan by its subject, so a preview can list what
 	// it is about to drop rather than count it. Derived from the orphans'
 	// ids, which Equal already compares.
@@ -257,6 +263,8 @@ func (p Plan) Equal(other Plan) bool {
 		p.Repair.Equal(other.Repair) &&
 		p.Clean == other.Clean &&
 		p.Predicted == other.Predicted &&
+		p.Policy == other.Policy &&
+		p.Worktrees.Equal(other.Worktrees) &&
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
 			return left.Branch == right.Branch && left.Parent == right.Parent &&
 				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&

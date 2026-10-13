@@ -13,6 +13,10 @@ func restackView(plan restack.Plan) stackView {
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
 	}
+	view = worktreeNotes(view, plan.Worktrees, plan.Policy, "g2g restack", "")
+	if plan.Nothing() && len(plan.Worktrees.Leave) != 0 {
+		return view
+	}
 	if plan.Nothing() {
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)
 	}
@@ -126,6 +130,9 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 			reason = "the result cannot be previewed"
 		}
 		return view.note(strings.ToUpper(reason[:1])+reason[1:]+", so applying rebases in your working tree. If it stops on a conflict, resolve it and run "+runnable("g2g restack --continue")+".", severityWarn)
+	}
+	if plan.Clean && len(plan.Worktrees.Follow) != 0 {
+		return view.note("Applies without touching your working tree or checked-out branch; only the worktrees named above are brought along.", severityNeutral)
 	}
 	if plan.Clean {
 		return view.note("Applies without touching your working tree or checked-out branch.", severityNeutral)

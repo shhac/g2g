@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // PlanTrunk advances only the selected stack's recorded trunk. A branch with
 // no recorded ancestry must itself be an evidenced trunk; it is never guessed.
-func (s Service) PlanTrunk(ctx context.Context, selection graph.Selection, remote string) (Plan, error) {
+func (s Service) PlanTrunk(ctx context.Context, selection graph.Selection, remote string, worktrees worktree.Policy) (Plan, error) {
 	discovery, err := s.Graph.Structure(ctx, graph.Selection{Branch: selection.Branch, Scope: graph.ScopePath})
 	if err != nil {
 		return Plan{}, err
@@ -26,5 +27,5 @@ func (s Service) PlanTrunk(ctx context.Context, selection graph.Selection, remot
 	if !known {
 		return Plan{}, fmt.Errorf("%q has no recorded trunk · name one with --branch, or declare it with g2g track --branch %s --as-trunk", discovery.Target, base)
 	}
-	return s.Plan(ctx, graph.Selection{Branch: base, Scope: graph.ScopeBranch}, remote, TakeNothing)
+	return s.Plan(ctx, graph.Selection{Branch: base, Scope: graph.ScopeBranch}, remote, TakeNothing, worktrees)
 }

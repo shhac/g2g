@@ -51,6 +51,10 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// noOp reports a plan that is valid but has nothing to do. Commands without
 	// such a state leave it nil.
 	noOp func(P) bool
+	// noOpSays, when it answers, replaces notices.noOp for a plan with
+	// nothing to do that is not the same as being up to date: one whose only
+	// work was left in another worktree.
+	noOpSays func(P) string
 	// wrapMutationError adds command-specific context to a failed mutation,
 	// such as where a submission spec was retained.
 	wrapMutationError func(error) error
@@ -120,6 +124,16 @@ type flowNotices struct {
 	recovery string
 }
 
+// nothing is the line for a plan with nothing to do.
+func (f applyFlow[P]) nothing(plan P) string {
+	if f.noOpSays != nil {
+		if said := f.noOpSays(plan); said != "" {
+			return said
+		}
+	}
+	return f.notices.noOp
+}
+
 // planOutcome is the complete pre-mutation decision. Keeping the three cases
 // named means command predicates only answer their own question: noOp means
 // empty work, and blocked means refusal. The lifecycle owns their ordering.
@@ -159,7 +173,7 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 		if err := f.render(cmd.OutOrStdout(), validated, p); err != nil {
 			return err
 		}
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.nothing(validated)))
 	case planBlocked:
 		return writeNotApplied(cmd.OutOrStdout(), p, fmt.Errorf("%s", f.blockedReason(validated)))
 	default:
@@ -173,7 +187,7 @@ func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error 
 	}
 	switch f.outcome(plan) {
 	case planNoOp:
-		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.notices.noOp))
+		return prose(cmd.OutOrStdout(), p, "\n"+p.notice(f.nothing(plan)))
 	case planBlocked:
 		// A preview whose plan is already blocked must not close by inviting an
 		// apply that will refuse. The rendered view names the reason, so repeating

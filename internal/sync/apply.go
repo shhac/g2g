@@ -39,7 +39,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			// reset. FastForward would refuse it, correctly.
 			move = s.Git.ResetBranch
 		}
-		if err := move(ctx, plan.Base, localgit.IsolatedRef(plan.Remote, plan.Base)); err != nil {
+		if err := s.moveFollowing(ctx, plan, plan.Base, localgit.IsolatedRef(plan.Remote, plan.Base), move); err != nil {
 			return err
 		}
 		moved = append(moved, plan.Base)
@@ -57,7 +57,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			// this one, so FastForward would refuse it, correctly.
 			move = s.Git.ResetBranch
 		}
-		if err := move(ctx, collection.Branch, collection.To); err != nil {
+		if err := s.moveFollowing(ctx, plan, collection.Branch, collection.To, move); err != nil {
 			return stop(err)
 		}
 		moved = append(moved, collection.Branch)

@@ -568,11 +568,17 @@ property the original had.
   so any package may use it; a join that only says "a, b, c" is a different
   sentence and stays where it is.
 - `internal/worktree` — what to do about a branch another worktree holds:
-  which policy moves or leaves it (`Policy.Moves`, `Leaves`), reading the
-  holders and whether each is clean (`Read`), and bringing one along
+  sorting held branches into follow, leave and refuse (`Policy.Split`),
+  reading the holders and whether each is clean (`Read`), the refusal and its
+  ways out (`Refusal`, `SwitchAway`, `PutAway`), and bringing one along
   (`Bring`). restack, sync and land each had to answer it, and land's own
   gate had already drifted from restack's once; it depends on nothing but
-  `repair`, so the rule cannot reach for more.
+  `repair`, so the rule cannot reach for more. Each command decides only the
+  branches it moves itself: pull its trunk and the branches it takes, restack
+  its own steps, taking the caller's followed branches as given
+  (`Pending.Follow`). Deciding a caller's move a second time could only
+  disagree with the first, and reconciling the two had grown three special
+  cases.
 - `selected.aim` with a `suggestable` in `internal/cli/next.go` — pointing a
   follow-up command at what a command acted on: `--branch` only when it was
   named, `--scope` only when the command's default would not reach the

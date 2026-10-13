@@ -75,8 +75,12 @@ restacked onto B's current tip only if it is behind it. A later `g2g restack`
 from B's worktree moves B and C together. Leaving a branch can only shrink the
 set that moves, so one replan is enough.
 
-`pull` decides its own moves first and collects again with the left branches
-fixed. That way nothing above a left branch is planned as if the branch had
+Each command decides only the branches it moves itself. `pull` decides its own
+moves first -- the trunk it advances, the branches it takes -- and the replay
+after it takes those decisions as given rather than asking again, bringing a
+followed worktree along a second time if it replays that branch too. Under
+`refuse`, `pull` refuses its own moves with the replay's wording. It then
+collects again with the left branches fixed. That way nothing above a left branch is planned as if the branch had
 been taken. Three more rules follow from that:
 
 - **A trunk left behind leaves every branch on it uncollected.** Each one's

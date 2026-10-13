@@ -132,10 +132,26 @@ func (s Service) moveFollowing(ctx context.Context, plan Plan, branch, to string
 		return err
 	}
 	if err := worktree.Bring(ctx, s.Git, holder, from, target); err != nil {
-		return err
+		// Nothing has moved, so this is not the worktree left behind by a
+		// branch that did -- which reports itself as done.
+		return fmt.Errorf("%s was not moved, because %s could not be brought along with it: %w", branch, holder.Path, cause(err))
 	}
 	if err := move(ctx, branch, to); err != nil {
-		return errors.Join(err, worktree.Bring(ctx, s.Git, holder, target, from))
+		var stranded *worktree.NotBrought
+		if back := worktree.Bring(ctx, s.Git, holder, target, from); errors.As(back, &stranded) {
+			return fmt.Errorf("%w · and %s could not be put back where its branch still is · run %s there", err, holder.Path, stranded.Finish())
+		}
+		return err
 	}
 	return nil
+}
+
+// cause is what stopped a worktree being brought along, without the claim
+// that its branch had moved.
+func cause(err error) error {
+	var notBrought *worktree.NotBrought
+	if errors.As(err, &notBrought) {
+		return notBrought.Err
+	}
+	return err
 }

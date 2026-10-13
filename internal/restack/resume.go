@@ -173,7 +173,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	}
 	// No pending: a resume runs after whatever the caller was going to
 	// move has already moved.
-	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{}, worktree.Policy(record.Worktrees))
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{}, record.Worktrees)
 	if err != nil {
 		return Plan{}, err
 	}

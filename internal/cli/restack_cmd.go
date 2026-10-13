@@ -23,8 +23,12 @@ type restackOptions struct {
 	onto      string
 	absorb    bool
 	apply     bool
-	worktrees string
-	selector  graphOptions
+	worktrees worktree.Policy
+	// worktreesGiven is whether --worktrees was named, which is what the
+	// resume verbs refuse: comparing against the default let an explicit
+	// --worktrees follow through.
+	worktreesGiven bool
+	selector       graphOptions
 }
 
 func (o restackOptions) resuming() bool { return o.resume || o.abort || o.skip }
@@ -39,6 +43,7 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
+		options.worktreesGiven = cmd.Flags().Changed("worktrees")
 		if err := options.validate(); err != nil {
 			return err
 		}
@@ -81,11 +86,10 @@ func (o restackOptions) validate() error {
 	if chosen > 1 {
 		return fmt.Errorf("--continue, --abort, and --skip are mutually exclusive")
 	}
-	if chosen == 1 && (o.apply || o.onto != "" || o.absorb || o.worktrees != string(worktree.Follow)) {
+	if chosen == 1 && (o.apply || o.onto != "" || o.absorb || o.worktreesGiven) {
 		return fmt.Errorf("--continue, --abort, and --skip resume the restack already in progress and take no other options")
 	}
-	_, err := worktree.Parse(o.worktrees)
-	return err
+	return nil
 }
 
 // runResume drives the verbs that act on an operation already under way. They
@@ -174,7 +178,7 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 	flow := applyFlow[restack.Plan]{
 		guard: restackGuard(service),
 		plan: func(ctx context.Context) (restack.Plan, error) {
-			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb, restack.Pending{}, worktree.Policy(options.worktrees))
+			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb, restack.Pending{}, options.worktrees)
 		},
 		revalidation: revalidation{"restack", "restack plan"},
 		precheck:     service.RequireClean,

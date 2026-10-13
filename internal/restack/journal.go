@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/worktree"
 )
 
 // JournalSchemaVersion is bumped when a recorded field changes meaning. It is
@@ -46,7 +47,7 @@ type Record struct {
 	// Worktrees is what the restack was asked to do about a branch another
 	// worktree holds, so continuing leaves the same branches where they are.
 	// A journal written before it was recorded refuses, as restack then did.
-	Worktrees string `json:"worktrees,omitempty"`
+	Worktrees worktree.Policy `json:"worktrees,omitempty"`
 	// Followed is each worktree this restack brings along with its branch,
 	// and the commit that worktree's index describes. It is written before
 	// the branch moves and after each worktree is brought, so a restack that

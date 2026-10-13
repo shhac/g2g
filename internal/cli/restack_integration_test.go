@@ -379,6 +379,17 @@ func TestRestackResumeVerbsAreExclusive(t *testing.T) {
 	if _, _, err := run(t, "restack", "--continue"); err == nil {
 		t.Error("--continue was accepted with no restack in progress")
 	}
+	// Named, even as the default: a resume keeps the choice the restack
+	// started with, so a different one cannot be honoured.
+	for _, policy := range []string{"follow", "skip"} {
+		_, _, err := run(t, "restack", "--continue", "--worktrees", policy)
+		if err == nil || !strings.Contains(err.Error(), "take no other options") {
+			t.Errorf("--continue --worktrees %s: error = %v, want it refused as an option", policy, err)
+		}
+	}
+	if _, _, err := run(t, "restack", "--worktrees", "sometimes"); err == nil || !strings.Contains(err.Error(), "follow, skip, refuse") {
+		t.Errorf("--worktrees sometimes: error = %v, want the accepted values named", err)
+	}
 }
 
 // droppedCommitRepo records the stack while the parent still has two commits,

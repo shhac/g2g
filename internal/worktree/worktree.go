@@ -55,7 +55,7 @@ func Parse(value string) (Policy, error) {
 	for _, policy := range Policies {
 		names = append(names, string(policy))
 	}
-	return "", fmt.Errorf("--worktrees %s is not one of %s", value, strings.Join(names, ", "))
+	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(names, ", "))
 }
 
 // Holder is another worktree with a branch checked out.

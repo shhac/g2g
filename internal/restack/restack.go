@@ -91,7 +91,7 @@ func (s Service) record(plan Plan, standing checkout) Record {
 	record := Record{
 		OntoParent:     plan.Onto.Parent,
 		Absorb:         plan.Absorb,
-		Worktrees:      string(plan.Policy),
+		Worktrees:      plan.Policy,
 		Branch:         plan.Target,
 		Scope:          string(plan.Scope),
 		ReturnTo:       standing.Branch,

@@ -96,7 +96,7 @@ type pullOptions struct {
 	keep                        []string
 	apply, alsoPrune, trunkOnly bool
 	strict                      bool
-	worktrees                   string
+	worktrees                   worktree.Policy
 	cleanup                     prune.Options
 }
 
@@ -113,9 +113,6 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 		return syncer.Take{}, err
 	}
 	chosen.Keep = o.keep
-	if _, err := worktree.Parse(o.worktrees); err != nil {
-		return syncer.Take{}, err
-	}
 	// Machine output is one document, and this writes two reports.
 	if o.alsoPrune && presentation.machine() {
 		return syncer.Take{}, errors.New("--prune writes two reports and --json or --porcelain is one document · run g2g pull and then g2g prune")
@@ -125,7 +122,7 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 
 // flow chooses the trunk or stack plan and the promise its preview makes.
 func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
-	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, worktree.Policy(o.worktrees), guard, presentation, o.alsoPrune)
+	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, o.worktrees, guard, presentation, o.alsoPrune)
 	if o.strict {
 		plan := pull.plan
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
@@ -135,7 +132,7 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 	}
 	if o.trunkOnly {
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
-			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote, worktree.Policy(o.worktrees))
+			return service.PlanTrunk(ctx, o.selection.Selection(), o.remote, o.worktrees)
 		}
 		pull.notices.preview = "Rerun with --apply to bring the trunk up to date."
 		pull.notices.noOp = "The trunk is already up to date."

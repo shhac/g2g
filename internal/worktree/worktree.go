@@ -51,11 +51,11 @@ func Parse(value string) (Policy, error) {
 			return policy, nil
 		}
 	}
-	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(Names(), ", "))
+	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(names(), ", "))
 }
 
-// Names are the values a caller may name, as they are typed.
-func Names() []string {
+// names are the values a caller may name, as they are typed.
+func names() []string {
 	names := make([]string, 0, len(Policies))
 	for _, policy := range Policies {
 		names = append(names, string(policy))
@@ -237,9 +237,6 @@ type Outcome struct {
 func NewOutcome(follow, leave []Holder) Outcome {
 	return Outcome{Follow: sorted(follow), Leave: sorted(leave)}
 }
-
-// Empty reports a plan no other worktree is involved in.
-func (o Outcome) Empty() bool { return len(o.Follow) == 0 && len(o.Leave) == 0 }
 
 // Equal compares two outcomes, cleanliness included, which is how a worktree
 // that picked up changes between a preview and its apply is caught: the

@@ -86,6 +86,15 @@ func (r GitRepo) Commit(subject, name, content string) {
 	r.Run("commit", "-qm", subject)
 }
 
+// Worktree adds a linked worktree with branch checked out, and answers for it
+// as a repository of its own, so a test can make changes there.
+func (r GitRepo) Worktree(branch string) GitRepo {
+	r.t.Helper()
+	dir := filepath.Join(r.t.TempDir(), branch)
+	r.Run("worktree", "add", "-q", dir, branch)
+	return GitRepo{t: r.t, Dir: dir}
+}
+
 // Revision resolves a revision to its object id.
 func (r GitRepo) Revision(revision string) string {
 	r.t.Helper()

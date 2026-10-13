@@ -337,14 +337,27 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   commit. `Service.standingOn` records both ends before anything moves and
   `resettle` hands them to `git.Client.SwitchTree` (`read-tree -m -u`), which is
   the plumbing `git switch` itself uses.
-- A rewrite refuses a branch another worktree has checked out. It does not need
-  to check a branch out to move it, so nothing stopped it: Git updated the ref,
-  that worktree's index still described the old commit, and its next
-  `git status` reported staged changes nobody made — while the preview said it
-  had touched no checked-out branch. `git.Client.CheckedOutElsewhere` reads
-  `worktree list --porcelain` and excludes the current worktree; it is an
-  optional `restack.WorktreeReader`, so a Git that cannot answer leaves the
-  rewrite exactly as safe as it was before the check existed.
+- A rewrite never strands another worktree. It does not need to check a branch
+  out to move it, so nothing stopped it: Git updated the ref, that worktree's
+  index still described the old commit, and its next `git status` reported
+  staged changes nobody made — while the preview said it had touched no
+  checked-out branch. `restack`, `pull` and `land` take `--worktrees
+  follow|skip|refuse` (`internal/worktree`, read
+  `design-docs/worktrees.md`): `follow`, the default, moves a branch whose
+  worktree is clean and brings that worktree along through `SwitchTreeIn`
+  (`read-tree -m -u` there), and leaves one whose worktree has changes; `skip`
+  leaves every held branch; `refuse` is the old refusal. A left branch gets no
+  step, so what sits on it is measured against where it is. `pull` collects
+  again with left branches fixed, records no sync point for them — recording
+  the remote's tip as agreed for a branch it never reconciled would read a
+  reviewer's commit as dropped here, and push would erase it — and a trunk left
+  behind fixes every branch. Followed worktrees are journaled before anything
+  moves so `--continue` and `--abort` can settle them; `pull` moves the tree
+  before the ref, as `moveBranch` does. A branch a worktree is rebasing or
+  bisecting reads as detached in `worktree list` and is held anyway, and busy
+  is never clean. A planned leave the preview names exits `0`: it did what the
+  preview said. Any Git that cannot say whether a worktree is clean refuses as
+  before, so the check stays as safe as it was without it.
 - Where a rewrite lands and what the graph records are two questions, and
   `restack.Onto` keeps them apart. `ToBranch` is a user's `--onto`: they asked
   for the branch to move, so it is both. `ToLocation` is `pull`'s
@@ -514,7 +527,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Nine things exist once and must not be reimplemented locally. Each was found as
+Ten things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -554,6 +567,12 @@ property the original had.
   them named `pickWord`, and two their own list join. It depends on nothing,
   so any package may use it; a join that only says "a, b, c" is a different
   sentence and stays where it is.
+- `internal/worktree` — what to do about a branch another worktree holds:
+  which policy moves or leaves it (`Policy.Moves`, `Leaves`), reading the
+  holders and whether each is clean (`Read`), and bringing one along
+  (`Bring`). restack, sync and land each had to answer it, and land's own
+  gate had already drifted from restack's once; it depends on nothing but
+  `repair`, so the rule cannot reach for more.
 - `selected.aim` with a `suggestable` in `internal/cli/next.go` — pointing a
   follow-up command at what a command acted on: `--branch` only when it was
   named, `--scope` only when the command's default would not reach the

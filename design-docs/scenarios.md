@@ -241,8 +241,17 @@ it, or `git status` reports changes nobody made and the next `git switch`
 refuses.
 
 **a branch open in a second worktree.** A rewrite moves a ref without checking
-anything out, so it would strand that worktree. It is refused, naming the branch
-and the worktree.
+anything out, so it would strand that worktree. A clean one is brought along
+with its branch. One with changes keeps its branch where it is, the rest of
+the stack moves, and the report names the branch it left and the command that
+finishes it there. `--worktrees refuse` refuses instead, naming the branch and
+the worktree. See `design-docs/worktrees.md`.
+
+**the trunk open in the main checkout.** The ordinary layout with agent
+worktrees: the main checkout sits on the trunk and the work is elsewhere.
+`pull` and `land` advance the trunk there too when it is clean, and leave it
+when it is not, in which case `pull` takes nothing from the remote and only
+restacks against the trunk as it is.
 
 ## Taking a stack down
 

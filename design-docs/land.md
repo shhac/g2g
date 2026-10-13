@@ -236,6 +236,12 @@ is shared with other worktrees.
 
 ## A trunk held in another worktree
 
+A clean worktree holding the trunk, or a branch the descent replays, is no
+obstacle: each step's pull brings it along (`design-docs/worktrees.md`), and
+this checkout is detached at the trunk before a branch it stands on is
+deleted, since the trunk cannot be checked out here. What follows is the case
+where it cannot be moved: the worktree has changes, or `--worktrees skip`.
+
 A single-branch descent with no recorded children can leave a trunk held in
 another worktree behind. It fetches the merge into g2g's private refs, checks
 the branch's own content there through `landed.Into`, and forgets it through

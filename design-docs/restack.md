@@ -318,8 +318,17 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
   back only the tips left each branch recorded as forking at a parent tip it no
   longer contained
 
+- **each worktree brought along with its branch** (`--worktrees follow`), with
+  the commit its index describes, written before the branch moves and after
+  each worktree is brought, so a restack that dies in between leaves
+  `--continue` able to finish it and `--abort` able to bring it back
+- **the `--worktrees` choice**, so a resumed pass leaves the same branches
+  where they are; a journal written before it existed refuses, as restack then
+  did
+
 Because the plan is recomputed, a resume can find it refused — a branch still
-to be rewritten opened in another worktree meanwhile. That is not completion:
+to be rewritten opened in another worktree meanwhile, with changes or under
+`refuse`. That is not completion:
 the journal stays and the refusal is reported, so the half-rewritten stack can
 still be continued once the cause is gone, or aborted.
 
@@ -337,7 +346,9 @@ ref back without its working tree reported the whole rewrite as staged changes.
 Abort checks every tip it would restore before touching Git's active rebase.
 A completed branch may have been opened in another worktree meanwhile; refusing
 leaves both the rebase and journal intact, rather than stranding that checkout.
-An unchanged branch held elsewhere does not prevent abort.
+An unchanged branch held elsewhere does not prevent abort, and neither does
+one this restack brought along with its worktree: that worktree is brought
+back the same way.
 
 The remaining queue is deliberately absent. It is re-derived from the refs on
 every invocation, which is what makes a user's own `git rebase --continue` or

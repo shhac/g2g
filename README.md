@@ -646,9 +646,14 @@ Two things a restack reports rather than doing quietly:
 A branch you rebased by hand is refused rather than replayed: its recorded
 fork point is no longer in its history, so the replay range would silently
 widen to include the base's own commits. Re-record it with `g2g track` first.
-A rewrite also refuses to move a branch another worktree has checked out,
-because that worktree would be left describing a commit its branch no longer
-points at.
+A branch another worktree has checked out is moved only when that worktree is
+clean, and its files come along. A worktree with uncommitted changes keeps its
+branch where it is, and the rest of the stack still moves. `--worktrees
+follow|skip|refuse` chooses (`follow` is the default; `skip` leaves every such
+branch; `refuse` moves nothing), on `restack`, `pull` and `land` alike. The
+preview names every worktree it brings along and every branch it leaves,
+with the command that finishes one later. See
+[design-docs/worktrees.md](design-docs/worktrees.md).
 
 #### Pull
 
@@ -670,8 +675,9 @@ and then add `--apply`. It selects the recorded trunk of the current branch,
 or of `--branch <branch>`, and fetches and advances that trunk alone. You can
 also name an existing default or declared trunk directly, even before recording
 a stack. It leaves stack branches, their records, and uncommitted work on an
-unrelated branch alone. It refuses a trunk held in another worktree and cannot
-be combined with `--scope`, `--take`, `--through`, or `--prune`.
+unrelated branch alone. A trunk another worktree has checked out advances
+there too when that worktree is clean, and is left where it is when it is not.
+It cannot be combined with `--scope`, `--take`, `--through`, or `--prune`.
 
 On its own it does not forget anything. Pruning is `g2g prune`, a separate
 command, because it answers a different question on the same boundary and
@@ -1206,12 +1212,15 @@ retries at most twice, waiting for GitHub to recompute and checking readiness
 again before each attempt. Every merge is pinned to the head just published.
 Other failures stop immediately; repeated base changes name rerunning `g2g land`.
 
-A single branch with nothing above it can land even when another worktree has
-the trunk checked out. Its work is checked against the fetched trunk before
-forgetting it, and the local trunk stays at its old tip. If deleting the branch
-you stand on, the preview says the checkout will be detached at the fetched
-merge. `--no-delete-local` keeps the checkout on that branch. A stack needing
-replay still refuses a trunk held elsewhere.
+A trunk another worktree has checked out advances there with each merge when
+that worktree is clean, and this checkout is detached at the trunk before a
+branch it stands on is deleted. When that worktree has changes, or with
+`--worktrees skip`, a single branch with nothing above it can still land: its
+work is checked against the fetched trunk before forgetting it, the local
+trunk stays at its old tip, and the preview says the checkout will be detached
+at the fetched merge. `--no-delete-local` keeps the checkout on that branch. A
+stack needing replay refuses a trunk it cannot move, and a branch the descent
+deletes is refused while another worktree has it checked out.
 
 **On a protected repository you will need `--admin`.** Every branch above the
 first is force-pushed by its own replay, which restarts the required checks
@@ -1337,7 +1346,8 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |
-| A branch that has to move is checked out in another worktree | switch that worktree away or close it, or select less with `--branch` or `--scope` |
+| A branch that has to move is checked out in another worktree with changes, or `--worktrees refuse` was given | commit there and rerun, rerun with `--worktrees skip` to leave it, switch that worktree away, or select less with `--branch` or `--scope` |
+| A conflicting rewrite needs a branch another worktree has checked out | run it from that worktree, or rerun with `--worktrees skip` |
 | `fold` into a parent that has moved on since the branch was stacked on it | `g2g restack --branch <branch>`, then fold |
 | `fold` into a trunk | `g2g land --branch <branch>`: a branch joins its trunk through its pull request |
 | `delete`, `fold` or `rename` of a branch the g2g graph does not record | `g2g track --branch <branch>`, or plain `git branch`, which is all it would do |

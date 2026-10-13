@@ -97,6 +97,15 @@ description: |
   alone, works on default or declared trunks before a stack is recorded, and
   refuses unknown feature branches. It is mutually exclusive with `--scope`,
   `--take`, `--through`, and `--prune`.
+- A branch another worktree has checked out (the trunk in the main checkout,
+  a stack branch in an agent's worktree): `restack`, `pull` and `land` move it
+  when that worktree is clean and bring its files along, and leave it where it
+  is when the worktree has changes — the preview names both, and a left branch
+  is finished later by `g2g restack` (or `g2g pull --trunk-only` for a trunk)
+  run in that worktree. `--worktrees skip` leaves every such branch;
+  `--worktrees refuse` refuses instead. `land` cannot leave part of a descent,
+  so a branch it would leave refuses it, and a branch it deletes is refused
+  while another worktree has it.
 - `land` retries GitHub's explicit base-change refusal at most twice, checking
   readiness again and pinning every merge with `--match-head-commit`. Other
   errors stop. A single branch with no children can land while the trunk is
@@ -378,7 +387,8 @@ description: |
 - `all` is deliberately absent from `RewriteScopes`: it spans trunks, and a
   rewrite acts on one. `trunk` is offered, and a rewrite that wide is the
   likeliest to reach a branch checked out in another worktree, which the
-  rewrite then refuses by name.
+  rewrite then brings along if that worktree is clean and leaves where it is if
+  not; `--worktrees refuse` refuses it by name instead.
 
 ## Source resolution
 

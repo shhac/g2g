@@ -52,9 +52,10 @@ type Plan struct {
 	// fetched merge when the trunk is kept, the trunk itself when it is
 	// followed.
 	Detach bool
-	// Follow are the branches another clean worktree holds that the descent
-	// moves anyway, each step's pull bringing that worktree along.
-	Follow []worktree.Holder
+	// Worktrees are the branches another clean worktree holds that the
+	// descent moves anyway, each step's pull bringing that worktree along. A
+	// descent leaves nothing, so only Follow is ever set.
+	Worktrees worktree.Outcome
 }
 
 // Republish is one branch above the descent, to publish once it is over.
@@ -97,7 +98,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Trunk == other.Trunk &&
 		p.Declaration == other.Declaration &&
 		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
-		slices.Equal(p.Follow, other.Follow) &&
+		p.Worktrees.Equal(other.Worktrees) &&
 		p.Repair.Equal(other.Repair) &&
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above) &&

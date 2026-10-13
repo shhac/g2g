@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
@@ -98,10 +99,10 @@ func decideHeld(plan Plan, found collected, held worktree.Held, selected []strin
 // done.
 func discardsLeft(plan Plan, found collected, left []worktree.Holder) repair.Note {
 	for _, holder := range left {
-		discards := holder.Branch == plan.Base && len(plan.DiscardsBase) != 0
-		for _, collection := range found.collections {
-			discards = discards || (collection.Branch == holder.Branch && len(collection.Discards) != 0)
-		}
+		discards := (holder.Branch == plan.Base && len(plan.DiscardsBase) != 0) ||
+			slices.ContainsFunc(found.collections, func(collection Collection) bool {
+				return collection.Branch == holder.Branch && len(collection.Discards) != 0
+			})
 		if discards {
 			return repair.Note{
 				Reason: fmt.Sprintf("--take would replace %s, and %s", holder.Branch, holder.Why()),

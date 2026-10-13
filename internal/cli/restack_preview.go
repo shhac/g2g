@@ -14,10 +14,12 @@ func restackView(plan restack.Plan) stackView {
 		return view.refusing(plan.Repair)
 	}
 	view = worktreeNotes(view, plan.Worktrees, plan.Policy, "g2g restack", "")
-	if plan.Nothing() && len(plan.Worktrees.Leave) != 0 {
-		return view
-	}
 	if plan.Nothing() {
+		// Branches left in other worktrees are not sitting on their parents,
+		// and the notes above already say where they are.
+		if len(plan.Worktrees.Leave) != 0 {
+			return view
+		}
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)
 	}
 	if len(plan.Steps) == 0 {

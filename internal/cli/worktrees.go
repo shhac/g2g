@@ -59,7 +59,7 @@ func worktreeNotes(view stackView, outcome worktree.Outcome, policy worktree.Pol
 	}
 	for _, holder := range outcome.Leave {
 		why := holder.Why()
-		if holder.Clean && holder.Busy == "" {
+		if holder.Clean {
 			why = fmt.Sprintf("it is checked out in %s, and --worktrees %s leaves it", holder.Path, policy)
 		}
 		then := fmt.Sprintf("run %s in %s once it is free, to bring it up to date", runnable(finish), holder.Path)

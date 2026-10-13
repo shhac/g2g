@@ -29,11 +29,7 @@ func (c Client) CheckedOutElsewhere(ctx context.Context) (map[string]string, err
 	if err != nil {
 		return nil, err
 	}
-	paths := make(map[string]string, len(holders))
-	for branch, holder := range holders {
-		paths[branch] = holder.Path
-	}
-	return paths, nil
+	return paths(holders), nil
 }
 
 // HoldersElsewhere is CheckedOutElsewhere with what Git is doing there: a
@@ -64,11 +60,16 @@ func (c Client) BranchHolders(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	paths := make(map[string]string, len(holders))
+	return paths(holders), nil
+}
+
+// paths is where each branch is checked out.
+func paths(holders map[string]worktree.Holder) map[string]string {
+	where := make(map[string]string, len(holders))
 	for branch, holder := range holders {
-		paths[branch] = holder.Path
+		where[branch] = holder.Path
 	}
-	return paths, nil
+	return where
 }
 
 // holders reads every worktree's branch, including the one a detached

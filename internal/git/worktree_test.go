@@ -142,3 +142,55 @@ func TestSwitchTreeInBringsAnotherWorktreeAlong(t *testing.T) {
 		t.Errorf("root.txt = %q, %v, want the new tip's content", content, err)
 	}
 }
+
+// A bisect started on a branch keeps it in use, as a rebase does; one started
+// from a detached HEAD records a commit, which holds no branch.
+func TestABranchAnotherWorktreeIsBisectingIsHeldAndBusy(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	// Enough commits that the bisect has one to check out, which is what
+	// detaches the worktree.
+	for _, content := range []string{"root", "second", "third", "fourth"} {
+		repo.Commit("synthetic "+content, "root.txt", content)
+	}
+	repo.Run("branch", "synthetic-held")
+	repo.Run("branch", "synthetic-other")
+	held := repo.Worktree("synthetic-held")
+	held.Run("bisect", "start", "HEAD", "HEAD~3")
+	other := repo.Worktree("synthetic-other")
+	other.Run("switch", "-q", "--detach")
+	other.Run("bisect", "start", "HEAD", "HEAD~3")
+
+	inRepo(t, repo.Dir)
+	holders, err := Client{Runner: subprocess.ExecRunner{}}.HoldersElsewhere(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if holders["synthetic-held"].Busy != "bisect" {
+		t.Errorf("HoldersElsewhere() = %+v, want synthetic-held busy with a bisect", holders)
+	}
+	if _, held := holders["synthetic-other"]; held {
+		t.Errorf("a bisect from a detached HEAD was read as holding synthetic-other: %+v", holders)
+	}
+}
+
+// git am, and rebase --apply, keep their state under rebase-apply.
+func TestABranchAnotherWorktreeIsApplyRebasingIsHeld(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic root", "root.txt", "root")
+	repo.Run("branch", "synthetic-held")
+	repo.Commit("synthetic trunk change", "root.txt", "trunk")
+	elsewhere := repo.Worktree("synthetic-held")
+	elsewhere.Commit("synthetic conflicting change", "root.txt", "held")
+	if err := elsewhere.Try("rebase", "--apply", "synthetic-trunk"); err == nil {
+		t.Fatal("the synthetic rebase did not stop on its conflict")
+	}
+
+	inRepo(t, repo.Dir)
+	holders, err := Client{Runner: subprocess.ExecRunner{}}.HoldersElsewhere(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if holders["synthetic-held"].Busy != "rebase" {
+		t.Errorf("HoldersElsewhere() = %+v, want synthetic-held busy with a rebase", holders)
+	}
+}

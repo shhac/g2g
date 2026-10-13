@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,5 +293,49 @@ func TestARewriteBringsAlongABranchItsCallerFollows(t *testing.T) {
 	clean(t, held)
 	if r.Try("merge-base", "--is-ancestor", "synthetic-main", "synthetic-b") != nil {
 		t.Error("synthetic-b was not replayed")
+	}
+}
+
+// --onto records a new parent for the branch it moves; leaving that branch
+// where it is would record a stack that does not exist.
+func TestOntoRefusesToLeaveABranchItMoves(t *testing.T) {
+	r, held := heldStack(t)
+	held.Write("b.txt", "work in progress")
+	before := r.Revision("synthetic-b")
+	plan, err := r.service.Plan(context.Background(), graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeSubtree}, ToBranch("synthetic-main"), false, Pending{}, worktree.Follow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Held || !strings.Contains(plan.Blocked(), "--onto synthetic-main has to move synthetic-b") {
+		t.Fatalf("Blocked = %q, want --onto refused for the branch it would leave", plan.Blocked())
+	}
+	if err := r.service.Apply(context.Background(), plan); err == nil || r.Revision("synthetic-b") != before {
+		t.Error("a refused --onto applied")
+	}
+}
+
+// A worktree that picks up a file between the plan and the move refuses to be
+// brought along. The branches are where they were meant to go, so the
+// rewrite is reported done -- with the command that finishes that worktree --
+// and leaves no journal for every other command to refuse over.
+func TestAWorktreeThatWillNotComeAlongIsReportedWithTheWayToFinishIt(t *testing.T) {
+	r, held := heldStack(t)
+	plan := r.planWith(worktree.Follow)
+	held.Write("main.txt", "somebody's new file")
+
+	err := r.service.Apply(context.Background(), plan)
+
+	var notBrought *worktree.NotBrought
+	if !errors.As(err, &notBrought) {
+		t.Fatalf("Apply() = %v, want the worktree reported as not brought along", err)
+	}
+	if r.Try("merge-base", "--is-ancestor", "synthetic-main", "synthetic-b") != nil {
+		t.Error("synthetic-b was not replayed")
+	}
+	if active, _ := r.service.InProgress(context.Background()); active {
+		t.Error("a finished rewrite left its journal behind")
+	}
+	if !strings.Contains(err.Error(), "read-tree -m -u") {
+		t.Errorf("error %q does not say how to finish", err)
 	}
 }

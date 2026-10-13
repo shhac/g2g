@@ -238,8 +238,8 @@ func TestJourneyPullLeavesATrunkWhoseWorktreeHasChanges(t *testing.T) {
 	if !strings.Contains(stdout, "Leaves main where it is") {
 		t.Errorf("the report does not say the trunk was left:\n%s", stdout)
 	}
-	if strings.Contains(stdout, "already up to date") {
-		t.Errorf("a pull that left the trunk behind reported being up to date:\n%s", stdout)
+	if strings.Contains(stdout, "already up to date") || !strings.Contains(stdout, "Nothing else to do: main is left where it is.") {
+		t.Errorf("a pull that left the trunk behind did not say so in place of being up to date:\n%s", stdout)
 	}
 	if w.tip(w.Local, "main") != before || w.tip(w.Local, "synthetic-a") != branch {
 		t.Error("something moved although the trunk was left")
@@ -248,4 +248,53 @@ func TestJourneyPullLeavesATrunkWhoseWorktreeHasChanges(t *testing.T) {
 	if status := w.git(elsewhere, "status", "--porcelain"); status != "?? notes.txt" {
 		t.Errorf("status there = %q, want only the work that was already there", status)
 	}
+}
+
+// A reviewer pushes to your branch while you have work in progress on it in a
+// second worktree. pull leaves the branch where it is and records no
+// agreement with the remote for it: recording the reviewer's tip as agreed
+// would make their commit read, next time, as one you dropped -- and push
+// would publish the drop. Once the work is committed, the next pull takes
+// their commit as it would have.
+func TestJourneyPullLeavesABranchWithWorkInProgressAndTakesItLater(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "push", "--apply")
+	agreed := w.syncedTip(w.Local, "synthetic-a")
+	if agreed == "" {
+		t.Fatal("push recorded no sync point, so this proves nothing")
+	}
+
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "-c", "synthetic-a", "origin/synthetic-a")
+	w.commit(w.Other, "synthetic-a", "review-fix.txt", "fixed")
+	w.git(w.Other, "push", "-q", "origin", "synthetic-a")
+
+	w.git(w.Local, "switch", "-q", "main")
+	elsewhere := filepath.Join(t.TempDir(), "second")
+	w.git(w.Local, "worktree", "add", "-q", elsewhere, "synthetic-a")
+	if err := os.WriteFile(filepath.Join(elsewhere, "a.txt"), []byte("work in progress\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := w.tip(w.Local, "synthetic-a")
+
+	stdout := mustRun(t, "pull", "--branch", "synthetic-a", "--apply")
+	if !strings.Contains(stdout, "Leaves synthetic-a where it is") {
+		t.Errorf("the report does not name the branch it left:\n%s", stdout)
+	}
+	if w.tip(w.Local, "synthetic-a") != before {
+		t.Error("the branch moved under work in progress")
+	}
+	if got := w.syncedTip(w.Local, "synthetic-a"); got != agreed {
+		t.Errorf("sync point = %s, want %s: a branch left behind was recorded as agreed", got, agreed)
+	}
+
+	w.git(elsewhere, "checkout", "--", "a.txt")
+	stdout = mustRun(t, "pull", "--branch", "synthetic-a", "--apply")
+	if strings.Contains(stdout, "Drops") {
+		t.Errorf("the reviewer's commit read as dropped:\n%s", stdout)
+	}
+	w.assertHas(w.Local, "synthetic-a", "review-fix.txt")
+	w.assertClean(elsewhere)
 }

@@ -498,3 +498,21 @@ func TestKeepingTheTrunkIsALeaveSoRefuseRefusesIt(t *testing.T) {
 		t.Fatalf("refuse: Blocked = %q, KeepTrunk = %t, want it refused", plan.Blocked(), plan.KeepTrunk)
 	}
 }
+
+// The checkout here is detached at the trunk only when a branch it stands on
+// will be deleted: with --no-delete-local it stays where it is.
+func TestAFollowedTrunkDetachesTheCheckoutOnlyWhenItsBranchIsDeleted(t *testing.T) {
+	for _, deleteLocal := range []bool{true, false} {
+		w := newWorld(t)
+		w.git.held, w.git.clean = map[string]bool{"synthetic-main": true}, map[string]bool{"synthetic-main": true}
+		options := Defaults()
+		options.DeleteLocal = deleteLocal
+		plan := w.plan(t, options)
+		if plan.Blocked() != "" || plan.Detach != deleteLocal {
+			t.Errorf("DeleteLocal=%t: Blocked = %q, Detach = %t", deleteLocal, plan.Blocked(), plan.Detach)
+		}
+		if _, follows := plan.Worktrees.Follows("synthetic-main"); !follows {
+			t.Errorf("DeleteLocal=%t: Worktrees = %+v, want the trunk followed", deleteLocal, plan.Worktrees)
+		}
+	}
+}

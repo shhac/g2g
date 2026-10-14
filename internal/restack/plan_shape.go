@@ -58,3 +58,16 @@ func (p Plan) reparenting() map[string]string {
 	}
 	return moves
 }
+
+// ParentAfter is the parent the graph records for branch once this plan has
+// run: the --onto target for the root it moves, and otherwise the parent
+// already recorded. A rewrite onto a location, as pull's is, records no
+// parent, so where it replays is never the answer: that is a ref under
+// refs/g2g/, which no reader knows by name.
+func (p Plan) ParentAfter(branch string) string {
+	if moved, ok := p.reparenting()[branch]; ok {
+		return moved
+	}
+	parent, _ := p.Graph.Parent(branch)
+	return parent
+}

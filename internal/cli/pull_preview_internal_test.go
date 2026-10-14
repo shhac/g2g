@@ -11,6 +11,14 @@ import (
 // replayed, which still moves a ref. The preview said "Nothing needs
 // replaying" over a stack whose every branch the apply then moved.
 func TestPullPreviewNamesTheBranchesItMoves(t *testing.T) {
+	recorded := graph.New()
+	for _, branch := range []string{"synthetic-a", "synthetic-b"} {
+		updated, err := recorded.Track(branch, graph.Edge{Parent: "synthetic-main", ForkPoint: "0000000000000000000000000000000000000000"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorded = updated
+	}
 	step := func(branch string, collapses bool) restack.Step {
 		return restack.Step{Branch: branch, Parent: "synthetic-main", Collapses: collapses}
 	}
@@ -25,7 +33,9 @@ func TestPullPreviewNamesTheBranchesItMoves(t *testing.T) {
 		{name: "both", steps: []restack.Step{step("synthetic-a", true), step("synthetic-b", false)}, want: "Replays synthetic-b. Moves synthetic-a onto synthetic-main, where its work already is."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := replayNote(restack.Plan{Steps: test.steps}); got != test.want {
+			plan := restack.Plan{Steps: test.steps}
+			plan.Graph = recorded
+			if got := replayNote(plan); got != test.want {
 				t.Errorf("replayNote() = %q, want %q", got, test.want)
 			}
 		})

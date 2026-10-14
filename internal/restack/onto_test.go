@@ -99,6 +99,20 @@ func TestOntoReparentsOnlyTheSelectionRoot(t *testing.T) {
 	if len(moves) != 1 || moves["synthetic-b"] != "synthetic-release" {
 		t.Fatalf("reparenting() = %v, want only the root moved", moves)
 	}
+	if after := plan.ParentAfter("synthetic-b"); after != "synthetic-release" {
+		t.Errorf("ParentAfter(root) = %q, want the --onto target", after)
+	}
+	if after := plan.ParentAfter("synthetic-c"); after != "synthetic-b" {
+		t.Errorf("ParentAfter(child) = %q, want the parent it keeps", after)
+	}
+	located, err := service.Plan(context.Background(), ontoSelection(), ToLocation("refs/g2g/remotes/origin/synthetic-release"), false, Pending{}, "")
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	recorded := located.Graph.Edges["synthetic-b"].Parent
+	if after := located.ParentAfter("synthetic-b"); after != recorded {
+		t.Errorf("ParentAfter(root) onto a location = %q, want the recorded %q", after, recorded)
+	}
 
 	if err := service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)

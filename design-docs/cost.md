@@ -114,6 +114,15 @@ Known, measured, and left for a change of its own:
   at a time, and fork points are re-recorded for every branch after a rewrite,
   including ones that did not move. One batched resolve and one `update-ref
   --stdin` transaction would do.
+- **A child of a rewritten parent is compared with everything the trunk
+  gained.** `classifyOrphans` runs `git cherry` and `rev-list --left-right`
+  between the parent's new tip and the child's fork point with no bound on the
+  parent's side, so on a trunk that has moved on both read every commit it
+  gained — 0.25–0.36s a call at 500 trunk commits, the slowest commands in the
+  preview. `landed.Into`'s Untouched check cannot shortcut there either, since
+  `base...branch` includes the parent's old commits. Bounding the parent's side
+  at both versions of the grandparent, as `Inequivalent` does, would make it
+  cost the branch's own commits.
 - **A squash check that conflicts** walks back through the base looking for
   where the branch was taken in, up to 32 merges, a process each. `merge-tree
   --stdin` would take them all in one.

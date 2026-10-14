@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -143,25 +144,59 @@ type conflictReporter interface {
 	Conflicted(context.Context) ([]string, error)
 }
 
-// stopped reports an interrupted rewrite.
+// replayState is what says whether a restack was left for the person to
+// finish, and on which files: what a command that replays as one of its steps
+// needs to report stopping in it.
+type replayState interface {
+	InProgress(context.Context) (bool, error)
+	conflictReporter
+}
+
+// replayPaused reports a restack left waiting on the person, with the files
+// it stopped on.
+func replayPaused(ctx context.Context, replay replayState) ([]string, bool) {
+	if replay == nil {
+		return nil, false
+	}
+	if paused, err := replay.InProgress(ctx); err != nil || !paused {
+		return nil, false
+	}
+	conflicted, _ := replay.Conflicted(ctx)
+	return conflicted, true
+}
+
+// resumeAdvice is how a replay left journaled is finished, whichever command
+// left it: the problem in a line, and the ways through it.
 //
-// A rewrite that stops with no unmerged file has not hit a conflict, and
-// saying it has sends the reader looking for something that is not there. In
-// that case what Git said is the only useful thing we have.
+// A replay that stopped with no unmerged file has not hit a conflict, and
+// saying it has sends the reader looking for something that is not there.
+// land's copy of this said exactly that, having lost the distinction restack's
+// had.
+func resumeAdvice(conflicted []string) (problem, ways string) {
+	if len(conflicted) == 0 {
+		return "stopped part-way, with nothing left unmerged",
+			"Inspect with " + runnable("git status") + ", then run " + runnable("g2g restack --continue") + ", or " + runnable("g2g restack --abort") + " to undo."
+	}
+	return "stopped on a conflict in " + words.List(conflicted),
+		"Resolve those files, " + runnable("git add") + " them, then run " + runnable("g2g restack --continue") + ". Or " + runnable("g2g restack --abort") + " to undo."
+}
+
+// stopped reports an interrupted rewrite. With no unmerged file, what Git said
+// is the only useful thing there is, so it is shown.
 func stopped(cmd *cobra.Command, ctx context.Context, conflicts conflictReporter, cause error, p Presentation) error {
 	if cause == nil {
 		cause = fmt.Errorf("restack stopped part-way")
 	}
 	paths, err := conflicts.Conflicted(ctx)
-	if err != nil || len(paths) == 0 {
-		_ = prose(cmd.OutOrStdout(), p, p.problem("The rewrite stopped part-way, with nothing left unmerged."))
-		if cause != nil {
-			_ = prose(cmd.OutOrStdout(), p, p.subdued(cause.Error()))
-		}
-		return writeWhatStands(cmd, p, "Inspect with "+runnable("git status")+", then run "+runnable("g2g restack --continue")+", or "+runnable("g2g restack --abort")+" to undo.", cause)
+	if err != nil {
+		paths = nil
 	}
-	_ = prose(cmd.OutOrStdout(), p, p.problem("Stopped on a conflict in "+words.List(paths)+"."))
-	return writeWhatStands(cmd, p, "Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+". Or "+runnable("g2g restack --abort")+" to undo.", cause)
+	problem, ways := resumeAdvice(paths)
+	_ = prose(cmd.OutOrStdout(), p, p.problem(strings.ToUpper(problem[:1])+problem[1:]+"."))
+	if len(paths) == 0 {
+		_ = prose(cmd.OutOrStdout(), p, p.subdued(cause.Error()))
+	}
+	return writeWhatStands(cmd, p, ways, cause)
 }
 
 // runRestack is the preview/apply sequence, driven by applyFlow like every

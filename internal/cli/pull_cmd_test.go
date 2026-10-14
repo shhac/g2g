@@ -75,6 +75,8 @@ type syncCLIRestack struct {
 	// left a resumable rewrite behind rather than simply failing.
 	applyErr error
 	stopped  bool
+	// conflicted is what the stopped replay left unmerged.
+	conflicted []string
 
 	applies int
 	// scopes records the scope each replay was planned at, which is the only
@@ -113,6 +115,8 @@ func (r *syncCLIRestack) Apply(context.Context, restack.Plan) error {
 }
 
 func (r *syncCLIRestack) InProgress(context.Context) (bool, error) { return r.stopped, nil }
+
+func (r *syncCLIRestack) Conflicted(context.Context) ([]string, error) { return r.conflicted, nil }
 
 func runSync(t *testing.T, git *syncCLIGit, replay *syncCLIRestack, args ...string) (string, error) {
 	t.Helper()
@@ -309,6 +313,30 @@ func TestSyncReportsAStoppedReplayOnceAndDoesNotCallItUnapplied(t *testing.T) {
 	}
 	if strings.Contains(out, "Pulled.") {
 		t.Errorf("a stopped replay was reported as a completed sync:\n%s", out)
+	}
+}
+
+// A replay that stops on a conflict names the files, as restack's own stop
+// does: pull's report said only that it stopped part-way, sending the reader
+// to find out where.
+func TestSyncNamesTheFilesAStoppedReplayConflictsIn(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	replay := &syncCLIRestack{
+		steps:      []string{"synthetic-login"},
+		applyErr:   errors.New("synthetic conflict"),
+		stopped:    true,
+		conflicted: []string{"synthetic/login.go"},
+	}
+
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--apply")
+
+	if !wasStopped(err) {
+		t.Errorf("a stopped replay did not mark itself stopped: %v", err)
+	}
+	for _, want := range []string{"The replay stopped on a conflict in synthetic/login.go.", "Resolve those files", "g2g restack --continue"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not say %q:\n%s", want, out)
+		}
 	}
 }
 

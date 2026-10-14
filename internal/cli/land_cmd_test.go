@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -193,10 +194,72 @@ func TestADescentThatChangedNothingIsAFailureNotAStop(t *testing.T) {
 			cmd := newLand(land.Service{}, comment.Service{}, nil, testCompletions(), nil, Presentation{})
 			cmd.SetOut(&out)
 
-			claimed, err := landInterrupted(cmd, test.stopped, nil, Presentation{})
+			claimed, err := landInterrupted(cmd, context.Background(), test.stopped, nil, Presentation{})
 
 			if claimed != test.claimed || wasStopped(err) != test.claimed {
 				t.Errorf("claimed = %t, stopped = %t; want both %t", claimed, wasStopped(err), test.claimed)
+			}
+		})
+	}
+}
+
+// fakeReplay is a restack's journal as a stopped descent reads it.
+type fakeReplay struct {
+	paused     bool
+	err        error
+	conflicted []string
+}
+
+func (r fakeReplay) InProgress(context.Context) (bool, error) { return r.paused, r.err }
+func (r fakeReplay) Conflicted(context.Context) ([]string, error) {
+	return r.conflicted, nil
+}
+
+// A replay above a merge that stopped is finished through restack, whatever
+// stopped it. land's own copy of that advice told the reader to resolve files
+// when none were unmerged, and left out what else the descent had done.
+func TestADescentStoppedInItsReplaySaysHowToFinishIt(t *testing.T) {
+	stopped := &land.Stopped{Landed: []string{"synthetic-one"}, Tidied: []string{"synthetic-zero"}, Branch: "synthetic-two", Err: errors.New("synthetic replay stopped")}
+	for name, test := range map[string]struct {
+		replay  replayState
+		want    []string
+		unwants []string
+	}{
+		"on a conflict": {
+			replay:  fakeReplay{paused: true, conflicted: []string{"synthetic/b.txt"}},
+			want:    []string{"the replay above it stopped on a conflict in synthetic/b.txt", "Resolve those files", "g2g restack --continue", "rerun g2g land", "Cleaned up after synthetic-zero"},
+			unwants: []string{"nothing left unmerged"},
+		},
+		"with nothing unmerged": {
+			replay:  fakeReplay{paused: true},
+			want:    []string{"the replay above it stopped part-way, with nothing left unmerged", "Inspect with git status", "g2g restack --continue", "rerun g2g land"},
+			unwants: []string{"Resolve those files"},
+		},
+		"journal unreadable": {
+			replay:  fakeReplay{err: errors.New("synthetic unreadable journal")},
+			want:    []string{"Stopped part-way at synthetic-two: synthetic replay stopped", "Rerun g2g land to see what is left"},
+			unwants: []string{"g2g restack --continue"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			cmd := newLand(land.Service{}, comment.Service{}, test.replay, testCompletions(), nil, Presentation{})
+			cmd.SetOut(&out)
+
+			claimed, err := landInterrupted(cmd, context.Background(), stopped, test.replay, Presentation{})
+
+			if !claimed || !wasStopped(err) {
+				t.Fatalf("claimed = %t, stopped = %t; want both", claimed, wasStopped(err))
+			}
+			for _, want := range test.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("report does not say %q:\n%s", want, out.String())
+				}
+			}
+			for _, unwant := range test.unwants {
+				if strings.Contains(out.String(), unwant) {
+					t.Errorf("report says %q:\n%s", unwant, out.String())
+				}
 			}
 		})
 	}

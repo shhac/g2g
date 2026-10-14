@@ -177,8 +177,11 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 			if handled, report := worktreeNotBrought(cmd, cause, p); handled {
 				return true, report
 			}
-			if stopped, err := service.Restack.InProgress(ctx); err == nil && stopped {
-				return true, stoppedMidSync(cmd, p)
+			// sync asks its restacker only what sync needs; the report needs
+			// the conflicted files too, which the restack service has.
+			replay, _ := service.Restack.(replayState)
+			if conflicted, paused := replayPaused(ctx, replay); paused {
+				return true, stoppedMidSync(cmd, conflicted, p)
 			}
 			var moved *syncer.Stopped
 			if !errors.As(cause, &moved) {
@@ -238,11 +241,10 @@ func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentat
 // It reports and then marks the run as stopped, so the exit status says what
 // the prose says. A replay that stopped on a conflict has left the stack
 // part-way through and needs the person back.
-func stoppedMidSync(cmd *cobra.Command, p Presentation) error {
-	if err := prose(cmd.OutOrStdout(), p, p.problem("The replay stopped part-way.")); err != nil {
+func stoppedMidSync(cmd *cobra.Command, conflicted []string, p Presentation) error {
+	problem, ways := resumeAdvice(conflicted)
+	if err := prose(cmd.OutOrStdout(), p, p.problem("The replay "+problem+".")); err != nil {
 		return err
 	}
-	return writeWhatStands(cmd, p,
-		"The base is up to date. Finish with "+runnable("g2g restack --continue")+", or undo the replay with "+runnable("g2g restack --abort")+".",
-		errors.New("the replay stopped part-way"))
+	return writeWhatStands(cmd, p, "The base is up to date. "+ways, errors.New("the replay stopped part-way"))
 }

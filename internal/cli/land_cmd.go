@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -123,8 +122,8 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		// would be wrong about the thing that matters most. One that
 		// stopped before changing anything is exactly "not applied", and
 		// exits as the failure it is.
-		interrupted: func(_ context.Context, _ land.Plan, err error) (bool, error) {
-			return landInterrupted(cmd, err, replay, presentation)
+		interrupted: func(ctx context.Context, _ land.Plan, err error) (bool, error) {
+			return landInterrupted(cmd, ctx, err, replay, presentation)
 		},
 		// Not aimed at the selection: what it selected has merged and its
 		// branches are gone.
@@ -159,7 +158,7 @@ func landedNotice(options land.Options) string {
 
 // landInterrupted claims a descent that stopped having changed something, and
 // leaves one that changed nothing to the ordinary failure path.
-func landInterrupted(cmd *cobra.Command, err error, replay replayState, p Presentation) (bool, error) {
+func landInterrupted(cmd *cobra.Command, ctx context.Context, err error, replay replayState, p Presentation) (bool, error) {
 	// Not aimed: the branch it was asked to land may have merged and gone.
 	if handled, report := commentsNotKept(cmd, err, "g2g github comment --apply", p); handled {
 		return true, report
@@ -168,64 +167,40 @@ func landInterrupted(cmd *cobra.Command, err error, replay replayState, p Presen
 	if !errors.As(err, &stopped) || !stopped.PartWay() {
 		return false, nil
 	}
-	if conflicted, paused := replayPaused(cmd.Context(), replay); paused {
+	if conflicted, paused := replayPaused(ctx, replay); paused {
 		return true, stoppedInLandReplay(cmd, stopped, conflicted, p)
 	}
 	return true, stoppedMidLand(cmd, stopped, p)
 }
 
-// replayState is what says whether a replay has stopped and been left for the
-// person to finish, and on which files.
-type replayState interface {
-	InProgress(context.Context) (bool, error)
-	Conflicted(context.Context) ([]string, error)
-}
-
-// replayReadBudget bounds the two local reads that say whether a replay was
-// left waiting.
-const replayReadBudget = 10 * time.Second
-
-// replayPaused reports a restack left waiting on the person, with the files
-// it stopped on. Asked on a context of its own: the descent's may be the
-// mutation budget, and when that ran out it has already ended -- and these
-// are two local reads.
-func replayPaused(ctx context.Context, replay replayState) ([]string, bool) {
-	if replay == nil {
-		return nil, false
-	}
-	asking, cancel := context.WithTimeout(context.WithoutCancel(ctx), replayReadBudget)
-	defer cancel()
-	if paused, err := replay.InProgress(asking); err != nil || !paused {
-		return nil, false
-	}
-	conflicted, _ := replay.Conflicted(asking)
-	return conflicted, true
-}
-
-// stoppedInLandReplay reports a descent whose replay above a merge stopped on
-// a conflict. The replay is a restack left journaled, so it is finished the
-// way any is, and land run again then forgets and removes what merged. Git's
-// own account of the rebase -- its hints name git rebase --continue, which is
-// not the way through here -- stays out of the prose and goes to the
-// diagnostic stream with the rest of the cause.
+// stoppedInLandReplay reports a descent whose replay above a merge stopped.
+// The replay is a restack left journaled, so it is finished the way any is,
+// and land run again then forgets and removes what merged. Git's own account
+// of the rebase -- its hints name git rebase --continue, which is not the way
+// through here -- stays out of the prose and goes to the diagnostic stream
+// with the rest of the cause.
 func stoppedInLandReplay(cmd *cobra.Command, stopped *land.Stopped, conflicted []string, p Presentation) error {
-	where := "the replay above it stopped part-way"
-	if len(conflicted) != 0 {
-		where = "the replay above it stopped on a conflict in " + words.List(conflicted)
-	}
-	merged := "Merged " + words.List(stopped.Landed) + ", and " + words.Pick(len(stopped.Landed), "it stays", "they stay") + " merged."
+	problem, ways := resumeAdvice(conflicted)
 	return writeStoppedPartWay(cmd, p,
-		"Stopped part-way at "+stopped.Branch+": "+where+".",
-		merged+" Resolve those files, "+runnable("git add")+" them, then run "+runnable("g2g restack --continue")+", and rerun "+runnable("g2g land")+" to forget and remove what merged. Or "+runnable("g2g restack --abort")+" to undo the replay; the merge stays.",
+		"Stopped part-way at "+stopped.Branch+": the replay above it "+problem+".",
+		landedSoFar(stopped)+" "+ways+" Once it is finished, rerun "+runnable("g2g land")+" to forget and remove what merged; the merge stays either way.",
 		stopped)
 }
 
-// stoppedMidLand reports how far a descent got.
-//
-// It reads everything it needs from the error, making no call of its own: the
-// context it is handed is the mutation budget, and when the reason it stopped
-// is that budget expiring, it has already expired.
+// stoppedMidLand reports how far a descent got, from the error alone.
 func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) error {
+	// The merges that happened are permanent, so this is not a failure to
+	// retry — but it is not what was asked for either, and a script reading
+	// only the status had no way to tell the two apart.
+	return writeStoppedPartWay(cmd, p,
+		"Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error(),
+		landedSoFar(stopped)+" Rerun "+runnable("g2g land")+" to see what is left.",
+		stopped)
+}
+
+// landedSoFar is what a stopped descent did before it stopped, which stays
+// done: what merged, what changed short of a merge, and what it cleaned up.
+func landedSoFar(stopped *land.Stopped) string {
 	landed := "Nothing merged."
 	if len(stopped.Landed) != 0 {
 		landed = "Merged " + words.List(stopped.Landed) + ", and " + words.Pick(len(stopped.Landed), "it stays", "they stay") + " merged."
@@ -238,11 +213,5 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	if len(stopped.Tidied) != 0 {
 		landed += " Cleaned up after " + words.List(stopped.Tidied) + ", which had already landed."
 	}
-	// The merges that happened are permanent, so this is not a failure to
-	// retry — but it is not what was asked for either, and a script reading
-	// only the status had no way to tell the two apart.
-	return writeStoppedPartWay(cmd, p,
-		"Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error(),
-		landed+" Rerun "+runnable("g2g land")+" to see what is left.",
-		stopped)
+	return landed
 }

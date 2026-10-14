@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,17 +51,25 @@ func (g *pruneGit) Absorbed(_ context.Context, base, branch string) (bool, error
 type pruneAncestry struct {
 	current string
 	sitting map[string]bool
+	// gone are branches deleted locally: Git lists none of them, and asks
+	// about them fail as an unknown revision does.
+	gone []string
 }
 
 func (a pruneAncestry) CurrentBranch(context.Context) (string, error) { return a.current, nil }
-func (pruneAncestry) LocalBranches(context.Context) ([]string, error) {
-	return []string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d"}, nil
+func (a pruneAncestry) LocalBranches(context.Context) ([]string, error) {
+	return slices.DeleteFunc([]string{"synthetic-trunk", "synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d"}, func(branch string) bool {
+		return slices.Contains(a.gone, branch)
+	}), nil
 }
 func (pruneAncestry) AncestorBranches(context.Context, string) ([]string, error) { return nil, nil }
 func (pruneAncestry) Divergence(context.Context, string, string) (int, int, error) {
 	return 0, 0, nil
 }
 func (a pruneAncestry) IsAncestor(_ context.Context, _, descendant string) (bool, error) {
+	if slices.Contains(a.gone, descendant) {
+		return false, fmt.Errorf("synthetic: not a valid commit name %s", descendant)
+	}
 	return a.sitting[descendant], nil
 }
 func (pruneAncestry) Resolve(_ context.Context, ref string) (string, error) { return ref + "-tip", nil }
@@ -321,6 +330,22 @@ func TestAChildOutsideTheSelectionIsRecordedWhereItSits(t *testing.T) {
 	want := graph.Edge{Parent: "synthetic-trunk", ForkPoint: "synthetic-trunk-tip", Origin: graph.OriginAncestry}
 	if plan.Blocked() != "" || plan.Rehome["synthetic-b"] != want {
 		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b recorded on the trunk", plan.Blocked(), plan.Rehome)
+	}
+}
+
+// A child outside the selection that was deleted locally is not asked where it
+// sits: discovery only marks the branches it selected missing, and Git fails
+// for a branch that is gone, which failed the whole prune with its error.
+func TestADeletedChildOutsideTheSelectionIsRefusedNotAnError(t *testing.T) {
+	service, _, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
+	service.Graph.Git = pruneAncestry{current: "synthetic-c", gone: []string{"synthetic-b"}}
+
+	plan, err := service.Plan(context.Background(), graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeBranch})
+	if err != nil {
+		t.Fatalf("Plan() error = %v, want the stranded refusal", err)
+	}
+	if plan.Blocked() == "" || len(plan.Rehome) != 0 {
+		t.Errorf("Blocked = %q, Rehome = %v; want a refusal that records nothing", plan.Blocked(), plan.Rehome)
 	}
 }
 

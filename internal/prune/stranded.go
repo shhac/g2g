@@ -60,6 +60,10 @@ func placements(discovery graph.Discovery, landed []string) []placement {
 // the natural way to forget one branch, then refused with a track per child
 // for children Git already showed on the trunk.
 func (s Service) rehome(ctx context.Context, placed []placement) (map[string]graph.Edge, []placement, error) {
+	placed, err := s.outsideMissing(ctx, placed)
+	if err != nil {
+		return nil, nil, err
+	}
 	rehome := map[string]graph.Edge{}
 	left := make([]placement, 0)
 	for _, each := range placed {
@@ -80,6 +84,27 @@ func (s Service) rehome(ctx context.Context, placed []placement) (map[string]gra
 		rehome[each.child] = graph.Edge{Parent: each.onto, ForkPoint: forkPoint, Origin: graph.OriginAncestry}
 	}
 	return rehome, left, nil
+}
+
+// outsideMissing marks a child outside the selection whose local branch is
+// gone. Discovery only says that of the branches it selected, and asking Git
+// whether a deleted branch sits anywhere fails the whole prune with Git's own
+// error, where a branch in the selection had the refusal.
+func (s Service) outsideMissing(ctx context.Context, placed []placement) ([]placement, error) {
+	if s.Graph.Git == nil || !slices.ContainsFunc(placed, func(each placement) bool { return !each.selected }) {
+		return placed, nil
+	}
+	local, err := s.Graph.Git.LocalBranches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	marked := slices.Clone(placed)
+	for index, each := range marked {
+		if !each.selected && !slices.Contains(local, each.child) {
+			marked[index].missing = true
+		}
+	}
+	return marked, nil
 }
 
 // sits reports a child Git shows already built on where it belongs.

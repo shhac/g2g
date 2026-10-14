@@ -51,30 +51,41 @@ func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, bra
 	if err != nil || !changes.Decides() {
 		return Publication{}, changes, false, err
 	}
-	ours := len(changes.Mine) + len(changes.DroppedUpstream) + len(changes.ReplacedHere)
+	publication, decided := standing(changes)
+	if !decided {
+		return Publication{}, syncpoint.Changes{}, false, nil
+	}
+	return publication, changes, true, nil
+}
+
+// standing is what a sync point's changes say of publishing a branch, from
+// them and nothing else. It is false for a branch whose every commit of its
+// own is gone, which is a branch emptied or made again rather than one a
+// commit was dropped from: the comparison push had before refuses that,
+// naming the replacement for whoever means it, and pull refuses the same
+// thing from the other side.
+func standing(changes syncpoint.Changes) (Publication, bool) {
 	replaced := len(changes.ReplacedHere)
+	ours := len(changes.Mine) + len(changes.DroppedUpstream) + replaced
+	theirs := len(changes.New) + len(changes.ReplacedUpstream)
 	switch {
 	case len(changes.DroppedUpstream) != 0:
-		return Publication{Standing: Restoring, Ours: ours, Theirs: len(changes.New) + len(changes.ReplacedUpstream), Dropped: len(changes.DroppedUpstream)}, changes, true, nil
-	case len(changes.New)+len(changes.ReplacedUpstream) != 0:
+		return Publication{Standing: Restoring, Ours: ours, Theirs: theirs, Dropped: len(changes.DroppedUpstream)}, true
+	case theirs != 0:
 		// Somebody else's commit on top of a drop or a replay of this
 		// clone's, or a replay of theirs this clone has not taken: still a
 		// divergence, and still refused. pull takes a replay of theirs.
-		return Publication{Standing: Diverged, Ours: ours, Theirs: len(changes.New) + len(changes.ReplacedUpstream) + len(changes.DroppedHere)}, changes, true, nil
+		return Publication{Standing: Diverged, Ours: ours, Theirs: theirs + len(changes.DroppedHere)}, true
 	case len(changes.Shared)+replaced == 0:
-		// Every commit of the branch's own gone: that is a branch emptied or
-		// made again, not one a commit was dropped from, and pull refuses
-		// the same thing from the other side. The comparison push had before
-		// refuses it, naming the replacement for whoever means it. A commit
-		// replayed is not gone: its replay is still the branch's own.
-		return Publication{}, syncpoint.Changes{}, false, nil
+		// A commit replayed is not gone: its replay is still the branch's own.
+		return Publication{}, false
 	case len(changes.DroppedHere) != 0:
-		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere), Replaced: replaced}, changes, true, nil
+		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere), Replaced: replaced}, true
 	default:
 		// Only replays of commits both sides agreed on: the branch was
 		// rewritten, as a restack does, with some patches changed while a
 		// conflict was resolved. Nothing published is anybody else's.
-		return Publication{Standing: Rewritten, Ours: ours, Replaced: replaced}, changes, true, nil
+		return Publication{Standing: Rewritten, Ours: ours, Replaced: replaced}, true
 	}
 }
 

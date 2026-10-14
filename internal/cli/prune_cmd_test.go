@@ -52,7 +52,12 @@ func runPrune(t *testing.T, landed []string, args ...string) (string, *graphStor
 	for _, branch := range landed {
 		has[branch] = true
 	}
-	graphService := graph.Service{Git: graphGitFixture(), Store: store, Refs: refs}
+	// Before a pull: synthetic-login still sits on synthetic-auth's tip and
+	// not on the trunk, so forgetting synthetic-auth would strand it. After
+	// one, prune records it on the trunk instead of refusing.
+	git := graphGitFixture()
+	git.ancestors["synthetic-login"] = []string{"synthetic-auth"}
+	graphService := graph.Service{Git: git, Store: store, Refs: refs}
 
 	var stdout, stderr bytes.Buffer
 	command := NewWithOptions(Options{

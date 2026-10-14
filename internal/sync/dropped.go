@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -189,62 +188,6 @@ func (s Service) fetchedTips(ctx context.Context, c collecting, branch string) (
 	return fetched, nil
 }
 
-// keepWays offers keeping the commits named, when there are any; a refusal
-// about replacements alone has nothing a --keep can usefully name.
-func keepWays(c collecting, commits []string, effect string) []repair.Step {
-	if len(commits) == 0 {
-		return nil
-	}
-	return []repair.Step{{Command: c.keepCommand(commits), Effect: effect}}
-}
-
-func listed(commits []string) string {
-	short := make([]string, 0, len(commits))
-	for _, commit := range commits {
-		short = append(short, localgit.Short(commit))
-	}
-	return strings.Join(short, ", ")
-}
-
-func droppedBothWays(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
-	return &repair.Note{
-		Reason: fmt.Sprintf("%s was dropped from or replayed on both sides since the last pull or push: %s gone from %s, and %s gone from here",
-			branch, listed(changes.LeftUpstream()), c.remote, listed(changes.LeftHere())),
-		Ways: append(keepWays(c, changes.DroppedHere, "take "+c.remote+"'s version, keeping what you dropped as theirs"),
-			repair.Step{Effect: "reconcile it yourself"}),
-	}
-}
-
-func yoursOverTheirDrop(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
-	return &repair.Note{
-		Reason: fmt.Sprintf("%s dropped or replayed %s on %s, and you have committed %s on it since: taking theirs would lose yours, and keeping yours would keep what they replaced",
-			c.remote, listed(changes.LeftUpstream()), branch, listed(changes.Mine)),
-		Ways: append(keepWays(c, changes.DroppedUpstream, "keep what "+c.remote+" dropped, with your commits on it"),
-			repair.Step{Command: c.takeCommand, Effect: "take " + c.remote + "'s version and discard yours"},
-			repair.Step{Effect: "rebase your commits onto theirs yourself, then pull"}),
-	}
-}
-
-func emptiedUpstream(c collecting, branch string, gone []string) *repair.Note {
-	return &repair.Note{
-		Reason: fmt.Sprintf("%s has none of %s's own commits any more (%s), which is a branch emptied or made again rather than one a commit was dropped from",
-			c.remote, branch, listed(gone)),
-		Ways: []repair.Step{
-			{Command: c.keepCommand(gone), Effect: "keep them"},
-			{Command: c.takeCommand, Effect: "take " + c.remote + "'s version and discard them"},
-		},
-	}
-}
-
-func droppedHereAndNew(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
-	return &repair.Note{
-		Reason: fmt.Sprintf("you dropped or replayed %s on %s, and %s has %s on it you do not: taking theirs would put back what you replaced",
-			listed(changes.LeftHere()), branch, c.remote, listed(changes.New)),
-		Ways: append(keepWays(c, changes.DroppedHere, "take theirs, keeping what you dropped"),
-			repair.Step{Effect: "reconcile it yourself"}),
-	}
-}
-
 // starts says where each branch this pull does not take begins, when the
 // branch below it is taken and it sits on that branch's published version
 // with the commits its record says the parent had: Bob moved the parent back
@@ -311,13 +254,13 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 func strictly(plan Plan, unsynced []string) repair.Note {
 	reasons := make([]string, 0, 3)
 	if dropped := syncpoint.Of(plan.Commits, syncpoint.Dropped); len(dropped) != 0 {
-		reasons = append(reasons, "it would drop "+dropNames(dropped))
+		reasons = append(reasons, "it would drop "+syncpoint.Names(dropped))
 	}
 	if replaced := syncpoint.Of(plan.Commits, syncpoint.Replaced); len(replaced) != 0 {
-		reasons = append(reasons, "it would take "+remoteName(plan.Remote)+"'s replay of "+dropNames(replaced)+", whose patch changed")
+		reasons = append(reasons, "it would take "+remoteName(plan.Remote)+"'s replay of "+syncpoint.Names(replaced)+", whose patch changed")
 	}
 	if restored := syncpoint.Of(plan.Commits, syncpoint.Restored); len(restored) != 0 {
-		reasons = append(reasons, "it would put back "+dropNames(restored)+", missing only after a reset to an out-of-date tracking ref")
+		reasons = append(reasons, "it would put back "+syncpoint.Names(restored)+", missing only after a reset to an out-of-date tracking ref")
 	}
 	if len(unsynced) != 0 {
 		reasons = append(reasons, strings.Join(unsynced, ", ")+" "+words.Pick(len(unsynced), "differs", "differ")+" from "+remoteName(plan.Remote)+" with no record of where the two last agreed")
@@ -329,12 +272,4 @@ func strictly(plan Plan, unsynced []string) repair.Note {
 		Reason: "--strict: " + strings.Join(reasons, "; "),
 		Ways:   []repair.Step{{Effect: "run without --strict to go ahead with what the preview lists"}},
 	}
-}
-
-func dropNames(drops []Drop) string {
-	named := make([]string, 0, len(drops))
-	for _, drop := range drops {
-		named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
-	}
-	return strings.Join(named, ", ")
 }

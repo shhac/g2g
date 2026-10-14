@@ -2,6 +2,9 @@ package syncpoint
 
 import (
 	"slices"
+	"strings"
+
+	localgit "github.com/shhac/g2g/internal/git"
 )
 
 // Drop is one commit a pull or push names one by one, what it does to it, and
@@ -88,4 +91,14 @@ func DroppedOn(branch string, commits []Drop, kinds ...Kind) []string {
 		}
 	}
 	return named
+}
+
+// Names is each commit by its branch and short id, as a preview lists them
+// and a --keep asks for them back.
+func Names(drops []Drop) string {
+	named := make([]string, 0, len(drops))
+	for _, drop := range drops {
+		named = append(named, drop.Branch+" "+localgit.Short(drop.Commit))
+	}
+	return strings.Join(named, ", ")
 }

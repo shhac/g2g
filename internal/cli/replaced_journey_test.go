@@ -31,21 +31,10 @@ func (s sharedStack) resolveReplay(dir string) {
 	s.git(dir, "commit", "-qm", "synthetic a touches x and y")
 	s.git(dir, "switch", "-q", "synthetic-b")
 	stdout, _, err := run(s.t, "restack", "--apply")
-	for stops := 0; cli.StoppedPartWayForTest(err); stops++ {
-		if stops == 3 {
-			s.t.Fatalf("the restack kept stopping:\n%s", stdout)
-		}
-		for _, name := range strings.Fields(s.git(dir, "diff", "--name-only", "--diff-filter=U")) {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte("resolved\n"), 0o600); err != nil {
-				s.t.Fatal(err)
-			}
-			s.git(dir, "add", name)
-		}
-		stdout, _, err = run(s.t, "restack", "--continue")
+	if !cli.StoppedPartWayForTest(err) {
+		s.t.Fatalf("restack did not stop on the conflicts: %v\n%s", err, stdout)
 	}
-	if err != nil {
-		s.t.Fatalf("restack: %v\n%s", err, stdout)
-	}
+	s.resolveRestack(dir)
 	s.assertClean(dir)
 }
 

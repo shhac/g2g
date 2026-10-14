@@ -1,8 +1,6 @@
 package cli_test
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,20 +53,7 @@ func TestJourneyLandMergesBelowAForkWhoseReplayConflicts(t *testing.T) {
 	if published := w.tip(w.Remote, "synthetic-a"); published != approved {
 		t.Errorf("synthetic-a was republished as %s before merging, want the approved %s", published[:8], approved[:8])
 	}
-	for stops := 0; ; stops++ {
-		if stops == 3 {
-			t.Fatal("the restack kept stopping")
-		}
-		for _, name := range strings.Fields(w.git(w.Local, "diff", "--name-only", "--diff-filter=U")) {
-			if err := os.WriteFile(filepath.Join(w.Local, name), []byte("resolved\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			w.git(w.Local, "add", name)
-		}
-		if _, _, err := run(t, "restack", "--continue"); err == nil {
-			break
-		}
-	}
+	w.resolveRestack(w.Local)
 	w.assertClean(w.Local)
 
 	mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--apply")

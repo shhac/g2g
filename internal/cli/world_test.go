@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shhac/g2g/internal/cli"
 	"github.com/shhac/g2g/internal/testutil"
 )
 
@@ -135,6 +136,31 @@ func (w *world) rewriteStore(edit func(string) string) {
 	path := filepath.Join(w.Local, ".git", "g2g", "graph.json")
 	if err := os.WriteFile(path, []byte(edit(w.readStore())), 0o600); err != nil {
 		w.t.Fatalf("write graph store: %v", err)
+	}
+}
+
+// resolveRestack settles a restack stopped on conflicts in dir the way a
+// person would: every unmerged file is resolved and staged, and the restack
+// continued, until it finishes. Three stops is a restack that is not going to.
+func (w *world) resolveRestack(dir string) {
+	w.t.Helper()
+	for stops := 0; ; stops++ {
+		if stops == 3 {
+			w.t.Fatal("the restack kept stopping")
+		}
+		for _, name := range strings.Fields(w.git(dir, "diff", "--name-only", "--diff-filter=U")) {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("resolved\n"), 0o600); err != nil {
+				w.t.Fatal(err)
+			}
+			w.git(dir, "add", name)
+		}
+		stdout, _, err := run(w.t, "restack", "--continue")
+		if err == nil {
+			return
+		}
+		if !cli.StoppedPartWayForTest(err) {
+			w.t.Fatalf("restack --continue: %v\n%s", err, stdout)
+		}
 	}
 }
 

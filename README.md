@@ -935,6 +935,11 @@ linked pull request through `gh pr merge`, which is how `land` merges each one;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
+Branches at the top of the stack, above the one submitted, that have no commits
+of their own yet and no open pull request are left out, and the preview marks
+them so: a branch just created to work in next has nothing to open a pull
+request for. The branch named, or the one you stand on, is never left out.
+
 A failure after the push, or after a pull request opened, exits `3`: what was
 published and opened stays, and the report names both and the retry, which
 keeps the pull requests that exist and opens only the missing ones. A failure

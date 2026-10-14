@@ -3,6 +3,7 @@ package submit
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -287,4 +288,57 @@ func (fakeGraphite) ReadForest(context.Context) (graphite.Forest, error) {
 		},
 		Roots: []string{"main"},
 	}, nil
+}
+
+// A branch just created above the one being submitted has nothing to open a
+// pull request for, and taking it in asked for a title GitHub would then
+// refuse. Only the run at the top goes, and never the branch named.
+func TestBranchesWithNothingToSubmitAboveTheTargetAreLeftOut(t *testing.T) {
+	open := func(branch string) githubstack.PullRequest {
+		return githubstack.PullRequest{Number: 7, Head: branch, Base: "synthetic/middle", State: "OPEN"}
+	}
+	for _, test := range []struct {
+		name    string
+		target  string
+		empty   []string
+		prs     []githubstack.PullRequest
+		waiting []string
+	}{
+		{name: "an empty run at the top", target: "synthetic/lower", empty: []string{"synthetic/middle", "synthetic/top"}, waiting: []string{"synthetic/middle", "synthetic/top"}},
+		{name: "an empty branch under one with work", target: "synthetic/lower", empty: []string{"synthetic/middle"}},
+		{name: "an empty branch with an open pull request", target: "synthetic/lower", empty: []string{"synthetic/middle", "synthetic/top"}, prs: []githubstack.PullRequest{open("synthetic/top")}},
+		{name: "the target itself empty", target: "synthetic/top", empty: []string{"synthetic/top"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, git := planService(&fakeGitHub{prs: test.prs})
+			git.empty = map[string]bool{}
+			for _, branch := range test.empty {
+				git.empty[branch] = true
+			}
+
+			plan, err := service.Plan(context.Background(), stack.Selection{Branch: test.target}, "origin", localgit.SetUpstream)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !slices.Equal(plan.Waiting, test.waiting) {
+				t.Fatalf("waiting = %v, want %v", plan.Waiting, test.waiting)
+			}
+			kept := len(snapshot().Branches) - len(test.waiting)
+			if got := plan.Snapshot.Branches; !slices.Equal(got, snapshot().Branches[:kept]) {
+				t.Errorf("submits %v", got)
+			}
+			if len(test.waiting) == 0 {
+				return
+			}
+			if git.planned.Branch != "synthetic/lower" || git.planned.Scope != stack.ScopePath {
+				t.Errorf("push planned %+v, want the path to the last branch kept", git.planned)
+			}
+			for _, branch := range test.waiting {
+				if _, kept := plan.Snapshot.Parents[branch]; kept {
+					t.Errorf("%s is still in the submitted shape", branch)
+				}
+			}
+		})
+	}
 }

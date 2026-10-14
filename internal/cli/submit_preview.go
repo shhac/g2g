@@ -38,6 +38,9 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		}
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
 	}
+	for _, branch := range plan.Waiting {
+		view.Nodes = append(view.Nodes, stackNode{Branch: branch}.labeled("left out · no commits of its own yet", severityNeutral))
+	}
 
 	if template != "" {
 		view = view.note("PR template: "+template, severityNeutral)

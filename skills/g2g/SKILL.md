@@ -505,7 +505,9 @@ description: |
   boundary validates/revalidates first, publishes through `push` (and so
   refuses a remote holding work this checkout lacks), creates only missing
   draft PRs, links the eligible stack only when `--link` asks, then keeps the
-  stack comments unless `--no-comment`. Linking is opt-in because GitHub will
+  stack comments unless `--no-comment`. It leaves out branches above the
+  target with no commits of their own and no open pull request, such as one
+  just made with `create`, and marks them in the preview. Linking is opt-in because GitHub will
   not merge a linked pull request through `gh pr merge`; `land` refuses a
   linked stack in its preview and names `g2g github unlink --branch <target>
   --stack-number <n>`. Do not make linking the default again.

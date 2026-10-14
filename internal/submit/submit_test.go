@@ -135,6 +135,9 @@ type fakeGit struct {
 	pushErr     error
 	cleanErr    error
 	remoteErr   error
+	// empty are the branches with no commits beyond the one below them.
+	empty   map[string]bool
+	planned stack.Selection
 }
 
 func (*fakeGit) CurrentBranch(context.Context) (string, error) { return "synthetic/top", nil }
@@ -143,6 +146,9 @@ func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 }
 func (f *fakeGit) Clean(context.Context) error          { return f.cleanErr }
 func (f *fakeGit) Remote(context.Context, string) error { return f.remoteErr }
+func (f *fakeGit) IsAncestor(_ context.Context, ancestor, _ string) (bool, error) {
+	return f.empty[ancestor], nil
+}
 
 // The fake Git also stands in for push. Publishing is push's, so what these
 // tests need of it is only whether it was asked to publish and what it said.
@@ -150,6 +156,7 @@ func (f *fakeGit) Plan(_ context.Context, selection stack.Selection, remote stri
 	if f.remoteErr != nil {
 		return push.Plan{}, f.remoteErr
 	}
+	f.planned = selection
 	tips := testutil.RemoteTips(snapshot().Branches)
 	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Repair: repair.Note{Reason: f.pushBlocked}}, nil
 }

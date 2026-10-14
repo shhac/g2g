@@ -24,6 +24,7 @@ type Git interface {
 	// nothing on GitHub. push checks it again when it plans; that is one
 	// local read.
 	Remote(context.Context, string) error
+	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
 }
 
 // Pusher publishes the stack, and refuses a remote that holds work the stack
@@ -65,6 +66,10 @@ type Plan struct {
 	Superseded map[string]githubstack.PullRequest
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
+	// Waiting are the branches above the target left out of the submission,
+	// in order: each has no commits of its own yet and no open pull request,
+	// which GitHub would refuse to open.
+	Waiting []string
 }
 
 // Ready reports a service with everything it needs.
@@ -178,12 +183,19 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err := snapshot.RequireLinear("submit"); err != nil {
 		return Plan{}, err
 	}
+	waiting, err := s.waiting(ctx, snapshot, discovery.PullRequests)
+	if err != nil {
+		return Plan{}, err
+	}
+	if len(waiting) != 0 {
+		snapshot, selection = narrowed(snapshot, selection, len(waiting))
+	}
 	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
 	published, err := s.Pusher.Plan(ctx, selection, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published}
+	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published, Waiting: waiting}
 	decision := "ready"
 	if plan.Blocked() != "" {
 		decision = "blocked"
@@ -192,9 +204,53 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	return plan, nil
 }
 
+// waiting is the run of branches at the top of the selection, above the
+// target, that have nothing to submit: no commits beyond the branch below and
+// no open pull request. A branch just created to work in next is one, and
+// taking it in asked for a title it could not use and a pull request GitHub
+// refuses. The target itself is never left out, because naming it is asking.
+func (s Service) waiting(ctx context.Context, snapshot stack.Snapshot, prs []githubstack.PullRequest) ([]string, error) {
+	resolutions := githubstack.ResolveHeads(prs)
+	target := slices.Index(snapshot.Branches, snapshot.Target)
+	if target < 0 {
+		return nil, nil
+	}
+	top := len(snapshot.Branches)
+	for top-1 > target {
+		branch := snapshot.Branches[top-1]
+		if resolutions[branch].Open != nil {
+			break
+		}
+		empty, err := s.Git.IsAncestor(ctx, branch, snapshot.SitsOn(branch))
+		if err != nil {
+			return nil, err
+		}
+		if !empty {
+			break
+		}
+		top--
+	}
+	return slices.Clone(snapshot.Branches[top:]), nil
+}
+
+// narrowed is the selection without its last count branches. A submitted stack
+// is linear, so what remains is the path to the last branch kept, and push is
+// asked for that rather than for the branches it would otherwise publish.
+func narrowed(snapshot stack.Snapshot, selection stack.Selection, count int) (stack.Snapshot, stack.Selection) {
+	kept := len(snapshot.Branches) - count
+	parents := maps.Clone(snapshot.Parents)
+	for _, branch := range snapshot.Branches[kept:] {
+		delete(parents, branch)
+	}
+	snapshot.Branches, snapshot.Parents = snapshot.Branches[:kept:kept], parents
+	selection.Branch, selection.Scope = snapshot.Branches[kept-1], stack.ScopePath
+	return snapshot, selection
+}
+
 // Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
+		slices.Equal(p.Waiting, other.Waiting) &&
 		p.Snapshot.Equal(other.Snapshot) &&
 		slices.Equal(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&

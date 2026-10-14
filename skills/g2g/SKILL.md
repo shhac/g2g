@@ -184,6 +184,11 @@ description: |
   a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
+- A replay that stops — in `restack`, in `pull`, or above a merge in `land` —
+  is one journaled restack, finished the same way whichever command left it:
+  resolve the named files, `git add` them, `g2g restack --continue` (or
+  `--abort`), then rerun `land` if a descent was interrupted. A forked stack
+  stops once per conflicting line of descent.
 - A trunk can be declared: `track --as-trunk` names a second one (`staging`
   beside `main`), and `--into <branch> --by squash|merge|rebase` says where it
   lands when finished. It has no parent edge — so it is never replayed and

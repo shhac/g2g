@@ -621,7 +621,9 @@ Using `git rebase --continue` or `git rebase --abort` yourself is fine too:
 `--continue` re-derives what is left from the refs rather than replaying a
 stored queue, so your own git commands simply change what remains to do.
 `g2g restack --abort` restores every branch to where it started, including
-ones an earlier step already moved.
+ones an earlier step already moved. A stack that forks stops on the first
+conflict on one line of descent, and `--continue` (or `--skip`) goes on to the
+other line, stopping there too if it conflicts.
 
 A stopped restack exits `3`, including when `--continue` hits another conflict.
 Run recovery from the worktree that started it: linked worktrees share the
@@ -1194,6 +1196,11 @@ cost this exists to avoid. What is left above the last branch landed is
 published once at the end, before the stack comments are kept, so its pull
 request shows the replayed version rather than one built on a deleted branch.
 A branch that was never published is left unpublished.
+
+If the replay above a merge conflicts, `land` stops there and exits `3`: the
+merge stays, and the replay is an ordinary stopped restack. The report names
+the files; resolve them, `git add` them, run `g2g restack --continue`, then
+rerun `g2g land` to forget and remove what merged and carry on.
 
 The preview is the recipe. Every line is a command you could run yourself, in
 order, so driving it by hand is a first-class option rather than a fallback:

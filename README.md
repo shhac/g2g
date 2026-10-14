@@ -516,7 +516,10 @@ list. It must already be in the g2g graph, or be the repository's default branch
 graph does not know would quietly make that branch a trunk, so `create` refuses
 and names `adopt` instead. In a repository with no default branch
 recorded, start the first branch on the trunk by hand and record it with
-`track --parent`; `create` works from there on.
+`track --parent`; `create` works from there on. On a detached HEAD, which is
+how a new worktree starts when its parent is checked out elsewhere, name the
+parent with `--parent`: `create` proceeds when HEAD is at that branch's tip,
+since leaving it loses nothing, and a failed recording detaches there again.
 
 It switches, records, then commits. A recording that fails is undone — you are
 put back where you were and the new branch is deleted — because nothing is on

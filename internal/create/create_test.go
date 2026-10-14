@@ -52,6 +52,10 @@ func (g *fakeGit) SwitchExisting(_ context.Context, branch string) error {
 	g.calls = append(g.calls, "switch "+branch)
 	return nil
 }
+func (g *fakeGit) SwitchDetached(_ context.Context, revision string) error {
+	g.calls = append(g.calls, "switch --detach "+revision)
+	return nil
+}
 func (g *fakeGit) DeleteBranch(_ context.Context, branch string) error {
 	g.calls = append(g.calls, "branch -D "+branch)
 	return nil
@@ -107,6 +111,13 @@ func fixture() (*fakeGit, *fakeGraph) {
 		Trunks: []string{"synthetic-main"},
 	}
 	return git, &fakeGraph{git: git, adopted: adopted, defaultTrunk: "synthetic-main"}
+}
+
+func detachedAt(commit string) func(*fakeGit, *fakeGraph) {
+	return func(g *fakeGit, _ *fakeGraph) {
+		g.detached = true
+		g.tips["HEAD"] = commit
+	}
 }
 
 func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
@@ -180,7 +191,21 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 		{name: "committing with nothing staged", request: Request{Name: "synthetic-new", Commit: true, Message: "synthetic"}, arrange: func(g *fakeGit, _ *fakeGraph) { g.staged = nil }, blocked: "nothing is staged", way: "g2g create synthetic-new"},
 		{name: "committing with an empty message", request: Request{Name: "synthetic-new", Commit: true}, blocked: "message is empty"},
 		{name: "committing what is staged", request: Request{Name: "synthetic-new", Commit: true, Message: "synthetic"}, parent: "synthetic-lower"},
-		{name: "a detached HEAD", request: Request{Name: "synthetic-new", Parent: "synthetic-main"}, arrange: func(g *fakeGit, _ *fakeGraph) { g.detached = true }, blocked: "detached"},
+		{
+			// A fresh worktree has to start detached when its parent branch is
+			// checked out elsewhere, and leaving the parent's tip loses nothing.
+			name:    "a detached HEAD at the parent's tip",
+			request: Request{Name: "synthetic-new", Parent: "synthetic-main"},
+			arrange: detachedAt("main-tip"),
+			parent:  "synthetic-main",
+		},
+		{name: "a detached HEAD with no parent named", request: Request{Name: "synthetic-new"}, arrange: detachedAt("main-tip"), blocked: "no branch to build on"},
+		{
+			name:    "a detached HEAD away from the parent's tip",
+			request: Request{Name: "synthetic-new", Parent: "synthetic-main"},
+			arrange: detachedAt("stray-tip"),
+			blocked: "could leave commits behind", way: "git switch --detach synthetic-main",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			git, graphs := fixture()
@@ -302,6 +327,31 @@ func TestAFailedRecordingIsRolledBack(t *testing.T) {
 				t.Error("committed after a failed recording")
 			}
 		})
+	}
+}
+
+// Detaching again at the same commit is the whole of going back from a
+// detached HEAD.
+func TestAFailedRecordingFromADetachedHeadDetachesAgain(t *testing.T) {
+	git, graphs := fixture()
+	detachedAt("main-tip")(git, graphs)
+	graphs.failApply = errors.New("synthetic write failure")
+	service := Service{Git: git, Graph: graphs}
+	plan, err := service.Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-main"})
+	if err != nil || plan.Blocked() != "" {
+		t.Fatalf("Plan() = %v, %q", err, plan.Blocked())
+	}
+	git.calls = nil
+
+	err = service.Apply(context.Background(), plan)
+
+	var rolledBack *RolledBack
+	if !errors.As(err, &rolledBack) || rolledBack.Left != nil {
+		t.Fatalf("Apply() = %v, want a complete rollback", err)
+	}
+	tail := git.calls[len(git.calls)-2:]
+	if !slices.Equal(tail, []string{"switch --detach main-tip", "branch -D synthetic-new"}) {
+		t.Errorf("rollback ran %v, want a detach and a delete", git.calls)
 	}
 }
 

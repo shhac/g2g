@@ -104,6 +104,26 @@ func TestCreateRefusesAParentTheGraphDoesNotKnow(t *testing.T) {
 // A recording that fails is undone completely: the branch has no commits of
 // its own yet, so going back and deleting it loses nothing, and the staged
 // change the commit would have taken is still staged where it started.
+// A worktree for a branch checked out elsewhere has to start detached, and the
+// branch built on it is the first thing anyone does there.
+func TestCreateStartsABranchInAFreshDetachedWorktree(t *testing.T) {
+	w := newWorld(t)
+	mustRun(t, "create", "synthetic-a", "--apply")
+	fresh := filepath.Join(filepath.Dir(w.Local), "fresh")
+	w.git(w.Local, "worktree", "add", "-q", "--detach", fresh, "synthetic-a")
+	t.Chdir(fresh)
+
+	mustRun(t, "create", "synthetic-b", "--parent", "synthetic-a", "--apply")
+
+	w.assertClean(fresh)
+	if current := w.git(fresh, "branch", "--show-current"); current != "synthetic-b" {
+		t.Errorf("checked out %q, want synthetic-b", current)
+	}
+	if structure := w.readStructure(); structure["synthetic-b"] != "synthetic-a" {
+		t.Errorf("the graph records synthetic-b as %q, want synthetic-a (%v)", structure["synthetic-b"], structure)
+	}
+}
+
 func TestAFailedRecordingLeavesNoBranchBehind(t *testing.T) {
 	w := newWorld(t)
 	mustRun(t, "create", "synthetic-a", "--apply")

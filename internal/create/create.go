@@ -30,6 +30,7 @@ type Git interface {
 	StagedPaths(ctx context.Context) ([]string, error)
 	CreateBranch(ctx context.Context, name, start string) error
 	SwitchExisting(ctx context.Context, branch string) error
+	SwitchDetached(ctx context.Context, revision string) error
 	DeleteBranch(ctx context.Context, branch string) error
 	Commit(ctx context.Context, message string) error
 }
@@ -73,10 +74,13 @@ type Plan struct {
 	At string
 	// Return is the branch checked out now, which is where a failed recording
 	// goes back to.
-	Return  string
-	Commit  bool
-	Message string
-	Staged  []string
+	Return string
+	// Detached is the commit a detached HEAD is at, which is where a failed
+	// recording goes back to instead; empty when Return names a branch.
+	Detached string
+	Commit   bool
+	Message  string
+	Staged   []string
 	// NewTrunk names a parent that recording this edge makes a root of the
 	// graph, which only the repository's default branch may become here.
 	NewTrunk string
@@ -99,6 +103,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.ParentSource == other.ParentSource &&
 		p.At == other.At &&
 		p.Return == other.Return &&
+		p.Detached == other.Detached &&
 		p.Commit == other.Commit &&
 		p.Message == other.Message &&
 		p.NewTrunk == other.NewTrunk &&
@@ -119,15 +124,19 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		return Plan{}, fmt.Errorf("create is not fully configured")
 	}
 	plan := Plan{Name: request.Name, Parent: request.Parent, ParentSource: "--parent", Commit: request.Commit, Message: request.Message}
-	// Where a failed recording goes back to. A detached HEAD has no branch to
-	// go back to, and putting someone somewhere other than where they were is
-	// not a rollback.
+	// Where a failed recording goes back to: the branch checked out now, or
+	// the commit a detached HEAD is at, which detaching again restores.
 	current, err := s.Git.CurrentBranch(ctx)
 	if err != nil {
-		return plan.refuse(repair.Note{
-			Reason: "HEAD is detached, so there is no branch to return to if recording fails",
-			Ways:   []repair.Step{{Effect: "switch to a branch first"}},
-		}), nil
+		if plan.Parent == "" {
+			return plan.refuse(repair.Note{
+				Reason: "HEAD is detached, so there is no branch to build on",
+				Ways:   []repair.Step{{Effect: "pass --parent with the branch to build on"}},
+			}), nil
+		}
+		if plan.Detached, err = s.Git.Resolve(ctx, "HEAD"); err != nil {
+			return Plan{}, err
+		}
 	}
 	plan.Return = current
 	if plan.Parent == "" {
@@ -165,6 +174,17 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.At = at
+	if plan.Detached != "" && plan.Detached != at {
+		// Switching away from a detached HEAD leaves behind whatever only it
+		// reaches, and the parent's tip is the one commit known to lose nothing.
+		return plan.refuse(repair.Note{
+			Reason: fmt.Sprintf("HEAD is detached somewhere other than %s's tip, so switching to %s could leave commits behind", plan.Parent, plan.Name),
+			Ways: []repair.Step{
+				{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip, then rerun"},
+				{Effect: "switch to a branch first"},
+			},
+		}), nil
+	}
 	if blocked, refused := refuseRecord(plan, discovery); refused {
 		return blocked, nil
 	}
@@ -318,13 +338,26 @@ func (s Service) record(ctx context.Context, plan Plan) error {
 // has no commits of its own yet. It says what it could not undo rather than
 // hiding it behind the error that caused it.
 func (s Service) rollback(ctx context.Context, plan Plan, cause error) error {
-	if err := s.Git.SwitchExisting(ctx, plan.Return); err != nil {
-		return &RolledBack{Branch: plan.Name, Cause: cause, Left: fmt.Errorf("could not switch back to %s: %w", plan.Return, err)}
+	if err := s.switchBack(ctx, plan); err != nil {
+		return &RolledBack{Branch: plan.Name, Cause: cause, Left: err}
 	}
 	if err := s.Git.DeleteBranch(ctx, plan.Name); err != nil {
 		return &RolledBack{Branch: plan.Name, Cause: cause, Left: fmt.Errorf("could not delete %s: %w", plan.Name, err)}
 	}
 	return &RolledBack{Branch: plan.Name, Cause: cause}
+}
+
+func (s Service) switchBack(ctx context.Context, plan Plan) error {
+	if plan.Detached != "" {
+		if err := s.Git.SwitchDetached(ctx, plan.Detached); err != nil {
+			return fmt.Errorf("could not detach again at %s: %w", plan.Detached, err)
+		}
+		return nil
+	}
+	if err := s.Git.SwitchExisting(ctx, plan.Return); err != nil {
+		return fmt.Errorf("could not switch back to %s: %w", plan.Return, err)
+	}
+	return nil
 }
 
 // RolledBack is a recording that failed after the branch was created. Left is

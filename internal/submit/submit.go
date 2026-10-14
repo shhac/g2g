@@ -127,7 +127,7 @@ func (p Plan) misbased() []githubstack.PathStep {
 // -- every pull request aimed at the trunk, say -- and wrong for one left on a
 // branch the stack no longer has, after the branch below it was deleted.
 func (p Plan) OffStack() []githubstack.PathStep {
-	inStack := append(append([]string{p.Snapshot.Base}, p.Snapshot.Ancestry...), p.Snapshot.Branches...)
+	inStack := slices.Concat([]string{p.Snapshot.Base}, p.Snapshot.Ancestry, p.Snapshot.Branches)
 	off := make([]githubstack.PathStep, 0)
 	for _, step := range p.misbased() {
 		if !slices.Contains(inStack, step.Resolution.Open.Base) {
@@ -211,27 +211,32 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 // taking it in asked for a title it could not use and a pull request GitHub
 // refuses. The target itself is never left out, because naming it is asking.
 func (s Service) waiting(ctx context.Context, snapshot stack.Snapshot, prs []githubstack.PullRequest) ([]string, error) {
-	resolutions := githubstack.ResolveHeads(prs)
 	target := slices.Index(snapshot.Branches, snapshot.Target)
 	if target < 0 {
 		return nil, nil
 	}
+	resolutions := githubstack.ResolveHeads(prs)
 	top := len(snapshot.Branches)
-	for top-1 > target {
+	for ; top-1 > target; top-- {
 		branch := snapshot.Branches[top-1]
-		if resolutions[branch].Open != nil {
-			break
-		}
-		empty, err := s.Git.IsAncestor(ctx, branch, snapshot.SitsOn(branch))
+		idle, err := s.idle(ctx, snapshot, resolutions[branch], branch)
 		if err != nil {
 			return nil, err
 		}
-		if !empty {
+		if !idle {
 			break
 		}
-		top--
 	}
 	return slices.Clone(snapshot.Branches[top:]), nil
+}
+
+// idle reports a branch with nothing to submit: no open pull request, and no
+// commit beyond what it sits on.
+func (s Service) idle(ctx context.Context, snapshot stack.Snapshot, resolution githubstack.Resolution, branch string) (bool, error) {
+	if resolution.Open != nil {
+		return false, nil
+	}
+	return s.Git.IsAncestor(ctx, branch, snapshot.SitsOn(branch))
 }
 
 // narrowed is the selection without its last count branches. A submitted stack

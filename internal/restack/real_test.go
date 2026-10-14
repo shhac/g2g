@@ -523,6 +523,44 @@ func TestRestackStartsAFastForwardedChildWhereItMeetsItsParent(t *testing.T) {
 	}
 }
 
+// The common shape of the same thing: the trunk has moved, so the parent is
+// replayed in the same plan, and the child was fast-forwarded along it before
+// its own commit. The child's range has to start at the parent's tip it holds,
+// or it offers the parent's fix again on top of the parent's replay of it.
+func TestRestackStartsAFastForwardedChildAtItsParentWhileBothReplay(t *testing.T) {
+	r := newRealStack(t)
+	r.branch("synthetic-parent", "synthetic-main", "parent.txt", "parent")
+	r.Run("switch", "-qc", "synthetic-child")
+	r.track("synthetic-child", "synthetic-parent")
+	r.Run("switch", "-q", "synthetic-parent")
+	r.Commit("synthetic fix", "fix.txt", "fixed")
+	met := r.Revision("synthetic-parent")
+	r.Run("switch", "-q", "synthetic-child")
+	r.Run("merge", "-q", "--ff-only", "synthetic-parent")
+	r.Commit("synthetic child", "child.txt", "child")
+	r.Run("switch", "-q", "synthetic-main")
+	r.Commit("synthetic main moves", "main.txt", "main")
+
+	plan := r.plan(graph.Selection{Branch: "synthetic-child", Scope: graph.ScopePath})
+	var child *Step
+	for index := range plan.Steps {
+		if plan.Steps[index].Branch == "synthetic-child" {
+			child = &plan.Steps[index]
+		}
+	}
+	if len(plan.Steps) != 2 || child == nil || child.ForkPoint != met {
+		t.Fatalf("the child's replay does not start at the parent's tip it holds: %+v", plan.Steps)
+	}
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+	if got := r.own("synthetic-main", "synthetic-parent"); got != 2 || r.Try("merge-base", "--is-ancestor", "synthetic-main", "synthetic-parent") != nil {
+		t.Errorf("synthetic-parent carries %d commits above the moved trunk, want its two", got)
+	}
+	r.builtOn("synthetic-parent", "synthetic-child")
+}
+
 // Rewriting the parent leaves the child holding commits the parent no longer
 // has, so where the two meet now is below the recorded fork point, and the
 // recorded one still stands.

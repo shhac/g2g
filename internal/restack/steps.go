@@ -47,18 +47,9 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
 			return nil, err
 		}
-		// Old records can start below parent commits the branch already
-		// contains: a trunk whose local ref was stale when tracked, an
-		// upstream pull has fetched since, or a child fast-forwarded along its
-		// parent. Those commits belong to the parent. Only a forward move is
-		// taken, so a parent that was rewritten keeps the recorded range.
-		advanced := false
-		if forks, ok := s.Git.(graph.MergeBases); ok && !onto.Reparents() {
-			later, err := graph.LaterFork(ctx, s.Git, forks, base, head, resolvedFork)
-			if err != nil {
-				return nil, err
-			}
-			advanced, resolvedFork = later != resolvedFork, later
+		resolvedFork, advanced, err := s.laterFork(ctx, onto, base, head, resolvedFork)
+		if err != nil {
+			return nil, err
 		}
 		if resolvedFork == base && !rewriting[parent] && !advanced {
 			// Sitting where it belongs, under a parent that is not moving.
@@ -97,6 +88,25 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		steps = append(steps, step)
 	}
 	return steps, nil
+}
+
+// laterFork is fork moved up to where base and head meet, and whether it
+// moved. Old records can start below parent commits the branch already
+// contains: a trunk whose local ref was stale when tracked, an upstream pull
+// has fetched since, or a child fast-forwarded along its parent. Those commits
+// belong to the parent. Only a forward move is taken, so a parent that was
+// rewritten keeps the recorded range, and an explicit --onto keeps the range
+// it asked to move.
+func (s Service) laterFork(ctx context.Context, onto Onto, base, head, fork string) (string, bool, error) {
+	forks, ok := s.Git.(graph.MergeBases)
+	if !ok || onto.Reparents() {
+		return fork, false, nil
+	}
+	later, err := graph.LaterFork(ctx, s.Git, forks, base, head, fork)
+	if err != nil {
+		return "", false, err
+	}
+	return later, later != fork, nil
 }
 
 // resolveStep turns the names in an edge into the three objects a rewrite is

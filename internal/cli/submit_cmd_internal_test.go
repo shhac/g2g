@@ -49,3 +49,40 @@ func TestASubmissionWithoutASpecDependsOnWhatExists(t *testing.T) {
 		})
 	}
 }
+
+// After the branch below was deleted, the pull request above still points at
+// it. submit leaves an existing base alone, and its preview says so by name,
+// with the retarget that moves it.
+func TestSubmitNamesAPullRequestBasedOffTheStack(t *testing.T) {
+	plan := submit.Plan{
+		Snapshot: stack.Snapshot{Target: "synthetic-b", Base: "synthetic-main", Branches: []string{"synthetic-b"}},
+		Existing: []githubstack.PullRequest{{Number: 7, Head: "synthetic-b", Base: "synthetic-deleted", State: "OPEN"}},
+	}
+	view := submitView(plan, "", false, false, false)
+	said := ""
+	for _, note := range view.Notes {
+		said += note.Text + "\n"
+	}
+	for _, want := range []string{"#7 (synthetic-b) is based on synthetic-deleted, where the stack records synthetic-main", "g2g github retarget --branch synthetic-b --scope stack --apply"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("the preview does not say %q:\n%s", want, said)
+		}
+	}
+}
+
+// A base somebody chose inside the stack -- every pull request aimed at the
+// trunk -- is preserved without comment, as it always was.
+func TestSubmitSaysNothingOfABaseChosenInsideTheStack(t *testing.T) {
+	plan := submit.Plan{
+		Snapshot: stack.Snapshot{Target: "synthetic-b", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
+		Existing: []githubstack.PullRequest{
+			{Number: 6, Head: "synthetic-a", Base: "synthetic-main", State: "OPEN"},
+			{Number: 7, Head: "synthetic-b", Base: "synthetic-main", State: "OPEN"},
+		},
+	}
+	for _, note := range submitView(plan, "", false, false, false).Notes {
+		if strings.Contains(note.Text, "retarget") {
+			t.Errorf("the preview flags a base inside the stack: %q", note.Text)
+		}
+	}
+}

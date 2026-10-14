@@ -54,6 +54,17 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		return view.refusing(plan.Push.Repair)
 	}
 	view = view.note("Publishes the selected branches through one atomic, lease-protected push; existing PR bases are preserved.", severityNeutral)
+	// Preserved is the right default -- a base somebody chose stays chosen --
+	// and the wrong silence after the branch below was deleted: the pull
+	// request stayed on a branch the stack no longer has until somebody
+	// thought to run retarget.
+	if misbased := plan.OffStack(); len(misbased) != 0 {
+		said := make([]string, 0, len(misbased))
+		for _, step := range misbased {
+			said = append(said, fmt.Sprintf("#%d (%s) is based on %s, where the stack records %s", step.Resolution.Open.Number, step.Branch, step.Resolution.Open.Base, step.ExpectedBase))
+		}
+		view = view.note(strings.Join(said, "; ")+" · submit leaves it, and "+runnable(plan.Retarget()+" --apply")+" moves it.", severityWarn)
+	}
 	if _, existingOnly := plan.ExistingSpec(); !existingOnly {
 		view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 	}

@@ -90,26 +90,60 @@ func (p Plan) Blocked() string {
 func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
 
 func (p Plan) LinkRepair() repair.Note {
+	misbased := p.misbased()
+	if len(misbased) == 0 {
+		return repair.Note{}
+	}
+	step := misbased[0]
+	return repair.Note{
+		Reason: fmt.Sprintf("linking requires PR base %s for %s, found %s", step.ExpectedBase, step.Branch, step.Resolution.Open.Base),
+		Ways: []repair.Step{
+			{Command: p.Retarget(), Effect: "align the PR bases with the selected stack"},
+			{Effect: "drop --link to preserve existing bases"},
+		},
+	}
+}
+
+// misbased is each selected branch whose open pull request is based somewhere
+// other than where the stack records it -- the branch below it, or the base.
+func (p Plan) misbased() []githubstack.PathStep {
+	misbased := make([]githubstack.PathStep, 0)
 	for step := range githubstack.Along(p.Snapshot.Base, p.Snapshot.Branches, p.Existing) {
 		if step.Classify() == githubstack.StepBaseMismatch {
-			scope := p.Snapshot.Scope
-			if scope == "" {
-				scope = stack.ScopeStack
-			}
-			command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", repair.Quote(p.Snapshot.Target), scope)
-			if p.Snapshot.Source != "" {
-				command += " --from " + string(p.Snapshot.Source)
-			}
-			return repair.Note{
-				Reason: fmt.Sprintf("linking requires PR base %s for %s, found %s", step.ExpectedBase, step.Branch, step.Resolution.Open.Base),
-				Ways: []repair.Step{
-					{Command: command, Effect: "align the PR bases with the selected stack"},
-					{Effect: "drop --link to preserve existing bases"},
-				},
-			}
+			misbased = append(misbased, step)
 		}
 	}
-	return repair.Note{}
+	return misbased
+}
+
+// OffStack is each misbased pull request whose base is not in the stack at
+// all: not the base, not a branch on the way to it, not a selected branch.
+// submit leaves an existing base alone, which is right for one somebody chose
+// -- every pull request aimed at the trunk, say -- and wrong for one left on a
+// branch the stack no longer has, after the branch below it was deleted.
+func (p Plan) OffStack() []githubstack.PathStep {
+	inStack := append(append([]string{p.Snapshot.Base}, p.Snapshot.Ancestry...), p.Snapshot.Branches...)
+	off := make([]githubstack.PathStep, 0)
+	for _, step := range p.misbased() {
+		if !slices.Contains(inStack, step.Resolution.Open.Base) {
+			off = append(off, step)
+		}
+	}
+	return off
+}
+
+// Retarget is the command that moves every misbased pull request of this
+// selection to where the stack records it.
+func (p Plan) Retarget() string {
+	scope := p.Snapshot.Scope
+	if scope == "" {
+		scope = stack.ScopeStack
+	}
+	command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", repair.Quote(p.Snapshot.Target), scope)
+	if p.Snapshot.Source != "" {
+		command += " --from " + string(p.Snapshot.Source)
+	}
+	return command
 }
 
 // ExistingSpec needs no new PR text: every selected branch already has an open

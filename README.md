@@ -940,7 +940,9 @@ before anything changed is an ordinary one.
 When every selected branch already has an open PR, `g2g submit --apply`
 publishes new commits without a spec. Existing PR bases are preserved even when
 they differ from local stack parents (for example, when every PR targets the
-trunk). Explicit `--link` requires matching bases and otherwise names
+trunk). One based on a branch the stack no longer contains -- the branch
+below it, deleted -- is named in the preview with the `g2g github retarget`
+that moves it. Explicit `--link` requires matching bases and otherwise names
 `g2g github retarget`, or offers dropping `--link` to preserve them. Missing PRs
 still require a completed spec; `--apply` without one fails with the command
 to create it.

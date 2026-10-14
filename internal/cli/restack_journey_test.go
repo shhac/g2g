@@ -198,3 +198,76 @@ func TestJourneyAnOntoWithNothingToReplayStillRecordsTheNewParent(t *testing.T) 
 	}
 	w.assertClean(w.Local)
 }
+
+// copied stack: a second stack carrying the same changes under new commits
+// lands in place of the first. Each restack of the first finds the landed
+// copies by content, so their branches move onto the trunk with nothing to
+// replay, and the branches nobody copied reach it with only their own work.
+func TestJourneyAStackWhoseCopyLandsCollapsesBranchByBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a1", "a.txt")
+	w.branchOff("synthetic-a1", "synthetic-b1", "b.txt")
+	w.branchOff("synthetic-a1", "synthetic-ca", "ca.txt")
+	w.branchOff("synthetic-b1", "synthetic-cb", "cb.txt")
+	for branch, parent := range map[string]string{"synthetic-a1": "main", "synthetic-b1": "synthetic-a1", "synthetic-ca": "synthetic-a1", "synthetic-cb": "synthetic-b1"} {
+		mustRun(t, "track", "--branch", branch, "--parent", parent, "--apply")
+	}
+	// The same diffs again under different commits, as a second author or a
+	// recreated stack would have them.
+	copyOf := func(parent, branch, name string) {
+		w.branchOff(parent, branch, name)
+		w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic copy of "+name)
+	}
+	copyOf("main", "synthetic-a2", "a.txt")
+	copyOf("synthetic-a2", "synthetic-b2", "b.txt")
+	land := func(branch string) {
+		w.git(w.Local, "switch", "-q", "main")
+		w.git(w.Local, "merge", "-q", "--squash", branch)
+		w.git(w.Local, "commit", "-qm", "synthetic squash of "+branch)
+	}
+	own := func(branch string) string {
+		return w.git(w.Local, "rev-list", "--count", "main.."+branch)
+	}
+	w.git(w.Local, "switch", "-q", "synthetic-cb")
+
+	land("synthetic-a2")
+	preview := mustRun(t, "restack", "--branch", "synthetic-a1")
+	if want := "Leaves synthetic-a1 with no commits of its own, since its work is already in its new base · g2g prune --branch synthetic-a1 forgets it once this is applied."; !strings.Contains(preview, want) {
+		t.Errorf("preview does not say what to run for the landed copy, want %q:\n%s", want, preview)
+	}
+	mustRun(t, "restack", "--branch", "synthetic-a1", "--apply")
+	w.assertClean(w.Local)
+	for branch, want := range map[string]string{"synthetic-a1": "0", "synthetic-b1": "1", "synthetic-ca": "1", "synthetic-cb": "2"} {
+		if got := own(branch); got != want {
+			t.Errorf("after the first copy landed %s has %s commits above the trunk, want %s", branch, got, want)
+		}
+	}
+
+	land("synthetic-b2")
+	preview = mustRun(t, "restack", "--branch", "synthetic-a1")
+	if want := "Leaves synthetic-a1 and synthetic-b1 with no commits of their own, since their work is already in their new base"; !strings.Contains(preview, want) {
+		t.Errorf("preview does not name both landed copies, want %q:\n%s", want, preview)
+	}
+	mustRun(t, "restack", "--branch", "synthetic-a1", "--apply")
+	w.assertClean(w.Local)
+	for branch, want := range map[string]string{"synthetic-a1": "0", "synthetic-b1": "0", "synthetic-ca": "1", "synthetic-cb": "1"} {
+		if got := own(branch); got != want {
+			t.Errorf("after both copies landed %s has %s commits above the trunk, want %s", branch, got, want)
+		}
+	}
+	w.assertHas(w.Local, "synthetic-cb", "cb.txt")
+
+	mustRun(t, "prune", "--branch", "synthetic-a1", "--apply")
+	structure := w.readStructure()
+	for _, forgotten := range []string{"synthetic-a1", "synthetic-b1"} {
+		if parent, kept := structure[forgotten]; kept {
+			t.Errorf("%s is still recorded, on %s", forgotten, parent)
+		}
+	}
+	for _, child := range []string{"synthetic-ca", "synthetic-cb"} {
+		if structure[child] != "main" {
+			t.Errorf("%s is recorded on %q, want main", child, structure[child])
+		}
+	}
+	w.assertClean(w.Local)
+}

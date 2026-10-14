@@ -638,7 +638,10 @@ be.
 Two things a restack reports rather than doing quietly:
 
 - **A branch it empties.** If everything a branch carried is already upstream
-  it collapses onto its base and its pull request would show no changes.
+  it collapses onto its base and its pull request would show no changes. The
+  preview names `g2g prune` for it, which forgets it and records what sat on
+  it where the replay left it. This holds even when the work landed under
+  other commits, such as a copy of the stack opened and merged instead.
 - **Commits the parent dropped.** They are dropped from the child too by
   default, and the preview names each one by branch, short id and subject.
   Where every one of them was genuinely removed rather than rewritten,

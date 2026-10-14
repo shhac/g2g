@@ -106,6 +106,23 @@ refuses again.
 first. Your commits are in the trunk under different object ids. Replaying drops
 them by content rather than applying them twice.
 
+**copied stack.** `main ← A1 ← B1` with more branches above, and the same
+changes are opened again as `main ← A2 ← B2` under new commits — a second
+author, or a stack recreated rather than restacked. A2 lands, then B2. Nothing
+in the first stack names the second, and none of its commits are in the trunk.
+
+Each restack of the first stack asks by content, so A1 collapses onto the trunk
+once A2 has landed and B1 once B2 has; whatever sat on them replays with only
+its own work, and restacking only once, after both, ends in the same place.
+The preview names `g2g prune` for the collapsed branches, which forgets them
+and records what sat on them on the trunk. It used to suggest `untrack`, which
+would have stranded those branches. This depends on the copy being exact: a
+review fix made only on A2 leaves A1 with work of its own, and replaying that
+conflicts with A2's version of it.
+
+The pull requests for A1 and B1 are still open on GitHub, and nothing here
+closes them. Where A2 and B2 are recorded here too, `pull --prune` forgets them.
+
 ## Somebody else moved *your* branch
 
 **friendly-fixer.** A reviewer pushes a fix straight onto a branch you own.

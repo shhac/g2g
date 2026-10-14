@@ -107,12 +107,17 @@ func orphanList(plan restack.Plan) string {
 	return ": " + dropList(plan.Subjects, orphans)
 }
 
+// emptiedNote names the command the apply will suggest next. It used to say
+// untrack, which strands whatever sits on the branch; prune forgets it and
+// records what sat on it where the replay left it.
 func emptiedNote(view stackView, plan restack.Plan) stackView {
 	emptied := plan.Emptied()
 	if len(emptied) == 0 {
 		return view
 	}
-	return view.note("Leaves "+words.List(emptied)+" with no commits of its own · its content is already upstream, so consider "+runnable("g2g untrack")+".", severityWarn)
+	own := words.Pick(len(emptied), "its", "their")
+	prune := selectedIn(plan.Discovery).next(pruneCommand)
+	return view.note("Leaves "+words.List(emptied)+" with no commits of "+own+" own, since "+own+" work is already in "+own+" new base · "+runnable(prune)+" forgets "+words.Pick(len(emptied), "it", "them")+" once this is applied.", severityNeutral)
 }
 
 // engineNote is the informed-consent line. A rewrite that cannot apply cleanly

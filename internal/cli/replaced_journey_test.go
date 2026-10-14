@@ -159,3 +159,70 @@ func TestJourneyPushRefusesOverAColleaguesReplayItHasNotTaken(t *testing.T) {
 	}
 	s.assertClean(s.Local)
 }
+
+// Alice resolves her replay and then drops y's replay too. x is replaced and
+// y is dropped, on one branch: push publishes both, naming each for what it
+// is, rather than reading x's replay as a drop or y's drop as a replay.
+func TestJourneyPushPublishesAReplayAndADropTogether(t *testing.T) {
+	s := newDropWorld(t)
+	s.resolveReplay(s.Local)
+	s.git(s.Local, "reset", "-q", "--hard", "synthetic-b~1")
+
+	preview := mustRun(t, "push")
+	for _, want := range []string{"drops 1 published commit you dropped here", "1 commit changed while resolving the replay"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("the push preview does not say %q:\n%s", want, preview)
+		}
+	}
+	for _, line := range strings.Split(preview, "\n") {
+		switch {
+		case strings.HasPrefix(line, "Drops"):
+			if !strings.Contains(line, "synthetic y.txt") || strings.Contains(line, "synthetic x.txt") {
+				t.Errorf("the drop line names the wrong commit: %s", line)
+			}
+		case strings.HasPrefix(line, "Replaces"):
+			if !strings.Contains(line, "synthetic x.txt") || strings.Contains(line, "synthetic y.txt") {
+				t.Errorf("the replay line names the wrong commit: %s", line)
+			}
+		}
+	}
+	mustRun(t, "push", "--apply")
+	if s.tip(s.Remote, "synthetic-b") != s.tip(s.Local, "synthetic-b") {
+		t.Error("the remote does not hold Alice's B")
+	}
+	if got := s.git(s.Remote, "show", "synthetic-b:x.txt"); got != "resolved" {
+		t.Errorf("the remote's x.txt = %q, want the resolution", got)
+	}
+	s.assertClean(s.Local)
+}
+
+// Bob resolved the conflicts and published. Alice keeping x, which Bob
+// replaced, would keep x beside Bob's replay of it, so pull refuses rather
+// than take either, and a plain pull afterwards still takes Bob's replay.
+func TestJourneyPullKeepingACommitAColleagueReplayedRefuses(t *testing.T) {
+	s := newDropWorld(t)
+	x := s.tip(s.Local, "synthetic-b~1")
+	before := s.tip(s.Local, "synthetic-b")
+	s.asBob()
+	s.resolveReplay(s.Other)
+	mustRun(t, "push", "--apply")
+
+	s.asAlice()
+	stdout, _, err := run(t, "pull", "--keep", x[:12], "--apply")
+	if err == nil || cli.StoppedPartWayForTest(err) {
+		t.Fatalf("pull --keep took a side over Bob's replay of the commit kept: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "dropped or replayed") || !strings.Contains(stdout, "--take published") {
+		t.Errorf("the refusal does not name the replay and the way to take it:\n%s", stdout)
+	}
+	if s.tip(s.Local, "synthetic-b") != before {
+		t.Error("a refused pull moved Alice's B")
+	}
+	s.assertClean(s.Local)
+
+	mustRun(t, "pull", "--apply")
+	if s.tip(s.Local, "synthetic-b") != s.tip(s.Remote, "synthetic-b") {
+		t.Error("a plain pull afterwards did not take Bob's replay")
+	}
+	s.assertClean(s.Local)
+}

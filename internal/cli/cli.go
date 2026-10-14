@@ -254,7 +254,7 @@ func NewWithOptions(options Options) *cobra.Command {
 		root.AddCommand(newSubmit(options.Submit, options.Comment, completions, guard, presentation))
 	}
 	if options.Land.Ready() {
-		root.AddCommand(newLand(options.Land, options.Comment, completions, guard, presentation))
+		root.AddCommand(newLand(options.Land, options.Comment, options.Restack, completions, guard, presentation))
 	}
 	if options.Link.Ready() {
 		github = append(github,

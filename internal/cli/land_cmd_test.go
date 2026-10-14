@@ -140,7 +140,7 @@ func TestPorcelainNumbersEachStepOfTheRecipe(t *testing.T) {
 // wrong should never get as far as discovery.
 func landCommand(t *testing.T, args ...string) error {
 	t.Helper()
-	cmd := newLand(land.Service{}, comment.Service{}, testCompletions(), nil, Presentation{})
+	cmd := newLand(land.Service{}, comment.Service{}, nil, testCompletions(), nil, Presentation{})
 	cmd.SetArgs(args)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -190,10 +190,10 @@ func TestADescentThatChangedNothingIsAFailureNotAStop(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var out bytes.Buffer
-			cmd := newLand(land.Service{}, comment.Service{}, testCompletions(), nil, Presentation{})
+			cmd := newLand(land.Service{}, comment.Service{}, nil, testCompletions(), nil, Presentation{})
 			cmd.SetOut(&out)
 
-			claimed, err := landInterrupted(cmd, test.stopped, Presentation{})
+			claimed, err := landInterrupted(cmd, test.stopped, nil, Presentation{})
 
 			if claimed != test.claimed || wasStopped(err) != test.claimed {
 				t.Errorf("claimed = %t, stopped = %t; want both %t", claimed, wasStopped(err), test.claimed)
@@ -207,7 +207,7 @@ func TestADescentThatChangedNothingIsAFailureNotAStop(t *testing.T) {
 // told a script the whole stack had landed.
 func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
 	var out, diagnostics bytes.Buffer
-	cmd := newLand(land.Service{}, comment.Service{}, testCompletions(), nil, Presentation{})
+	cmd := newLand(land.Service{}, comment.Service{}, nil, testCompletions(), nil, Presentation{})
 	cmd.SetOut(&out)
 	cmd.SetErr(&diagnostics)
 

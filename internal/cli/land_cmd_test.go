@@ -239,3 +239,22 @@ func TestAStoppedDescentCarriesAStatusOfItsOwn(t *testing.T) {
 		t.Errorf("stoppedExitCode = %d, want its own", stoppedExitCode)
 	}
 }
+
+// The summary says what the cleanups it was asked for did, and never that a
+// branch kept by a flag was removed.
+func TestLandedNoticeSaysOnlyWhatItRemoved(t *testing.T) {
+	for _, test := range []struct {
+		local, remote bool
+		says, never   string
+	}{
+		{true, true, "forgotten and removed.", "kept"},
+		{true, false, "removed here; synthetic-remote keeps its copies", "local branches are kept"},
+		{false, true, "removed from synthetic-remote; the local branches are kept", "removed here"},
+		{false, false, "the branches themselves are kept, here and on synthetic-remote", "removed"},
+	} {
+		got := landedNotice(land.Options{DeleteLocal: test.local, DeleteRemote: test.remote, Remote: "synthetic-remote"})
+		if !strings.Contains(got, test.says) || strings.Contains(got, test.never) {
+			t.Errorf("landedNotice(local %t, remote %t) = %q", test.local, test.remote, got)
+		}
+	}
+}

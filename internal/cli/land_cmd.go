@@ -133,9 +133,27 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 			preview:  "Rerun with --apply to land this stack.",
 			noOp:     "Every branch here has already landed. Nothing to do.",
 			applied:  "Landed.",
-			changed:  "Pull requests were merged and branches removed.",
+			changed:  landedNotice(options),
 			recovery: "Some branches may already have merged · run g2g github status to see which.",
 		},
+	}
+}
+
+// landedNotice says what a finished descent did to the branches it landed,
+// from the cleanups it was asked for. It said "branches removed" whatever
+// --no-delete-local and --no-delete-remote had kept, which read as the work
+// being gone from somewhere it was not. Forgetting is the one cleanup that
+// always happens, so it is always said.
+func landedNotice(options land.Options) string {
+	switch {
+	case options.DeleteLocal && options.DeleteRemote:
+		return "Pull requests were merged, and their branches forgotten and removed."
+	case options.DeleteLocal:
+		return "Pull requests were merged, and their branches forgotten and removed here; " + options.Remote + " keeps its copies."
+	case options.DeleteRemote:
+		return "Pull requests were merged, and their branches forgotten and removed from " + options.Remote + "; the local branches are kept."
+	default:
+		return "Pull requests were merged, and their branches forgotten; the branches themselves are kept, here and on " + options.Remote + "."
 	}
 }
 

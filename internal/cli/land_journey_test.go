@@ -570,7 +570,10 @@ func TestJourneyLandCanKeepTheLocalBranches(t *testing.T) {
 	w.git(w.Local, "switch", "-q", "synthetic-a")
 	landingGitHub(t, w.Remote)
 
-	mustRun(t, "land", "--apply", "--no-delete-local")
+	done := mustRun(t, "land", "--apply", "--no-delete-local")
+	if !strings.Contains(done, "removed from origin; the local branches are kept") {
+		t.Errorf("land's summary does not say the local branch was kept:\n%s", done)
+	}
 
 	if local := w.git(w.Local, "branch", "--format=%(refname:short)"); !strings.Contains(local, "synthetic-a") {
 		t.Errorf("synthetic-a was deleted despite --no-delete-local:\n%s", local)

@@ -274,3 +274,82 @@ func TestMayHaveDroppedNeverHidesADrop(t *testing.T) {
 		})
 	}
 }
+
+// replay makes branch from base with x replayed onto it after a conflict was
+// resolved: the same author, author date and subject, a different patch.
+func (f fixture) replay(branch, base string) {
+	f.repo.Run("switch", "-qc", branch, base)
+	f.repo.Run("cherry-pick", "synthetic-b")
+	f.repo.Write("x.txt", "x, as the conflict was resolved")
+	f.repo.Run("add", "x.txt")
+	f.repo.Run("commit", "-q", "--amend", "--no-edit")
+}
+
+// A replay that resolved a conflict changed x's patch, so by content it
+// matches nothing published. It is x replayed, not x dropped and another
+// commit made, and saying the second is what refused to publish it.
+func TestACommitReplayedWithAResolvedConflictIsReplacedHere(t *testing.T) {
+	f := newFixture(t)
+	f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+	f.repo.Run("branch", "synthetic-published", "synthetic-b")
+	f.replay("synthetic-local", "synthetic-b~1")
+	got := f.classify(t, "synthetic-local", "synthetic-published", "synthetic-synced")
+	want := []Replacement{{Old: f.repo.Revision("synthetic-b"), New: f.repo.Revision("synthetic-local")}}
+	if !slices.Equal(got.ReplacedHere, want) || len(got.DroppedHere)+len(got.Mine)+len(got.New)+len(got.DroppedUpstream) != 0 {
+		t.Errorf("Classify() = %+v, want x replaced here", got)
+	}
+}
+
+// The same from the other side: somebody resolved a conflict replaying x and
+// published it.
+func TestACommitTheRemoteReplayedIsReplacedUpstream(t *testing.T) {
+	f := newFixture(t)
+	f.repo.Run("branch", "synthetic-synced", "synthetic-b")
+	f.replay("synthetic-published", "synthetic-b~1")
+	got := f.classify(t, "synthetic-b", "synthetic-published", "synthetic-synced")
+	want := []Replacement{{Old: f.repo.Revision("synthetic-b"), New: f.repo.Revision("synthetic-published")}}
+	if !slices.Equal(got.ReplacedUpstream, want) || len(got.DroppedHere)+len(got.Mine)+len(got.New)+len(got.DroppedUpstream) != 0 {
+		t.Errorf("Classify() = %+v, want x replaced upstream", got)
+	}
+}
+
+// Without a sync point there is no telling the remote's x from a reviewer's
+// amend of it, so nothing pairs and the difference stays new on both sides.
+func TestWithoutASyncPointNothingIsReplaced(t *testing.T) {
+	f := newFixture(t)
+	f.repo.Run("branch", "synthetic-published", "synthetic-b")
+	f.replay("synthetic-local", "synthetic-b~1")
+	got := f.classify(t, "synthetic-local", "synthetic-published", "")
+	if got.Replaced() || len(got.Mine) != 1 || len(got.New) != 1 {
+		t.Errorf("Classify() = %+v, want x new on both sides", got)
+	}
+}
+
+// Pairing is one to one and forward in time. A key shared by two commits on
+// either side is ambiguous, and a "replay" older than what it replaces is a
+// return to the version before somebody else's replay.
+func TestPairsMatchOnlyOneLaterCommitPerKey(t *testing.T) {
+	carried := map[string]localgit.Carried{
+		"old-a": {Key: "a", Committed: 10}, "new-a": {Key: "a", Committed: 20},
+		"old-b": {Key: "b", Committed: 10}, "new-b1": {Key: "b", Committed: 20}, "new-b2": {Key: "b", Committed: 20},
+		"old-c": {Key: "c", Committed: 30}, "new-c": {Key: "c", Committed: 20},
+		"old-d": {Key: "d", Committed: 10}, "new-e": {Key: "e", Committed: 20},
+	}
+	got := pairs([]string{"old-a", "old-b", "old-c", "old-d"}, []string{"new-a", "new-b1", "new-b2", "new-c", "new-e"}, carried)
+	if want := []Replacement{{Old: "old-a", New: "new-a"}}; !slices.Equal(got, want) {
+		t.Errorf("pairs() = %+v, want %+v", got, want)
+	}
+}
+
+// Keeping the old commit of a pair undoes the pairing: it is one more drop to
+// keep, and the version the replay made one more commit of its side.
+func TestKeepingAReplacedCommitUndoesThePair(t *testing.T) {
+	changes := Changes{ReplacedHere: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}}}
+	got, kept := changes.Keep([]string{"old"})
+	if !slices.Equal(kept, []string{"old"}) {
+		t.Errorf("kept = %v, want old", kept)
+	}
+	if !slices.Equal(got.New, []string{"old"}) || !slices.Equal(got.Mine, []string{"new"}) || !slices.Equal(got.ReplacedHere, []Replacement{{Old: "other", New: "made"}}) {
+		t.Errorf("Keep() = %+v, want old taken back, new mine, the other pair kept", got)
+	}
+}

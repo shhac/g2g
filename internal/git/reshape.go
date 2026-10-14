@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -73,6 +74,44 @@ func (c Client) Subjects(ctx context.Context, ids []string) (map[string]string, 
 		named[commit.ID] = commit.Subject
 	}
 	return named, nil
+}
+
+// Carried is what a replay carries over from a commit -- who wrote it, when,
+// and its subject -- and when the commit itself was made. git rebase, git
+// replay and cherry-pick keep the first three and change only the patch and
+// the committer, so two commits that agree on Key are one commit replayed,
+// and the replay is the one committed no earlier.
+type Carried struct {
+	Key       string
+	Committed int64
+}
+
+// Carried reads what a replay carries over from each commit, keyed by its
+// full id, in one read.
+func (c Client) Carried(ctx context.Context, ids []string) (map[string]Carried, error) {
+	if len(ids) == 0 {
+		return map[string]Carried{}, nil
+	}
+	for _, id := range ids {
+		if err := safeRef(id); err != nil {
+			return nil, err
+		}
+	}
+	output, err := c.run(ctx, append([]string{"log", "--no-walk=unsorted", "--format=%H%x00%ct%x00%an%x00%ae%x00%at%x00%s"}, ids...)...)
+	if err != nil {
+		return nil, err
+	}
+	carried := make(map[string]Carried, len(ids))
+	for _, line := range outputLines(output) {
+		id, rest, _ := strings.Cut(line, "\x00")
+		committed, key, _ := strings.Cut(rest, "\x00")
+		at, err := strconv.ParseInt(committed, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse git log committer date %q: %w", committed, err)
+		}
+		carried[id] = Carried{Key: key, Committed: at}
+	}
+	return carried, nil
 }
 
 // Describe names each commit with its subject, in the order given, in one

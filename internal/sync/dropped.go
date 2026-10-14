@@ -49,7 +49,7 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 	if changes.Stale {
 		found.commits = append(found.commits, syncpoint.Named(syncpoint.Restored, branch, changes.New)...)
 	}
-	if !changes.Dropped() {
+	if !changes.Decides() {
 		return found, false, nil
 	}
 	moves, gone, err := s.moved(ctx, c, branch, changes.DroppedUpstream)
@@ -65,8 +65,14 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 // Each side's drop is decided on its own, and a drop meeting other work on
 // the same branch is refused rather than resolved: taking either side would
 // lose the other's.
+//
+// A commit replaced by a replay is decided as the drop it would otherwise read
+// as, on the side that replaced it, except that it is not lost: the replay
+// carries it. Here, it is push's to publish, as a drop here is, and needs
+// nothing named; upstream, it is taken with the rest of the remote's version.
 func decide(c collecting, branch, published, begins string, changes syncpoint.Changes, moves []Drop, gone []string, found verdict) verdict {
-	if len(changes.DroppedUpstream) == 0 {
+	here := len(changes.DroppedHere)+len(changes.ReplacedHere) != 0
+	if len(changes.DroppedUpstream)+len(changes.ReplacedUpstream) == 0 {
 		if len(changes.New) != 0 {
 			found.refusal = droppedHereAndNew(c, branch, changes)
 			return found
@@ -77,16 +83,19 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 		return found
 	}
 	switch {
-	case len(changes.DroppedHere) != 0:
+	case here:
 		found.refusal = droppedBothWays(c, branch, changes)
 	case len(changes.Mine) != 0:
 		found.refusal = yoursOverTheirDrop(c, branch, changes)
-	case len(changes.Shared) == 0 && len(gone) != 0:
+	case len(changes.Shared)+len(changes.ReplacedUpstream) == 0 && len(gone) != 0:
 		found.refusal = emptiedUpstream(c, branch, gone)
 	default:
 		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Dropped: gone}
 		found.begins = begins
 		found.commits = append(append(found.commits, syncpoint.Named(syncpoint.Dropped, branch, gone)...), moves...)
+		for _, replacement := range changes.ReplacedUpstream {
+			found.commits = append(found.commits, Drop{Kind: syncpoint.Replaced, Branch: branch, Commit: replacement.Old, To: replacement.New})
+		}
 	}
 	return found
 }
@@ -184,6 +193,25 @@ func (s Service) fetchedTips(ctx context.Context, c collecting, branch string) (
 	return fetched, nil
 }
 
+// leaving is the commits that left one side since the last agreement, each
+// named once: those dropped, and those replaced by a replay.
+func leaving(dropped []string, replaced []syncpoint.Replacement) []string {
+	left := slices.Clone(dropped)
+	for _, replacement := range replaced {
+		left = append(left, replacement.Old)
+	}
+	return left
+}
+
+// keepWays offers keeping the commits named, when there are any; a refusal
+// about replacements alone has nothing a --keep can usefully name.
+func keepWays(c collecting, commits []string, effect string) []repair.Step {
+	if len(commits) == 0 {
+		return nil
+	}
+	return []repair.Step{{Command: c.keepCommand(commits), Effect: effect}}
+}
+
 func listed(commits []string) string {
 	short := make([]string, 0, len(commits))
 	for _, commit := range commits {
@@ -194,24 +222,20 @@ func listed(commits []string) string {
 
 func droppedBothWays(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
-		Reason: fmt.Sprintf("%s was dropped from on both sides since the last pull or push: %s gone from %s, and %s gone from here",
-			branch, listed(changes.DroppedUpstream), c.remote, listed(changes.DroppedHere)),
-		Ways: []repair.Step{
-			{Command: c.keepCommand(changes.DroppedHere), Effect: "take " + c.remote + "'s version, keeping what you dropped as theirs"},
-			{Effect: "reconcile it yourself"},
-		},
+		Reason: fmt.Sprintf("%s was dropped from or replayed on both sides since the last pull or push: %s gone from %s, and %s gone from here",
+			branch, listed(leaving(changes.DroppedUpstream, changes.ReplacedUpstream)), c.remote, listed(leaving(changes.DroppedHere, changes.ReplacedHere))),
+		Ways: append(keepWays(c, changes.DroppedHere, "take "+c.remote+"'s version, keeping what you dropped as theirs"),
+			repair.Step{Effect: "reconcile it yourself"}),
 	}
 }
 
 func yoursOverTheirDrop(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
-		Reason: fmt.Sprintf("%s dropped %s from %s, and you have committed %s on it since: taking theirs would lose yours, and keeping yours would keep what they dropped",
-			c.remote, listed(changes.DroppedUpstream), branch, listed(changes.Mine)),
-		Ways: []repair.Step{
-			{Command: c.keepCommand(changes.DroppedUpstream), Effect: "keep what " + c.remote + " dropped, with your commits on it"},
-			{Command: c.takeCommand, Effect: "take " + c.remote + "'s version and discard yours"},
-			{Effect: "drop them yourself with git rebase -i, then pull"},
-		},
+		Reason: fmt.Sprintf("%s dropped or replayed %s on %s, and you have committed %s on it since: taking theirs would lose yours, and keeping yours would keep what they replaced",
+			c.remote, listed(leaving(changes.DroppedUpstream, changes.ReplacedUpstream)), branch, listed(changes.Mine)),
+		Ways: append(keepWays(c, changes.DroppedUpstream, "keep what "+c.remote+" dropped, with your commits on it"),
+			repair.Step{Command: c.takeCommand, Effect: "take " + c.remote + "'s version and discard yours"},
+			repair.Step{Effect: "rebase your commits onto theirs yourself, then pull"}),
 	}
 }
 
@@ -228,12 +252,10 @@ func emptiedUpstream(c collecting, branch string, gone []string) *repair.Note {
 
 func droppedHereAndNew(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
-		Reason: fmt.Sprintf("you dropped %s from %s, and %s has %s on it you do not: taking theirs would put back what you dropped",
-			listed(changes.DroppedHere), branch, c.remote, listed(changes.New)),
-		Ways: []repair.Step{
-			{Command: c.keepCommand(changes.DroppedHere), Effect: "take theirs, keeping what you dropped"},
-			{Effect: "reconcile it yourself"},
-		},
+		Reason: fmt.Sprintf("you dropped or replayed %s on %s, and %s has %s on it you do not: taking theirs would put back what you replaced",
+			listed(leaving(changes.DroppedHere, changes.ReplacedHere)), branch, c.remote, listed(changes.New)),
+		Ways: append(keepWays(c, changes.DroppedHere, "take theirs, keeping what you dropped"),
+			repair.Step{Effect: "reconcile it yourself"}),
 	}
 }
 
@@ -294,15 +316,19 @@ func (s Service) describe(ctx context.Context, plan Plan) (map[string]string, er
 }
 
 // strictly is what --strict refuses on top of what pull refuses anyway: a
-// commit this pull would drop, one it would put back after a reset to a stale
-// tracking ref, and a branch that differs from the remote with no sync point
-// to say whose the difference is. A move, a kept commit and a drop left for
+// commit this pull would drop, one it would replace with the remote's replay
+// of it -- a changed patch is a change to what the branch holds -- one it
+// would put back after a reset to a stale tracking ref, and a branch that
+// differs from the remote with no sync point to say whose the difference is. A move, a kept commit and a drop left for
 // push are not refused: none of them is pull changing what a branch holds
 // behind anybody's back.
 func strictly(plan Plan, unsynced []string) repair.Note {
 	reasons := make([]string, 0, 3)
 	if dropped := syncpoint.Of(plan.Commits, syncpoint.Dropped); len(dropped) != 0 {
 		reasons = append(reasons, "it would drop "+dropNames(dropped))
+	}
+	if replaced := syncpoint.Of(plan.Commits, syncpoint.Replaced); len(replaced) != 0 {
+		reasons = append(reasons, "it would take "+remoteName(plan.Remote)+"'s replay of "+dropNames(replaced)+", whose patch changed")
 	}
 	if restored := syncpoint.Of(plan.Commits, syncpoint.Restored); len(restored) != 0 {
 		reasons = append(reasons, "it would put back "+dropNames(restored)+", missing only after a reset to an out-of-date tracking ref")

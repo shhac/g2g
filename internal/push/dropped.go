@@ -48,25 +48,33 @@ func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, bra
 	changes, err := syncpoint.Assess(ctx, assessor, latest, branch, syncpoint.Branch{
 		Local: local, Remote: tip, LocalParent: parent, PublishedParent: publishedParent,
 	})
-	if err != nil || !changes.Dropped() {
+	if err != nil || !changes.Decides() {
 		return Publication{}, changes, false, err
 	}
-	ours := len(changes.Mine) + len(changes.DroppedUpstream)
+	ours := len(changes.Mine) + len(changes.DroppedUpstream) + len(changes.ReplacedHere)
+	replaced := len(changes.ReplacedHere)
 	switch {
 	case len(changes.DroppedUpstream) != 0:
-		return Publication{Standing: Restoring, Ours: ours, Theirs: len(changes.New), Dropped: len(changes.DroppedUpstream)}, changes, true, nil
-	case len(changes.New) != 0:
-		// Somebody else's commit on top of a drop of this clone's: still a
-		// divergence, and still refused.
-		return Publication{Standing: Diverged, Ours: ours, Theirs: len(changes.New) + len(changes.DroppedHere)}, changes, true, nil
-	case len(changes.Shared) == 0:
+		return Publication{Standing: Restoring, Ours: ours, Theirs: len(changes.New) + len(changes.ReplacedUpstream), Dropped: len(changes.DroppedUpstream)}, changes, true, nil
+	case len(changes.New)+len(changes.ReplacedUpstream) != 0:
+		// Somebody else's commit on top of a drop or a replay of this
+		// clone's, or a replay of theirs this clone has not taken: still a
+		// divergence, and still refused. pull takes a replay of theirs.
+		return Publication{Standing: Diverged, Ours: ours, Theirs: len(changes.New) + len(changes.ReplacedUpstream) + len(changes.DroppedHere)}, changes, true, nil
+	case len(changes.Shared)+replaced == 0:
 		// Every commit of the branch's own gone: that is a branch emptied or
 		// made again, not one a commit was dropped from, and pull refuses
 		// the same thing from the other side. The comparison push had before
-		// refuses it, naming the replacement for whoever means it.
+		// refuses it, naming the replacement for whoever means it. A commit
+		// replayed is not gone: its replay is still the branch's own.
 		return Publication{}, syncpoint.Changes{}, false, nil
+	case len(changes.DroppedHere) != 0:
+		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere), Replaced: replaced}, changes, true, nil
 	default:
-		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere)}, changes, true, nil
+		// Only replays of commits both sides agreed on: the branch was
+		// rewritten, as a restack does, with some patches changed while a
+		// conflict was resolved. Nothing published is anybody else's.
+		return Publication{Standing: Rewritten, Ours: ours, Replaced: replaced}, changes, true, nil
 	}
 }
 
@@ -75,7 +83,7 @@ type Drop = syncpoint.Drop
 
 // drops lists every commit the sync points said was dropped, branch by
 // branch: what this push removes, what it moves between two of its
-// branches, and what it would put back.
+// branches, what it replaces with a replay of it, and what it would put back.
 func (s Service) drops(ctx context.Context, branches []string, changed map[string]syncpoint.Changes) ([]Drop, error) {
 	commits := make([]Drop, 0)
 	for _, branch := range branches {
@@ -91,6 +99,9 @@ func (s Service) drops(ctx context.Context, branches []string, changed map[strin
 				kind = syncpoint.Moved
 			}
 			commits = append(commits, Drop{Kind: kind, Branch: branch, Commit: commit, To: to})
+		}
+		for _, replacement := range changes.ReplacedHere {
+			commits = append(commits, Drop{Kind: syncpoint.Replaced, Branch: branch, Commit: replacement.Old, To: replacement.New})
 		}
 	}
 	return syncpoint.Grouped(commits), nil

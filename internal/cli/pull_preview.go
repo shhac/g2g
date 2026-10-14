@@ -56,6 +56,11 @@ func dropNotes(view stackView, plan syncer.Plan) stackView {
 	if moved := of(syncpoint.Moved); len(moved) != 0 {
 		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", words.Count(len(moved), "commit", "commits"), plan.Remote, dropList(plan.Subjects, moved)), severityNeutral)
 	}
+	if replaced := of(syncpoint.Replaced); len(replaced) != 0 {
+		view = view.note(fmt.Sprintf("Takes %s's %s of %s, replayed there with a changed patch: %s.",
+			plan.Remote, words.Pick(len(replaced), "version", "versions"), words.Count(len(replaced), "commit", "commits"),
+			dropList(plan.Subjects, replaced)), severityWarn)
+	}
 	if kept := of(syncpoint.Kept); len(kept) != 0 {
 		view = view.note(fmt.Sprintf("Keeps %s, as asked: %s.", words.Count(len(kept), "commit", "commits"), dropList(plan.Subjects, kept)), severityNeutral)
 	}

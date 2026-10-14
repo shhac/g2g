@@ -24,6 +24,10 @@ type Publication struct {
 	// one side: what Dropping removes from the remote, or what Restoring
 	// would put back on it.
 	Dropped int
+	// Replaced is how many published commits a Rewritten or Dropping branch
+	// replaces with a replay of them whose patch changed, as resolving a
+	// conflict changes it.
+	Replaced int
 	// CarriedBy names a branch stacked on this one that already holds the
 	// remote's tip: this branch was moved back by hand past commits its child
 	// still carries, so the remote being ahead is not somebody else's work to
@@ -66,7 +70,9 @@ const (
 	// Rewritten means the published version is not an ancestor of the branch
 	// and yet holds nothing the branch lacks, by content: the branch was
 	// replayed since it was pushed. Publishing replaces the old version and
-	// loses nothing, which is the ordinary state after a restack.
+	// loses nothing, which is the ordinary state after a restack. A commit
+	// whose replay resolved a conflict holds what it held under a changed
+	// patch, so the sync point counts it in Replaced rather than as missing.
 	Rewritten
 	// Dropping means the remote holds commits this branch dropped since the
 	// two last agreed, and nothing else it lacks: publishing removes them,
@@ -147,7 +153,7 @@ func compare(ctx context.Context, git Comparer, remote string, branches []string
 	changed := make(map[string]syncpoint.Changes, len(branches))
 	for index, branch := range branches {
 		publishing[branch] = results[index]
-		if changes[index].Dropped() || changes[index].Unsynced {
+		if changes[index].Decides() || changes[index].Unsynced {
 			changed[branch] = changes[index]
 		}
 	}

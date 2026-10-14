@@ -143,3 +143,37 @@ func TestDescribeNamesEachCommitInTheOrderGiven(t *testing.T) {
 		t.Errorf("Describe(nil) = %v, %v, want nothing asked", none, err)
 	}
 }
+
+// A replay keeps who wrote a commit, when and its subject even where it had
+// to change the patch, so the same commit replayed onto another base answers
+// the same, and a different commit does not.
+func TestCarriedIsWhatAReplayKeeps(t *testing.T) {
+	repo, client := publishedRepo(t)
+	original := repo.Revision("synthetic-work")
+	repo.Run("switch", "-qc", "synthetic-elsewhere", "synthetic-main")
+	repo.Commit("synthetic other", "local.txt", "something else entirely")
+	if err := repo.Try("cherry-pick", original); err == nil {
+		t.Fatal("cherry-pick applied cleanly, want the conflict a resolved replay has")
+	}
+	repo.Write("local.txt", "resolved")
+	repo.Run("add", "local.txt")
+	repo.Run("-c", "core.editor=true", "cherry-pick", "--continue")
+	replayed, other := repo.Revision("synthetic-elsewhere"), repo.Revision("synthetic-elsewhere~1")
+
+	carried, err := client.Carried(context.Background(), []string{original, replayed, other})
+	if err != nil {
+		t.Fatalf("Carried() error = %v", err)
+	}
+	if carried[original].Key == "" || carried[original].Key != carried[replayed].Key {
+		t.Errorf("Carried() original %+v, replayed %+v, want the same key", carried[original], carried[replayed])
+	}
+	if carried[other].Key == carried[original].Key {
+		t.Errorf("Carried() named a different commit %+v the same as the replayed one", carried[other])
+	}
+	if carried[replayed].Committed == 0 || carried[replayed].Committed < carried[original].Committed {
+		t.Errorf("Carried() committed original %d, replayed %d, want the replay no earlier", carried[original].Committed, carried[replayed].Committed)
+	}
+	if none, err := client.Carried(context.Background(), nil); err != nil || len(none) != 0 {
+		t.Errorf("Carried(nil) = %v, %v, want nothing asked", none, err)
+	}
+}

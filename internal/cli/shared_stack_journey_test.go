@@ -152,10 +152,11 @@ func TestJourneySharedStackAConflictingPullCanBeContinued(t *testing.T) {
 		t.Error("the continued replay did not build the stack in order")
 	}
 	// Resolving rewrote Bob's commit, so his version is no longer in hers by
-	// content. She pulled it, so it is a commit she had and replaced: push
-	// publishes the resolution and names Bob's original as dropped.
+	// content. She pulled it, so it is a commit she had and replayed: push
+	// publishes the resolution and names Bob's original as replaced by it,
+	// not as dropped.
 	preview := mustRun(t, "push")
-	if !strings.Contains(preview, "Drops 1 published commit") || !strings.Contains(preview, "synthetic shared.txt") {
+	if !strings.Contains(preview, "Replaces 1 published commit") || !strings.Contains(preview, "synthetic shared.txt") || strings.Contains(preview, "Drops") {
 		t.Errorf("the push preview does not name the commit the resolution replaces:\n%s", preview)
 	}
 	mustRun(t, "push", "--apply")

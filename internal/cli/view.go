@@ -62,8 +62,9 @@ type stackView struct {
 
 // stackCommit is one commit a run names, and what happens to it. Kind is one
 // of the values a consumer switches on: "dropped" (by this run), "moved" (to
-// To), "kept", "left" (a drop for push to publish), "restored" (put back after
-// a stale reset), "restoring" (one push refuses to put back).
+// the branch To), "replaced" (by the commit To, a replay of it whose patch
+// changed), "kept", "left" (a drop for push to publish), "restored" (put back
+// after a stale reset), "restoring" (one push refuses to put back).
 type stackCommit struct {
 	Branch  string
 	Commit  string

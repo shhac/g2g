@@ -18,7 +18,10 @@ func dropList(subjects map[string]string, drops []syncpoint.Drop) string {
 		if subject := subjects[drop.Commit]; subject != "" {
 			entry += " " + subject
 		}
-		if drop.To != "" {
+		switch {
+		case drop.Kind == syncpoint.Replaced:
+			entry += " → " + localgit.Short(drop.To)
+		case drop.To != "":
 			entry += " (" + drop.Branch + " → " + drop.To + ")"
 		}
 		said = append(said, entry)

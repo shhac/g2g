@@ -310,7 +310,8 @@ type Branch struct {
 }
 
 // Drop is one commit a pull or push names one by one, what it does to it, and
-// the branch it is about. To is the branch a moved commit is in now.
+// the branch it is about. To is where it went: the branch a moved commit is in
+// now, or the commit a replaced one became.
 type Drop struct {
 	Kind   Kind
 	Branch string
@@ -338,11 +339,15 @@ const (
 	// Restoring is what push would put back after the remote dropped it,
 	// which refuses the push.
 	Restoring Kind = "restoring"
+	// Replaced leaves the branch for the version of it a replay made, which
+	// To names: one whose conflict was resolved, so its patch changed and
+	// its content matches nothing on the other side.
+	Replaced Kind = "replaced"
 )
 
 // kindOrder is the order a plan lists its commits in: each kind together,
 // in the order the preview's notes say them.
-var kindOrder = []Kind{Dropped, Moved, Kept, Left, Restored, Restoring}
+var kindOrder = []Kind{Dropped, Moved, Replaced, Kept, Left, Restored, Restoring}
 
 // Named lists commits of one kind on one branch.
 func Named(kind Kind, branch string, commits []string) []Drop {
@@ -384,6 +389,14 @@ type Changes struct {
 	// DroppedHere, commits the remote has that this branch had and no longer
 	// has.
 	DroppedUpstream, DroppedHere []string
+	// ReplacedHere are commits the remote has that this branch replaced with
+	// a replay of its own, each paired with the version that replaced it;
+	// ReplacedUpstream, commits here the remote replaced the same way. A
+	// replay that resolved a conflict changes a commit's patch, so its
+	// content matches nothing on the other side, and without these it read
+	// as one commit dropped and an unrelated one made. Neither commit of a
+	// pair is in the four lists above.
+	ReplacedHere, ReplacedUpstream []Replacement
 	// Shared are this branch's own commits the remote also has, by content.
 	// A branch with none left is one the remote emptied, or made again under
 	// the name, rather than one it dropped a commit from.
@@ -403,17 +416,31 @@ type Changes struct {
 
 // Differs reports changes on either side.
 func (c Changes) Differs() bool {
-	return len(c.Mine)+len(c.New)+len(c.DroppedUpstream)+len(c.DroppedHere) != 0
+	return len(c.Mine)+len(c.New)+len(c.DroppedUpstream)+len(c.DroppedHere) != 0 || c.Replaced()
 }
 
 // Dropped reports a drop in either direction.
 func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHere) != 0 }
+
+// Replaced reports a commit replaced in a replay, in either direction.
+func (c Changes) Replaced() bool { return len(c.ReplacedHere)+len(c.ReplacedUpstream) != 0 }
+
+// Decides reports changes the sync point has something to say about: a drop
+// or a replacement. Without either, the comparison a caller had before sync
+// points stands.
+func (c Changes) Decides() bool { return c.Dropped() || c.Replaced() }
+
+// Replacement is a commit and the version of it a replay made.
+type Replacement struct {
+	Old, New string
+}
 
 // Keep reclassifies commits a person chose to keep: one dropped upstream
 // becomes theirs to publish again, and one dropped here becomes one to take
 // back. It returns which of them were drops of this branch; anything else
 // named is not this branch's to keep.
 func (c Changes) Keep(commits []string) (Changes, []string) {
+	c = c.unpair(commits)
 	kept := make([]string, 0)
 	for _, commit := range commits {
 		if slices.Contains(c.DroppedUpstream, commit) || slices.Contains(c.DroppedHere, commit) {
@@ -424,6 +451,28 @@ func (c Changes) Keep(commits []string) (Changes, []string) {
 	reclassified.DroppedUpstream, reclassified.Mine = partition(c.DroppedUpstream, commits, c.Mine)
 	reclassified.DroppedHere, reclassified.New = partition(c.DroppedHere, commits, c.New)
 	return reclassified, kept
+}
+
+// unpair puts each replacement whose old commit is named back as the drop and
+// the new commit it was before pairing, so keeping it works on it as on any
+// other drop: the version a replay made is then one more commit of its side.
+func (c Changes) unpair(commits []string) Changes {
+	split := func(pairs []Replacement, dropped, made []string) ([]Replacement, []string, []string) {
+		kept := make([]Replacement, 0, len(pairs))
+		for _, pair := range pairs {
+			if !slices.Contains(commits, pair.Old) {
+				kept = append(kept, pair)
+				continue
+			}
+			dropped, made = append(dropped, pair.Old), append(made, pair.New)
+		}
+		return kept, dropped, made
+	}
+	c.DroppedUpstream, c.Mine = slices.Clone(c.DroppedUpstream), slices.Clone(c.Mine)
+	c.DroppedHere, c.New = slices.Clone(c.DroppedHere), slices.Clone(c.New)
+	c.ReplacedUpstream, c.DroppedUpstream, c.New = split(c.ReplacedUpstream, c.DroppedUpstream, c.New)
+	c.ReplacedHere, c.DroppedHere, c.Mine = split(c.ReplacedHere, c.DroppedHere, c.Mine)
+	return c
 }
 
 // partition moves the members of from named in chosen onto to.
@@ -477,7 +526,11 @@ func Classify(ctx context.Context, git Git, branch Branch) (Changes, error) {
 	changes := Changes{Shared: shared}
 	changes.DroppedUpstream, changes.Mine = split(ours, seen)
 	changes.DroppedHere, changes.New = split(theirs, seen)
-	return stale(ctx, git, branch, changes)
+	changes, err = stale(ctx, git, branch, changes)
+	if err != nil {
+		return Changes{}, err
+	}
+	return replaced(ctx, git, changes, seen)
 }
 
 // stale moves commits that read as dropped here back to new, when the branch
@@ -514,6 +567,93 @@ func stale(ctx context.Context, git Git, branch Branch, changes Changes) (Change
 	changes.New = append(changes.New, changes.DroppedHere...)
 	changes.DroppedHere, changes.Stale = nil, true
 	return changes, nil
+}
+
+// Carrier reads what a replay carries over from each commit. A reader
+// without it pairs nothing, and every replacement reads as a drop and a new
+// commit, as it did before.
+type Carrier interface {
+	Carried(ctx context.Context, ids []string) (map[string]localgit.Carried, error)
+}
+
+// replaced pairs each commit a side dropped with the commit a replay made of
+// it on the other side, when there is exactly one: the same author, author
+// date and subject, the old commit held by the sync point and the new one
+// not, and the new one committed no earlier than the old. A replay that had
+// to resolve a conflict changes the patch, and a patch is all a content
+// comparison has to go on.
+//
+// The sync point is what keeps this from hiding anybody's work. The old
+// commit of every pair is one this clone and the remote agreed on, so
+// replacing it loses nothing either side had not already seen; a commit
+// somebody added since is in neither drop list and stays new. The new commit
+// has to be outside the sync point, or a stale reset's commits, which are in
+// it, could pair. And it has to be the later of the two, or going back to the
+// version before a colleague's replay would read as replaying theirs.
+//
+// A key two commits share on either side pairs nothing: that is ambiguity,
+// and ambiguity stays a drop.
+func replaced(ctx context.Context, git Git, changes Changes, seen []string) (Changes, error) {
+	carrier, ok := git.(Carrier)
+	unseen := func(commits []string) []string {
+		return slices.DeleteFunc(slices.Clone(commits), func(commit string) bool { return slices.Contains(seen, commit) })
+	}
+	hereNew, upstreamNew := unseen(changes.Mine), unseen(changes.New)
+	pairable := len(changes.DroppedHere) != 0 && len(hereNew) != 0 || len(changes.DroppedUpstream) != 0 && len(upstreamNew) != 0
+	if !ok || !pairable {
+		return changes, nil
+	}
+	ids := slices.Concat(changes.DroppedHere, hereNew, changes.DroppedUpstream, upstreamNew)
+	carried, err := carrier.Carried(ctx, ids)
+	if err != nil {
+		return Changes{}, err
+	}
+	changes.ReplacedHere = pairs(changes.DroppedHere, hereNew, carried)
+	changes.ReplacedUpstream = pairs(changes.DroppedUpstream, upstreamNew, carried)
+	changes.DroppedHere, changes.Mine = without(changes.DroppedHere, changes.ReplacedHere, true), without(changes.Mine, changes.ReplacedHere, false)
+	changes.DroppedUpstream, changes.New = without(changes.DroppedUpstream, changes.ReplacedUpstream, true), without(changes.New, changes.ReplacedUpstream, false)
+	return changes, nil
+}
+
+// pairs matches each old commit with the one new commit sharing its key, in
+// the old commits' order.
+func pairs(old, made []string, carried map[string]localgit.Carried) []Replacement {
+	counted := func(commits []string) map[string]int {
+		count := map[string]int{}
+		for _, commit := range commits {
+			if key := carried[commit].Key; key != "" {
+				count[key]++
+			}
+		}
+		return count
+	}
+	olds, news := counted(old), counted(made)
+	paired := make([]Replacement, 0)
+	for _, commit := range old {
+		key := carried[commit].Key
+		if key == "" || olds[key] != 1 || news[key] != 1 {
+			continue
+		}
+		index := slices.IndexFunc(made, func(candidate string) bool { return carried[candidate].Key == key })
+		if carried[made[index]].Committed < carried[commit].Committed {
+			continue
+		}
+		paired = append(paired, Replacement{Old: commit, New: made[index]})
+	}
+	return paired
+}
+
+// without is commits less those a replacement names, on its old side or its
+// new one.
+func without(commits []string, replacements []Replacement, old bool) []string {
+	return slices.DeleteFunc(slices.Clone(commits), func(commit string) bool {
+		return slices.ContainsFunc(replacements, func(replacement Replacement) bool {
+			if old {
+				return replacement.Old == commit
+			}
+			return replacement.New == commit
+		})
+	})
 }
 
 // split divides commits into those seen and those not.

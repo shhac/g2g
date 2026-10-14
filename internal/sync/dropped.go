@@ -43,6 +43,12 @@ func (s Service) bySyncPoint(ctx context.Context, c collecting, branch, local, p
 	if changes.Unsynced {
 		return verdict{unsynced: true}, false, nil
 	}
+	return s.judge(ctx, c, branch, published, begins, changes)
+}
+
+// judge is bySyncPoint once the sync point has said what changed: the
+// commits a person chose to keep set aside, and the rest decided.
+func (s Service) judge(ctx context.Context, c collecting, branch, published, begins string, changes syncpoint.Changes) (verdict, bool, error) {
 	changes, kept := changes.Keep(c.keep)
 	found := verdict{commits: syncpoint.Named(syncpoint.Kept, branch, kept)}
 	if changes.Stale {

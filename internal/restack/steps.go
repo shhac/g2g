@@ -96,10 +96,12 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 // has fetched since, or a child fast-forwarded along its parent. Those commits
 // belong to the parent. Only a forward move is taken, so a parent that was
 // rewritten keeps the recorded range, and an explicit --onto keeps the range
-// it asked to move.
+// it asked to move. A fork already at the parent's tip, which is almost every
+// branch, cannot move: where the two meet is below that tip, so only the fork
+// itself is both. Asking anyway was two processes per branch on every plan.
 func (s Service) laterFork(ctx context.Context, onto Onto, base, head, fork string) (string, bool, error) {
 	forks, ok := s.Git.(graph.MergeBases)
-	if !ok || onto.Reparents() {
+	if !ok || onto.Reparents() || fork == base {
 		return fork, false, nil
 	}
 	later, err := graph.LaterFork(ctx, s.Git, forks, base, head, fork)

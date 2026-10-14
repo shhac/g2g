@@ -117,3 +117,39 @@ func TestRepairsQuoteNamesTheShellWouldExpand(t *testing.T) {
 		t.Errorf("retrack = %q, want %q", got, want)
 	}
 }
+
+// A prune that forgets the branch it was aimed at cannot suggest naming it
+// again: nothing records it any more, so the command refuses it. The
+// suggestion moves to what the prune kept.
+func TestPruneAimsPastATargetItForgot(t *testing.T) {
+	recorded := graph.New()
+	for branch, parent := range map[string]string{"synthetic-a": "main", "synthetic-b": "synthetic-a", "synthetic-ca": "synthetic-a", "synthetic-cb": "synthetic-b"} {
+		updated, err := recorded.Track(branch, graph.Edge{Parent: parent, ForkPoint: "0000000000000000000000000000000000000000"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorded = updated
+	}
+	planned := func(target string, landed, branches []string) prunePlan {
+		plan := prunePlan{unpublished: true}
+		plan.Discovery = graph.Discovery{Graph: recorded, Target: target, TargetSource: shape.TargetNamed, Scope: shape.ScopeStack, Branches: branches}
+		plan.Landed = landed
+		return plan
+	}
+	for _, test := range []struct {
+		name string
+		plan prunePlan
+		want string
+	}{
+		{name: "target kept", plan: planned("synthetic-cb", []string{"synthetic-a"}, []string{"main", "synthetic-a", "synthetic-b", "synthetic-cb"}), want: "g2g push --branch synthetic-cb"},
+		{name: "one kept", plan: planned("synthetic-a", []string{"synthetic-a", "synthetic-b"}, []string{"main", "synthetic-a", "synthetic-b", "synthetic-cb"}), want: "g2g push --branch synthetic-cb"},
+		{name: "several kept", plan: planned("synthetic-a", []string{"synthetic-a", "synthetic-b"}, []string{"main", "synthetic-a", "synthetic-b", "synthetic-ca", "synthetic-cb"}), want: "g2g push --branch synthetic-ca --scope trunk"},
+		{name: "nothing kept", plan: planned("synthetic-a", []string{"synthetic-a"}, []string{"main", "synthetic-a"}), want: ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := pruneNext(test.plan); got != test.want {
+				t.Errorf("pruneNext = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

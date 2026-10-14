@@ -257,7 +257,10 @@ func TestJourneyAStackWhoseCopyLandsCollapsesBranchByBranch(t *testing.T) {
 	}
 	w.assertHas(w.Local, "synthetic-cb", "cb.txt")
 
-	mustRun(t, "prune", "--branch", "synthetic-a1", "--apply")
+	pruned := mustRun(t, "prune", "--branch", "synthetic-a1", "--apply")
+	if want := "Suggested next step: g2g push --branch synthetic-cb --scope trunk"; !strings.Contains(pruned, want) {
+		t.Errorf("the prune does not aim past the branch it forgot, want %q:\n%s", want, pruned)
+	}
 	structure := w.readStructure()
 	for _, forgotten := range []string{"synthetic-a1", "synthetic-b1"} {
 		if parent, kept := structure[forgotten]; kept {

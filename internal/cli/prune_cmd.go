@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 func newPrune(service prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
@@ -136,9 +137,33 @@ func keptBy(plan prune.Plan) graph.Discovery {
 // pruneNext is push when the prune kept something to publish, aimed at what
 // it selected, and status over the same selection otherwise.
 func pruneNext(plan prunePlan) string {
-	acted := selectedIn(plan.Discovery).from(plan.remote)
+	acted, ok := keptSelection(plan.Plan)
+	if !ok {
+		return ""
+	}
+	acted = acted.from(plan.remote)
 	if !plan.unpublished {
 		return acted.next(statusCommand)
 	}
 	return acted.next(pushCommand)
+}
+
+// keptSelection is what the prune selected, aimed past a target it forgot:
+// naming that branch afterwards is refused, since nothing records it. A single
+// kept branch is named instead. Several now sit apart on the trunk, so the
+// first is named across it, and with nothing kept there is nothing to aim at.
+func keptSelection(plan prune.Plan) (selected, bool) {
+	acted := selectedIn(plan.Discovery)
+	if !slices.Contains(plan.Forgotten(), acted.branch) {
+		return acted, true
+	}
+	kept := keptBy(plan).Branches
+	if len(kept) == 0 {
+		return selected{}, false
+	}
+	acted.branch, acted.named = kept[0], true
+	if len(kept) > 1 && acted.scope != shape.ScopeAll {
+		acted.scope = shape.ScopeTrunk
+	}
+	return acted, true
 }

@@ -40,11 +40,6 @@ type Changes struct {
 	Stale bool
 }
 
-// Differs reports changes on either side.
-func (c Changes) Differs() bool {
-	return len(c.Mine)+len(c.New)+len(c.DroppedUpstream)+len(c.DroppedHere) != 0 || c.Replaced()
-}
-
 // Dropped reports a drop in either direction.
 func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHere) != 0 }
 

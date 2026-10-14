@@ -262,8 +262,8 @@ func submitBlocked(plan submit.Plan) string {
 	return ""
 }
 
-// stoppedMidSubmit says what a submission published before it stopped. It
-// makes no call of its own: the mutation budget may be what ran out.
+// stoppedMidSubmit says what a submission published before it stopped, from
+// the error alone.
 func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry string, p Presentation) error {
 	done := ""
 	if stopped.Pushed {

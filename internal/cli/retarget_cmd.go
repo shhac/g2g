@@ -66,8 +66,8 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 	return cmd
 }
 
-// stoppedMidRetarget says which bases moved and which did not, each with why.
-// It makes no call of its own: the mutation budget may be what ran out.
+// stoppedMidRetarget says which bases moved and which did not, each with why,
+// from the error alone.
 func stoppedMidRetarget(cmd *cobra.Command, stopped *retarget.Stopped, retry string, p Presentation) error {
 	numbers := make([]int, 0, len(stopped.Moved))
 	for _, change := range stopped.Moved {

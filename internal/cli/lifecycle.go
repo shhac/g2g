@@ -348,7 +348,6 @@ func (f applyFlow[P]) blockedReason(plan P) string {
 	return f.blocked(plan)
 }
 
-// mutationSize is how many branches the mutation budget scales with.
 // mutationBudget is the command's own ceiling, or the ordinary one.
 func (f applyFlow[P]) mutationBudget(b budgets, ctx context.Context, branches int) (context.Context, context.CancelFunc) {
 	if f.budget != nil {
@@ -357,6 +356,7 @@ func (f applyFlow[P]) mutationBudget(b budgets, ctx context.Context, branches in
 	return b.mutation(ctx, branches)
 }
 
+// mutationSize is how many branches the mutation budget scales with.
 func (f applyFlow[P]) mutationSize(plan P) int {
 	if f.branches == nil {
 		return 0

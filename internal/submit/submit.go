@@ -103,7 +103,7 @@ func (p Plan) LinkRepair() repair.Note {
 	return repair.Note{
 		Reason: fmt.Sprintf("linking requires PR base %s for %s, found %s", step.ExpectedBase, step.Branch, step.Resolution.Open.Base),
 		Ways: []repair.Step{
-			{Command: p.Retarget(), Effect: "align the PR bases with the selected stack"},
+			{Command: p.retarget(), Effect: "align the PR bases with the selected stack"},
 			{Effect: "drop --link to preserve existing bases"},
 		},
 	}
@@ -137,9 +137,10 @@ func (p Plan) OffStack() []githubstack.PathStep {
 	return off
 }
 
-// Retarget is the command that moves every misbased pull request of this
-// selection to where the stack records it.
-func (p Plan) Retarget() string {
+// retarget is the command that moves every misbased pull request of this
+// selection to where the stack records it, for a refusal this package words.
+// The CLI aims its own suggestions; this one cannot reach that from here.
+func (p Plan) retarget() string {
 	scope := p.Snapshot.Scope
 	if scope == "" {
 		scope = stack.ScopeStack

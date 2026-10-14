@@ -57,17 +57,7 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		return view.refusing(plan.Push.Repair)
 	}
 	view = view.note("Publishes the selected branches through one atomic, lease-protected push; existing PR bases are preserved.", severityNeutral)
-	// Preserved is the right default -- a base somebody chose stays chosen --
-	// and the wrong silence after the branch below was deleted: the pull
-	// request stayed on a branch the stack no longer has until somebody
-	// thought to run retarget.
-	if misbased := plan.OffStack(); len(misbased) != 0 {
-		said := make([]string, 0, len(misbased))
-		for _, step := range misbased {
-			said = append(said, fmt.Sprintf("#%d (%s) is based on %s, where the stack records %s", step.Resolution.Open.Number, step.Branch, step.Resolution.Open.Base, step.ExpectedBase))
-		}
-		view = view.note(strings.Join(said, "; ")+" · submit leaves it, and "+runnable(plan.Retarget()+" --apply")+" moves it.", severityWarn)
-	}
+	view = offStackNote(view, plan)
 	if _, existingOnly := plan.ExistingSpec(); !existingOnly {
 		view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 	}
@@ -130,4 +120,22 @@ func existingNumber(plan submit.Plan, branch string) int {
 		return resolution.Open.Number
 	}
 	return 0
+}
+
+// offStackNote names each pull request based on a branch the stack no longer
+// has. Preserving an existing base is the right default -- a base somebody
+// chose stays chosen -- and the wrong silence after the branch below was
+// deleted: the pull request stayed there until somebody thought to run
+// retarget. The retarget is aimed the way retarget's own retry is.
+func offStackNote(view stackView, plan submit.Plan) stackView {
+	misbased := plan.OffStack()
+	if len(misbased) == 0 {
+		return view
+	}
+	said := make([]string, 0, len(misbased))
+	for _, step := range misbased {
+		said = append(said, fmt.Sprintf("#%d (%s) is based on %s, where the stack records %s", step.Resolution.Open.Number, step.Branch, step.Resolution.Open.Base, step.ExpectedBase))
+	}
+	retarget := selectedFrom(plan.Snapshot).aimedOr(retargetCommand)
+	return view.note(strings.Join(said, "; ")+" · submit leaves it, and "+runnable(retarget+" --apply")+" moves it.", severityWarn)
 }

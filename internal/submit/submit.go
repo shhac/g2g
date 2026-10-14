@@ -252,9 +252,9 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
 		slices.Equal(p.Waiting, other.Waiting) &&
 		p.Snapshot.Equal(other.Snapshot) &&
-		slices.Equal(p.Existing, other.Existing) &&
+		githubstack.SettledEqual(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&
-		maps.Equal(p.Superseded, other.Superseded) &&
+		maps.EqualFunc(p.Superseded, other.Superseded, func(a, b githubstack.PullRequest) bool { return a.Settled() == b.Settled() }) &&
 		p.Push.Equal(other.Push)
 }
 

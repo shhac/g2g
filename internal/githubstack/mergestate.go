@@ -71,12 +71,12 @@ const (
 
 // MergeState is what GitHub reports about one pull request's readiness.
 //
-// These fields are deliberately not on PullRequest. Discovery.Equal compares
-// pull requests by value and is what link, retarget and submit revalidate
-// against, and mergeable legitimately moves from UNKNOWN to CLEAN while GitHub
-// computes it — so carrying them there would make three commands that have
+// These fields are deliberately not on PullRequest. Revalidation compares pull
+// requests by value, through PullRequest.Settled, in link, retarget, comment
+// and submit, and mergeable legitimately moves from UNKNOWN to CLEAN while
+// GitHub computes it — so carrying them there would make commands that have
 // nothing to do with merging refuse intermittently. PullRequest.HeadOID moves
-// the same way after a push, which is why Discovery.Equal leaves it out.
+// the same way after a push, which is why Settled leaves it out.
 type MergeState struct {
 	Number  int
 	Head    string

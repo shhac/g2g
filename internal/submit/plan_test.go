@@ -217,6 +217,32 @@ func TestRevalidateRejectsAPlanThatChangedUnderneath(t *testing.T) {
 	}
 }
 
+// A push moves a pull request's head before GitHub reports it, and nothing
+// submit does reads it, so the head arriving between the preview and the
+// revalidation is not a changed plan. submit compared its pull requests
+// itself, outside the rule comment and retarget had, and refused every time
+// it followed a push.
+func TestRevalidateIgnoresAHeadGitHubCaughtUpWith(t *testing.T) {
+	github := &fakeGitHub{
+		prs:      []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11, HeadOID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+		later:    []githubstack.PullRequest{{Head: "synthetic/lower", Base: "main", State: "OPEN", Number: 11, HeadOID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+		laterSet: true,
+	}
+	service, _ := planService(github)
+	preview, err := service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{}, "origin", localgit.SetUpstream)); err != nil {
+		t.Fatalf("Replan() error = %v after only the head moved", err)
+	}
+	superseded := Plan{Superseded: map[string]githubstack.PullRequest{"synthetic/lower": {Number: 9, HeadOID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}
+	moved := Plan{Superseded: map[string]githubstack.PullRequest{"synthetic/lower": {Number: 9, HeadOID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
+	if !superseded.Equal(moved) {
+		t.Error("Equal() = false for a closed pull request whose head alone moved")
+	}
+}
+
 func TestPlanEqualComparesEveryFactThatAffectsTheMutation(t *testing.T) {
 	base := Plan{
 		Snapshot:   stack.Snapshot{Target: "synthetic/top", Base: "main", Branches: []string{"synthetic/lower"}},

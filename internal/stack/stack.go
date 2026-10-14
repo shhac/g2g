@@ -58,25 +58,10 @@ func (s Snapshot) Equal(other Snapshot) bool {
 		slices.Equal(s.Branches, other.Branches)
 }
 
-// Equal reports whether two discoveries describe the same world.
-//
-// A pull request's head commit is left out. GitHub reports it some moments
-// after a push, so a command run straight after one read it differently in
-// its preview and in its revalidation, and refused for a change in a field
-// nothing it does reads: github comment and github retarget both did, every
-// time they followed a push. The one command that reads it, link, compares
-// the currency it derives from it on its own plan.
+// Equal reports whether two discoveries describe the same world, by the
+// pull requests' settled fields.
 func (d Discovery) Equal(other Discovery) bool {
-	return d.Snapshot.Equal(other.Snapshot) && slices.Equal(withoutHeads(d.PullRequests), withoutHeads(other.PullRequests))
-}
-
-// withoutHeads is the pull requests with the commit each is on cleared.
-func withoutHeads(prs []githubstack.PullRequest) []githubstack.PullRequest {
-	cleared := slices.Clone(prs)
-	for index := range cleared {
-		cleared[index].HeadOID = ""
-	}
-	return cleared
+	return d.Snapshot.Equal(other.Snapshot) && githubstack.SettledEqual(d.PullRequests, other.PullRequests)
 }
 
 // PathSelector produces the ordered path a command acts on. Resolver is the

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,23 @@ type PullRequest struct {
 	StackNumber   int
 	StackSize     int
 	StackPosition int
+}
+
+// Settled is the pull request as a revalidation compares it: without the
+// commit it is on. GitHub reports that some moments after a push, so a command
+// run straight after one read it differently in its preview and in its
+// revalidation, and refused for a change in a field nothing it does reads.
+// The one command that reads it, link, compares the currency it derives from
+// it on its own plan.
+func (pr PullRequest) Settled() PullRequest {
+	pr.HeadOID = ""
+	return pr
+}
+
+// SettledEqual reports two lists of pull requests that agree on everything
+// but where each head is.
+func SettledEqual(one, other []PullRequest) bool {
+	return slices.EqualFunc(one, other, func(a, b PullRequest) bool { return a.Settled() == b.Settled() })
 }
 
 // Client invokes gh. Inspect is read-only; Link is only called by --apply.

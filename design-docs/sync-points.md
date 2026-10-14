@@ -117,7 +117,45 @@ dropped from it: it was emptied, or made again under the name. `pull` refuses
 the remote's emptied version rather than taking every commit off the branch
 here, and `push` refuses to publish this clone's, falling back to the
 comparison it had before sync points, which names the replacement for whoever
-means it.
+means it. A commit replaced in a replay (below) still counts as the branch's
+own.
+
+### A commit replaced in a replay
+
+A replay that resolves a conflict changes the commit's patch, so by content it
+matches nothing on the other side, and the table reads it as two events: the
+version the sync point holds **dropped**, and an unrelated commit **mine** (or
+**new**, from the other side). That refused to publish a branch whose every
+commit had conflicted, as a branch made again; named the rest as dropped; and
+made `status` say "dropped here" about work that was all still there.
+
+A replay keeps three things the patch does not: the author, the author date,
+and the message. `Classify` pairs a dropped commit with the one commit on the
+other side that shares its author, author date and subject, and records the
+pair as **replaced** (`ReplacedHere`, `ReplacedUpstream`) instead of a drop and
+a new commit. Three conditions keep a pair from hiding anybody's work:
+
+- **The old commit is in the sync point**, as every dropped commit is. Both
+  clones agreed on it, so replacing it loses nothing either had not seen. A
+  reviewer's commit, or a reviewer's amend of yours, is not in the sync point:
+  it stays **new**, and `push` still refuses.
+- **The new commit is not.** A reset to a stale tracking ref (above) moves
+  commits the sync point holds into **new**, and one of those must never pair.
+- **The new commit was committed no earlier than the old.** A rebase, a
+  cherry-pick and an amend all commit afresh, so going back to the version
+  before somebody else's replay -- `git reset --hard ORIG_HEAD` after pulling
+  it -- does not read as replaying theirs.
+
+A key two commits share on either side pairs nothing: ambiguity stays a drop.
+Membership in the sync point is still by id; pairing only says why a commit
+the id test found missing is missing.
+
+`push` publishes a branch whose only differences are replacements as rewritten,
+naming each pair; `pull` takes the remote's replacements with the rest of its
+version, naming each, and leaves this clone's to `push`. `--keep` on a replaced
+commit undoes the pair, so it is kept as any drop is. `pull --strict` refuses
+a replacement, because a changed patch is a change to what the branch holds;
+`push --strict` does not, as it does not refuse a clean rewrite.
 
 ## What pull and push do with it
 
@@ -125,5 +163,6 @@ See `README.md`'s `pull` and `push` sections for the behaviour and
 `design-docs/scenarios.md` (**dropped upstream**, **dropped here**, **moved
 across a boundary**) for the journeys. In one line each: `pull` drops what was
 dropped upstream, listing every commit; `push` publishes what was dropped here,
-listing every commit; `--keep <commit>` on `pull` keeps either kind; `--strict`
-refuses any drop at all.
+listing every commit; a commit replaced by a replay that resolved a conflict
+publishes and pulls as the rewrite it is; `--keep <commit>` on `pull` keeps
+either kind; `--strict` refuses any drop at all.

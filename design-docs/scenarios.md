@@ -181,9 +181,9 @@ parent's in both directions.
 
 A conflict between the two (both touch the same lines) stops the pull's replay
 like any other, and `restack --continue` finishes it. The resolution rewrites
-the other person's commit, so `push` then refuses, saying a conflict-resolved
-replay changed the published patch: replacing it is a decision to make having
-looked.
+the other person's commit, which this clone pulled, so the sync point says it
+was agreed on: `push` publishes the resolution as a rewrite, naming the commit
+it replaces. A commit added or amended on the remote since still refuses.
 
 **dropped upstream.** Bob drops a commit `x` from B and publishes that; Alice
 still has it. Without a record of where Alice and the remote last agreed, her

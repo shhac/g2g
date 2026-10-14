@@ -85,7 +85,10 @@ description: |
   `design-docs/sync-points.md`) record where this clone and the remote last
   agreed. Against one, `pull` drops a commit the remote dropped and leaves one
   dropped here for `push`, which publishes it; a commit the remote dropped that
-  is still here makes `push` refuse. Every such commit is listed by branch, id
+  is still here makes `push` refuse. A commit replayed with a changed patch
+  (a resolved conflict) pairs with the version the sync point holds by author,
+  author date and subject and reads as replaced, not dropped: `push` publishes
+  it and `pull` takes it. Every such commit is listed by branch, id
   and subject (and in `--json` `commits`); `pull --keep <commit>` keeps one;
   `--strict` on `pull`, `push`, `submit` and `land` refuses any drop, and any
   branch differing with no sync point. Membership in a sync point is by commit

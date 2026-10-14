@@ -381,7 +381,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   are g2g's own refs, like `refs/g2g/remotes/`. Read
   `design-docs/sync-points.md` before touching them. Membership in a sync
   point is by commit id, never by content: content is the direction that would
-  call a re-made change "dropped here" and delete it from the remote. Record
+  call a re-made change "dropped here" and delete it from the remote. A commit
+  the id test finds dropped may pair with its replay on the other side (same
+  author, author date and subject; old in the sync point, new not; new
+  committed no earlier) and read as replaced: that is what lets a
+  conflict-resolved replay publish through `push`, and every one of those
+  conditions is what keeps a reviewer's amend from pairing. Record
   the tip the plan saw, never one read again at write time; record at plan time
   only for a branch exactly level with the remote, because a branch ahead of it
   is also what a remote-dropped commit looks like; and a recording that fails

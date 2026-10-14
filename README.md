@@ -328,6 +328,7 @@ last fetch or push, and the output ends by saying so.
 | `N ahead` | commits here the remote does not have · `g2g push` |
 | `N behind` | the remote has work this branch does not · `g2g pull` |
 | `replayed since pushed` | restacked: nothing is missing on either side, and it needs pushing |
+| `replayed since pushed · N changed in the replay` | restacked, and N commits' patches changed while a conflict was resolved; `push` publishes them |
 | `diverged · N here, M there` | both have moved · `g2g pull` shows the ways to reconcile |
 | `on a commit not here` | the remote's tip was never fetched · `g2g pull` fetches it |
 | `not on origin` | never published |
@@ -874,6 +875,7 @@ What the remote has that this checkout does not is asked against the branch's
 | The remote's extra commit is | `push` |
 |---|---|
 | one you had and dropped here since you last pulled or pushed | publishes the drop, naming each commit (`origin✓` afterwards) |
+| one you had and replayed here with a changed patch, as resolving a conflict changes it | publishes the replay as a rewrite, naming each commit it replaces |
 | one you dropped from this branch that another pushed branch now holds | publishes it as a **move**, `A → B` |
 | one you never had | refuses, as before |
 
@@ -885,14 +887,19 @@ is listed by branch, short id and subject, recorded in the sync point's reflog,
 and named by `status` for a week afterwards. A branch with no sync point yet is
 compared exactly as before.
 
-A conflict resolved during a pull's replay rewrites the other person's commit;
-since that clone pulled it, the original reads as dropped here and the push
-publishes the resolution, naming the original. Without a sync point — a
-resolution of a replay onto a moved trunk, say — a subject or author match
-cannot prove that replacing it would preserve a reviewer's work, so the refusal
-says the published version differs, explains this possibility, and offers an
-atomic replacement command with leases pinned to the observed tips. Inspect the
-differences before choosing that replacement; it can drop work.
+A conflict resolved during a restack or a pull's replay rewrites each commit it
+touched, so by content the published version matches nothing here. Each is
+still a commit you and the remote agreed on, replayed: it keeps its author,
+author date and subject, and the push publishes the resolution as a rewrite,
+listing each published commit it replaces, so check the new patches in the
+preview. A colleague's replay of the same kind is taken by `pull` the same way.
+A commit somebody added or amended on the remote since is not one you agreed
+on, so `push` still refuses over it. Without a sync point — a branch last
+pushed by plain `git push`, say — nothing proves the remote holds only what you
+had, so the refusal says the published version differs, explains this
+possibility, and offers an atomic replacement command with leases pinned to the
+observed tips. Inspect the differences before choosing that replacement; it can
+drop work.
 
 A branch's own commits are measured from its parent as the remote holds it,
 when the remote's version is built on that: a commit somebody published on the
@@ -1450,9 +1457,10 @@ each comment but not its text, since a body is many lines.
 
 `commits` names each commit a `pull` or `push` drops, moves, keeps or refuses
 to put back, with `branch`, `commit` (the full id), `subject`, `kind` and, for
-a move, `to`. `kind` is `dropped`, `moved`, `kept`, `left` (dropped here, for
-`push` to publish), `restored` (put back after a reset to a stale tracking ref)
-or `restoring` (one `push` refuses to put back). In porcelain each is a
+a move, `to`. `kind` is `dropped`, `moved`, `replaced` (by the commit `to`, a
+replay of it whose patch changed), `kept`, `left` (dropped here, for `push` to
+publish), `restored` (put back after a reset to a stale tracking ref) or
+`restoring` (one `push` refuses to put back). In porcelain each is a
 `commit` record — kind, branch, id, destination, then the subject last, since
 it is the one field a person wrote.
 

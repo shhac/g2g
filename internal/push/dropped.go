@@ -100,9 +100,7 @@ func (s Service) drops(ctx context.Context, branches []string, changed map[strin
 			}
 			commits = append(commits, Drop{Kind: kind, Branch: branch, Commit: commit, To: to})
 		}
-		for _, replacement := range changes.ReplacedHere {
-			commits = append(commits, Drop{Kind: syncpoint.Replaced, Branch: branch, Commit: replacement.Old, To: replacement.New})
-		}
+		commits = append(commits, changes.ReplacedHere.Named(branch)...)
 	}
 	return syncpoint.Grouped(commits), nil
 }

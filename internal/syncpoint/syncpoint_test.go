@@ -353,3 +353,37 @@ func TestKeepingAReplacedCommitUndoesThePair(t *testing.T) {
 		t.Errorf("Keep() = %+v, want old taken back, new mine, the other pair kept", got)
 	}
 }
+
+// The same from the remote's side: keeping a commit the remote replayed makes
+// it this clone's to publish again, and the remote's replay one more new
+// commit there. The two sides go through one helper with their lists swapped,
+// and swapping them the wrong way round is what this would catch.
+func TestKeepingACommitTheRemoteReplayedUndoesThePair(t *testing.T) {
+	changes := Changes{ReplacedUpstream: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}}}
+	got, kept := changes.Keep([]string{"old"})
+	if !slices.Equal(kept, []string{"old"}) {
+		t.Errorf("kept = %v, want old", kept)
+	}
+	if !slices.Equal(got.Mine, []string{"old"}) || !slices.Equal(got.New, []string{"new"}) || len(got.DroppedUpstream) != 0 ||
+		!slices.Equal(got.ReplacedUpstream, []Replacement{{Old: "other", New: "made"}}) || len(got.ReplacedHere) != 0 {
+		t.Errorf("Keep() = %+v, want old mine again, new theirs, the other pair kept", got)
+	}
+}
+
+// What left each side is what it dropped and what it replaced, the replaced
+// named by their old commits: the ones the sync point holds.
+func TestLeftNamesDropsAndReplacedCommitsOnEachSide(t *testing.T) {
+	changes := Changes{
+		DroppedHere: []string{"dropped-here"}, ReplacedHere: []Replacement{{Old: "replaced-here", New: "replay-here"}},
+		DroppedUpstream: []string{"dropped-there"}, ReplacedUpstream: []Replacement{{Old: "replaced-there", New: "replay-there"}},
+	}
+	if got := changes.LeftHere(); !slices.Equal(got, []string{"dropped-here", "replaced-here"}) {
+		t.Errorf("LeftHere() = %v", got)
+	}
+	if got := changes.LeftUpstream(); !slices.Equal(got, []string{"dropped-there", "replaced-there"}) {
+		t.Errorf("LeftUpstream() = %v", got)
+	}
+	if got := changes.ReplacedHere.Named("synthetic-b"); !slices.Equal(got, []Drop{{Kind: Replaced, Branch: "synthetic-b", Commit: "replaced-here", To: "replay-here"}}) {
+		t.Errorf("Named() = %+v", got)
+	}
+}

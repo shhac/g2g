@@ -22,7 +22,7 @@ type Changes struct {
 	// content matches nothing on the other side, and without these it read
 	// as one commit dropped and an unrelated one made. Neither commit of a
 	// pair is in the four lists above.
-	ReplacedHere, ReplacedUpstream []Replacement
+	ReplacedHere, ReplacedUpstream Replacements
 	// Shared are this branch's own commits the remote also has, by content.
 	// A branch with none left is one the remote emptied, or made again under
 	// the name, rather than one it dropped a commit from.
@@ -50,6 +50,16 @@ func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHer
 
 // Replaced reports a commit replaced in a replay, in either direction.
 func (c Changes) Replaced() bool { return len(c.ReplacedHere)+len(c.ReplacedUpstream) != 0 }
+
+// LeftHere is every commit this branch had when the two sides last agreed and
+// no longer has: those it dropped, and those it replaced with a replay.
+func (c Changes) LeftHere() []string { return slices.Concat(c.DroppedHere, c.ReplacedHere.Olds()) }
+
+// LeftUpstream is every commit the remote had when the two sides last agreed
+// and no longer has, the same way.
+func (c Changes) LeftUpstream() []string {
+	return slices.Concat(c.DroppedUpstream, c.ReplacedUpstream.Olds())
+}
 
 // Decides reports changes the sync point has something to say about: a drop
 // or a replacement. Without either, the comparison a caller had before sync

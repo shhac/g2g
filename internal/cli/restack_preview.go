@@ -118,7 +118,7 @@ func emptiedNote(view stackView, plan restack.Plan) stackView {
 		return view
 	}
 	own := words.Pick(len(emptied), "its", "their")
-	prune := selectedIn(plan.Discovery).next(pruneCommand)
+	prune := replayNext(plan, "")
 	return view.note("Leaves "+words.List(emptied)+" with no commits of "+own+" own, since "+own+" work is already in "+own+" new base · "+runnable(prune)+" forgets "+words.Pick(len(emptied), "it", "them")+" once this is applied.", severityNeutral)
 }
 

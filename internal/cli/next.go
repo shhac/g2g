@@ -82,6 +82,13 @@ func (s selected) narrowedTo(scope shape.Scope) selected {
 	return s
 }
 
+// at is the selection aimed at another branch, named, across scope: what a
+// suggestion reaches for when the branch the command was aimed at is gone.
+func (s selected) at(branch string, scope shape.Scope) selected {
+	s.branch, s.named, s.scope = branch, true, scope
+	return s
+}
+
 // from is the selection as compared with remote.
 func (s selected) from(remote string) selected {
 	s.remote = remote

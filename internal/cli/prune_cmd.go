@@ -161,9 +161,9 @@ func keptSelection(plan prune.Plan) (selected, bool) {
 	if len(kept) == 0 {
 		return selected{}, false
 	}
-	acted.branch, acted.named = kept[0], true
-	if len(kept) > 1 && acted.scope != shape.ScopeAll {
-		acted.scope = shape.ScopeTrunk
+	scope := acted.scope
+	if len(kept) > 1 && scope.Within(shape.ScopeTrunk) {
+		scope = shape.ScopeTrunk
 	}
-	return acted, true
+	return acted.at(kept[0], scope), true
 }

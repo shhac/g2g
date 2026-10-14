@@ -48,13 +48,16 @@ it is an ancestor) — see the storage note in
 stored rather than derived: after a merged parent is deleted there is nothing
 left to derive it from.
 
-A recorded trunk boundary can be reachable but too early: a branch created
-from a newer upstream trunk was tracked against a stale local trunk. Before
-replay onto the recorded trunk (including pull's fetched location), the plan
-advances that boundary to the branch's merge base with the new trunk only
-when it descends from the recorded fork point. Shared trunk commits then stay
-outside the replay range. Feature-parent boundaries and explicit `--onto`
-reparenting retain their recorded ranges.
+A recorded boundary can be reachable but too early. A branch created from a
+newer upstream trunk was tracked against a stale local trunk, or a child
+created empty was fast-forwarded along its parent (`git merge --ff-only`) to
+pick up the parent's later commits. Before replay (including pull's fetched
+location), the plan advances the boundary to the branch's merge base with its
+parent only when that descends from the recorded fork point. The parent's
+commits then stay outside the replay range rather than being offered as the
+child's, where they conflict with the parent's own later rework of them. A
+parent that was rewritten meets the child below the recorded fork point, so it
+keeps its range, as does explicit `--onto` reparenting.
 
 **Children reparent onto the merged branch's recorded parent**, never onto "the
 trunk". Those coincide in a simple linear stack and diverge everywhere else —

@@ -488,3 +488,58 @@ func TestRestackRepairsStaleTrunkBoundaryWhenBranchAlreadyContainsNewTrunk(t *te
 		t.Fatalf("repaired branch still needs restack: %+v", next.Steps)
 	}
 }
+
+// A child created empty and then fast-forwarded along its parent contains the
+// parent's later commits, but its recorded fork point is still where it was
+// created. Replaying from there offered the parent's commits as the child's,
+// and they conflicted with the parent's own later rework of them.
+func TestRestackStartsAFastForwardedChildWhereItMeetsItsParent(t *testing.T) {
+	r := newRealStack(t)
+	r.branch("synthetic-parent", "synthetic-main", "parent.txt", "parent")
+	r.Run("switch", "-qc", "synthetic-child")
+	r.track("synthetic-child", "synthetic-parent")
+	r.Run("switch", "-q", "synthetic-parent")
+	r.Commit("synthetic fix", "fix.txt", "fixed")
+	met := r.Revision("synthetic-parent")
+	r.Run("switch", "-q", "synthetic-child")
+	r.Run("merge", "-q", "--ff-only", "synthetic-parent")
+	r.Commit("synthetic child", "child.txt", "child")
+	r.Run("switch", "-q", "synthetic-parent")
+	r.Commit("synthetic rework", "fix.txt", "reworked")
+	ctx := context.Background()
+
+	plan := r.plan(graph.Selection{Branch: "synthetic-child", Scope: graph.ScopePath})
+	if len(plan.Steps) != 1 || plan.Steps[0].ForkPoint != met {
+		t.Fatalf("replay does not start where the child meets its parent: %+v", plan.Steps)
+	}
+	if err := r.service.Apply(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+	r.builtOn("synthetic-parent", "synthetic-child")
+	g, err := r.store.Load(ctx)
+	if err != nil || g.Edges["synthetic-child"].ForkPoint != r.Revision("synthetic-parent") {
+		t.Fatalf("fork point not recorded at the parent's tip: %+v, %v", g, err)
+	}
+}
+
+// Rewriting the parent leaves the child holding commits the parent no longer
+// has, so where the two meet now is below the recorded fork point, and the
+// recorded one still stands.
+func TestRestackKeepsTheForkPointOfAChildWhoseParentWasRewritten(t *testing.T) {
+	r := newRealStack(t)
+	r.branch("synthetic-parent", "synthetic-main", "parent.txt", "parent")
+	fork := r.Revision("synthetic-parent")
+	r.branch("synthetic-child", "synthetic-parent", "child.txt", "child")
+	r.amend("synthetic-parent", "parent.txt", "amended")
+
+	plan := r.plan(graph.Selection{Branch: "synthetic-child", Scope: graph.ScopePath})
+	if len(plan.Steps) != 1 || plan.Steps[0].ForkPoint != fork {
+		t.Fatalf("recorded fork point not kept: %+v", plan.Steps)
+	}
+	if err := r.service.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	r.assertClean()
+	r.builtOn("synthetic-parent", "synthetic-child")
+}

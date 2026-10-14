@@ -47,12 +47,13 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
 			return nil, err
 		}
-		// Old records can start below trunk commits the branch already
-		// contains. Those commits belong to the trunk, even if its local ref
-		// was stale when tracked. This also covers upstream refs unavailable
-		// at track time: pull has fetched the new base by the time we plan.
+		// Old records can start below parent commits the branch already
+		// contains: a trunk whose local ref was stale when tracked, an
+		// upstream pull has fetched since, or a child fast-forwarded along its
+		// parent. Those commits belong to the parent. Only a forward move is
+		// taken, so a parent that was rewritten keeps the recorded range.
 		advanced := false
-		if forks, ok := s.Git.(graph.MergeBases); ok && !onto.Reparents() && discovery.Graph.IsTrunk(edge.Parent) {
+		if forks, ok := s.Git.(graph.MergeBases); ok && !onto.Reparents() {
 			later, err := graph.LaterFork(ctx, s.Git, forks, base, head, resolvedFork)
 			if err != nil {
 				return nil, err

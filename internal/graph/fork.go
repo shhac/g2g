@@ -19,8 +19,9 @@ type ordering interface {
 // It never moves a boundary backward, so a tip that was rewritten, or one head
 // does not build on, leaves fork where it was.
 //
-// track and restack both apply it to a branch on a trunk that has moved on,
-// and wrote it out apart until it was this one rule.
+// track applies it to a branch on a trunk that has moved on and restack to
+// every branch it plans, and they wrote it out apart until it was this one
+// rule.
 func LaterFork(ctx context.Context, git ordering, forks MergeBases, tip, head, fork string) (string, error) {
 	shared, err := forks.MergeBase(ctx, tip, head)
 	if err != nil {

@@ -40,6 +40,10 @@ func restackView(plan restack.Plan) stackView {
 // ontoEach says where each branch lands, grouped by the root it replays with.
 // A selection can have several roots on different parents, and naming the
 // first one's parent for all of them told the reader the wrong destination.
+//
+// pull replays onto the ref it fetched the trunk into, which is where the trunk
+// is about to be and no name the reader knows, so a root there is said to land
+// on the parent it keeps.
 func ontoEach(plan restack.Plan, branches []string) string {
 	parent := map[string]string{}
 	for _, step := range plan.Steps {
@@ -49,6 +53,9 @@ func ontoEach(plan restack.Plan, branches []string) string {
 		for {
 			above, stepped := parent[branch]
 			if _, rewritten := parent[above]; !stepped || !rewritten {
+				if recorded, kept := plan.Graph.Parent(branch); kept && above == plan.Onto.Object && !plan.Onto.Reparents() {
+					return recorded
+				}
 				return above
 			}
 			branch = above

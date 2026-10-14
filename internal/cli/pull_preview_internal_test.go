@@ -3,6 +3,7 @@ package cli
 import (
 	"testing"
 
+	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/restack"
 )
 
@@ -28,5 +29,20 @@ func TestPullPreviewNamesTheBranchesItMoves(t *testing.T) {
 				t.Errorf("replayNote() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+// pull replays onto the ref it fetched the trunk into. That ref is g2g's own,
+// and the preview named it as where a landed branch would move.
+func TestPullPreviewNamesTheTrunkRatherThanTheFetchedRef(t *testing.T) {
+	recorded, err := graph.New().Track("synthetic-a", graph.Edge{Parent: "synthetic-main", ForkPoint: "0000000000000000000000000000000000000000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetched := "refs/g2g/remotes/origin/synthetic-main"
+	plan := restack.Plan{Onto: restack.ToLocation(fetched), Steps: []restack.Step{{Branch: "synthetic-a", Parent: fetched, Collapses: true}}}
+	plan.Graph = recorded
+	if got, want := replayNote(plan), "Moves synthetic-a onto synthetic-main, where its work already is."; got != want {
+		t.Errorf("replayNote() = %q, want %q", got, want)
 	}
 }

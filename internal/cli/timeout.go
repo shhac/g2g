@@ -28,6 +28,11 @@ const (
 	// and by nothing else, so a ceiling that fitted the calls alone would cut
 	// a merge off mid-flight.
 	landingPerBranch = 180 * time.Second
+	// interruptedReadBudget bounds what a command reads to report a mutation
+	// that stopped part-way: whether a replay was left journaled, and on which
+	// files. They are local reads, asked after the mutation's own budget may
+	// have run out.
+	interruptedReadBudget = 10 * time.Second
 )
 
 // completionTimeout bounds a completion, which runs on a keystroke and must

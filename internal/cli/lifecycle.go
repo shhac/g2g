@@ -79,6 +79,11 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// sequence that can stop between steps, and a command that grew its own
 	// copy of this whole sequence to say so ended up skipping the revalidation
 	// the copy did not include. One hook is cheaper than one copy.
+	//
+	// It is handed a context of its own rather than the mutation's: the
+	// mutation budget running out is one reason to stop, and every read the
+	// hook made on it then failed, so a replay left journaled read as nothing
+	// applied. What it reads is local and bounded by interruptedReadBudget.
 	interrupted func(context.Context, P, error) (handled bool, err error)
 
 	// budget chooses the mutation phase's ceiling when the default does not
@@ -242,7 +247,9 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
 		if f.interrupted != nil {
-			if handled, report := f.interrupted(mutateCtx, validated, err); handled {
+			reading, cancelReading := context.WithTimeout(context.WithoutCancel(mutateCtx), interruptedReadBudget)
+			defer cancelReading()
+			if handled, report := f.interrupted(reading, validated, err); handled {
 				return report
 			}
 		}

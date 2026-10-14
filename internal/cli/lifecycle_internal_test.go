@@ -74,6 +74,36 @@ func TestAClaimedInterruptionIsReportedOnlyOnce(t *testing.T) {
 	}
 }
 
+// The mutation's budget running out is one reason a mutation stops, and the
+// hook then reads what it left. Handed that budget, every read failed and a
+// replay left journaled was reported as nothing applied.
+func TestTheInterruptedHookReadsOnAContextTheMutationDidNotSpend(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	var hookErr error
+	flow := applyFlow[interruptedPlan]{
+		plan:   func(context.Context) (interruptedPlan, error) { return interruptedPlan{name: "synthetic"}, nil },
+		render: func(io.Writer, interruptedPlan, Presentation) error { return nil },
+		budget: func(_ budgets, root context.Context, _ int) (context.Context, context.CancelFunc) {
+			spent, cancel := context.WithCancel(root)
+			cancel()
+			return spent, cancel
+		},
+		execute: func(ctx context.Context, _ interruptedPlan) error { return ctx.Err() },
+		interrupted: func(ctx context.Context, _ interruptedPlan, _ error) (bool, error) {
+			hookErr = ctx.Err()
+			return true, nil
+		},
+		notices: flowNotices{applied: "Applied.", changed: "Changed."},
+	}
+	if err := flow.run(cmd, context.Background(), newBudgets(cmd), Presentation{}, true); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if hookErr != nil {
+		t.Errorf("the hook was handed a spent context: %v", hookErr)
+	}
+}
+
 // A hook that declines leaves the ordinary failure path exactly as it was.
 func TestAnUnclaimedFailureStillSaysNotApplied(t *testing.T) {
 	out, err := interruptedFlow(t, false)

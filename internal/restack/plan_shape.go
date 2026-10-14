@@ -58,34 +58,3 @@ func (p Plan) reparenting() map[string]string {
 	}
 	return moves
 }
-
-// chain reports whether the steps form a single line of descent, which is the
-// only shape the resumable engine can rewrite in one invocation.
-// leaves are the rewriting branches nothing else being rewritten sits on: one
-// per line of descent, which is what a refusal to rewrite a fork can offer.
-func (p Plan) leaves() []string {
-	parents := map[string]bool{}
-	for _, step := range p.rewriting() {
-		parents[step.Parent] = true
-	}
-	leaves := make([]string, 0)
-	for _, step := range p.rewriting() {
-		if !parents[step.Branch] {
-			leaves = append(leaves, step.Branch)
-		}
-	}
-	return leaves
-}
-
-func (p Plan) chain() bool {
-	rewriting := p.rewriting()
-	for index, step := range rewriting {
-		if index == 0 {
-			continue
-		}
-		if step.Parent != rewriting[index-1].Branch {
-			return false
-		}
-	}
-	return true
-}

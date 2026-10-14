@@ -174,9 +174,12 @@ func TestApplyRefusesABlockedPlan(t *testing.T) {
 	}
 }
 
-// A rewrite that conflicts across a fork would need one rebase per line of
-// descent and a journal that tracks which finished, so it refuses instead.
-func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
+// A rewrite that conflicts across a fork is planned like any other: the
+// resumable engine rebases a branch at a time onto its parent's new tip, and
+// --continue works out what is left, the other lines included, from the refs.
+// It used to refuse, offering one restack per line, which sent pull and land
+// round to the same refusal.
+func TestAForkedConflictIsPlannedLikeAnyOther(t *testing.T) {
 	forked := stack()
 	forked.Edges["synthetic-c"] = graph.Edge{Parent: "synthetic-a", ForkPoint: "a-old"}
 	git := stackGit()
@@ -190,21 +193,8 @@ func TestForkedConflictIsRefusedRatherThanHalfDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Blocked() == "" {
-		t.Fatal("Blocked = \"\" for a conflicting rewrite of a forked selection")
-	}
-	if !strings.Contains(plan.Blocked(), "--scope path") {
-		t.Errorf("Blocked = %q, want it to name the way forward", plan.Blocked())
-	}
-	// One way out per line of descent, each naming its own leaf: a bare
-	// "--scope path" from where the reader stands takes only one of them.
-	if len(plan.Repair.Ways) != len(plan.Lines) || len(plan.Lines) < 2 {
-		t.Fatalf("Lines = %v, Ways = %+v, want one way per line", plan.Lines, plan.Repair.Ways)
-	}
-	for index, leaf := range plan.Lines {
-		if plan.Repair.Ways[index].Command != "g2g restack --branch "+leaf+" --scope path" {
-			t.Errorf("way %d = %q", index, plan.Repair.Ways[index].Command)
-		}
+	if plan.Blocked() != "" || plan.Clean {
+		t.Fatalf("Blocked = %q, Clean = %t, want a conflicting plan that is not refused", plan.Blocked(), plan.Clean)
 	}
 }
 

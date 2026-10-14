@@ -156,12 +156,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	// carrying only the sentence handed every machine reader a null where the
 	// ways out were.
 	plan.Repair = plan.Restack.Repair
-	// A fork whose replay conflicts is taken one line at a time, and from a
-	// leaf sync's own stack scope is exactly that line — whereas the restack
-	// command restack offers takes a scope sync does not.
-	if len(plan.Restack.Lines) != 0 {
-		plan = plan.refused(repair.Note{Reason: plan.Restack.Repair.Reason, Ways: lineWays(plan.Restack.Lines)})
-	}
 	diagnostic.Event(ctx, "sync.plan",
 		diagnostic.Field{Key: "base", Value: plan.Base},
 		diagnostic.Field{Key: "advance", Value: fmt.Sprintf("%t", plan.Advance)},
@@ -189,16 +183,6 @@ func throughOutside(take Take, branches []string, base string) (repair.Note, boo
 			{Effect: "name a branch this sync selects, or drop --through to take the whole stack"},
 		},
 	}, true
-}
-
-// lineWays is one pull per line of descent a conflicting replay was split
-// into, each bringing that line up to date alone.
-func lineWays(lines []string) []repair.Step {
-	ways := make([]repair.Step, 0, len(lines))
-	for _, leaf := range lines {
-		ways = append(ways, repair.Step{Command: "g2g pull --branch " + repair.Quote(leaf), Effect: "bring the line of descent ending at " + leaf + " up to date"})
-	}
-	return ways
 }
 
 // requireBase refuses a selection with no base to bring up to date. A selection

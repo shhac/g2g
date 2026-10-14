@@ -96,13 +96,6 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Held = true
 		return plan.refused(note), nil
 	}
-	if plan.Predicted && !clean && !plan.chain() {
-		// The resumable engine rewrites one line of descent per invocation, so
-		// a conflicting fork would need several and a journal that tracks
-		// which of them finished. Refusing is honest until it does.
-		plan.Lines = plan.leaves()
-		plan = plan.refused(forkConflict(plan.Lines))
-	}
 	diagnostic.Event(ctx, "restack.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")},
 		diagnostic.Field{Key: "clean", Value: fmt.Sprintf("%t", clean)},
@@ -215,16 +208,6 @@ func selectionRoots(discovery graph.Discovery) []string {
 func (p Plan) refused(note repair.Note) Plan {
 	p.Repair = note
 	return p
-}
-
-// forkConflict is the way out of a forked selection whose rewrite conflicts:
-// one line of descent at a time, ending at each leaf.
-func forkConflict(leaves []string) repair.Note {
-	ways := make([]repair.Step, 0, len(leaves))
-	for _, leaf := range leaves {
-		ways = append(ways, repair.Step{Command: "g2g restack --branch " + repair.Quote(leaf) + " --scope path", Effect: "rewrite the line of descent ending at " + leaf})
-	}
-	return repair.Note{Reason: "this selection forks and the rewrite conflicts", Ways: ways}
 }
 
 // ontoOneRoot is the way out of an --onto that names several roots: one

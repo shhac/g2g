@@ -166,9 +166,6 @@ type Plan struct {
 	Onto   Onto
 	Absorb bool
 	Steps  []Step
-	// Lines are the leaves of a forked selection whose rewrite conflicts,
-	// one per line of descent, which is how it can be taken instead.
-	Lines []string
 	// Updates is what a replay says the refs would become, and Clean reports
 	// that it would apply without a conflict. Both come from a preview that
 	// moves nothing.

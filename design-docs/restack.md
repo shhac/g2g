@@ -184,6 +184,13 @@ Handing rebase the whole chain and asking `--update-refs` to carry the
 intermediate branches works on some versions and not others, and buys nothing
 sequencing does not.
 
+**A fork that conflicts is rewritten like a line.** Each branch is rebased on
+its own onto its parent's current tip, so the engine never needed one line at a
+time; and `--continue` works out what is left from the refs, so the other
+lines of a fork are simply what is left once one has finished. It used to
+refuse, offering one `--scope path` restack per line, on the reasoning that a
+journal would have to track which lines had finished. The refs already say.
+
 **A selection can have several roots**, and each is its own replay. The stacks
 of a `--scope trunk` fork from the trunk at different points, and a subtree
 whose root collapsed leaves each child as a root of its own. Given the first

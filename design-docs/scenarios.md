@@ -232,8 +232,11 @@ answers.
 ## Your own stack
 
 **self-conflict.** You fix a branch low in the stack and it collides with the
-branches above. A forked selection is refused whole, naming `--scope path`; a
-straight line stops on the conflict and waits.
+branches above. The rewrite stops on the conflict and waits, and
+`restack --continue` goes on to whatever is left -- in a stack that forks,
+the other lines too. A forked selection used to be refused whole, naming
+`--scope path` per line, and `pull` and `land` inherited the refusal: `land`
+would not merge an approved pull request whose replay above it conflicted.
 
 **standing on the branch being rewritten.** The ordinary case, and the one that
 broke three times: a ref moves and the index and working tree have to move with

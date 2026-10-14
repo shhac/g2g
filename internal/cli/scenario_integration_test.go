@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -366,36 +365,19 @@ func (s scenario) land(r repo) {
 
 // restackToCompletion repairs the whole stack the way a user would, and is the
 // only place that knows how.
-//
-// A forking selection whose rewrite conflicts is refused on purpose: the
-// resumable engine moves one line of descent per invocation, so it names the
-// remedy rather than guessing which line to take. Following that remedy is part
-// of what these scenarios check — a refusal whose instructions do not work is
-// no better than a wrong answer.
 func (r repo) restackToCompletion(t *testing.T) {
 	t.Helper()
 
 	// Selected from the trunk, "my stack" is the whole tree: a trunk's path is
 	// itself, so the scope reduces to everything under it. That is how these
 	// scenarios ask for the entire shape without a scope that reaches other
-	// trunks, which is exactly what a rewrite must not be handed.
+	// trunks, which is exactly what a rewrite must not be handed. A fork whose
+	// rewrite conflicts stops on each line in turn, as a single line does.
 	stdout, _, err := run(t, "restack", "--branch", "synthetic-trunk", "--scope", "stack", "--apply")
-	if err == nil || cli.StoppedPartWayForTest(err) {
-		r.settle(t, stdout)
-		return
-	}
-	if !strings.Contains(err.Error(), "forks and the rewrite conflicts") {
+	if err != nil && !cli.StoppedPartWayForTest(err) {
 		t.Fatalf("restack --apply: %v\n%s", err, stdout)
 	}
-	for _, leaf := range r.leaves(t) {
-		// A line already correct refuses with nothing to do, which is not a
-		// failure of the sequence.
-		out, _, lineErr := run(t, "restack", "--branch", leaf, "--scope", "path", "--apply")
-		if lineErr != nil && !cli.StoppedPartWayForTest(lineErr) {
-			continue
-		}
-		r.settle(t, out)
-	}
+	r.settle(t, stdout)
 }
 
 // settle answers each conflict the way a user would until the command stops
@@ -416,25 +398,6 @@ func (r repo) settle(t *testing.T, stdout string) {
 		}
 		stdout, _, _ = run(t, "restack", "--continue")
 	}
-}
-
-// leaves names the recorded branches nothing else sits on, deepest last, which
-// is one line of descent each.
-func (r repo) leaves(t *testing.T) []string {
-	t.Helper()
-	recorded := r.recordedGraph()
-	parents := map[string]bool{}
-	for _, edge := range recorded.Branches {
-		parents[edge["parent"]] = true
-	}
-	leaves := make([]string, 0)
-	for branch := range recorded.Branches {
-		if !parents[branch] {
-			leaves = append(leaves, branch)
-		}
-	}
-	sort.Strings(leaves)
-	return leaves
 }
 
 func (r repo) branchTips() map[string]string {

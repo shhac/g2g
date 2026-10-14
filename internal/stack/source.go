@@ -212,9 +212,15 @@ func (r Resolver) sources() []string {
 // refuse anyway.
 func (r Resolver) remedy(ctx context.Context, branch string) repair.Note {
 	if r.looksLikeTrunk(ctx, branch) {
+		// Stacks may well sit on it: a trunk is never what they are made of,
+		// and saying nothing was stacked there told someone with stacks on
+		// it to start one.
 		return repair.Note{
-			Reason: "it is this repository's default branch, so nothing is stacked on it yet",
-			Ways:   []repair.Step{{Command: "g2g track --branch <child> --parent " + repair.Quote(branch), Effect: "start a stack on it"}},
+			Reason: "it is this repository's default branch, so its stacks sit above it and nothing below",
+			Ways: []repair.Step{
+				{Effect: "name a branch stacked on it with --branch"},
+				{Command: "g2g track --branch <child> --parent " + repair.Quote(branch), Effect: "start a stack on it"},
+			},
 		}
 	}
 	ways := make([]repair.Step, 0, len(r.Selectors))
@@ -248,7 +254,7 @@ func (r Resolver) pinnedRemedy(ctx context.Context, from Source, branch string) 
 		}
 	}
 	if r.looksLikeTrunk(ctx, branch) {
-		return fmt.Sprintf("nothing is stacked on it yet, and no other source describes it either · start one with g2g track --branch <child> --parent %s", branch)
+		return fmt.Sprintf("it is a trunk, and no other source describes it either · name a branch stacked on it with --branch, or start one with g2g track --branch <child> --parent %s", branch)
 	}
 	return "and no other source describes it either · " + r.remedy(ctx, branch).Sentence()
 }

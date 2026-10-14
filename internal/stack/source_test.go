@@ -213,8 +213,16 @@ func TestABranchNothingDescribesGetsAdviceThatFitsWhatItIs(t *testing.T) {
 			trunks: syntheticTrunks{branch: "main"},
 			branch: "main",
 			trunk:  true,
-			want:   "g2g track --branch <child> --parent main",
+			want:   "name a branch stacked on it with --branch",
 			unwant: "record its parent",
+		},
+		{
+			name:   "the default branch is not said to have nothing on it",
+			trunks: syntheticTrunks{branch: "main"},
+			branch: "main",
+			trunk:  true,
+			want:   "g2g track --branch <child> --parent main",
+			unwant: "nothing is stacked",
 		},
 		{
 			name:   "an ordinary branch is still missing a parent",

@@ -249,14 +249,14 @@ func writeUnstacked(writer io.Writer, undescribed stack.Undescribed, p Presentat
 
 func unstackedState(undescribed stack.Undescribed) string {
 	if undescribed.Trunk {
-		return "trunk · nothing stacked on it"
+		return "trunk · stacks sit above it"
 	}
 	return "untracked"
 }
 
 func unstackedNote(undescribed stack.Undescribed) string {
 	if undescribed.Trunk {
-		return fmt.Sprintf("%s is this repository's default branch and nothing is stacked on it yet · start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+repair.Quote(undescribed.Branch)))
+		return fmt.Sprintf("%s is this repository's default branch, so its stacks sit above it · name one with --branch, or start one with %s.", undescribed.Branch, runnable("g2g track --branch <child> --parent "+repair.Quote(undescribed.Branch)))
 	}
 	return undescribed.Sentence(runnable)
 }

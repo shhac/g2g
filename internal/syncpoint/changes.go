@@ -15,13 +15,14 @@ type Changes struct {
 	// DroppedHere, commits the remote has that this branch had and no longer
 	// has.
 	DroppedUpstream, DroppedHere []string
-	// ReplacedHere are commits the remote has that this branch replaced with
-	// a replay of its own, each paired with the version that replaced it;
-	// ReplacedUpstream, commits here the remote replaced the same way. A
-	// replay that resolved a conflict changes a commit's patch, so its
-	// content matches nothing on the other side, and without these it read
-	// as one commit dropped and an unrelated one made. Neither commit of a
-	// pair is in the four lists above.
+	// ReplacedHere pairs commits in DroppedHere with the replay of each in
+	// Mine that replaced it; ReplacedUpstream, commits in DroppedUpstream with
+	// the remote's replay of each in New. A replay that resolved a conflict
+	// changes a commit's patch, so its content matches nothing on the other
+	// side, and without these it reads as one commit dropped and an unrelated
+	// one made. Both commits of a pair stay in the lists above, so a reader
+	// that knows nothing of pairs sees a drop and refuses, rather than seeing
+	// nothing at all; one that does excludes them through Unpaired.
 	ReplacedHere, ReplacedUpstream Replacements
 	// Shared are this branch's own commits the remote also has, by content.
 	// A branch with none left is one the remote emptied, or made again under
@@ -40,33 +41,24 @@ type Changes struct {
 	Stale bool
 }
 
-// Dropped reports a drop in either direction.
+// Dropped reports a drop in either direction, a commit replaced by a replay
+// among them. Without one, the comparison a caller had before sync points
+// stands.
 func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHere) != 0 }
 
-// Replaced reports a commit replaced in a replay, in either direction.
-func (c Changes) Replaced() bool { return len(c.ReplacedHere)+len(c.ReplacedUpstream) != 0 }
-
-// LeftHere is every commit this branch had when the two sides last agreed and
-// no longer has: those it dropped, and those it replaced with a replay.
-func (c Changes) LeftHere() []string { return slices.Concat(c.DroppedHere, c.ReplacedHere.Olds()) }
-
-// LeftUpstream is every commit the remote had when the two sides last agreed
-// and no longer has, the same way.
-func (c Changes) LeftUpstream() []string {
-	return slices.Concat(c.DroppedUpstream, c.ReplacedUpstream.Olds())
+// Unpaired is commits less both commits of every replay pair: of a drop list,
+// the commits gone for good; of Mine or New, those no replay made.
+func (c Changes) Unpaired(commits []string) []string {
+	_, unpaired := split(commits, slices.Concat(c.ReplacedHere.commits(), c.ReplacedUpstream.commits()))
+	return unpaired
 }
-
-// Decides reports changes the sync point has something to say about: a drop
-// or a replacement. Without either, the comparison a caller had before sync
-// points stands.
-func (c Changes) Decides() bool { return c.Dropped() || c.Replaced() }
 
 // Keep reclassifies commits a person chose to keep: one dropped upstream
 // becomes theirs to publish again, and one dropped here becomes one to take
-// back. It returns which of them were drops of this branch; anything else
-// named is not this branch's to keep.
+// back. A replaced commit kept is no longer paired: the version a replay made
+// of it is then one more commit of its side. It returns which of them were
+// drops of this branch; anything else named is not this branch's to keep.
 func (c Changes) Keep(commits []string) (Changes, []string) {
-	c = c.unpair(commits)
 	kept := make([]string, 0)
 	for _, commit := range commits {
 		if slices.Contains(c.DroppedUpstream, commit) || slices.Contains(c.DroppedHere, commit) {
@@ -76,6 +68,8 @@ func (c Changes) Keep(commits []string) (Changes, []string) {
 	reclassified := c
 	reclassified.DroppedUpstream, reclassified.Mine = partition(c.DroppedUpstream, commits, c.Mine)
 	reclassified.DroppedHere, reclassified.New = partition(c.DroppedHere, commits, c.New)
+	reclassified.ReplacedUpstream = c.ReplacedUpstream.unkept(commits)
+	reclassified.ReplacedHere = c.ReplacedHere.unkept(commits)
 	return reclassified, kept
 }
 

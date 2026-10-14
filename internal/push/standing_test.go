@@ -26,7 +26,7 @@ func TestStandingFromWhatTheSyncPointSaid(t *testing.T) {
 		},
 		{
 			name:    "a colleague's replay this clone has not taken",
-			changes: syncpoint.Changes{ReplacedUpstream: pair, Shared: []string{"s"}},
+			changes: syncpoint.Changes{DroppedUpstream: []string{"old"}, New: []string{"new"}, ReplacedUpstream: pair, Shared: []string{"s"}},
 			want:    Publication{Standing: Diverged, Theirs: 1},
 			decided: true,
 		},
@@ -43,13 +43,13 @@ func TestStandingFromWhatTheSyncPointSaid(t *testing.T) {
 		},
 		{
 			name:    "a drop here alongside a replay of another commit",
-			changes: syncpoint.Changes{DroppedHere: []string{"x"}, ReplacedHere: pair, Mine: []string{"m"}},
+			changes: syncpoint.Changes{DroppedHere: []string{"x", "old"}, ReplacedHere: pair, Mine: []string{"m", "new"}},
 			want:    Publication{Standing: Dropping, Ours: 2, Dropped: 1, Replaced: 1},
 			decided: true,
 		},
 		{
 			name:    "only replays of agreed commits",
-			changes: syncpoint.Changes{ReplacedHere: pair},
+			changes: syncpoint.Changes{DroppedHere: []string{"old"}, Mine: []string{"new"}, ReplacedHere: pair},
 			want:    Publication{Standing: Rewritten, Ours: 1, Replaced: 1},
 			decided: true,
 		},

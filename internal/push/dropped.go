@@ -48,7 +48,7 @@ func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, bra
 	changes, err := syncpoint.Assess(ctx, assessor, latest, branch, syncpoint.Branch{
 		Local: local, Remote: tip, LocalParent: parent, PublishedParent: publishedParent,
 	})
-	if err != nil || !changes.Decides() {
+	if err != nil || !changes.Dropped() {
 		return Publication{}, changes, false, err
 	}
 	publication, decided := standing(changes)
@@ -65,22 +65,26 @@ func bySyncPoint(ctx context.Context, git Comparer, latest syncpoint.Latest, bra
 // naming the replacement for whoever means it, and pull refuses the same
 // thing from the other side.
 func standing(changes syncpoint.Changes) (Publication, bool) {
+	// A replay is not a drop on either side: a replaced commit here is
+	// published by its replay, which Mine counts, and one replaced upstream
+	// is the remote's replay in New, still to be taken.
 	replaced := len(changes.ReplacedHere)
-	ours := len(changes.Mine) + len(changes.DroppedUpstream) + replaced
-	theirs := len(changes.New) + len(changes.ReplacedUpstream)
+	droppedHere, droppedUpstream := changes.Unpaired(changes.DroppedHere), changes.Unpaired(changes.DroppedUpstream)
+	ours := len(changes.Mine) + len(droppedUpstream)
+	theirs := len(changes.New)
 	switch {
-	case len(changes.DroppedUpstream) != 0:
-		return Publication{Standing: Restoring, Ours: ours, Theirs: theirs, Dropped: len(changes.DroppedUpstream)}, true
+	case len(droppedUpstream) != 0:
+		return Publication{Standing: Restoring, Ours: ours, Theirs: theirs, Dropped: len(droppedUpstream)}, true
 	case theirs != 0:
 		// Somebody else's commit on top of a drop or a replay of this
 		// clone's, or a replay of theirs this clone has not taken: still a
 		// divergence, and still refused. pull takes a replay of theirs.
-		return Publication{Standing: Diverged, Ours: ours, Theirs: theirs + len(changes.DroppedHere)}, true
+		return Publication{Standing: Diverged, Ours: ours, Theirs: theirs + len(droppedHere)}, true
 	case len(changes.Shared)+replaced == 0:
 		// A commit replayed is not gone: its replay is still the branch's own.
 		return Publication{}, false
-	case len(changes.DroppedHere) != 0:
-		return Publication{Standing: Dropping, Ours: ours, Dropped: len(changes.DroppedHere), Replaced: replaced}, true
+	case len(droppedHere) != 0:
+		return Publication{Standing: Dropping, Ours: ours, Dropped: len(droppedHere), Replaced: replaced}, true
 	default:
 		// Only replays of commits both sides agreed on: the branch was
 		// rewritten, as a restack does, with some patches changed while a
@@ -99,8 +103,8 @@ func (s Service) drops(ctx context.Context, branches []string, changed map[strin
 	commits := make([]Drop, 0)
 	for _, branch := range branches {
 		changes := changed[branch]
-		commits = append(commits, syncpoint.Named(syncpoint.Restoring, branch, changes.DroppedUpstream)...)
-		for _, commit := range changes.DroppedHere {
+		commits = append(commits, syncpoint.Named(syncpoint.Restoring, branch, changes.Unpaired(changes.DroppedUpstream))...)
+		for _, commit := range changes.Unpaired(changes.DroppedHere) {
 			to, err := s.holding(ctx, branches, branch, commit)
 			if err != nil {
 				return nil, err

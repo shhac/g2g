@@ -15,24 +15,6 @@ type Replacement struct {
 // Replacements are the commits one side replaced, each with its replay.
 type Replacements []Replacement
 
-// Olds is the commit each pair replaced.
-func (r Replacements) Olds() []string {
-	olds := make([]string, 0, len(r))
-	for _, pair := range r {
-		olds = append(olds, pair.Old)
-	}
-	return olds
-}
-
-// News is the replay each pair made.
-func (r Replacements) News() []string {
-	news := make([]string, 0, len(r))
-	for _, pair := range r {
-		news = append(news, pair.New)
-	}
-	return news
-}
-
 // Named lists each replaced commit on one branch, with the commit it became.
 func (r Replacements) Named(branch string) []Drop {
 	named := make([]Drop, 0, len(r))
@@ -42,34 +24,18 @@ func (r Replacements) Named(branch string) []Drop {
 	return named
 }
 
-// apart is dropped and made with both commits of every pair taken out: the
-// pair stands for them.
-func (r Replacements) apart(dropped, made []string) ([]string, []string) {
-	return without(dropped, r.Olds()), without(made, r.News())
-}
-
-// rejoin is apart's inverse for the pairs whose old commit is named: those go
-// back into dropped and made, and the rest stay paired.
-func (r Replacements) rejoin(named, dropped, made []string) (Replacements, []string, []string) {
-	kept := make(Replacements, 0, len(r))
-	dropped, made = slices.Clone(dropped), slices.Clone(made)
+// commits is both commits of every pair.
+func (r Replacements) commits() []string {
+	commits := make([]string, 0, 2*len(r))
 	for _, pair := range r {
-		if !slices.Contains(named, pair.Old) {
-			kept = append(kept, pair)
-			continue
-		}
-		dropped, made = append(dropped, pair.Old), append(made, pair.New)
+		commits = append(commits, pair.Old, pair.New)
 	}
-	return kept, dropped, made
+	return commits
 }
 
-// unpair puts each replacement whose old commit is named back as the drop and
-// the new commit it was before pairing, so keeping it works on it as on any
-// other drop: the version a replay made is then one more commit of its side.
-func (c Changes) unpair(commits []string) Changes {
-	c.ReplacedUpstream, c.DroppedUpstream, c.New = c.ReplacedUpstream.rejoin(commits, c.DroppedUpstream, c.New)
-	c.ReplacedHere, c.DroppedHere, c.Mine = c.ReplacedHere.rejoin(commits, c.DroppedHere, c.Mine)
-	return c
+// unkept is the pairs whose old commit is not among those kept.
+func (r Replacements) unkept(kept []string) Replacements {
+	return slices.DeleteFunc(slices.Clone(r), func(pair Replacement) bool { return slices.Contains(kept, pair.Old) })
 }
 
 // Carrier reads what a replay carries over from each commit. A reader
@@ -105,7 +71,10 @@ func replaced(ctx context.Context, git Git, changes Changes, seen []string) (Cha
 	if !ok {
 		return changes, nil
 	}
-	hereNew, upstreamNew := without(changes.Mine, seen), without(changes.New, seen)
+	// A stale reset puts commits the sync point holds in New, and only a
+	// commit outside it can be a replay.
+	_, hereNew := split(changes.Mine, seen)
+	_, upstreamNew := split(changes.New, seen)
 	here := len(changes.DroppedHere) != 0 && len(hereNew) != 0
 	upstream := len(changes.DroppedUpstream) != 0 && len(upstreamNew) != 0
 	if !here && !upstream {
@@ -118,8 +87,6 @@ func replaced(ctx context.Context, git Git, changes Changes, seen []string) (Cha
 	}
 	changes.ReplacedHere = pairs(changes.DroppedHere, hereNew, carried)
 	changes.ReplacedUpstream = pairs(changes.DroppedUpstream, upstreamNew, carried)
-	changes.DroppedHere, changes.Mine = changes.ReplacedHere.apart(changes.DroppedHere, changes.Mine)
-	changes.DroppedUpstream, changes.New = changes.ReplacedUpstream.apart(changes.DroppedUpstream, changes.New)
 	return changes, nil
 }
 
@@ -149,9 +116,4 @@ func pairs(old, made []string, carried map[string]localgit.Carried) Replacements
 		paired = append(paired, Replacement{Old: commit, New: replay})
 	}
 	return paired
-}
-
-// without is commits less those named.
-func without(commits, named []string) []string {
-	return slices.DeleteFunc(slices.Clone(commits), func(commit string) bool { return slices.Contains(named, commit) })
 }

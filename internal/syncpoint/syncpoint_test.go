@@ -287,16 +287,25 @@ func (f fixture) replay(branch, base string) {
 
 // A replay that resolved a conflict changed x's patch, so by content it
 // matches nothing published. It is x replayed, not x dropped and another
-// commit made, and saying the second is what refused to publish it.
+// commit made, and saying the second is what refused to publish it. Both
+// commits stay where a reader that knows nothing of pairs would look -- the
+// old one dropped, the replay new -- so that reader refuses rather than
+// publishes.
 func TestACommitReplayedWithAResolvedConflictIsReplacedHere(t *testing.T) {
 	f := newFixture(t)
 	f.repo.Run("branch", "synthetic-synced", "synthetic-b")
 	f.repo.Run("branch", "synthetic-published", "synthetic-b")
 	f.replay("synthetic-local", "synthetic-b~1")
 	got := f.classify(t, "synthetic-local", "synthetic-published", "synthetic-synced")
-	want := []Replacement{{Old: f.repo.Revision("synthetic-b"), New: f.repo.Revision("synthetic-local")}}
-	if !slices.Equal(got.ReplacedHere, want) || len(got.DroppedHere)+len(got.Mine)+len(got.New)+len(got.DroppedUpstream) != 0 {
+	old, replay := f.repo.Revision("synthetic-b"), f.repo.Revision("synthetic-local")
+	if !slices.Equal(got.ReplacedHere, []Replacement{{Old: old, New: replay}}) || len(got.ReplacedUpstream) != 0 {
 		t.Errorf("Classify() = %+v, want x replaced here", got)
+	}
+	if !slices.Equal(got.DroppedHere, []string{old}) || !slices.Equal(got.Mine, []string{replay}) || len(got.New)+len(got.DroppedUpstream) != 0 {
+		t.Errorf("Classify() = %+v, want x dropped here and its replay mine", got)
+	}
+	if unpaired := got.Unpaired(slices.Concat(got.DroppedHere, got.Mine)); len(unpaired) != 0 {
+		t.Errorf("Unpaired() = %v, want the pair excluded", unpaired)
 	}
 }
 
@@ -307,9 +316,12 @@ func TestACommitTheRemoteReplayedIsReplacedUpstream(t *testing.T) {
 	f.repo.Run("branch", "synthetic-synced", "synthetic-b")
 	f.replay("synthetic-published", "synthetic-b~1")
 	got := f.classify(t, "synthetic-b", "synthetic-published", "synthetic-synced")
-	want := []Replacement{{Old: f.repo.Revision("synthetic-b"), New: f.repo.Revision("synthetic-published")}}
-	if !slices.Equal(got.ReplacedUpstream, want) || len(got.DroppedHere)+len(got.Mine)+len(got.New)+len(got.DroppedUpstream) != 0 {
+	old, replay := f.repo.Revision("synthetic-b"), f.repo.Revision("synthetic-published")
+	if !slices.Equal(got.ReplacedUpstream, []Replacement{{Old: old, New: replay}}) || len(got.ReplacedHere) != 0 {
 		t.Errorf("Classify() = %+v, want x replaced upstream", got)
+	}
+	if !slices.Equal(got.DroppedUpstream, []string{old}) || !slices.Equal(got.New, []string{replay}) || len(got.Mine)+len(got.DroppedHere) != 0 {
+		t.Errorf("Classify() = %+v, want x dropped upstream and the remote's replay new", got)
 	}
 }
 
@@ -320,7 +332,7 @@ func TestWithoutASyncPointNothingIsReplaced(t *testing.T) {
 	f.repo.Run("branch", "synthetic-published", "synthetic-b")
 	f.replay("synthetic-local", "synthetic-b~1")
 	got := f.classify(t, "synthetic-local", "synthetic-published", "")
-	if got.Replaced() || len(got.Mine) != 1 || len(got.New) != 1 {
+	if len(got.ReplacedHere)+len(got.ReplacedUpstream) != 0 || len(got.Mine) != 1 || len(got.New) != 1 {
 		t.Errorf("Classify() = %+v, want x new on both sides", got)
 	}
 }
@@ -344,13 +356,20 @@ func TestPairsMatchOnlyOneLaterCommitPerKey(t *testing.T) {
 // Keeping the old commit of a pair undoes the pairing: it is one more drop to
 // keep, and the version the replay made one more commit of its side.
 func TestKeepingAReplacedCommitUndoesThePair(t *testing.T) {
-	changes := Changes{ReplacedHere: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}}}
+	changes := Changes{
+		DroppedHere: []string{"old", "other"}, Mine: []string{"new", "made"},
+		ReplacedHere: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}},
+	}
 	got, kept := changes.Keep([]string{"old"})
 	if !slices.Equal(kept, []string{"old"}) {
 		t.Errorf("kept = %v, want old", kept)
 	}
-	if !slices.Equal(got.New, []string{"old"}) || !slices.Equal(got.Mine, []string{"new"}) || !slices.Equal(got.ReplacedHere, []Replacement{{Old: "other", New: "made"}}) {
+	if !slices.Equal(got.New, []string{"old"}) || !slices.Equal(got.DroppedHere, []string{"other"}) ||
+		!slices.Equal(got.Mine, []string{"new", "made"}) || !slices.Equal(got.ReplacedHere, []Replacement{{Old: "other", New: "made"}}) {
 		t.Errorf("Keep() = %+v, want old taken back, new mine, the other pair kept", got)
+	}
+	if unpaired := got.Unpaired(got.Mine); !slices.Equal(unpaired, []string{"new"}) {
+		t.Errorf("Unpaired(Mine) = %v, want new no longer a replay", unpaired)
 	}
 }
 
@@ -359,29 +378,44 @@ func TestKeepingAReplacedCommitUndoesThePair(t *testing.T) {
 // commit there. The two sides go through one helper with their lists swapped,
 // and swapping them the wrong way round is what this would catch.
 func TestKeepingACommitTheRemoteReplayedUndoesThePair(t *testing.T) {
-	changes := Changes{ReplacedUpstream: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}}}
+	changes := Changes{
+		DroppedUpstream: []string{"old", "other"}, New: []string{"new", "made"},
+		ReplacedUpstream: []Replacement{{Old: "old", New: "new"}, {Old: "other", New: "made"}},
+	}
 	got, kept := changes.Keep([]string{"old"})
 	if !slices.Equal(kept, []string{"old"}) {
 		t.Errorf("kept = %v, want old", kept)
 	}
-	if !slices.Equal(got.Mine, []string{"old"}) || !slices.Equal(got.New, []string{"new"}) || len(got.DroppedUpstream) != 0 ||
+	if !slices.Equal(got.Mine, []string{"old"}) || !slices.Equal(got.New, []string{"new", "made"}) || !slices.Equal(got.DroppedUpstream, []string{"other"}) ||
 		!slices.Equal(got.ReplacedUpstream, []Replacement{{Old: "other", New: "made"}}) || len(got.ReplacedHere) != 0 {
 		t.Errorf("Keep() = %+v, want old mine again, new theirs, the other pair kept", got)
 	}
 }
 
-// What left each side is what it dropped and what it replaced, the replaced
-// named by their old commits: the ones the sync point holds.
-func TestLeftNamesDropsAndReplacedCommitsOnEachSide(t *testing.T) {
+// Unpaired takes both commits of every pair out of whichever list it is
+// given, from either side, and leaves everything else in order.
+func TestUnpairedLeavesOnlyCommitsNoReplayExplains(t *testing.T) {
 	changes := Changes{
-		DroppedHere: []string{"dropped-here"}, ReplacedHere: []Replacement{{Old: "replaced-here", New: "replay-here"}},
-		DroppedUpstream: []string{"dropped-there"}, ReplacedUpstream: []Replacement{{Old: "replaced-there", New: "replay-there"}},
+		DroppedHere: []string{"replaced-here", "dropped-here"}, Mine: []string{"mine", "replay-here"},
+		DroppedUpstream: []string{"dropped-there", "replaced-there"}, New: []string{"replay-there", "new"},
+		ReplacedHere:     []Replacement{{Old: "replaced-here", New: "replay-here"}},
+		ReplacedUpstream: []Replacement{{Old: "replaced-there", New: "replay-there"}},
 	}
-	if got := changes.LeftHere(); !slices.Equal(got, []string{"dropped-here", "replaced-here"}) {
-		t.Errorf("LeftHere() = %v", got)
+	for _, test := range []struct {
+		name       string
+		list, want []string
+	}{
+		{"dropped here", changes.DroppedHere, []string{"dropped-here"}},
+		{"mine", changes.Mine, []string{"mine"}},
+		{"dropped upstream", changes.DroppedUpstream, []string{"dropped-there"}},
+		{"new", changes.New, []string{"new"}},
+	} {
+		if got := changes.Unpaired(test.list); !slices.Equal(got, test.want) {
+			t.Errorf("Unpaired(%s) = %v, want %v", test.name, got, test.want)
+		}
 	}
-	if got := changes.LeftUpstream(); !slices.Equal(got, []string{"dropped-there", "replaced-there"}) {
-		t.Errorf("LeftUpstream() = %v", got)
+	if !changes.Dropped() || !(Changes{DroppedHere: []string{"x"}, ReplacedHere: []Replacement{{Old: "x", New: "y"}}}).Dropped() {
+		t.Error("Dropped() = false, want a replaced commit to count as one")
 	}
 	if got := changes.ReplacedHere.Named("synthetic-b"); !slices.Equal(got, []Drop{{Kind: Replaced, Branch: "synthetic-b", Commit: "replaced-here", To: "replay-here"}}) {
 		t.Errorf("Named() = %+v", got)

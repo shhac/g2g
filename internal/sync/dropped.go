@@ -52,12 +52,12 @@ func (s Service) judge(ctx context.Context, c collecting, branch, published, beg
 	changes, kept := changes.Keep(c.keep)
 	found := verdict{commits: syncpoint.Named(syncpoint.Kept, branch, kept)}
 	if changes.Stale {
-		found.commits = append(found.commits, syncpoint.Named(syncpoint.Restored, branch, changes.New)...)
+		found.commits = append(found.commits, syncpoint.Named(syncpoint.Restored, branch, changes.Unpaired(changes.New))...)
 	}
-	if !changes.Decides() {
+	if !changes.Dropped() {
 		return found, false, nil
 	}
-	moves, gone, err := s.moved(ctx, c, branch, changes.DroppedUpstream)
+	moves, gone, err := s.moved(ctx, c, branch, changes.Unpaired(changes.DroppedUpstream))
 	if err != nil {
 		return verdict{}, false, err
 	}
@@ -76,18 +76,18 @@ func (s Service) judge(ctx context.Context, c collecting, branch, published, beg
 // carries it. Here, it is push's to publish, as a drop here is, and needs
 // nothing named; upstream, it is taken with the rest of the remote's version.
 func decide(c collecting, branch, published, begins string, changes syncpoint.Changes, moves []Drop, gone []string, found verdict) verdict {
-	if len(changes.LeftUpstream()) == 0 {
+	if len(changes.DroppedUpstream) == 0 {
 		if len(changes.New) != 0 {
 			found.refusal = droppedHereAndNew(c, branch, changes)
 			return found
 		}
 		// Dropped here and nothing new there: this branch is ahead of what
 		// the remote holds by a drop, which is push's to publish.
-		found.commits = append(found.commits, syncpoint.Named(syncpoint.Left, branch, changes.DroppedHere)...)
+		found.commits = append(found.commits, syncpoint.Named(syncpoint.Left, branch, changes.Unpaired(changes.DroppedHere))...)
 		return found
 	}
 	switch {
-	case len(changes.LeftHere()) != 0:
+	case len(changes.DroppedHere) != 0:
 		found.refusal = droppedBothWays(c, branch, changes)
 	case len(changes.Mine) != 0:
 		found.refusal = yoursOverTheirDrop(c, branch, changes)

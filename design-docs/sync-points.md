@@ -132,8 +132,14 @@ made `status` say "dropped here" about work that was all still there.
 A replay keeps three things the patch does not: the author, the author date,
 and the message. `Classify` pairs a dropped commit with the one commit on the
 other side that shares its author, author date and subject, and records the
-pair as **replaced** (`ReplacedHere`, `ReplacedUpstream`) instead of a drop and
-a new commit. Three conditions keep a pair from hiding anybody's work:
+pair as **replaced** (`ReplacedHere`, `ReplacedUpstream`). The pair annotates
+the lists rather than replacing them: the old commit stays **dropped** and the
+replay stays **new**, and a reader that wants only what no replay explains asks
+`Changes.Unpaired`. That is the direction that fails safe. A reader that knows
+nothing of pairs sees a drop and a new commit and refuses, as it did before
+pairing existed; when the pairs lived only apart from the lists, the same
+reader saw both commits vanish and could take nothing at all over a
+colleague's replay. Three conditions keep a pair from hiding anybody's work:
 
 - **The old commit is in the sync point**, as every dropped commit is. Both
   clones agreed on it, so replacing it loses nothing either had not seen. A
@@ -153,7 +159,9 @@ the id test found missing is missing.
 `push` publishes a branch whose only differences are replacements as rewritten,
 naming each pair; `pull` takes the remote's replacements with the rest of its
 version, naming each, and leaves this clone's to `push`. `--keep` on a replaced
-commit undoes the pair, so it is kept as any drop is. `pull --strict` refuses
+commit ends the pair, so it is kept as any drop is, and the replay is one more
+commit of its side -- which, beside the kept original, refuses rather than
+keep the change twice. `pull --strict` refuses
 a replacement, because a changed patch is a change to what the branch holds;
 `push --strict` does not, as it does not refuse a clean rewrite.
 

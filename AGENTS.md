@@ -605,10 +605,15 @@ property the original had.
   replay left journaled is finished, whichever command left it. land's copy
   told the reader to resolve files when none were unmerged, and pull's never
   named the files at all.
-- `syncpoint.Replacements` — a replay pair's two sides (`Olds`, `News`), the
-  `Drop` for each (`Named`), and `Changes.LeftHere` / `LeftUpstream`. push and
-  sync each built the replaced `Drop` by hand, and sync had its own way of
-  adding the old ids back.
+- `syncpoint.Replacements` and `Changes.Unpaired` — a replay pair annotates
+  the drop and new lists it pairs, and both commits stay in them; `Unpaired`
+  is the one way to ask for what no replay explains, and `Named` the `Drop`
+  for each pair. push and sync each built the replaced `Drop` by hand, and
+  when the pairs lived apart from the lists every reader had to add them back
+  -- and one that did not saw a colleague's replay as nothing at all.
+  `internal/push` and `internal/sync` pin what they make of every shape of the
+  answer in `testdata/replays.golden` (`internal/testutil/replays`); a change
+  to how it is held must leave those unchanged, or explain the diff.
 
 ## Change and verification workflow
 

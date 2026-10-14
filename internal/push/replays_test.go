@@ -19,7 +19,7 @@ func TestPushStandsEveryShapeOfASyncPointsAnswer(t *testing.T) {
 	var out strings.Builder
 	for _, shape := range replays.All() {
 		changes := shape.Changes()
-		fmt.Fprintf(&out, "%s: decides=%t", shape, changes.Decides())
+		fmt.Fprintf(&out, "%s: decides=%t", shape, changes.Dropped())
 		if publication, decided := standing(changes); decided {
 			fmt.Fprintf(&out, " %+v", publication)
 		} else {

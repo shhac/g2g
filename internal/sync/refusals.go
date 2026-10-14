@@ -32,8 +32,8 @@ func listed(commits []string) string {
 func droppedBothWays(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
 		Reason: fmt.Sprintf("%s was dropped from or replayed on both sides since the last pull or push: %s gone from %s, and %s gone from here",
-			branch, listed(changes.LeftUpstream()), c.remote, listed(changes.LeftHere())),
-		Ways: append(keepWays(c, changes.DroppedHere, "take "+c.remote+"'s version, keeping what you dropped as theirs"),
+			branch, listed(changes.DroppedUpstream), c.remote, listed(changes.DroppedHere)),
+		Ways: append(keepWays(c, changes.Unpaired(changes.DroppedHere), "take "+c.remote+"'s version, keeping what you dropped as theirs"),
 			repair.Step{Effect: "reconcile it yourself"}),
 	}
 }
@@ -41,8 +41,8 @@ func droppedBothWays(c collecting, branch string, changes syncpoint.Changes) *re
 func yoursOverTheirDrop(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
 		Reason: fmt.Sprintf("%s dropped or replayed %s on %s, and you have committed %s on it since: taking theirs would lose yours, and keeping yours would keep what they replaced",
-			c.remote, listed(changes.LeftUpstream()), branch, listed(changes.Mine)),
-		Ways: append(keepWays(c, changes.DroppedUpstream, "keep what "+c.remote+" dropped, with your commits on it"),
+			c.remote, listed(changes.DroppedUpstream), branch, listed(changes.Mine)),
+		Ways: append(keepWays(c, changes.Unpaired(changes.DroppedUpstream), "keep what "+c.remote+" dropped, with your commits on it"),
 			repair.Step{Command: c.takeCommand, Effect: "take " + c.remote + "'s version and discard yours"},
 			repair.Step{Effect: "rebase your commits onto theirs yourself, then pull"}),
 	}
@@ -62,8 +62,8 @@ func emptiedUpstream(c collecting, branch string, gone []string) *repair.Note {
 func droppedHereAndNew(c collecting, branch string, changes syncpoint.Changes) *repair.Note {
 	return &repair.Note{
 		Reason: fmt.Sprintf("you dropped or replayed %s on %s, and %s has %s on it you do not: taking theirs would put back what you replaced",
-			listed(changes.LeftHere()), branch, c.remote, listed(changes.New)),
-		Ways: append(keepWays(c, changes.DroppedHere, "take theirs, keeping what you dropped"),
+			listed(changes.DroppedHere), branch, c.remote, listed(changes.New)),
+		Ways: append(keepWays(c, changes.Unpaired(changes.DroppedHere), "take theirs, keeping what you dropped"),
 			repair.Step{Effect: "reconcile it yourself"}),
 	}
 }

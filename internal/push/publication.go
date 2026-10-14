@@ -153,7 +153,7 @@ func compare(ctx context.Context, git Comparer, remote string, branches []string
 	changed := make(map[string]syncpoint.Changes, len(branches))
 	for index, branch := range branches {
 		publishing[branch] = results[index]
-		if changes[index].Decides() || changes[index].Unsynced {
+		if changes[index].Dropped() || changes[index].Unsynced {
 			changed[branch] = changes[index]
 		}
 	}

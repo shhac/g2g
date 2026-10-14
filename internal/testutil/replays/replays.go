@@ -56,6 +56,19 @@ func (c Case) Changes() syncpoint.Changes {
 		Mine: make([]string, 0), New: make([]string, 0),
 		DroppedHere: make([]string, 0), DroppedUpstream: make([]string, 0),
 	}
+	// Both commits of a pair are in the lists it annotates, and ahead of the
+	// rest, so a reader that lists a pair's old commit as a drop reads as
+	// that rather than happening to land where it would anyway.
+	if c.ReplacedHere {
+		changes.ReplacedHere = syncpoint.Replacements{{Old: ReplacedHere, New: ReplayHere}}
+		changes.DroppedHere = append(changes.DroppedHere, ReplacedHere)
+		changes.Mine = append(changes.Mine, ReplayHere)
+	}
+	if c.ReplacedUpstream {
+		changes.ReplacedUpstream = syncpoint.Replacements{{Old: ReplacedUpstream, New: ReplayUpstream}}
+		changes.DroppedUpstream = append(changes.DroppedUpstream, ReplacedUpstream)
+		changes.New = append(changes.New, ReplayUpstream)
+	}
 	if c.DroppedHere {
 		changes.DroppedHere = append(changes.DroppedHere, DroppedHere)
 	}
@@ -67,12 +80,6 @@ func (c Case) Changes() syncpoint.Changes {
 	}
 	if c.New {
 		changes.New = append(changes.New, New)
-	}
-	if c.ReplacedHere {
-		changes.ReplacedHere = syncpoint.Replacements{{Old: ReplacedHere, New: ReplayHere}}
-	}
-	if c.ReplacedUpstream {
-		changes.ReplacedUpstream = syncpoint.Replacements{{Old: ReplacedUpstream, New: ReplayUpstream}}
 	}
 	if c.Shared {
 		changes.Shared = []string{Shared}

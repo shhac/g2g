@@ -90,3 +90,34 @@ func TestAbortingAForkedRewriteRestoresEveryLine(t *testing.T) {
 	}
 	r.assertClean()
 }
+
+// Skipping part-way across a fork drops the commit stopped on and carries on
+// to the other line, as continuing does: what is left is worked out from the
+// refs, whichever verb resumed it.
+func TestSkippingAcrossAForkedRewriteReachesTheOtherLine(t *testing.T) {
+	r := forkedConflict(t)
+	ctx := context.Background()
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-a", Scope: graph.ScopeStack})
+	skips := 0
+	for ; skips < 3; skips++ {
+		if err := r.service.Skip(ctx); err == nil {
+			break
+		}
+	}
+	if skips != 1 {
+		t.Errorf("finished after %d skips, want a stop on each line", skips+1)
+	}
+	r.builtOn("synthetic-main", "synthetic-a")
+	for branch, file := range map[string]string{"synthetic-b": "b.txt", "synthetic-c": "c.txt"} {
+		if r.Try("merge-base", "--is-ancestor", "synthetic-a", branch) != nil {
+			t.Errorf("%s is not built on synthetic-a", branch)
+		}
+		if got := r.Run("show", branch+":"+file); got != "from the trunk" {
+			t.Errorf("%s:%s = %q, want the trunk's, its own commit skipped", branch, file, got)
+		}
+	}
+	if active, _ := r.service.InProgress(ctx); active {
+		t.Error("a finished restack kept its journal")
+	}
+	r.assertClean()
+}

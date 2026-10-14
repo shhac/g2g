@@ -203,9 +203,11 @@ a branch whose work is in either version of it has landed.
 
 A descent that stops part-way reports what landed rather than "not applied" —
 those merges are done and staying done — and it reports it from what it
-recorded as it went, making no call of its own, because the context it is
-handed is the mutation budget and the usual reason for stopping is that budget
-expiring.
+recorded as it went. The one thing it asks is whether the replay above a merge
+was left journaled, and on which files, so it can say how to finish it; that
+is asked on a short context of its own that `applyFlow` gives every stop
+report, because the usual reason for stopping is the mutation budget expiring.
+How to finish a replay is said once, for restack, land and pull alike.
 
 A merge counts from the moment GitHub accepts it, not once its cycle finishes:
 the wait after it or the replay above it can still fail, and neither undoes it.

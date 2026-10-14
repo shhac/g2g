@@ -396,7 +396,8 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   is the only place a sync point is read for a decision (pull and push each
   had a copy, and each set `Unsynced` by convention), `syncpoint.Record` is
   the only agree-then-diagnose wrapper, and `localgit.Short` is the only
-  short-id rule — the ids a preview prints are the ones `--keep` is asked for.
+  short-id rule — the ids a preview prints are the ones `--keep` is asked for,
+  and `syncpoint.Names` lists drops with it.
   Sync points are read for a whole selection at once (`syncpoint.LoadLatest`
   and `Latest.Describe`, two or three processes however wide the stack) and
   recorded together (`syncpoint.Record` takes every agreement a command
@@ -535,7 +536,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Ten things exist once and must not be reimplemented locally. Each was found as
+Thirteen things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -595,6 +596,19 @@ property the original had.
   (`registerScopeOf`), so advice cannot offer a scope the command refuses.
   status's notes said a bare `g2g push` after `status --branch X`, pushing the
   wrong stack, while its prune hint always spelled both flags out.
+- `githubstack.PullRequest.Settled` / `SettledEqual` — a pull request as a
+  revalidation compares it, without the head GitHub reports late after a
+  push. It lived in `stack.Discovery.Equal`, and `submit` compared its own
+  pull requests without it, so it went on refusing after every push that
+  comment and retarget had stopped refusing.
+- `resumeAdvice` / `replayPaused` in `internal/cli/restack_cmd.go` — how a
+  replay left journaled is finished, whichever command left it. land's copy
+  told the reader to resolve files when none were unmerged, and pull's never
+  named the files at all.
+- `syncpoint.Replacements` — a replay pair's two sides (`Olds`, `News`), the
+  `Drop` for each (`Named`), and `Changes.LeftHere` / `LeftUpstream`. push and
+  sync each built the replaced `Drop` by hand, and sync had its own way of
+  adding the old ids back.
 
 ## Change and verification workflow
 

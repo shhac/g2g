@@ -335,3 +335,12 @@ Waiting for CI — that is what `--admin` is instead of. Merge queues, which
 would ever settle; they are refused. Landing a forked selection. Undoing a
 descent: a merge cannot be taken back, and pretending otherwise would be the
 one dishonest thing in here.
+
+Landing without replaying what sits above, so that a pull request keeps the
+head its reviewers saw until a later merge. It was considered and turned down:
+the branch above would merge still carrying the landed branch's original
+commits, which a rebase merge cannot apply, and its pull request would show
+work already in the trunk. A branch that does not depend on the one below it
+is not stacked on it: start it from the trunk, or move it there with
+`g2g restack --branch <b> --onto <trunk>`, one replay before review rather than
+after it. Landing the other then leaves it alone.

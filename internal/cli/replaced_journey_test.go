@@ -141,3 +141,32 @@ func TestJourneyPullTakesAReplayThatResolvedConflicts(t *testing.T) {
 		t.Errorf("a second pull still has something to say: %v\n%s", err, stdout)
 	}
 }
+
+// Bob resolved the conflicts and published, and Alice, who has not taken his
+// replay, commits on B and pushes. Bob's replayed commits are ones she never
+// agreed on, so publishing hers over them would erase his resolution: her
+// push refuses, and pull is what takes his.
+func TestJourneyPushRefusesOverAColleaguesReplayItHasNotTaken(t *testing.T) {
+	s := newDropWorld(t)
+	s.asBob()
+	s.resolveReplay(s.Other)
+	mustRun(t, "push", "--apply")
+	replayed := s.tip(s.Remote, "synthetic-b")
+
+	s.asAlice()
+	s.commit(s.Local, "synthetic-b", "alice.txt", "alice's work")
+	mustRun(t, "pull") // the preview fetches, so Bob's replay is here to compare
+	stdout, _, err := run(t, "push", "--branch", "synthetic-b", "--scope", "branch", "--apply")
+	if err == nil {
+		t.Fatalf("Alice's push replaced Bob's resolved replay:\n%s", stdout)
+	}
+	// Refused as diverged, which is what names a replay as one way the
+	// published version came to differ.
+	if !strings.Contains(stdout, "a conflict-resolved replay can also change the published patch") {
+		t.Errorf("the refusal is not the divergence one:\n%s", stdout)
+	}
+	if s.tip(s.Remote, "synthetic-b") != replayed {
+		t.Error("Bob's resolved replay is gone from the remote")
+	}
+	s.assertClean(s.Local)
+}

@@ -73,14 +73,12 @@ type Plan struct {
 	// point its edge records.
 	At string
 	// Return is the branch checked out now, which is where a failed recording
-	// goes back to.
-	Return string
-	// Detached is the commit a detached HEAD is at, which is where a failed
-	// recording goes back to instead; empty when Return names a branch.
-	Detached string
-	Commit   bool
-	Message  string
-	Staged   []string
+	// goes back to. Empty means HEAD is detached, which a plan allows only at
+	// At, so a failed recording detaches there again.
+	Return  string
+	Commit  bool
+	Message string
+	Staged  []string
 	// NewTrunk names a parent that recording this edge makes a root of the
 	// graph, which only the repository's default branch may become here.
 	NewTrunk string
@@ -103,7 +101,6 @@ func (p Plan) Equal(other Plan) bool {
 		p.ParentSource == other.ParentSource &&
 		p.At == other.At &&
 		p.Return == other.Return &&
-		p.Detached == other.Detached &&
 		p.Commit == other.Commit &&
 		p.Message == other.Message &&
 		p.NewTrunk == other.NewTrunk &&
@@ -127,14 +124,16 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	// Where a failed recording goes back to: the branch checked out now, or
 	// the commit a detached HEAD is at, which detaching again restores.
 	current, err := s.Git.CurrentBranch(ctx)
-	if err != nil {
-		if plan.Parent == "" {
-			return plan.refuse(repair.Note{
-				Reason: "HEAD is detached, so there is no branch to build on",
-				Ways:   []repair.Step{{Effect: "pass --parent with the branch to build on"}},
-			}), nil
-		}
-		if plan.Detached, err = s.Git.Resolve(ctx, "HEAD"); err != nil {
+	detached := err != nil
+	if detached && plan.Parent == "" {
+		return plan.refuse(repair.Note{
+			Reason: "HEAD is detached, so there is no branch to build on",
+			Ways:   []repair.Step{{Effect: "pass --parent with the branch to build on"}},
+		}), nil
+	}
+	head := ""
+	if detached {
+		if head, err = s.Git.Resolve(ctx, "HEAD"); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -174,16 +173,8 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.At = at
-	if plan.Detached != "" && plan.Detached != at {
-		// Switching away from a detached HEAD leaves behind whatever only it
-		// reaches, and the parent's tip is the one commit known to lose nothing.
-		return plan.refuse(repair.Note{
-			Reason: fmt.Sprintf("HEAD is detached somewhere other than %s's tip, so switching to %s could leave commits behind", plan.Parent, plan.Name),
-			Ways: []repair.Step{
-				{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip, then rerun"},
-				{Effect: "switch to a branch first"},
-			},
-		}), nil
+	if blocked, refused := refuseDetachedAway(plan, head); refused {
+		return blocked, nil
 	}
 	if blocked, refused := refuseRecord(plan, discovery); refused {
 		return blocked, nil
@@ -213,6 +204,23 @@ func (s Service) refuseName(ctx context.Context, plan Plan) (Plan, bool) {
 		return plan.refuse(repair.Note{Reason: err.Error(), Ways: []repair.Step{{Effect: "choose another name"}}}), true
 	}
 	return plan, false
+}
+
+// refuseDetachedAway refuses switching away from a detached HEAD anywhere but
+// the parent's tip. Switching leaves behind whatever only HEAD reaches, and
+// the parent's tip is the one commit known to lose nothing. head is empty for
+// a HEAD on a branch.
+func refuseDetachedAway(plan Plan, head string) (Plan, bool) {
+	if head == "" || head == plan.At {
+		return plan, false
+	}
+	return plan.refuse(repair.Note{
+		Reason: fmt.Sprintf("HEAD is detached somewhere other than %s's tip, so switching to %s could leave commits behind", plan.Parent, plan.Name),
+		Ways: []repair.Step{
+			{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip, then rerun"},
+			{Effect: "switch to a branch first"},
+		},
+	}), true
 }
 
 // refuseRecord is the rule create adds over track.
@@ -348,9 +356,9 @@ func (s Service) rollback(ctx context.Context, plan Plan, cause error) error {
 }
 
 func (s Service) switchBack(ctx context.Context, plan Plan) error {
-	if plan.Detached != "" {
-		if err := s.Git.SwitchDetached(ctx, plan.Detached); err != nil {
-			return fmt.Errorf("could not detach again at %s: %w", plan.Detached, err)
+	if plan.Return == "" {
+		if err := s.Git.SwitchDetached(ctx, plan.At); err != nil {
+			return fmt.Errorf("could not detach again at %s: %w", plan.At, err)
 		}
 		return nil
 	}

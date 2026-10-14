@@ -596,3 +596,25 @@ func TestCurrencyIsAbsentRatherThanAssumedWithoutAReader(t *testing.T) {
 		t.Error("currency was reported with no reader to compute it from")
 	}
 }
+
+// A pull request's head is left out of the discovery a revalidation compares,
+// because GitHub reports it late after a push. link is the one command that
+// reads it, so a head that moved enough to change what link would say about
+// the pull request must still refuse, through the currency link derives.
+func TestRevalidationStillSeesAHeadThatChangesCurrency(t *testing.T) {
+	planAt := func(head string, currency Currency) Plan {
+		return Plan{
+			Discovery: stack.Discovery{
+				Snapshot:     stack.Snapshot{Target: "synthetic-top", Base: "main", Branches: []string{"synthetic-top"}},
+				PullRequests: []githubstack.PullRequest{{Number: 7, Head: "synthetic-top", HeadOID: head, Base: "main", State: "OPEN"}},
+			},
+			Currency: map[string]Currency{"synthetic-top": currency},
+		}
+	}
+	if !planAt("pr-head", Currency{}).Equal(planAt("caught-up", Currency{})) {
+		t.Error("a head GitHub caught up with, changing nothing link says, read as a changed plan")
+	}
+	if planAt("pr-head", Currency{}).Equal(planAt("moved", Currency{Diverged: true})) {
+		t.Error("a head that diverged between preview and apply read as the same plan")
+	}
+}

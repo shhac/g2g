@@ -421,3 +421,40 @@ func TestJourneyPruneWithNothingToPublishSuggestsStatus(t *testing.T) {
 	}
 	w.assertLanded(t)
 }
+
+// A parent with two children was squash-merged by hand, and each child pulled
+// onto the trunk. Forgetting the parent alone -- prune --branch on it, with
+// --scope branch -- records both children on the trunk, where Git shows they
+// already sit. It refused, naming a track for each child, because neither
+// child was in the selection.
+func TestJourneyPruningALandedParentAloneRecordsItsChildrenWhereTheySit(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	w.branchOff("synthetic-a", "synthetic-c", "c.txt")
+	for _, edge := range [][2]string{{"synthetic-a", "main"}, {"synthetic-b", "synthetic-a"}, {"synthetic-c", "synthetic-a"}} {
+		mustRun(t, "track", "--branch", edge[0], "--parent", edge[1], "--apply")
+	}
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b", "synthetic-c")
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "switch", "-q", "main")
+	w.git(w.Other, "merge", "-q", "--squash", "origin/synthetic-a")
+	w.git(w.Other, "commit", "-qm", "synthetic squash of a")
+	w.git(w.Other, "push", "-q", "origin", "main")
+
+	for _, leaf := range []string{"synthetic-b", "synthetic-c"} {
+		mustRun(t, "pull", "--branch", leaf, "--apply")
+	}
+	preview := mustRun(t, "prune", "--branch", "synthetic-a", "--scope", "branch")
+	for _, want := range []string{"Records synthetic-b on main", "Records synthetic-c on main"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("the prune preview does not say %q:\n%s", want, preview)
+		}
+	}
+	mustRun(t, "prune", "--branch", "synthetic-a", "--scope", "branch", "--apply")
+	w.assertClean(w.Local)
+	status := mustRun(t, "status", "--branch", "main")
+	if strings.Contains(status, "synthetic-a") || !strings.Contains(status, "synthetic-b") || !strings.Contains(status, "synthetic-c") {
+		t.Errorf("status after the prune:\n%s", status)
+	}
+}

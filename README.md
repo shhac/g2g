@@ -824,9 +824,12 @@ Forgetting a branch can leave a child recorded under something that is no
 longer there. Where Git shows the branch below is an ancestor of that child —
 which is what a pull leaves, having replayed the child onto it — prune records
 the child there, with the same check and the same fork point `track` would use,
-because that is where the child already sits. Where Git does not show it, prune
-refuses rather than reparenting around it: a trunk advanced by hand with the
-stack not replayed, say, or a child outside the selection. The refusal offers
+because that is where the child already sits -- whether or not the child was
+selected, since forgetting its parent changes its record either way, so
+`g2g prune --branch <landed> --scope branch` forgets one branch after a merge
+and a pull. Where Git does not show it, prune refuses rather than reparenting
+around it: a trunk advanced by hand with the stack not replayed, say. The
+refusal offers
 `g2g pull --prune` first, which replays the child and then prunes, and then a
 `g2g track --branch <child> --parent <branch>` for each child, to record it by
 hand.

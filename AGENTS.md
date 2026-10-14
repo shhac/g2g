@@ -433,8 +433,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   evidence**: when Git shows that branch is an ancestor of the child, which is
   what a pull's replay leaves, and with the fork point `track` would record.
   That is recording where the child already sits, not reparenting around a
-  gap. Without the ancestry — a trunk advanced by hand and the stack not
-  replayed — or for a child outside the selection it still refuses, offering
+  gap. A child outside the selection is asked the same question, because
+  forgetting its parent changes its record either way; leaving it to the
+  refusal made `prune --branch <landed> --scope branch` refuse after every
+  merge and pull. Without the ancestry — a trunk advanced by hand and the
+  stack not replayed — it still refuses, offering
   `g2g pull --prune` and then one `g2g track --branch <child> --parent
   <branch>` per child. Do not relax the check into a guess; `untrack` still
   never reparents, and `delete` remains the one command that does on request.

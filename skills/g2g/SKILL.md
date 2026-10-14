@@ -129,8 +129,9 @@ description: |
   forgetting would strand is recorded on the branch below **only where Git shows
   that branch is an ancestor of the child** — what a pull leaves — with the
   same check and fork point `track` uses; that is recording where it already
-  sits, not reparenting around it. Anything else, including a child outside the
-  selection, still refuses, offering `g2g pull --prune` and then a
+  sits, not reparenting around it, and applies to a child outside the
+  selection too. Without that ancestry it still refuses, offering
+  `g2g pull --prune` and then a
   `g2g track --branch <child> --parent <branch>` per child. Do not widen the
   rehome to a guess.
 - `pull --prune` composes the two over one selection: the pull, then the

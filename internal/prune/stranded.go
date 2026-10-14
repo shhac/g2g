@@ -52,7 +52,13 @@ func placements(discovery graph.Discovery, landed []string) []placement {
 // an ancestor of it and recording it there moves nothing and guesses nothing —
 // refusing sent everyone to run track by hand, on the commonest way a branch
 // lands. Before a pull the trunk is not an ancestor, and that child is left to
-// the refusal. So is one outside the selection, which nobody asked about.
+// the refusal.
+//
+// A child outside the selection is asked too. It used to be left to the
+// refusal, as a branch nobody asked about -- but forgetting its parent changes
+// its record whatever happens, and prune --branch on the landed branch alone,
+// the natural way to forget one branch, then refused with a track per child
+// for children Git already showed on the trunk.
 func (s Service) rehome(ctx context.Context, placed []placement) (map[string]graph.Edge, []placement, error) {
 	rehome := map[string]graph.Edge{}
 	left := make([]placement, 0)
@@ -76,9 +82,9 @@ func (s Service) rehome(ctx context.Context, placed []placement) (map[string]gra
 	return rehome, left, nil
 }
 
-// sits reports a selected child Git shows already built on where it belongs.
+// sits reports a child Git shows already built on where it belongs.
 func (s Service) sits(ctx context.Context, each placement) (bool, error) {
-	if !each.selected || each.missing || s.Graph.Git == nil {
+	if each.missing || s.Graph.Git == nil {
 		return false, nil
 	}
 	return s.Graph.Git.IsAncestor(ctx, each.onto, each.child)

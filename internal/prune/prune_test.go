@@ -306,9 +306,11 @@ func TestOnlyTheChildGitCannotPlaceIsRefused(t *testing.T) {
 	}
 }
 
-// A child the selection did not ask about is not moved, even where Git would
-// answer for it: nobody asked about that branch.
-func TestAChildOutsideTheSelectionIsNeverRehomed(t *testing.T) {
+// Forgetting the landed branch alone, with --scope branch, still records a
+// child Git shows on the trunk there: forgetting its parent changes its record
+// whatever happens, and refusing sent people to track each child by hand
+// after a merge and a pull had already put it where it belongs.
+func TestAChildOutsideTheSelectionIsRecordedWhereItSits(t *testing.T) {
 	service, _, _, _ := syntheticService(t, "synthetic-c", "synthetic-a")
 	service.Graph.Git = pruneAncestry{current: "synthetic-c", sitting: map[string]bool{"synthetic-b": true}}
 
@@ -316,8 +318,9 @@ func TestAChildOutsideTheSelectionIsNeverRehomed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Blocked() == "" || len(plan.Rehome) != 0 {
-		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b left to the refusal", plan.Blocked(), plan.Rehome)
+	want := graph.Edge{Parent: "synthetic-trunk", ForkPoint: "synthetic-trunk-tip", Origin: graph.OriginAncestry}
+	if plan.Blocked() != "" || plan.Rehome["synthetic-b"] != want {
+		t.Errorf("Blocked = %q, Rehome = %v; want synthetic-b recorded on the trunk", plan.Blocked(), plan.Rehome)
 	}
 }
 

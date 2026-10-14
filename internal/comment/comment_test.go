@@ -480,6 +480,26 @@ func TestRevalidateRefusesACommentThatChangedUnderneath(t *testing.T) {
 	}
 }
 
+// A push moves a pull request's head before GitHub reports it, and nothing a
+// comment says depends on it, so the head arriving between the preview and
+// the revalidation is not a changed plan.
+func TestRevalidateIgnoresAHeadGitHubCaughtUpWith(t *testing.T) {
+	github := chainGitHub()
+	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
+	preview, err := service.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := slices.Clone(github.prs)
+	for index := range moved {
+		moved[index].HeadOID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	}
+	github.prs = moved
+	if _, err := testutil.Replan(preview)(service.Plan(context.Background(), stack.Selection{})); err != nil {
+		t.Fatalf("Replan() error = %v after only the heads moved", err)
+	}
+}
+
 // From a trunk, two stacks may both name a number; each still sees it, so the
 // comments agree with a run from inside either stack.
 func TestPlanFromATrunkAgreesWithAPlanFromEachStack(t *testing.T) {

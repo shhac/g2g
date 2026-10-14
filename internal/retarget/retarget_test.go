@@ -212,6 +212,27 @@ func TestRevalidateRefusesAChangedPlan(t *testing.T) {
 	}
 }
 
+// GitHub reports a pull request's head some moments after a push, and
+// retarget never reads it, so the head arriving between the preview and the
+// revalidation is not a changed plan. Run straight after a push, it refused
+// every time.
+func TestRevalidateIgnoresAHeadGitHubCaughtUpWith(t *testing.T) {
+	before := open(2, "synthetic-top", "synthetic-trunk")
+	before.HeadOID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	svc, github := service([]githubstack.PullRequest{open(1, "synthetic-lower", "synthetic-trunk"), before})
+	preview, err := svc.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	after := before
+	after.HeadOID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	github.prs = []githubstack.PullRequest{open(1, "synthetic-lower", "synthetic-trunk"), after}
+
+	if _, err := testutil.Replan(preview)(svc.Plan(context.Background(), stack.Selection{})); err != nil {
+		t.Errorf("Replan() error = %v after only a head moved", err)
+	}
+}
+
 func TestAnUnconfiguredServiceRefuses(t *testing.T) {
 	if _, err := (Service{}).Plan(context.Background(), stack.Selection{}); err == nil {
 		t.Error("Plan() error = nil on an unconfigured service")

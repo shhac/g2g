@@ -75,7 +75,8 @@ const (
 // pull requests by value and is what link, retarget and submit revalidate
 // against, and mergeable legitimately moves from UNKNOWN to CLEAN while GitHub
 // computes it — so carrying them there would make three commands that have
-// nothing to do with merging refuse intermittently.
+// nothing to do with merging refuse intermittently. PullRequest.HeadOID moves
+// the same way after a push, which is why Discovery.Equal leaves it out.
 type MergeState struct {
 	Number  int
 	Head    string

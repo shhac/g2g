@@ -29,10 +29,8 @@ func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ct
 // replayed without touching the checkout; anything else takes the resumable
 // engine, which needs the user's working tree and says so first.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if active, err := s.InProgress(ctx); err != nil {
+	if err := s.RequireIdle(ctx); err != nil {
 		return err
-	} else if active {
-		return fmt.Errorf("a restack is already in progress · run g2g restack --continue or g2g restack --abort in the worktree that started it")
 	}
 	if plan.Blocked() != "" {
 		return fmt.Errorf("cannot restack: %s", plan.Blocked())
@@ -89,6 +87,7 @@ func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Recor
 // restacks a stack from outside it, and it was the target that was written.
 func (s Service) record(plan Plan, standing checkout) Record {
 	record := Record{
+		Above:          plan.Above,
 		OntoParent:     plan.Onto.Parent,
 		Absorb:         plan.Absorb,
 		Worktrees:      plan.Policy,

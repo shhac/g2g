@@ -165,6 +165,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	discovery = aboveDiscovery(discovery, record.Above)
 	if missing := discovery.InState(graph.StateBranchMissing); len(missing) > 0 {
 		return Plan{}, fmt.Errorf("the restack cannot carry on: %s", deletedMidway(missing).Sentence())
 	}
@@ -173,7 +174,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	}
 	// No pending: a resume runs after whatever the caller was going to
 	// move has already moved.
-	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{}, record.Worktrees)
+	plan, err := s.Plan(ctx, record.Selection(), ToBranch(record.OntoParent), record.Absorb, Pending{Above: record.Above}, record.Worktrees)
 	if err != nil {
 		return Plan{}, err
 	}

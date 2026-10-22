@@ -16,7 +16,7 @@ import (
 // JournalSchemaVersion is bumped when a recorded field changes meaning. It is
 // its own namespace, separate from the graph store's and from the CLI's
 // output schema.
-const JournalSchemaVersion = 1
+const JournalSchemaVersion = 2
 
 const journalFileName = "restack.json"
 
@@ -30,7 +30,9 @@ const journalFileName = "restack.json"
 // What git cannot supply is Original: it restores only the invocation it is
 // running, so rolling back paths that already completed needs our own record.
 type Record struct {
-	SchemaVersion int `json:"schemaVersion"`
+	// Above is a durable replay boundary; version 1 readers must refuse it.
+	Above         string `json:"above,omitempty"`
+	SchemaVersion int    `json:"schemaVersion"`
 	// Worktree owns Git's private rebase state. The journal itself is shared.
 	Worktree string `json:"worktree,omitempty"`
 	// Checkout records the index's baseline before a bare ref move. A process
@@ -135,8 +137,11 @@ func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
 	if err := json.Unmarshal(contents, &record); err != nil {
 		return Record{}, false, fmt.Errorf("parse restack journal %s: %w", path, err)
 	}
-	if record.SchemaVersion != JournalSchemaVersion {
+	if record.SchemaVersion != 1 && record.SchemaVersion != JournalSchemaVersion {
 		return Record{}, false, fmt.Errorf("restack journal %s has schema version %d, which this g2g does not support (expected %d)", path, record.SchemaVersion, JournalSchemaVersion)
+	}
+	if record.SchemaVersion == 1 && record.Above != "" {
+		return Record{}, false, fmt.Errorf("restack journal %s has a replay boundary without schema version 2", path)
 	}
 	return record, true, nil
 }
@@ -159,7 +164,10 @@ func (j FileJournal) write(ctx context.Context, record Record, exclusive bool) e
 	if err != nil {
 		return err
 	}
-	record.SchemaVersion = JournalSchemaVersion
+	record.SchemaVersion = 1
+	if record.Above != "" {
+		record.SchemaVersion = JournalSchemaVersion
+	}
 	contents, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode restack journal: %w", err)

@@ -67,3 +67,16 @@ func droppedHereAndNew(c collecting, branch string, changes syncpoint.Changes) *
 			repair.Step{Effect: "reconcile it yourself"}),
 	}
 }
+
+// emptiedHere cannot promise publication that push deliberately refuses.
+func emptiedHere(c collecting, branch, published string, changes syncpoint.Changes) *repair.Note {
+	command := repair.Command(append([]string{"git"}, localgit.PushArguments(c.remote,
+		[]localgit.Lease{{Branch: branch, Expected: published}}, localgit.LeaveUpstream)...))
+	return &repair.Note{
+		Reason: fmt.Sprintf("%s has none of its agreed own commits any more (%s), so it was emptied or made again; g2g push will refuse to replace the published branch", branch, listed(changes.Unpaired(changes.DroppedHere))),
+		Ways: []repair.Step{
+			{Command: c.keepCommand(changes.Unpaired(changes.DroppedHere)), Effect: "take back the commits removed here"},
+			{Command: command, Effect: "publish the intended replacement with a lease pinned to the observed remote tip"},
+		},
+	}
+}

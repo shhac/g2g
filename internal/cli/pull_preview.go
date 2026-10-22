@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
 
@@ -23,10 +24,22 @@ func pullView(plan syncer.Plan) stackView {
 	if plan.Blocked() != "" {
 		return view.refusing(plan.Repair)
 	}
-	if !plan.Worktrees.Leaves(plan.Base) {
+	if plan.Above != "" {
+		note := "Keeps " + plan.Above + " at its current local tip; selected children replay onto it without advancing its ancestors."
+		for _, collection := range plan.Collect {
+			if collection.Branch == plan.Above {
+				note = "Follows " + plan.Above + " as published without replaying it or advancing its ancestors."
+			}
+		}
+		view = view.note(note, severityNeutral)
+	} else if !plan.Worktrees.Leaves(plan.Base) {
 		view = view.note(baseNote(plan), baseSeverity(plan))
 	}
-	view = worktreeNotes(view, plan.Worktrees, plan.Policy, "g2g restack", plan.Base)
+	finish, trunk := "g2g restack", plan.Base
+	if plan.Above != "" {
+		finish, trunk = pullPreviewCommand(plan), ""
+	}
+	view = worktreeNotes(view, plan.Worktrees, plan.Policy, finish, trunk)
 	if note := collectNote(plan); note != "" {
 		view = view.note(note, severityOK)
 	}
@@ -51,7 +64,7 @@ func dropNotes(view stackView, plan syncer.Plan) stackView {
 	if dropped := of(syncpoint.Dropped); len(dropped) != 0 {
 		view = view.note(fmt.Sprintf("Drops %s %s no longer has, removed there since this clone last pulled or pushed: %s · keep any with %s · each stays reachable through the sync point's reflog for about 30 days, and %s recovers one.",
 			words.Count(len(dropped), "commit", "commits"), plan.Remote, dropList(plan.Subjects, dropped),
-			runnable("g2g pull --keep <commit>"), runnable("git branch <name> <commit>")), severityWarn)
+			runnable(pullPreviewCommand(plan)+" --keep <commit>"), runnable("git branch <name> <commit>")), severityWarn)
 	}
 	if moved := of(syncpoint.Moved); len(moved) != 0 {
 		view = view.note(fmt.Sprintf("Moves %s between branches, as %s has them: %s.", words.Count(len(moved), "commit", "commits"), plan.Remote, dropList(plan.Subjects, moved)), severityNeutral)
@@ -178,4 +191,19 @@ func replayNote(plan restack.Plan) string {
 		return "Nothing needs replaying."
 	}
 	return strings.Join(said, " ")
+}
+
+// pullPreviewCommand retains the replay boundary in advice somebody may copy.
+func pullPreviewCommand(plan syncer.Plan) string {
+	args := []string{"g2g", "pull"}
+	if plan.Above != "" {
+		args = append(args, "--branch", plan.Restack.Target, "--above", plan.Above)
+	}
+	if plan.Above == "" && plan.Restack.Scope == shape.ScopeTrunk {
+		args = append(args, "--scope", "trunk")
+	}
+	if plan.Remote != "" && plan.Remote != localgit.DefaultRemote {
+		args = append(args, "--remote", plan.Remote)
+	}
+	return repair.Command(args)
 }

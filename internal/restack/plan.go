@@ -38,7 +38,11 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Discovery: discovery, Onto: onto, Absorb: absorb, Policy: worktrees}
+	if pending.Above != "" && (!discovery.Graph.Tracked(pending.Above) || !slices.Contains(discovery.Branches, pending.Above)) {
+		return Plan{}, fmt.Errorf("replay boundary %s is no longer recorded in the selected stack", pending.Above)
+	}
+	discovery = aboveDiscovery(discovery, pending.Above)
+	plan := Plan{Discovery: discovery, Above: pending.Above, Onto: onto, Absorb: absorb, Policy: worktrees}
 	if blocked := s.blockedReason(discovery); blocked.Reason != "" {
 		return plan.refused(blocked), nil
 	}

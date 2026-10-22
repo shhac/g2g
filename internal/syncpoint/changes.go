@@ -46,6 +46,17 @@ type Changes struct {
 // stands.
 func (c Changes) Dropped() bool { return len(c.DroppedUpstream)+len(c.DroppedHere) != 0 }
 
+// EmptiedHere reports a locally emptied or recreated branch: none of the
+// agreed work remains, including work preserved by a conflict-resolved replay.
+func (c Changes) EmptiedHere() bool {
+	return len(c.Shared)+len(c.ReplacedHere) == 0
+}
+
+// EmptiedUpstream is the same question of the published branch.
+func (c Changes) EmptiedUpstream() bool {
+	return len(c.Shared)+len(c.ReplacedUpstream) == 0
+}
+
 // Unpaired is commits less both commits of every replay pair: of a drop list,
 // the commits gone for good; of Mine or New, those no replay made.
 func (c Changes) Unpaired(commits []string) []string {

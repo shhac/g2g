@@ -165,3 +165,20 @@ func TestJournalRequiresALocator(t *testing.T) {
 		t.Error("Save() error = nil without a locator")
 	}
 }
+
+func TestReplayBoundaryRequiresVersionTwoButOrdinaryJournalsStayCompatible(t *testing.T) {
+	journal, _ := newJournal(t)
+	for _, above := range []string{"", "synthetic-a"} {
+		if err := journal.Save(context.Background(), Record{Branch: "synthetic-b", Above: above}); err != nil {
+			t.Fatal(err)
+		}
+		loaded, found, err := journal.Load(context.Background())
+		want := 1
+		if above != "" {
+			want = 2
+		}
+		if err != nil || !found || loaded.SchemaVersion != want || loaded.Above != above {
+			t.Fatalf("loaded=%+v found=%t err=%v", loaded, found, err)
+		}
+	}
+}

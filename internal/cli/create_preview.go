@@ -39,7 +39,11 @@ func createView(plan create.Plan) stackView {
 		return view.refusing(plan.Repair)
 	}
 
-	view = view.note(fmt.Sprintf("Creates %s at %s, the tip of %s, and switches to it.", plan.Name, localgit.Short(plan.At), plan.Parent), severityOK)
+	start := "the tip of " + plan.Parent
+	if plan.AtSource != "" {
+		start = plan.AtSource
+	}
+	view = view.note(fmt.Sprintf("Creates %s at %s (%s), and switches to it.", plan.Name, localgit.Short(plan.At), start), severityOK)
 	view = view.note(fmt.Sprintf("Records %s under %s.", plan.Name, plan.Parent), severityNeutral)
 	if plan.NewTrunk != "" {
 		view = view.note(fmt.Sprintf("%s becomes a root of the graph, as the repository's default branch.", plan.NewTrunk), severityNeutral)
@@ -59,7 +63,7 @@ func createView(plan create.Plan) stackView {
 // `track --parent` writes, so that is the command named for it.
 func createSequence(plan create.Plan) []stackStep {
 	steps := []stackStep{
-		{Command: repair.Command([]string{"git", "switch", "-c", plan.Name, plan.Parent}), Effect: "start " + plan.Name + " at " + plan.Parent + " and check it out"},
+		{Command: repair.Command([]string{"git", "switch", "-c", plan.Name, plan.At}), Effect: "start " + plan.Name + " at " + plan.At + " and check it out"},
 		{Command: repair.Command([]string{"g2g", "track", "--branch", plan.Name, "--parent", plan.Parent, "--apply"}), Effect: "record it under " + plan.Parent},
 	}
 	if plan.Commit {

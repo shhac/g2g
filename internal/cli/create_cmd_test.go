@@ -64,7 +64,7 @@ func TestCreatePreviewChangesNothing(t *testing.T) {
 
 	stdout := mustRun(t, "create", "synthetic-a", "--parent", "main")
 
-	for _, want := range []string{"git switch -c synthetic-a main", "Records synthetic-a under main", "Rerun with --apply"} {
+	for _, want := range []string{"git switch -c synthetic-a " + w.tip(w.Local, "main"), "Records synthetic-a under main", "Rerun with --apply"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("preview omits %q:\n%s", want, stdout)
 		}
@@ -225,7 +225,7 @@ func TestCreateRunsItsStepsInOrderThroughTheRealAdapters(t *testing.T) {
 
 	recorder.AssertOrder(
 		"git check-ref-format --branch synthetic-new",
-		"git switch -c synthetic-new synthetic-top",
+		"git switch -c synthetic-new "+strings.Repeat("1", 40),
 		"git update-ref",
 		"git commit --quiet --message=-synthetic first",
 	)

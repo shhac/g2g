@@ -106,3 +106,11 @@ func divergenceReason(stuck []divergence) string {
 	}
 	return fmt.Sprintf("both sides have moved on %s", strings.Join(parts, ", "))
 }
+
+func divergenceWaysAbove(selection graph.Selection, remote string, take Take, parents map[string]string, stuck []divergence, above string) []repair.Step {
+	ways := divergenceWays(selection, remote, take, parents, stuck)
+	if above != "" && len(ways) != 0 {
+		ways[0].Command += " --above " + repair.Quote(above)
+	}
+	return ways
+}

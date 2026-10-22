@@ -54,6 +54,8 @@ type Service struct {
 
 // Plan is what a sync would do, in the order it would do it.
 type Plan struct {
+	// Above is a shared branch collected but never replayed onto its parent.
+	Above   string
 	Restack restack.Plan
 	Remote  string
 	// Policy is what the caller asked for about a branch another worktree
@@ -185,6 +187,7 @@ func (p Plan) Nothing() bool {
 // Equal compares every fact that changes what the sync does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
+		p.Above == other.Above &&
 		p.Policy == other.Policy &&
 		p.Worktrees.Equal(other.Worktrees) &&
 		collectionsEqual(p.Collect, other.Collect) &&
@@ -212,9 +215,9 @@ func (p Plan) Equal(other Plan) bool {
 // sync would move it underneath that worktree.
 func (p Plan) pending() restack.Pending {
 	if len(p.Collect) == 0 && len(p.Begins) == 0 && p.onto() == "" {
-		return restack.Pending{}
+		return restack.Pending{Above: p.Above}
 	}
-	moving := restack.Pending{Tips: make(map[string]string, len(p.Collect)+1), Begins: maps.Clone(p.Begins)}
+	moving := restack.Pending{Above: p.Above, Tips: make(map[string]string, len(p.Collect)+1), Begins: maps.Clone(p.Begins)}
 	if moving.Begins == nil {
 		moving.Begins = map[string]string{}
 	}

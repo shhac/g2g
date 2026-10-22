@@ -81,6 +81,10 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 			found.refusal = droppedHereAndNew(c, branch, changes)
 			return found
 		}
+		if changes.EmptiedHere() {
+			found.refusal = emptiedHere(c, branch, published, changes)
+			return found
+		}
 		// Dropped here and nothing new there: this branch is ahead of what
 		// the remote holds by a drop, which is push's to publish.
 		found.commits = append(found.commits, syncpoint.Named(syncpoint.Left, branch, changes.Unpaired(changes.DroppedHere))...)
@@ -91,7 +95,7 @@ func decide(c collecting, branch, published, begins string, changes syncpoint.Ch
 		found.refusal = droppedBothWays(c, branch, changes)
 	case len(changes.Mine) != 0:
 		found.refusal = yoursOverTheirDrop(c, branch, changes)
-	case len(changes.Shared)+len(changes.ReplacedUpstream) == 0 && len(gone) != 0:
+	case changes.EmptiedUpstream() && len(gone) != 0:
 		found.refusal = emptiedUpstream(c, branch, gone)
 	default:
 		found.collection = &Collection{Branch: branch, To: published, Superseded: true, Dropped: gone}

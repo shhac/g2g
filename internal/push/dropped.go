@@ -80,7 +80,7 @@ func standing(changes syncpoint.Changes) (Publication, bool) {
 		// clone's, or a replay of theirs this clone has not taken: still a
 		// divergence, and still refused. pull takes a replay of theirs.
 		return Publication{Standing: Diverged, Ours: ours, Theirs: theirs + len(droppedHere)}, true
-	case len(changes.Shared)+replaced == 0:
+	case changes.EmptiedHere():
 		// A commit replayed is not gone: its replay is still the branch's own.
 		return Publication{}, false
 	case len(droppedHere) != 0:

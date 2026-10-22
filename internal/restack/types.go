@@ -106,6 +106,8 @@ type Step struct {
 // The base already had this, through Onto.ToLocation naming the ref the trunk
 // is about to be at. This is the same statement for the branches above it.
 type Pending struct {
+	// Above keeps this branch and its ancestors outside the replay.
+	Above string
 	// Tips is where each branch the caller moves will be.
 	Tips map[string]string
 	// Begins is where the incoming version of a branch begins, when the
@@ -163,6 +165,7 @@ func ToLocation(object string) Onto { return Onto{Object: object} }
 // Plan is a complete rewrite, ordered parents before children.
 type Plan struct {
 	graph.Discovery
+	Above  string
 	Onto   Onto
 	Absorb bool
 	Steps  []Step
@@ -260,6 +263,7 @@ func (p Plan) Emptied() []string {
 func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Onto == other.Onto &&
+		p.Above == other.Above &&
 		p.Absorb == other.Absorb &&
 		p.Repair.Equal(other.Repair) &&
 		p.Clean == other.Clean &&

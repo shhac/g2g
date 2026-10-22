@@ -12,7 +12,7 @@ import (
 // newCreate takes the graph service only to complete --parent from the same
 // local branches track offers; everything it does goes through create.
 func newCreate(service create.Service, branches graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
-	var parent, message string
+	var parent, message, at string
 	var apply bool
 	cmd := &cobra.Command{
 		Use:     "create <branch>",
@@ -23,12 +23,13 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			"stated rather than inferred, which is why this needs no candidate list.\n\n" +
 			"The parent must already be in the g2g graph, or be the repository's default branch: recording a " +
 			"child under a branch the graph does not know would make that branch a trunk. " +
-			"-m commits what is staged onto the new branch.",
+			"--at may name a newer commit on an evidenced trunk's known local upstream without moving that trunk. " +
+			"Feature parents must start at their tip. -m commits what is staged onto the new branch.",
 		Args: cobra.ExactArgs(1),
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		presentation := presentation.resolve(cmd)
-		request := create.Request{Name: args[0], Parent: parent, Commit: cmd.Flags().Changed("message"), Message: message}
+		request := create.Request{Name: args[0], Parent: parent, At: at, Commit: cmd.Flags().Changed("message"), Message: message}
 		root := commandContext(cmd.Context(), cmd, applyMode(apply), "", "")
 		flow := applyFlow[create.Plan]{
 			plan: func(ctx context.Context) (create.Plan, error) {
@@ -59,6 +60,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 	}
 	cmd.Flags().StringVar(&parent, "parent", "", "branch to start from and record as the parent (defaults to the current branch)")
 	_ = cmd.RegisterFlagCompletionFunc("parent", completionCallback(localBranchCompletions(branches)))
+	cmd.Flags().StringVar(&at, "at", "", "start at this local revision on the parent trunk's known upstream, without moving the trunk")
 	cmd.Flags().StringVarP(&message, "message", "m", "", "commit what is staged onto the new branch, with this message")
 	cmd.Flags().BoolVar(&apply, "apply", false, "create, record and switch instead of previewing")
 	return cmd

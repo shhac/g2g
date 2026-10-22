@@ -177,6 +177,20 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	return plan, nil
 }
 
+// ForkPoint derives the same replay boundary as track for a pinned incoming
+// revision. Callers must establish whether the named parent is a trunk; a
+// feature parent's rewritten range must not be inferred by ancestry alone.
+func (s Service) ForkPoint(ctx context.Context, parent, revision string, trunk bool) (string, error) {
+	origin, err := s.ancestryOf(ctx, parent, revision)
+	if err != nil {
+		return "", err
+	}
+	if !trunk && origin != OriginAncestry {
+		return "", fmt.Errorf("cannot derive %s's own range without a verified tip of feature parent %s", revision, parent)
+	}
+	return s.trackFork(ctx, parent, revision, origin, trunk)
+}
+
 // trackFork keeps the replay boundary inside the branch even when its named
 // parent has advanced. Readers without merge-base support must refuse that
 // case rather than record a parent's unreachable tip.

@@ -62,12 +62,19 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 	// commit.
 	cmd.Flags().StringArrayVar(&options.keep, "keep", nil, "keep a commit the preview lists as dropped — one the remote dropped stays as yours, one you dropped is taken back · repeatable")
 	_ = cmd.RegisterFlagCompletionFunc("through", completionCallback(localBranchCompletions(service.Graph)))
+	cmd.Flags().StringVar(&options.above, "above", "", "follow this published ancestor without replaying it; replay only selected branches above it")
+	_ = cmd.RegisterFlagCompletionFunc("above", completionCallback(localBranchCompletions(service.Graph)))
 	options.selection.registerBranch(cmd, service.Graph)
 	// pull, as sync, was the only mutating stack command with no scope at all, so the
 	// boundary it acts on was whatever it hardcoded. Only two values mean
 	// anything here: see shape.SyncScopes.
 	options.selection.registerScopeOf(cmd, pullCommand, "pull")
 	cmd.Flags().BoolVar(&options.trunkOnly, "trunk-only", false, "advance only the selected stack's trunk, without replaying or collecting stack branches")
+	cmd.MarkFlagsMutuallyExclusive("above", "scope")
+	cmd.MarkFlagsMutuallyExclusive("above", "trunk-only")
+	if pruner.Ready() {
+		cmd.MarkFlagsMutuallyExclusive("above", "prune")
+	}
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "scope")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "take")
 	cmd.MarkFlagsMutuallyExclusive("trunk-only", "through")
@@ -86,7 +93,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 type pullOptions struct {
 	selection                   graphOptions
 	remote                      string
-	take, through               string
+	take, through, above        string
 	keep                        []string
 	apply, alsoPrune, trunkOnly bool
 	strict                      bool
@@ -117,6 +124,12 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 // flow chooses the trunk or stack plan and the promise its preview makes.
 func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
 	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, o.worktrees, guard, presentation, o.alsoPrune)
+	if o.above != "" {
+		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
+			return service.PlanAbove(ctx, o.selection.Selection(), o.remote, chosen, o.worktrees, o.above)
+		}
+		pull.notices.changed = "The selected replay is complete; the boundary's base was preserved."
+	}
 	if o.strict {
 		plan := pull.plan
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {

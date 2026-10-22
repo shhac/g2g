@@ -34,7 +34,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		return fmt.Errorf("cannot create %q: %s", plan.Name, plan.Blocked())
 	}
 	diagnostic.Event(ctx, "create.apply", diagnostic.Field{Key: "branch", Value: plan.Name}, diagnostic.Field{Key: "parent", Value: plan.Parent})
-	if err := s.Git.CreateBranch(ctx, plan.Name, plan.Parent); err != nil {
+	if err := s.Git.CreateBranch(ctx, plan.Name, plan.At); err != nil {
 		return err
 	}
 	if err := s.record(ctx, plan); err != nil {
@@ -52,6 +52,13 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // record writes the edge exactly as track would, and refuses one that is not
 // the edge the preview promised.
 func (s Service) record(ctx context.Context, plan Plan) error {
+	parentAt, err := s.Git.Resolve(ctx, plan.Parent)
+	if err != nil {
+		return err
+	}
+	if parentAt != plan.ParentAt {
+		return fmt.Errorf("%s moved while %s was being created", plan.Parent, plan.Name)
+	}
 	tracked, err := s.Graph.PlanTrack(ctx, graph.Selection{Branch: plan.Name}, plan.Parent)
 	if err != nil {
 		return err
@@ -83,8 +90,8 @@ func (s Service) rollback(ctx context.Context, plan Plan, cause error) error {
 
 func (s Service) switchBack(ctx context.Context, plan Plan) error {
 	if plan.Return == "" {
-		if err := s.Git.SwitchDetached(ctx, plan.At); err != nil {
-			return fmt.Errorf("could not detach again at %s: %w", plan.At, err)
+		if err := s.Git.SwitchDetached(ctx, plan.ReturnTip); err != nil {
+			return fmt.Errorf("could not detach again at %s: %w", plan.ReturnTip, err)
 		}
 		return nil
 	}

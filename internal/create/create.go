@@ -54,6 +54,8 @@ type Request struct {
 	Name string
 	// Parent is empty to mean the branch the checkout is on.
 	Parent string
+	// At explicitly chooses a locally available starting revision.
+	At string
 	// Commit asks for the staged changes to be committed onto the new branch
 	// with Message.
 	Commit  bool
@@ -67,12 +69,15 @@ type Plan struct {
 	// ParentSource says where the parent came from, because "the branch you
 	// are on" and "the branch you named" are different claims to check.
 	ParentSource string
-	// At is the parent's tip, which is where the branch starts and the fork
-	// point its edge records.
-	At string
+	// At is the pinned start and expected fork point: the parent's tip, or a
+	// newer trunk commit established by local upstream evidence.
+	At        string
+	AtSource  string
+	ParentAt  string
+	ReturnTip string
 	// Return is the branch checked out now, which is where a failed recording
-	// goes back to. Empty means HEAD is detached, which a plan allows only at
-	// At, so a failed recording detaches there again.
+	// goes back to. Empty means HEAD is detached; ReturnTip preserves that
+	// original checkout independently of the chosen start.
 	Return  string
 	Commit  bool
 	Message string
@@ -98,6 +103,9 @@ func (p Plan) Equal(other Plan) bool {
 		p.Parent == other.Parent &&
 		p.ParentSource == other.ParentSource &&
 		p.At == other.At &&
+		p.AtSource == other.AtSource &&
+		p.ParentAt == other.ParentAt &&
+		p.ReturnTip == other.ReturnTip &&
 		p.Return == other.Return &&
 		p.Commit == other.Commit &&
 		p.Message == other.Message &&
@@ -135,7 +143,7 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 			return Plan{}, err
 		}
 	}
-	plan.Return = current
+	plan.Return, plan.ReturnTip = current, head
 	if plan.Parent == "" {
 		plan.Parent, plan.ParentSource = current, shape.TargetCurrent
 	}
@@ -170,8 +178,38 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.At = at
-	if blocked, refused := refuseDetachedAway(plan, head); refused {
+	plan.At, plan.ParentAt, plan.AtSource = at, at, request.At
+	if request.At != "" {
+		if err := subprocess.CheckArgument("git", "starting revision", request.At); err != nil {
+			return plan.refuse(repair.Note{Reason: err.Error()}), nil
+		}
+		plan.At, err = s.Git.Resolve(ctx, request.At)
+		if err != nil {
+			return Plan{}, err
+		}
+		note, err := s.startAt(ctx, plan)
+		if err != nil {
+			return Plan{}, err
+		}
+		if note.Reason != "" {
+			return plan.refuse(note), nil
+		}
+	}
+	protectHead := head
+	if head != "" && request.At != "" {
+		if ancestry, ok := s.Git.(interface {
+			IsAncestor(context.Context, string, string) (bool, error)
+		}); ok {
+			contained, err := ancestry.IsAncestor(ctx, head, plan.At)
+			if err != nil {
+				return Plan{}, err
+			}
+			if contained {
+				protectHead = ""
+			}
+		}
+	}
+	if blocked, refused := refuseDetachedAway(plan, protectHead); refused {
 		return blocked, nil
 	}
 	if blocked, refused := refuseRecord(plan, discovery); refused {
@@ -217,6 +255,7 @@ func refuseDetachedAway(plan Plan, head string) (Plan, bool) {
 		Ways: []repair.Step{
 			{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip, then rerun"},
 			{Effect: "switch to a branch first"},
+			{Effect: "to start at a newer known upstream trunk, pass --at with that revision"},
 		},
 	}), true
 }
@@ -279,4 +318,47 @@ func refuseCommit(plan Plan) Plan {
 		})
 	}
 	return plan
+}
+
+// startAt accepts a newer start only when local upstream evidence proves that
+// all inherited work belongs to the trunk. Feature starts remain at their tip.
+func (s Service) startAt(ctx context.Context, plan Plan) (repair.Note, error) {
+	if plan.At == plan.ParentAt {
+		return repair.Note{}, nil
+	}
+	if plan.Discovery.Graph.Tracked(plan.Parent) ||
+		(!plan.Discovery.Graph.IsTrunk(plan.Parent) && plan.Discovery.DefaultTrunk != plan.Parent) {
+		return repair.Note{Reason: "--at away from the parent tip requires an evidenced trunk parent",
+			Ways: []repair.Step{{Effect: "omit --at to start at the parent tip"}}}, nil
+	}
+	refuse := func(reason string) (repair.Note, error) {
+		return repair.Note{Reason: reason, Ways: []repair.Step{
+			{Command: repair.Command([]string{"g2g", "pull", "--branch", plan.Parent, "--trunk-only"}), Effect: "preview updating the trunk and its local upstream evidence, then retry creation"},
+			{Effect: "omit --at to start at the parent tip, or choose a revision contained in the known upstream"},
+		}}, nil
+	}
+	git, ok := s.Git.(interface {
+		KnownParent(context.Context, string) (string, error)
+		IsAncestor(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		return refuse("cannot verify --at against the trunk's known local upstream")
+	}
+	known, err := git.KnownParent(ctx, plan.Parent)
+	if err != nil {
+		return repair.Note{}, err
+	}
+	if known == "" {
+		return refuse("--at requires a known local upstream tip for " + plan.Parent)
+	}
+	for _, pair := range [][2]string{{plan.ParentAt, plan.At}, {plan.At, known}} {
+		ancestor, err := git.IsAncestor(ctx, pair[0], pair[1])
+		if err != nil {
+			return repair.Note{}, err
+		}
+		if !ancestor {
+			return refuse("--at must descend from the parent and be contained in its known local upstream")
+		}
+	}
+	return repair.Note{}, nil
 }

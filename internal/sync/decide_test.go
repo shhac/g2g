@@ -27,7 +27,7 @@ func TestDecideTakesOnlyAClearDropAndRefusesEveryMix(t *testing.T) {
 		left     int
 	}{
 		{name: "dropped upstream alone is taken", changes: syncpoint.Changes{DroppedUpstream: []string{"x0000000000000"}, Shared: []string{"b"}}, gone: []string{"x0000000000000"}, takes: true},
-		{name: "dropped here alone is left for push", changes: syncpoint.Changes{DroppedHere: []string{"x0000000000000"}}, left: 1},
+		{name: "dropped here alone is left for push", changes: syncpoint.Changes{DroppedHere: []string{"x0000000000000"}, Shared: []string{"shared"}}, left: 1},
 		{name: "dropped here with new there refuses", changes: syncpoint.Changes{DroppedHere: []string{"x0000000000000"}, New: []string{"z"}}, refuses: "--keep x00000000000"},
 		{name: "dropped both ways refuses", changes: syncpoint.Changes{DroppedUpstream: []string{"x0000000000000"}, DroppedHere: []string{"y0000000000000"}}, refuses: "on both sides"},
 		{name: "yours over their drop refuses", changes: syncpoint.Changes{DroppedUpstream: []string{"x0000000000000"}, Mine: []string{"m"}, Shared: []string{"b"}}, gone: []string{"x0000000000000"}, refuses: "--take published"},

@@ -42,6 +42,16 @@ func (s Service) Ready() bool {
 // worktrees is what to do about a branch another worktree holds; the zero
 // value refuses, as pull did before there was a choice.
 func (s Service) Plan(ctx context.Context, selection graph.Selection, remote string, take Take, worktrees worktree.Policy) (Plan, error) {
+	return s.plan(ctx, selection, remote, take, worktrees, "")
+}
+
+// PlanAbove collects a shared boundary and replays only the originally selected
+// branches above it. The boundary retains the base its publisher chose.
+func (s Service) PlanAbove(ctx context.Context, selection graph.Selection, remote string, take Take, worktrees worktree.Policy, above string) (Plan, error) {
+	return s.plan(ctx, selection, remote, take, worktrees, above)
+}
+
+func (s Service) plan(ctx context.Context, selection graph.Selection, remote string, take Take, worktrees worktree.Policy, above string) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("sync service is not fully configured")
 	}
@@ -59,23 +69,48 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 	if err := requireBase(selection, discovery); err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Remote: remote, Base: discovery.Branches[0], Policy: worktrees}
+	plan := Plan{Remote: remote, Base: discovery.Branches[0], Policy: worktrees, Above: above}
+	comparisonBase := plan.Base
+	parents := discovery.Graph.Shape().Parents
+	if above != "" {
+		if !discovery.Graph.Tracked(above) || !stackedOn(discovery.Target, above, parents) {
+			return plan.refused(repair.Note{Reason: "--above must name a recorded ancestor of the selected branch, or that branch itself"}), nil
+		}
+		selected := make([]string, 0, len(discovery.Branches))
+		for _, branch := range discovery.Branches {
+			if stackedOn(branch, above, parents) {
+				selected = append(selected, branch)
+			}
+		}
+		discovery.Branches = selected
+		plan.Base = above
+		comparisonBase, _ = discovery.Graph.Parent(above)
+	}
 
 	// The base and everything selected, in one fetch. Fetching only the base is
 	// what left a reviewer's commit unreachable from here.
-	published, err := s.fetch(ctx, remote, fetchList(plan.Base, discovery.Branches))
+	published, err := s.fetch(ctx, remote, fetchList(comparisonBase, discovery.Branches))
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.Published = ownTips(published, plan.Base, discovery.Branches)
+	ownBase := plan.Base
+	if above != "" {
+		ownBase = ""
+		if published[above] == "" {
+			return plan.refused(repair.Note{Reason: "--above requires a published tip for " + above}), nil
+		}
+	}
+	plan.Published = ownTips(published, ownBase, discovery.Branches)
 	s.recordLevel(ctx, remote, plan.Published)
 	if note, outside := throughOutside(take, discovery.Branches, plan.Base); outside {
 		return plan.refused(note), nil
 	}
-	parents := discovery.Graph.Shape().Parents
-	base, err := s.compare(ctx, plan.Base, remote, published, take)
-	if err != nil {
-		return Plan{}, err
+	base := standing{}
+	if above == "" {
+		base, err = s.compare(ctx, plan.Base, remote, published, take)
+		if err != nil {
+			return Plan{}, err
+		}
 	}
 	plan.Advance, plan.Supersede, plan.Diverged, plan.DiscardsBase = base.Advance, base.Supersede, base.Diverged, base.Discards
 	if plan.Diverged {
@@ -95,12 +130,15 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	command := pullCommand(selection, remote)
+	if above != "" {
+		command += " --above " + repair.Quote(above)
+	}
 	latest, err := s.latest(ctx, remote, discovery.Branches)
 	if err != nil {
 		return Plan{}, err
 	}
 	collecting := collecting{
-		remote: remote, base: plan.Base, branches: discovery.Branches, onRemote: published, take: take,
+		remote: remote, base: comparisonBase, branches: discovery.Branches, onRemote: published, take: take,
 		parents: parents, forks: forkPoints(discovery), keep: plan.Keep,
 		command: command, takeCommand: command + " --take " + string(SidePublished),
 		latest: latest,
@@ -133,12 +171,17 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, remote str
 		return Plan{}, err
 	}
 	if len(found.stuck) != 0 {
-		return plan.refused(repair.Note{Reason: divergenceReason(found.stuck), Ways: divergenceWays(selection, remote, take, parents, found.stuck)}), nil
+		return plan.refused(repair.Note{Reason: divergenceReason(found.stuck), Ways: divergenceWaysAbove(selection, remote, take, parents, found.stuck, above)}), nil
 	}
 	if found.refusal != nil {
 		return plan.refused(*found.refusal), nil
 	}
 	if note, unkept := unkeptRefusal(plan); unkept {
+		return plan.refused(note), nil
+	}
+	if note, err := s.boundaryFork(ctx, discovery, above, &found); err != nil {
+		return Plan{}, err
+	} else if note.Reason != "" {
 		return plan.refused(note), nil
 	}
 	plan.Collect = found.collections

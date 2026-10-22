@@ -282,7 +282,7 @@ func TestApplyCreatesThenRecordsThenCommits(t *testing.T) {
 	}
 
 	want := []string{
-		"switch -c synthetic-new synthetic-lower",
+		"switch -c synthetic-new lower-tip",
 		"plan-track synthetic-new synthetic-lower",
 		"apply-track synthetic-lower",
 		"commit synthetic first",

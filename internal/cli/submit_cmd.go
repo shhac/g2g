@@ -108,14 +108,25 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	root := commandContext(cmd.Context(), cmd, applyMode(o.apply), o.selection.branch, o.selection.trunk)
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
+	// Submit discovers before constructing its flow so it can decide what
+	// metadata is missing. An apply still guards that first read: a detached,
+	// half-rewritten checkout may otherwise fail before identifying its owner.
+	if o.apply && o.guard != nil {
+		if err := o.guard(ctx); err != nil {
+			return err
+		}
+	}
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 	plan = o.planned(plan)
 	if err != nil {
-		return err
+		return budgets.discoveryTimedOut(err)
 	}
-	chosenTemplate, templateName, err := resolveTemplate(o.template, o.noTemplate)
-	if err != nil {
-		return err
+	chosenTemplate, templateName := "", ""
+	if o.writeSpec != "" || o.edit || o.template != "" || o.noTemplate {
+		chosenTemplate, templateName, err = resolveTemplate(o.template, o.noTemplate)
+		if err != nil {
+			return err
+		}
 	}
 	if o.writeSpec != "" {
 		return o.writeDraft(cmd, plan, chosenTemplate, resolveDraft(submit.DefaultDraft, o.ready, o.noReady), presentation)
@@ -149,7 +160,7 @@ type submission struct {
 // whatever was asked, because there is nothing to apply.
 func (o submitOptions) submission(plan submit.Plan) (submission, error) {
 	if o.specPath != "" {
-		spec, err := submit.Read(o.specPath, plan.Snapshot.Branches)
+		spec, err := submit.Read(o.specPath, plan)
 		if err != nil {
 			return submission{}, o.actionableSpecError(err, o.specPath)
 		}
@@ -197,13 +208,20 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			if blocked := submitBlocked(plan); blocked != "" {
 				return blocked
 			}
-			if o.link {
+			if o.link && plan.LinkBlocked() != "" {
 				return plan.LinkBlocked()
+			}
+			if o.specPath == "" && len(plan.CreationBranches()) != 0 {
+				return o.missingSpecNote().Sentence()
 			}
 			return ""
 		},
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
-			return writeSubmitPreview(w, plan, presentation, template, spec.Draft, o.link, o.keepsComments())
+			view := submitView(plan, template, spec.Draft, o.link, o.keepsComments())
+			if o.specPath == "" && len(plan.CreationBranches()) != 0 && submitBlocked(plan) == "" && (!o.link || plan.LinkBlocked() == "") {
+				view = view.refusing(o.missingSpecNote())
+			}
+			return writeStackView(w, view, presentation)
 		},
 
 		execute: func(ctx context.Context, plan submit.Plan) error {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func TestSpecRoundTripPreservesComplexMarkdown(t *testing.T) {
@@ -21,7 +23,7 @@ func TestSpecRoundTripPreservesComplexMarkdown(t *testing.T) {
 	if strings.Contains(string(data), "synthetic/one.md") {
 		t.Fatal("branch name leaked into a file name")
 	}
-	spec, err := Read(path, []string{"synthetic/one", "synthetic/two"})
+	spec, err := Read(path, Plan{Snapshot: stack.Snapshot{Branches: []string{"synthetic/one", "synthetic/two"}}})
 	if err == nil {
 		t.Fatal("Read() = nil, want missing-title error")
 	}
@@ -31,7 +33,7 @@ func TestSpecRoundTripPreservesComplexMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := Read(path, []string{"synthetic/one", "synthetic/two"})
+	got, err := Read(path, Plan{Snapshot: stack.Snapshot{Branches: []string{"synthetic/one", "synthetic/two"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +47,7 @@ func TestReadExplainsOrderingMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Read(path, []string{"synthetic/one"}); err == nil || !strings.Contains(err.Error(), "want") {
+	if _, err := Read(path, Plan{Snapshot: stack.Snapshot{Branches: []string{"synthetic/one"}}}); err == nil || !strings.Contains(err.Error(), "want") {
 		t.Fatalf("Read() error = %v", err)
 	}
 }

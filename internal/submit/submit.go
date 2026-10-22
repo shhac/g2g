@@ -151,18 +151,32 @@ func (p Plan) retarget() string {
 	return command
 }
 
-// ExistingSpec needs no new PR text: every selected branch already has an open
-// pull request. The titles are placeholders for validation and are never sent.
-func (p Plan) ExistingSpec() (Spec, bool) {
-	spec := NewSpec(p.Snapshot.Branches, "")
+// CreationBranches are the selected branches that need new PR metadata, in
+// stack order. Closed and merged predecessors are replaced rather than reused.
+func (p Plan) CreationBranches() []string {
 	resolutions := githubstack.ResolveHeads(p.Existing)
-	for i, branch := range p.Snapshot.Branches {
-		if resolutions[branch].Open == nil || resolutions[branch].OpenCount != 1 {
+	branches := make([]string, 0)
+	for _, branch := range p.Snapshot.Branches {
+		if resolutions[branch].Open == nil {
+			branches = append(branches, branch)
+		}
+	}
+	return branches
+}
+
+// ExistingSpec needs no new PR text: every selected branch already has an open
+// pull request. Its empty entry list is sufficient and no metadata is sent.
+func (p Plan) ExistingSpec() (Spec, bool) {
+	if len(p.CreationBranches()) != 0 || len(p.Issues) != 0 {
+		return Spec{}, false
+	}
+	resolutions := githubstack.ResolveHeads(p.Existing)
+	for _, branch := range p.Snapshot.Branches {
+		if resolutions[branch].OpenCount != 1 {
 			return Spec{}, false
 		}
-		spec.Pulls[i].Title = branch
 	}
-	return spec, true
+	return NewSpec(nil, ""), true
 }
 
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (Plan, error) {

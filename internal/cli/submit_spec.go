@@ -23,7 +23,7 @@ import (
 // lived on the command line that produced it would be silently dropped by the
 // --apply that reads it back.
 func (o *submitOptions) writeDraft(cmd *cobra.Command, plan submit.Plan, body string, draft bool, p Presentation) error {
-	spec := submit.NewSpec(plan.Snapshot.Branches, body)
+	spec := submit.NewSpec(plan.CreationBranches(), body)
 	spec.Draft = draft
 	path, err := submit.Write(o.writeSpec, spec)
 	if err != nil {
@@ -44,7 +44,7 @@ func (o submitOptions) editedSpec(ctx context.Context, cmd *cobra.Command, plan 
 	if err != nil {
 		return "", err
 	}
-	path, err := submit.Write(dir, submit.NewSpec(plan.Snapshot.Branches, body))
+	path, err := submit.Write(dir, submit.NewSpec(plan.CreationBranches(), body))
 	if err != nil {
 		return "", err
 	}
@@ -113,4 +113,11 @@ func (o submitOptions) retryCommand(tail ...string) string {
 		}
 	}
 	return repair.Command(append(args, tail...))
+}
+
+func (o submitOptions) missingSpecNote() repair.Note {
+	return repair.Note{
+		Reason: "missing PRs require a submission spec before apply",
+		Ways:   []repair.Step{{Command: o.retryCommand("--write-spec", "<private-temp-dir>"), Effect: "create the spec, then fill in its titles and validate with --spec"}},
+	}
 }

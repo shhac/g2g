@@ -86,14 +86,32 @@ func stopped(pushed bool, opened []string, err error) error {
 // arrived after the refs were already published, which is the one ordering
 // this command exists to get right.
 func validateSpec(plan Plan, spec Spec) error {
-	if len(spec.Pulls) != len(plan.Snapshot.Branches) {
-		return fmt.Errorf("submission spec does not match selected stack")
+	if spec.Version != 1 {
+		return fmt.Errorf("submission spec version must be 1")
 	}
-	for index, branch := range plan.Snapshot.Branches {
-		if spec.Pulls[index].Branch != branch || strings.TrimSpace(spec.Pulls[index].Title) == "" {
-			return fmt.Errorf("submission spec is not valid for branch %q", branch)
+	selected := make(map[string]bool, len(plan.Snapshot.Branches))
+	for _, branch := range plan.Snapshot.Branches {
+		selected[branch] = true
+	}
+	pulls := make(map[string]Pull, len(spec.Pulls))
+	for _, pull := range spec.Pulls {
+		if !selected[pull.Branch] {
+			return fmt.Errorf("submission spec branch %q is unknown; want a branch in the selected stack", pull.Branch)
 		}
-		for _, reviewer := range spec.Pulls[index].Reviewers {
+		if _, duplicate := pulls[pull.Branch]; duplicate {
+			return fmt.Errorf("submission spec repeats branch %q", pull.Branch)
+		}
+		pulls[pull.Branch] = pull
+	}
+	for _, branch := range plan.CreationBranches() {
+		pull, present := pulls[branch]
+		if !present {
+			return fmt.Errorf("submission spec is incomplete: missing PR entry for branch %q", branch)
+		}
+		if strings.TrimSpace(pull.Title) == "" {
+			return fmt.Errorf("submission spec is incomplete: missing title for branch %q", branch)
+		}
+		for _, reviewer := range pull.Reviewers {
 			if err := subprocess.CheckArgument("gh", "reviewer", reviewer); err != nil {
 				return fmt.Errorf("branch %q: %w", branch, err)
 			}
@@ -112,14 +130,19 @@ func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) (
 	resolutions := githubstack.ResolveHeads(plan.Existing)
 	base := plan.Snapshot.Base
 	opened := make([]string, 0, len(spec.Pulls))
+	pulls := make(map[string]Pull, len(spec.Pulls))
 	for _, pull := range spec.Pulls {
-		if resolutions[pull.Branch].Open == nil {
-			if err := s.GitHub.Create(ctx, pull.Branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
+		pulls[pull.Branch] = pull
+	}
+	for _, branch := range plan.Snapshot.Branches {
+		pull := pulls[branch]
+		if resolutions[branch].Open == nil {
+			if err := s.GitHub.Create(ctx, branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
 				return opened, fmt.Errorf("opening the pull request for %s: %w", pull.Branch, err)
 			}
 			opened = append(opened, pull.Branch)
 		}
-		base = pull.Branch
+		base = branch
 	}
 	return opened, nil
 }

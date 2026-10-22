@@ -148,10 +148,3 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 	}
 	return view.note("This will not apply cleanly. Applying rebases in your working tree and stops on the conflict for you to resolve, then "+runnable("g2g restack --continue")+".", severityWarn)
 }
-
-// interruptedNote is what every other command shows while a restack is
-// unfinished, because a branch may already have moved while the graph still
-// records where it used to be.
-func interruptedNote() string {
-	return "A restack is in progress. Finish it with g2g restack --continue, or undo it with g2g restack --abort."
-}

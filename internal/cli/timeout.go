@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,7 +16,8 @@ const (
 	// of local CLI invocations plus two GitHub reads. Set generously, because
 	// this ceiling is newly enforced — the deadline never actually fired
 	// before — and a large repository or a slow network should not start
-	// failing where it previously succeeded. --timeout narrows it.
+	// failing where it previously succeeded. Each planning pass gets its own
+	// budget; --timeout replaces it and G2G_TIMEOUT can raise its default.
 	discoveryTimeout = 45 * time.Second
 	// mutationBase and mutationPerBranch bound the mutation phase, which gets
 	// its own budget so discovery cost can never shorten it. submit performs
@@ -44,15 +47,23 @@ var completionTimeout = defaultCompletionTimeout
 
 const defaultCompletionTimeout = 3 * time.Second
 
-// budgets derives per-phase deadlines from the root --timeout flag. Phases are
-// bounded separately and both descend from the command context rather than
+// budgets derives per-phase deadlines from --timeout and G2G_TIMEOUT. Phases
+// are bounded separately and descend from the command context rather than
 // from each other, so a slow discovery pass cannot leave a mutation with
 // almost no time and be cancelled halfway through.
-type budgets struct{ override time.Duration }
+type budgets struct {
+	override time.Duration
+	minimum  time.Duration
+}
 
 func newBudgets(cmd *cobra.Command) budgets {
 	override, _ := cmd.Flags().GetDuration("timeout")
-	return budgets{override: override}
+	minimum := time.Duration(0)
+	// The root pre-run validates this value; explicit flags ignore it entirely.
+	if !cmd.Flags().Changed("timeout") {
+		minimum, _ = time.ParseDuration(os.Getenv("G2G_TIMEOUT"))
+	}
+	return budgets{override: override, minimum: minimum}
 }
 
 func (b budgets) discovery(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -68,7 +79,7 @@ func (b budgets) limit(fallback time.Duration) time.Duration {
 	if b.override > 0 {
 		return b.override
 	}
-	return fallback
+	return max(fallback, b.minimum)
 }
 
 // mutationTimeout reports an expired mutation budget as its own failure. A
@@ -99,6 +110,9 @@ func (b budgets) discoveryTimedOut(err error) error {
 	if b.override > 0 {
 		return fmt.Errorf("timed out working out what to do, before anything was changed · it ran out of the %s --timeout allowed", b.override)
 	}
+	if b.minimum > discoveryTimeout {
+		return fmt.Errorf("timed out working out what to do, before anything was changed · it ran out of the %s G2G_TIMEOUT minimum budget (raise it with --timeout or G2G_TIMEOUT)", b.minimum)
+	}
 	return fmt.Errorf("timed out working out what to do, before anything was changed · a large repository can need longer than the %s default (raise it with --timeout)", discoveryTimeout)
 }
 
@@ -107,4 +121,26 @@ func mutationTimeout(err error, recovery string) error {
 		return err
 	}
 	return fmt.Errorf("timed out during the mutation phase; the external command may have partly completed. %s (raise the ceiling with --timeout)", recovery)
+}
+
+// validateTimeout resolves persistent timeout policy before a command reads or
+// changes anything. Help and shell completion remain usable with a bad default.
+func validateTimeout(cmd *cobra.Command, _ []string) error {
+	if cmd.Name() == "completion" || strings.HasPrefix(cmd.Name(), "__complete") || cmd.Name() == "help" || cmd == cmd.Root() {
+		return nil
+	}
+	if cmd.Flags().Changed("timeout") {
+		value, err := cmd.Flags().GetDuration("timeout")
+		if err != nil || value <= 0 {
+			return fmt.Errorf("--timeout must be a positive duration")
+		}
+		return nil
+	}
+	if value, present := os.LookupEnv("G2G_TIMEOUT"); present {
+		duration, err := time.ParseDuration(value)
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("G2G_TIMEOUT must be a positive duration (for example 3m)")
+		}
+	}
+	return nil
 }

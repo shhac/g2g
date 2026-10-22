@@ -261,14 +261,5 @@ func restackGuard(service restack.Service) func(context.Context) error {
 	if service.Journal == nil {
 		return nil
 	}
-	return func(ctx context.Context) error {
-		inProgress, err := service.InProgress(ctx)
-		if err != nil {
-			return err
-		}
-		if inProgress {
-			return fmt.Errorf("%s", interruptedNote())
-		}
-		return nil
-	}
+	return service.RequireIdle
 }

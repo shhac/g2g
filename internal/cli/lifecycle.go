@@ -167,10 +167,12 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 		return f.preview(cmd, plan, p)
 	}
 
-	validated, err := f.revalidate(ctx, plan)
+	cancel()
+	revalidateCtx, cancelRevalidation := budgets.discovery(root)
+	defer cancelRevalidation()
+	validated, err := f.revalidate(revalidateCtx, plan)
 	if err != nil {
-		// Re-discovery runs under the same budget as discovery, so it runs out
-		// the same way and wants the same sentence.
+		// Each planning pass has its own budget and the same timeout advice.
 		return writeNotApplied(cmd.OutOrStdout(), p, budgets.discoveryTimedOut(err))
 	}
 	switch f.outcome(validated) {
@@ -215,6 +217,11 @@ func (f applyFlow[P]) first(ctx context.Context) (P, error) {
 // answer differs from the preview, then settles what was found.
 func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	var none P
+	if f.guard != nil {
+		if err := f.guard(ctx); err != nil {
+			return none, err
+		}
+	}
 	if f.precheck != nil {
 		if err := f.precheck(ctx); err != nil {
 			return none, err
@@ -223,6 +230,9 @@ func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	current, err := f.plan(ctx)
 	if err != nil {
 		return none, err
+	}
+	if blocked := f.blockedReason(current); blocked != "" {
+		return none, fmt.Errorf("%s", blocked)
 	}
 	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, preview.Equal(current)); err != nil {
 		return none, err

@@ -196,6 +196,7 @@ func NewWithOptions(options Options) *cobra.Command {
 			"Structure is recorded locally and needs no Graphite. Start with `" + options.CommandName +
 			" adopt`, which records the stack you are on in one step, then `" + options.CommandName +
 			" status` to see it.",
+		PersistentPreRunE: validateTimeout,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,
@@ -206,7 +207,7 @@ func NewWithOptions(options Options) *cobra.Command {
 	root.SetOut(options.Stdout)
 	root.SetErr(options.Stderr)
 	root.PersistentFlags().Bool("debug", false, "write safe diagnostic events to stderr")
-	root.PersistentFlags().Duration("timeout", 0, "maximum duration for each phase, discovery and mutation separately (default 45s discovery, 60s plus 30s per branch for mutation)")
+	root.PersistentFlags().Duration("timeout", 0, "exact maximum for each discovery, revalidation and mutation phase (default 45s per planning pass; G2G_TIMEOUT raises default phase budgets)")
 	root.PersistentFlags().Bool("json", false, "emit one JSON document instead of the human-readable preview")
 	root.PersistentFlags().Bool("porcelain", false, "emit stable tab-separated records instead of the human-readable preview")
 	root.MarkFlagsMutuallyExclusive("json", "porcelain")

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const manifestName = "submission.json"
@@ -59,7 +58,7 @@ func Write(dir string, spec Spec) (string, error) {
 	return path, nil
 }
 
-func Read(path string, branches []string) (Spec, error) {
+func Read(path string, plan Plan) (Spec, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Spec{}, fmt.Errorf("read submission spec: %w", err)
@@ -68,20 +67,8 @@ func Read(path string, branches []string) (Spec, error) {
 	if err := json.Unmarshal(data, &spec); err != nil {
 		return Spec{}, fmt.Errorf("parse submission spec: %w", err)
 	}
-	if spec.Version != 1 {
-		return Spec{}, fmt.Errorf("submission spec version must be 1")
-	}
-	if len(spec.Pulls) != len(branches) {
-		return Spec{}, fmt.Errorf("submission spec has %d PR entries, want %d for the selected stack", len(spec.Pulls), len(branches))
-	}
-	for i, branch := range branches {
-		pull := spec.Pulls[i]
-		if pull.Branch != branch {
-			return Spec{}, fmt.Errorf("submission spec entry %d is for %q, want %q", i+1, pull.Branch, branch)
-		}
-		if strings.TrimSpace(pull.Title) == "" {
-			return Spec{}, fmt.Errorf("submission spec is incomplete: missing title for branch %q", branch)
-		}
+	if err := validateSpec(plan, spec); err != nil {
+		return Spec{}, err
 	}
 	return spec, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/worktree"
 )
 
@@ -25,7 +26,7 @@ func (s Service) PlanTrunk(ctx context.Context, selection graph.Selection, remot
 		known = defaultBranch == base
 	}
 	if !known {
-		return Plan{}, fmt.Errorf("%q has no recorded trunk · name one with --branch, or declare it with g2g track --branch %s --as-trunk", discovery.Target, base)
+		return Plan{}, fmt.Errorf("%q has no recorded trunk · name one with --branch, or declare it with g2g track --branch %s --as-trunk", discovery.Target, repair.Quote(base))
 	}
 	return s.Plan(ctx, graph.Selection{Branch: base, Scope: graph.ScopeBranch}, remote, TakeNothing, worktrees)
 }

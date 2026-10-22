@@ -186,7 +186,7 @@ func (s G2GSelector) localSelection(ctx context.Context, adopted graph.Graph, br
 			continue
 		}
 		if adopted.Tracked(branch) {
-			return nil, fmt.Errorf("selected branch %q is recorded in the g2g graph but is no longer a local branch · run g2g untrack --branch %s to forget it", branch, branch)
+			return nil, fmt.Errorf("selected branch %q is recorded in the g2g graph but is no longer a local branch · run g2g untrack --branch %s to forget it", branch, repair.Quote(branch))
 		}
 		return nil, fmt.Errorf("the g2g graph records a stack on %q, which is no longer a local branch · record a new parent for what sits on it with g2g track --parent", branch)
 	}

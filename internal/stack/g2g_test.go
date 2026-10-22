@@ -90,6 +90,23 @@ func TestSelectorAllowsAbsentRefsOnlyForAnExplicitRead(t *testing.T) {
 	}
 }
 
+// The untrack it suggests is pasted into a shell, and Git allows branch names
+// the shell would expand.
+func TestSelectorQuotesTheMissingBranchItSuggestsForgetting(t *testing.T) {
+	missing := "synthetic-$x'o"
+	adopted := graph.Graph{
+		Edges: map[string]graph.Edge{
+			missing:       {Parent: "synthetic-trunk"},
+			"synthetic-b": {Parent: missing},
+		},
+		Trunks: []string{"synthetic-trunk"},
+	}
+	_, err := selectorService(adopted).Select(context.Background(), Selection{Branch: "synthetic-b", Scope: ScopeStack}, "g2g submit")
+	if err == nil || !strings.Contains(err.Error(), `run g2g untrack --branch 'synthetic-$x'\''o' to forget it`) {
+		t.Fatalf("error = %v, want the missing branch quoted for the shell", err)
+	}
+}
+
 // A branch with nothing recorded under it has no base to sit on, which is the
 // same refusal a Graphite path with no ancestor gets.
 func TestSelectorRefusesABranchWithNoRecordedParent(t *testing.T) {

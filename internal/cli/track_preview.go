@@ -6,6 +6,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -151,7 +152,13 @@ func declareView(plan graph.DeclarePlan) stackView {
 		view = view.note(fmt.Sprintf("It was declared as a trunk%s · that goes, so pass --into and --by to keep it.", landingPhrase(previous)), severityWarn)
 	}
 	if plan.Removed != "" {
-		view = view.note(fmt.Sprintf("Removes its recorded parent, %s · it is never replayed from now on, and g2g track --parent %s puts it back in that stack.", plan.Removed, plan.Removed), severityNeutral)
+		// Aimed at the branch being declared, which a bare track --parent
+		// reaches only when it is the one checked out.
+		args := []string{"g2g", "track"}
+		if plan.Discovery.TargetSource == shape.TargetNamed {
+			args = append(args, "--branch", plan.Target)
+		}
+		view = view.note(fmt.Sprintf("Removes its recorded parent, %s · it is never replayed from now on, and %s puts it back in that stack.", plan.Removed, runnable(repair.Command(append(args, "--parent", plan.Removed)))), severityNeutral)
 	}
 	return view
 }

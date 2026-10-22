@@ -186,7 +186,7 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		// does not unwind: the fetch and the fast-forward are wanted
 		// regardless, and the replay is resumable through the command that
 		// owns it.
-		interrupted: func(ctx context.Context, _ syncer.Plan, cause error) (bool, error) {
+		interrupted: func(ctx context.Context, plan syncer.Plan, cause error) (bool, error) {
 			if handled, report := worktreeNotBrought(cmd, cause, p); handled {
 				return true, report
 			}
@@ -194,13 +194,13 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 			// the conflicted files too, which the restack service has.
 			replay, _ := service.Restack.(replayState)
 			if conflicted, paused := replayPaused(ctx, replay); paused {
-				return true, stoppedMidSync(cmd, conflicted, p)
+				return true, stoppedMidSync(cmd, plan, conflicted, cause, p)
 			}
 			var moved *syncer.Stopped
 			if !errors.As(cause, &moved) {
 				return false, nil
 			}
-			return true, stoppedAfterMoving(cmd, moved, p)
+			return true, stoppedAfterMoving(cmd, plan, moved, p)
 		},
 		notices: notices,
 	}
@@ -240,11 +240,13 @@ func stoppedAfterPull(cmd *cobra.Command, cause error, p Presentation) error {
 }
 
 // stoppedAfterMoving reports a sync that brought some branches down and then
-// failed without leaving a replay to resume.
-func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentation) error {
+// failed without leaving a replay to resume. The rerun is the same pull: a
+// bare one previews another selection, and without --above one that replays
+// the parent it was told to follow.
+func stoppedAfterMoving(cmd *cobra.Command, plan syncer.Plan, stopped *syncer.Stopped, p Presentation) error {
 	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way: "+stopped.Err.Error(),
-		"Brought "+words.List(stopped.Moved)+" to what the remote holds, and "+words.Pick(len(stopped.Moved), "it stays", "they stay")+". Rerun "+runnable("g2g pull")+" to see what is left.",
+		broughtDown(stopped.Moved)+" Rerun "+runnable(pullPreviewCommand(plan))+" to see what is left.",
 		stopped)
 }
 
@@ -254,10 +256,25 @@ func stoppedAfterMoving(cmd *cobra.Command, stopped *syncer.Stopped, p Presentat
 // It reports and then marks the run as stopped, so the exit status says what
 // the prose says. A replay that stopped on a conflict has left the stack
 // part-way through and needs the person back.
-func stoppedMidSync(cmd *cobra.Command, conflicted []string, p Presentation) error {
+//
+// What stands is what the pull moved, said from what it reported: "the base
+// is up to date" was untrue of an --above pull, which never touches the trunk,
+// and of one that left the trunk to another worktree.
+func stoppedMidSync(cmd *cobra.Command, plan syncer.Plan, conflicted []string, cause error, p Presentation) error {
 	problem, ways := resumeAdvice(conflicted)
 	if err := prose(cmd.OutOrStdout(), p, p.problem("The replay "+problem+".")); err != nil {
 		return err
 	}
-	return writeWhatStands(cmd, p, "The base is up to date. "+ways, errors.New("the replay stopped part-way"))
+	stands := ""
+	var moved *syncer.Stopped
+	if errors.As(cause, &moved) {
+		stands = broughtDown(moved.Moved) + " "
+	}
+	return writeWhatStands(cmd, p, stands+ways+" Once it is finished, "+runnable(pullPreviewCommand(plan))+" previews what is left.", errors.New("the replay stopped part-way"))
+}
+
+// broughtDown says which branches a stopped pull left where the remote has
+// them.
+func broughtDown(moved []string) string {
+	return "Brought " + words.List(moved) + " to what the remote holds, and " + words.Pick(len(moved), "it stays", "they stay") + "."
 }

@@ -30,6 +30,29 @@ func TestJourneyTwoTrunks(t *testing.T) {
 	w.assertClean(w.Local)
 }
 
+// Declaring a tracked branch a trunk names the command that puts it back in
+// its stack. That command is pasted into a shell, so a name Git allows and the
+// shell would expand is quoted, and it is aimed at the declared branch: a bare
+// track --parent records the parent of whatever is checked out.
+func TestDeclaringATrunkNamesTheTrackThatUndoesItForThatBranch(t *testing.T) {
+	w := newWorld(t)
+	odd := "synthetic-$x'o"
+	w.branchOff("main", odd, "o.txt")
+	mustRun(t, "track", "--branch", odd, "--parent", "main", "--apply")
+	w.git(w.Local, "switch", "-q", "main")
+
+	named := mustRun(t, "track", "--branch", odd, "--as-trunk")
+	if want := `g2g track --branch 'synthetic-$x'\''o' --parent main puts it back`; !strings.Contains(named, want) {
+		t.Errorf("the declaration does not offer %q:\n%s", want, named)
+	}
+
+	w.git(w.Local, "switch", "-q", odd)
+	standing := mustRun(t, "track", "--as-trunk")
+	if want := "g2g track --parent main puts it back"; !strings.Contains(standing, want) {
+		t.Errorf("standing on the branch, the declaration does not offer %q:\n%s", want, standing)
+	}
+}
+
 // landing-branch, as far as the stacks above the declared trunk: they land on
 // it, it is never replayed onto what it lands into, and nothing that reads
 // ancestry puts it back in the stack below.

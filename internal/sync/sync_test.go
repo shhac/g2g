@@ -650,6 +650,16 @@ func TestPlanTrunkDoesNotGuessAnUnrecordedFeatureBranchIsATrunk(t *testing.T) {
 	}
 }
 
+// The declaration it suggests is pasted into a shell, and Git allows branch
+// names the shell would expand.
+func TestPlanTrunkQuotesTheBranchItSuggestsDeclaring(t *testing.T) {
+	service, _ := newService(behindGit(), &stubRestacker{})
+	_, err := service.PlanTrunk(context.Background(), graph.Selection{Branch: "synthetic-$x'o"}, "origin", "")
+	if err == nil || !strings.Contains(err.Error(), `g2g track --branch 'synthetic-$x'\''o' --as-trunk`) {
+		t.Fatalf("error = %v, want the branch quoted for the shell", err)
+	}
+}
+
 func TestRevalidateTrunkChecksTheTrunkAgainBeforeApplying(t *testing.T) {
 	for _, moved := range []bool{false, true} {
 		t.Run(fmt.Sprint("moved=", moved), func(t *testing.T) {

@@ -46,7 +46,9 @@ func (g *syncCLIGit) FastForward(_ context.Context, branch, to string) error {
 }
 
 func (g *syncCLIGit) Resolve(_ context.Context, revision string) (string, error) {
-	if branch, isolated := strings.CutPrefix(revision, "refs/g2g/remotes/origin/"); isolated {
+	// Any remote: a case naming --remote reads the same published tips.
+	if rest, isolated := strings.CutPrefix(revision, "refs/g2g/remotes/"); isolated {
+		_, branch, _ := strings.Cut(rest, "/")
 		if tip := g.published[branch]; tip != "" {
 			return tip, nil
 		}
@@ -375,6 +377,75 @@ func TestSyncReportsAFailedReplayAfterTheTrunkAdvanced(t *testing.T) {
 	}
 	if strings.Contains(out, "Not applied") || !strings.Contains(out, "Brought synthetic-main to what the remote holds") {
 		t.Errorf("output does not say the trunk moved:\n%s", out)
+	}
+}
+
+// The rerun a stop offers is the same pull: the branch it was aimed at and
+// the remote it read. A bare g2g pull previews whatever stack the reader is
+// standing in, against origin.
+func TestSyncStoppedAfterMovingOffersTheSamePull(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	replay := &syncCLIRestack{steps: []string{"synthetic-login"}, applyErr: errors.New("synthetic replay failure")}
+
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--remote", "synthetic-upstream", "--apply")
+
+	if !wasStopped(err) {
+		t.Fatalf("error = %v, want the part-way status\n%s", err, out)
+	}
+	if want := "Rerun g2g pull --branch synthetic-login --remote synthetic-upstream to see what is left."; !strings.Contains(out, want) {
+		t.Errorf("output does not offer %q:\n%s", want, out)
+	}
+}
+
+// After --above, a bare pull would replay the parent it was told to follow
+// onto the trunk. Both stops -- one with nothing to resume, and a replay left
+// on a conflict -- offer the bounded pull, and the second says what moved
+// rather than that the base is up to date, since the trunk was never touched.
+func TestSyncStoppedAboveOffersTheBoundedPull(t *testing.T) {
+	for name, replay := range map[string]*syncCLIRestack{
+		"after moving": {steps: []string{"synthetic-login"}, applyErr: errors.New("synthetic replay failure")},
+		"mid replay":   {steps: []string{"synthetic-login"}, applyErr: errors.New("synthetic conflict"), stopped: true, conflicted: []string{"synthetic/login.go"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			git := &syncCLIGit{published: map[string]string{"synthetic-auth": "auth-remote"}}
+
+			out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--above", "synthetic-auth", "--apply")
+
+			if !wasStopped(err) {
+				t.Fatalf("error = %v, want the part-way status\n%s", err, out)
+			}
+			for _, want := range []string{"g2g pull --branch synthetic-login --above synthetic-auth", "Brought synthetic-auth to what the remote holds"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("output does not say %q:\n%s", want, out)
+				}
+			}
+			for _, unwanted := range []string{"Rerun g2g pull to", "The base is up to date"} {
+				if strings.Contains(out, unwanted) {
+					t.Errorf("output says %q:\n%s", unwanted, out)
+				}
+			}
+			if len(git.fastForwards) != 1 || git.fastForwards[0] != "synthetic-auth->auth-remote" {
+				t.Errorf("fast-forwards = %v, want only the followed boundary", git.fastForwards)
+			}
+		})
+	}
+}
+
+// A replay left on a conflict says to finish it, and then which pull previews
+// what is left: the one that stopped, scope included.
+func TestSyncStoppedMidReplayOffersTheSamePull(t *testing.T) {
+	git := &syncCLIGit{remoteTip: "base-remote", published: map[string]string{"synthetic-main": "base-remote"}}
+	replay := &syncCLIRestack{steps: []string{"synthetic-login"}, applyErr: errors.New("synthetic conflict"), stopped: true, conflicted: []string{"synthetic/login.go"}}
+
+	out, err := runSync(t, git, replay, "pull", "--branch", "synthetic-login", "--scope", "trunk", "--apply")
+
+	if !wasStopped(err) {
+		t.Fatalf("error = %v, want the part-way status\n%s", err, out)
+	}
+	for _, want := range []string{"g2g restack --continue", "Brought synthetic-main to what the remote holds", "Once it is finished, g2g pull --branch synthetic-login --scope trunk previews what is left."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not say %q:\n%s", want, out)
+		}
 	}
 }
 

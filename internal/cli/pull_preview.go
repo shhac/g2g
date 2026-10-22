@@ -193,17 +193,28 @@ func replayNote(plan restack.Plan) string {
 	return strings.Join(said, " ")
 }
 
-// pullPreviewCommand retains the replay boundary in advice somebody may copy.
+// pullPreviewCommand is pull aimed at what this one acted on, for advice
+// somebody may copy: its branch when named, its scope, its remote, and the
+// replay boundary, which --above names with the branch it bounds. Without
+// them a rerun previews a different selection, and one without --above
+// replays the parent it was told to follow.
+//
+// It stays a preview. --take, --through and --keep decide one plan's commits;
+// what is left after a stop is planned afresh, and its preview names any of
+// them it still needs.
 func pullPreviewCommand(plan syncer.Plan) string {
-	args := []string{"g2g", "pull"}
+	acted := selectedIn(plan.Restack.Discovery).from(plan.Remote)
 	if plan.Above != "" {
-		args = append(args, "--branch", plan.Restack.Target, "--above", plan.Above)
+		// --above refuses --scope, and is measured from the branch it was given.
+		acted = acted.at(plan.Restack.Target, "")
 	}
-	if plan.Above == "" && plan.Restack.Scope == shape.ScopeTrunk {
-		args = append(args, "--scope", "trunk")
+	command := acted.aimedOr(pullCommand)
+	switch {
+	case plan.Above != "":
+		command += " --above " + repair.Quote(plan.Above)
+	case plan.Restack.Discovery.Scope == shape.ScopeBranch:
+		// The flag offers no branch scope: a base alone is --trunk-only's.
+		command += " --trunk-only"
 	}
-	if plan.Remote != "" && plan.Remote != localgit.DefaultRemote {
-		args = append(args, "--remote", plan.Remote)
-	}
-	return repair.Command(args)
+	return command
 }

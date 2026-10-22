@@ -36,8 +36,8 @@ An entry no longer reachable from the current tip expires on
 |---|---|
 | `push` (and `submit`, `land`) | each branch it pushed, at the pushed tip, after the atomic push succeeds |
 | `push` preview | each branch the remote already holds exactly |
-| `pull` (and `land`, `pull --prune`) | each selected branch the remote holds, at the tip the plan saw, after the apply finishes |
-| `pull` preview | each branch level with or ahead of the remote — it holds everything the remote has, so the agreement is a fact, like the fetch the preview already makes |
+| `pull` (and `land`, `pull --prune`) | each reconciled selected branch the remote holds, at the tip the plan saw, after apply; excludes refs left by worktree policy |
+| `pull` preview | each branch exactly level with the remote; an ahead branch is not proof of agreement because it can carry work the remote dropped |
 | `adopt`, `github adopt` | each adopted branch exactly level with the remote as last fetched |
 
 Recording the sha the plan saw, never one read again at write time, is
@@ -119,6 +119,12 @@ here, and `push` refuses to publish this clone's, falling back to the
 comparison it had before sync points, which names the replacement for whoever
 means it. A commit replaced in a replay (below) still counts as the branch's
 own.
+
+Pull applies the same emptied-here test before describing local drops as
+push's to publish. If no shared or replayed agreed commit survives, it refuses
+with an explicit replacement repair instead. The shared `Changes` predicates
+keep this boundary consistent across pull and push; partial drops still
+publish normally.
 
 ### A commit replaced in a replay
 

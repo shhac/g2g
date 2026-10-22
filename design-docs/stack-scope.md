@@ -223,6 +223,15 @@ not a narrower replay scope; it is mutually exclusive with `--scope`, `--take`,
 `--through`, and `--prune`. Unrecorded feature branches are refused rather than
 guessed to be trunks. Landing declared trunks uses the same base-only path.
 
+`pull --above <branch>` explicitly changes the replay boundary while retaining
+the target's selected stack. The named feature ancestor (or target) follows its
+published version through ordinary reconciliation, and only selected branches
+above it replay. It does not advance the trunk or include unselected siblings.
+This is an invocation choice, not another scope or a persistent ownership mark;
+it is exclusive with `--scope`, `--trunk-only` and `--prune`. Naming the boundary
+as the target includes its full subtree deliberately. A later ordinary pull
+still updates the full stack.
+
 **`all` on anything that rewrites.** It exists so a repository with several
 trunks can be seen whole, which is a reading problem. A rewrite acts on one
 trunk, so spanning them is not a wider version of the same request. `prune` is

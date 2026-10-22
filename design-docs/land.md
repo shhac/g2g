@@ -1,6 +1,7 @@
 # Land
 
-**Status:** implemented in v0.30.0. The publishing decisions below were each
+**Status:** direct descent introduced in v0.30.0; merge queue support added by
+[the feedback plan](feedback-and-merge-queues.md). The publishing decisions were each
 wrong first and were corrected by running the thing against real Git; where an
 observation decided the design it is noted.
 
@@ -126,8 +127,10 @@ branch's edge for `prune` to forget.
 
 ## The two waits
 
-Neither waits for CI. Both are bounded by the mutation budget and nothing else,
-and both exist because acting on a stale answer merges the wrong thing.
+For direct merges neither propagation wait waits for CI. Both are bounded by
+the mutation budget and exist because acting on a stale answer merges the wrong
+thing. Queue landing has a distinct pending outcome and optional end-to-end
+wait, described below.
 
 **After a push**, three facts and not one: `headRefOid` says GitHub has this
 commit, `baseRefName` says the merge will go where it is meant to, and
@@ -154,7 +157,7 @@ Exhaustion preserves the external diagnostic and names rerunning `g2g land`.
 
 ## `--admin` is not an edge case
 
-On any repository with required status checks, **`land` without `--admin` will
+For direct merges with required status checks, **`land` without `--admin` will
 refuse at the second branch, every time.** Each branch above the first is
 force-pushed by its own replay, which restarts the checks that were green when
 the descent was planned, so GitHub reports it blocked.
@@ -209,11 +212,12 @@ is asked on a short context of its own that `applyFlow` gives every stop
 report, because the usual reason for stopping is the mutation budget expiring.
 How to finish a replay is said once, for restack, land and pull alike.
 
-A merge counts from the moment GitHub accepts it, not once its cycle finishes:
-the wait after it or the replay above it can still fail, and neither undoes it.
-A descent that stopped before merging or tidying anything has not stopped
-part-way; it is "not applied", with the failure status, because exit `3` says
-something was achieved.
+A merge counts once GitHub reports MERGED, even if ancestry propagation or
+the replay above it subsequently fails. Accepting a request alone is recorded
+as a request, never as merged. A live queue request ends pending with exit `3`,
+including an invocation that only observed an existing request. Other stops
+exit `3` when they published, retargeted, requested a merge, merged or tidied
+anything; an ordinary refusal that achieved nothing exits `2`.
 
 ## Uncommitted work
 
@@ -330,13 +334,56 @@ only with `--link`. The refusal is a gate rather than a rule: if GitHub comes
 to accept the ordinary merge for a stacked pull request, removing it is the
 whole change.
 
+## GitHub merge queues
+
+A successful request is not a confirmed merge. The former implementation
+called a step landed after `gh pr merge` returned success, even if it had only
+queued the PR and the propagation wait subsequently expired. Its claim that
+queues were refused was not backed by queue detection.
+
+Read `repository.mergeQueue(branch: $trunk)` alongside readiness: upper PRs
+currently target feature branches, so their own `isMergeQueueEnabled` cannot
+establish the eventual trunk's policy. Queue entry and auto-merge request state
+are volatile readiness, separate from generic PR observations. After retargeting,
+confirm the PR's base and queue policy before requesting a merge.
+
+Read repository `autoMergeAllowed` alongside readiness. Use
+`enablePullRequestAutoMerge` when enabled and `enqueuePullRequest` when disabled,
+through the existing mutation adapter and pinned with `expectedHeadOid` in both
+cases. Ruleset queues can exist without repository auto-merge; GitHub CLI
+[issue #13398](https://github.com/cli/cli/issues/13398) confirms its catch-all
+auto-merge request fails there. Unmet prerequisites in direct-enqueue mode are
+reported as refusals rather than a promise to enqueue later. The queue controls its method, so direct-merge method permissions do
+not gate this path. Explicit `--method`, `--admin`, and conflicting declared
+methods are refused with queue-specific advice; this path never escalates a
+BLOCKED state into a protection bypass.
+
+Default `land` requests the next bottom PR and reports queued or waiting with
+exit `3` if still pending; an immediately confirmed merge can continue. An existing request with the same head and base is observed without
+another request. Observe before publishing or retargeting, refuse mismatches,
+and refuse queued/auto-merge descendants that replay would move, including
+survivors above the selected target. The default recipe ends at handoff; it
+must not present unconditional deletion commands following enqueue.
+
+`--wait` observes accepted requests under the landing budget; initial missing
+approvals, conflicts and failing prerequisites still refuse. It continues only when GitHub
+confirms MERGED and the merge commit is in the fetched trunk. Confirmed MERGED
+is reported even if ancestry propagation later fails. A pending timeout stays
+pending, never landed. Queue removal, closure and changed head/base stop with
+the observed reason. Pending stops skip republishing and comments and carry a
+scoped rerun command; land adds no journal. A rerun after a browser merge uses
+the existing landed-content and cleanup paths.
+
+Required-check diagnostics distinguish required pending contexts, required
+failed/cancelled contexts and unidentified protection. Optional failures and
+incomplete context pages cannot justify a stronger claim. Cancelled does not
+establish a duplicate run or authorize automatically rerunning it.
+
 ## Out of scope
 
-Waiting for CI — that is what `--admin` is instead of. Merge queues, which
-`gh pr merge` turns into an auto-merge rather than a merge, so neither wait
-would ever settle; they are refused. Landing a forked selection. Undoing a
-descent: a merge cannot be taken back, and pretending otherwise would be the
-one dishonest thing in here.
+Waiting for CI on the direct-merge path. Third-party merge queues. Landing a
+forked selection. Undoing a descent: a merge cannot be taken back, and
+pretending otherwise would be dishonest.
 
 Landing without replaying what sits above, so that a pull request keeps the
 head its reviewers saw until a later merge. It was considered and turned down:

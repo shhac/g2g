@@ -100,12 +100,27 @@ description: |
   alone, works on default or declared trunks before a stack is recorded, and
   refuses unknown feature branches. It is mutually exclusive with `--scope`,
   `--take`, `--through`, and `--prune`.
+- `pull --above <branch>` reconciles a published feature parent without
+  replaying it onto trunk, and replays only the target's selected branches above
+  that boundary. The boundary must be the target or a recorded ancestor with a
+  published tip. Trunk, earlier ancestors and unselected siblings stay put;
+  naming the boundary as target deliberately includes its subtree. It is
+  exclusive with `--scope`, `--trunk-only` and `--prune`; `--take published`
+  remains only a divergence choice. Worktree policy applies to the parent too,
+  and a left parent supplies its actual local tip to child replays. The boundary
+  survives conflict recovery in the existing restack journal, with schema 2 for
+  boundary records and support for older schema-1 records. When collection
+  removes the boundary's old fork, derive and pin its verified replacement
+  before child replay; ambiguous feature-parent ranges refuse before refs move.
+  Child abort retains the parent already collected and its corrected fork.
 - A branch another worktree has checked out (the trunk in the main checkout,
   a stack branch in an agent's worktree): `restack`, `pull` and `land` move it
   when that worktree is clean and bring its files along, and leave it where it
   is when the worktree has changes — the preview names both, and a left branch
   is finished later by `g2g restack` (or `g2g pull --trunk-only` for a trunk)
   run in that worktree. `--worktrees skip` leaves every such branch;
+  For a left `pull --above` boundary, rerun the same scoped pull once its
+  worktree is free; a plain restack would replay the parent onto trunk.
   `--worktrees refuse` refuses instead. `land` cannot leave part of a descent,
   so a branch it would leave refuses it — except a lone branch with nothing
   above it, which lands while the trunk stays — and a branch it deletes is
@@ -208,8 +223,8 @@ description: |
   direct push would overwrite a reviewer's commit and then merge it. It aims
   every pull request at the trunk rather than at the branch below it, which is
   where each correctly sits now and which will not exist by the time its turn
-  comes. It waits for GitHub twice, on the push and on the merge, and for
-  neither does it wait on CI; the merge wait is answered by ancestry from the
+  comes. Direct merges wait for GitHub to see the push and merge, without
+  waiting for CI; merge propagation is answered by ancestry from the
   merge commit, never by watching a tip change, because a colleague's push
   changes that too. It merges nothing until every branch has been found
   landable. Uncommitted work is refused only where the descent would touch it:
@@ -218,6 +233,23 @@ description: |
   rather than rebasing into somebody's changes. Cleanup never fails a descent. It is not journaled and must not
   become so: re-entrancy comes from recomputation, and `restack` stays the only
   resumable operation.
+- On a GitHub queue base, `land` reads the eventual trunk's queue in the
+  batched readiness query and confirms PR policy after retargeting. It requests
+  `enablePullRequestAutoMerge` when repository auto-merge is enabled, and
+  `enqueuePullRequest` directly when disabled, through the mutation seam with
+  expectedHeadOid in both cases. Unmet direct-enqueue prerequisites refuse
+  accurately rather than promising deferred merge. The queue owns its method. Refuse explicit `--method`, `--admin`, and a
+  conflicting declared method. Default land stops at queue handoff, reporting
+  queued/waiting separately with exit 3 when still pending; an immediately
+  confirmed merge can continue. An existing request is observed without
+  another enqueue. `--wait` observes accepted requests under the landing budget;
+  it does not await initial missing approvals or failing prerequisites. Only observed
+  MERGED counts as merged, and ancestry confirmation still gates replay/deletion.
+  Observe requests before push/retarget, refuse mismatched queued heads/bases,
+  and protect queued descendants a replay would move, including survivors above
+  the selected target. Pending stops skip republishing/comments, carry a scoped
+  retry, and never add a land journal. Required checks are diagnosed as pending,
+  failed/cancelled or unknown protection, never inferred from BLOCKED alone.
 - How much of the structure a command means is `--scope`, and it means the same
   thing whichever record answered. Read `design-docs/stack-scope.md` before
   changing it. `--from` pins which source answers for one invocation.
@@ -316,6 +348,12 @@ description: |
   `ApplyTrack`, never its own write. Order is switch, record, commit: a failed
   record is rolled back completely (switch back, delete the branch, which has
   nothing on it), and a failed commit after the record keeps both and exits `3`.
+- `create --at <revision>` separates a pinned start commit from its recorded
+  `--parent` and original detached HEAD. A newer start must be an evidenced
+  trunk revision contained in its known local upstream, with the parent as an
+  ancestor; arbitrary feature descendants are refused. Parent-tip starts retain
+  ordinary create behavior. Create at the pinned OID, verify PlanTrack's fork,
+  and roll back to the original HEAD, never to a different start revision.
 - `up`/`down`/`top`/`bottom` are the only commands that act without `--apply`,
   and that exception is deliberate: moving the checkout changes no ref, record
   or remote, and `git switch` refuses to clobber local changes. Do not add a
@@ -477,6 +515,18 @@ description: |
   there and in `schema_test.go`. `gh pr create` and `gh pr merge` are
   deliberately not batched.
 
+- Each discovery and revalidation pass has its own planning budget, separate
+  from mutation. `G2G_TIMEOUT` raises each default as a minimum and cannot shorten
+  a long landing; explicit `--timeout` overrides each ceiling exactly. Validate
+  positive durations before execution. Recheck the restack guard before
+  revalidation and report a current blocker before generic plan inequality.
+  Restack owner information is a private Git directory unless mapped to a
+  checkout; never suggest changing directory into `.git/worktrees/...`.
+- Pull and push share the emptied-branch boundary: when no previously shared
+  or replayed commit survives, refuse automatic replacement and name the pinned
+  lease repair. Pull must not promise push will publish a replacement it
+  refuses. Partial drops and replay replacements keep their existing behavior.
+
 ## Develop and test
 
 - Keep external process calls behind `internal/subprocess.Runner`. Tests must
@@ -521,6 +571,13 @@ description: |
   `g2g submit --spec <dir>/submission.json`, then add `--apply`. Keep the spec
   on failure and state exact repair/validation/retry commands. Multiple PR
   templates require `--template <name>` or `--no-template`; never guess.
+- Submission specs need metadata only for PRs being created. `--write-spec`
+  and `--edit` generate those entries; older complete specs remain accepted,
+  with existing-PR metadata ignored even with blank titles. Match entries by
+  branch, validate once for read/apply, and derive each PR base from snapshot
+  order rather than spec order. Reject duplicates, unknown branches and missing
+  creation metadata before publication. A preview missing metadata must say
+  apply needs a spec, through the same human/machine repair structure.
 - A refusal reaches a machine as `blocked` (the reason, no label) and `repair`
   (the ways out, each with its command separate from the prose). Read `repair`
   rather than parsing the sentence, and treat a way with no `command` as a real

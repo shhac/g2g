@@ -266,12 +266,13 @@ the current `--apply` flow.
 
 `3` is `pull` stopping on a conflict mid-replay, `pull --prune` whose prune
 refused after the pull had happened, `land` stopping part-way down a stack
-after something merged, `github comment` writing some of its comments and not
+after something merged, or ending with a merge queue request still pending
+(including observation of an existing request), `github comment` writing some of its comments and not
 others, `github retarget` moving some bases and not others, `submit` failing
 after its push or after opening a pull request, `create -m` whose commit failed
 after the branch was recorded, and a `delete`, `fold` or `rename` that could
 not put back what it had done. A
-descent that stopped before changing anything is an ordinary failure. Those are
+direct-merge descent that stopped before changing anything is an ordinary failure. Those are
 not failures to retry — what replayed stays replayed and what merged stays
 merged — and not successes either. Both print what happened and what to do
 next; the status lets something reading only the status tell the difference,
@@ -521,6 +522,21 @@ how a new worktree starts when its parent is checked out elsewhere, name the
 parent with `--parent`: `create` proceeds when HEAD is at that branch's tip,
 since leaving it loses nothing, and a failed recording detaches there again.
 
+When the local trunk is stale and checked out in another worktree, name a newer
+known trunk revision explicitly:
+
+```sh
+g2g create synthetic-next --parent synthetic-main --at origin/synthetic-main
+g2g create synthetic-next --parent synthetic-main --at origin/synthetic-main --apply
+```
+
+`--at` starts at the pinned commit without moving the trunk. A newer start must
+be on an evidenced trunk's known local upstream, with the local trunk as an
+ancestor; an arbitrary feature revision is refused. No fetch is performed. A
+detached HEAD must be contained in the start commit, and a failed recording
+returns to the original HEAD. The recorded fork excludes the newer trunk
+commits from the branch's own replay range.
+
 It switches, records, then commits. A recording that fails is undone — you are
 put back where you were and the new branch is deleted — because nothing is on
 it yet. A commit that fails after the record (a hook refusing it, say) leaves
@@ -693,6 +709,34 @@ unrelated branch alone. A trunk another worktree has checked out advances
 there too when that worktree is clean, and is left where it is when it is not.
 It cannot be combined with `--scope`, `--take`, `--through`, or `--prune`.
 
+To build on a colleague's published branch without rebasing that branch onto
+the latest trunk, preview and apply an explicit replay boundary:
+
+```sh
+g2g pull --branch synthetic-child --above synthetic-parent
+g2g pull --branch synthetic-child --above synthetic-parent --apply
+```
+
+The parent follows its published version through the usual divergence and
+sync-point rules; only the selected branches above it replay. The trunk,
+earlier ancestors and unselected siblings stay where they are. The boundary
+must be the target or one of its recorded ancestors and have a published tip.
+Naming the parent as both `--branch` and `--above` includes its whole subtree.
+`--take published` still chooses a side only when a branch has diverged;
+`--above` chooses the replay boundary. The flag cannot be combined with
+`--scope`, `--trunk-only` or `--prune`.
+
+A parent left in place by worktree policy stays at its local tip, and its
+children are measured against that tip. Once that worktree is free, rerun the
+same scoped `pull --above` command to reconcile the parent without replaying it.
+A conflicting child replay is finished
+with the ordinary `g2g restack --continue` or `--abort`; its journal preserves
+the boundary. Abort undoes the child replay and retains the published parent
+already collected by pull, including its verified new fork point. If the
+published parent loses its old fork, a trunk boundary uses the same evidence
+as tracking; an ambiguous feature-parent boundary is refused before refs move.
+A later plain `pull` still updates the whole stack.
+
 On its own it does not forget anything. Pruning is `g2g prune`, a separate
 command, because it answers a different question on the same boundary and
 edits the recorded graph by default. `--prune` runs the two in
@@ -712,10 +756,11 @@ checked out in any worktree. Repository-wide cleanup, including stale records
 that prevent a pull, is available through `g2g prune --scope all`.
 
 The fetch writes only into `refs/g2g/remotes/`, so your own remote-tracking
-refs, `FETCH_HEAD`, and ahead/behind counts are untouched. The base is
-**fast-forwarded or not at all**: a base that has diverged is reported, never
-merged or reset, because "you are behind" and "you have diverged" want
-different responses and only you can give the second.
+refs, `FETCH_HEAD`, and ahead/behind counts are untouched. The base normally
+fast-forwards. A content-equivalent rewritten trunk can replace it without
+losing work; a genuine divergence is refused unless you explicitly choose
+`--take published`, which lists every commit it would discard. Pull never
+merges a diverged base by guessing which side you wanted.
 
 When a branch and its published version have each moved, `pull` refuses rather
 than choosing. `--take published` is the way through, and it is the one path
@@ -772,6 +817,11 @@ it, a difference has a direction:
 | on the remote, and you dropped it here | leaves it: publishing the drop is `push`'s |
 | at the top of one branch, now in the branch above it | keeps it where it went, as a **move** |
 | here only because you reset to an out-of-date `origin/<branch>` | puts it back, and says so |
+
+If none of the branch's previously shared or replayed commits survive, it was
+emptied or recreated rather than partly edited. `pull` and `push` refuse an
+automatic replacement consistently and name the pinned-lease replacement for
+whoever intends it; `pull` does not promise that a later push will publish it.
 
 Every dropped commit is listed by branch, short id and subject, and stays
 reachable through the sync point's reflog for about 30 days
@@ -931,12 +981,12 @@ since the last fetch.
 #### submit
 
 `g2g submit` is a preview-first publication path for a resolved linear stack.
-With `--apply`, it validates the complete spec, revalidates immediately before
+With `--apply`, it validates metadata for PRs being created, revalidates immediately before
 mutation, performs one atomic lease-protected push, creates only missing PRs
 bottom-to-top as drafts, preserves existing PRs, and keeps the stack comment on
 each pull request (`--no-comment` skips that). `--link` also links the complete
 stack as a GitHub native stack. That is opt-in because GitHub will not merge a
-linked pull request through `gh pr merge`, which is how `land` merges each one;
+linked pull request through `gh pr merge`, the direct landing transport;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
@@ -960,7 +1010,7 @@ that moves it. Explicit `--link` requires matching bases and otherwise names
 still require a completed spec; `--apply` without one fails with the command
 to create it.
 
-Generate a reusable spec outside the repository, fill in each title, validate,
+Generate a reusable spec outside the repository, fill in the missing PRs' titles, validate,
 then apply it:
 
 ```sh
@@ -970,8 +1020,12 @@ g2g submit --spec "$spec_dir/submission.json"
 g2g submit --spec "$spec_dir/submission.json" --apply
 ```
 
-The spec is one JSON document with ordered branch/title/body/reviewer entries;
-complex Markdown bodies are preserved exactly. If apply fails, the spec remains
+The spec is one JSON document with branch/title/body/reviewer entries for PRs
+being created; existing PRs need no entry. Entries are matched by branch, and
+bases come from stack order. Older complete specs remain accepted, with existing
+PR entries ignored even when their titles are blank. Duplicate or unknown
+branches and missing creation metadata are refused. Complex Markdown bodies
+are preserved exactly. If apply fails, the spec remains
 in place and the error gives exact repair, validation, and retry commands.
 
 Missing PRs are opened as drafts. There is no `--draft` flag, because a draft
@@ -1179,7 +1233,8 @@ different one. Run from a trunk, it keeps every stack on it. See
 ### Land
 
 When a stack is finished, `land` takes it down onto its trunk, bottom branch
-first, without waiting for CI. It lands the path from the trunk to the branch
+first. Direct merges retain the existing readiness rules; a GitHub merge queue
+is requested asynchronously and reported separately from a confirmed merge. It lands the path from the trunk to the branch
 you stand on (or `--branch`), so from the top that is the whole stack.
 
 ```sh
@@ -1257,13 +1312,49 @@ at the fetched merge. `--no-delete-local` keeps the checkout on that branch. A
 stack needing replay refuses a trunk it cannot move, and a branch the descent
 deletes is refused while another worktree has it checked out.
 
-**On a protected repository you will need `--admin`.** Every branch above the
+**Direct merges on a protected repository may need `--admin`.** Every branch above the
 first is force-pushed by its own replay, which restarts the required checks
 that were green a moment ago, so GitHub reports it blocked. That is inherent
 rather than incidental, and the preview says so before the first merge instead
 of letting the run discover it at the second branch. `--admin` also bypasses
 approvals, so a pull request nobody has approved is refused under its own name
 rather than folded into the protection refusal.
+
+On a trunk with a GitHub merge queue, `land` requests the next eligible PR
+through the queue. By default it returns after handing off if still pending,
+with exit `3` and an explicit queued or waiting result. An immediately confirmed
+merge can continue the descent. Only GitHub's confirmed MERGED state is
+reported as merged. Replay and deletion additionally wait until the merge commit
+is in the fetched trunk. Rerun the scoped command in the report after it merges to replay
+the survivors and request the next PR. Existing requests at the same head and
+base are observed without another enqueue.
+
+```sh
+g2g land                       # preview stops at the next queue handoff
+g2g land --apply               # enqueue or observe; report pending separately
+g2g land --wait --apply        # wait for confirmed merges and continue
+```
+
+`--wait` waits for an accepted queue or auto-merge request, not initial missing
+approvals, conflicts or failed checks. It is bounded by the landing budget;
+`--timeout` can raise it. A wait that
+expires reports pending and exits `3`. A removed request, closed PR, or changed
+head/base stops with the observed reason. A queued PR needing a head/base change,
+or a queued descendant that landing would replay, is refused before mutation.
+Pending stops skip survivor publication and comment upkeep.
+
+When repository auto-merge is enabled, a request can wait for requirements.
+When it is disabled, g2g uses head-pinned direct enqueue instead; unmet
+prerequisites must be resolved before it can enqueue. This also supports queues
+configured through repository rulesets without enabling repository auto-merge.
+
+The queue chooses its merge method. Queue landing refuses `--admin` and an
+explicit `--method`; a conflicting declared trunk method is refused too.
+Required-check diagnostics distinguish running checks, failed/cancelled checks
+and protection rules g2g cannot identify. Inspect failed runs before deciding
+how to repair them; `BLOCKED` alone is not evidence that checks are running.
+The `--json` preview exposes the merge kind and pending state as typed landing
+metadata. This support is for GitHub's native queue, not a third-party queue.
 
 Each deletion is on by default and can be turned off on its own:
 `--no-delete-remote`, `--no-delete-local`. Forgetting the landed branch in
@@ -1277,8 +1368,8 @@ Once the descent is done, `land` keeps the stack comments on what remains above
 the branches it landed, so those pull requests list what merged as history.
 It is the last line of the recipe, and `--no-comment` skips it.
 
-`--method squash|merge|rebase` defaults to squash, and is refused up front if
-the repository does not allow it. Squash is the case a stack needs help with:
+For direct merges, `--method squash|merge|rebase` defaults to squash, and is
+refused up front if the repository does not allow it. Squash is the case a stack needs help with:
 the other two leave each parent's commits in its child under the same identity,
 so nothing needs replaying between merges.
 
@@ -1515,16 +1606,21 @@ cookies, or GraphQL query payloads.
 g2g --timeout 3m submit --spec "$spec_dir/submission.json" --apply
 ```
 
-Discovery and mutation are bounded separately. Discovery and revalidation get
-45 seconds; the mutation phase gets its own budget of 60 seconds plus 30 per
-selected branch (180 per branch for `land`, which waits on GitHub between its
-calls), taken fresh rather than from whatever discovery left over, so a slow
-read can never cancel a push or pull-request creation halfway. The root
-`--timeout` flag replaces both ceilings, for a slow network or a deep stack. A
-mutation that does expire says so explicitly and states what may have already
-happened, because an interrupted `submit` can leave refs pushed and some pull
-requests created; re-running it with the same spec is safe and creates only
-what is missing.
+Discovery, revalidation and mutation are bounded separately. Each planning
+pass gets a fresh 45 seconds; the mutation phase gets its own budget of 60
+seconds plus 30 per selected branch (180 per branch for `land`, which waits on
+GitHub between its calls). Slow discovery cannot consume the next pass's or
+mutation's budget.
+
+Set `G2G_TIMEOUT=3m` for a persistent minimum phase budget. It raises shorter
+defaults and leaves a longer stack landing budget intact. An explicit
+`--timeout 3m` takes precedence and replaces every phase's ceiling exactly.
+Both values must be positive durations; invalid values fail before execution.
+
+A mutation that expires states what may already have happened, because an
+interrupted `submit` can leave refs pushed and some PRs created; rerunning with
+the same spec creates only what is missing. A merge queue wait that expires
+reports the request as pending, never as a confirmed merge.
 
 ## Compatibility and storage
 

@@ -342,6 +342,13 @@ to be rewritten opened in another worktree meanwhile, with changes or under
 the journal stays and the refusal is reported, so the half-rewritten stack can
 still be continued once the cause is gone, or aborted.
 
+A pull with `--above` carries its protected replay boundary in this same
+journal. Boundary records use schema version 2 so older binaries refuse instead
+of silently ignoring the constraint; version-1 records remain readable.
+Continuation, skip and abort preserve that boundary and the original selected
+branches. Recomputing must never expand a child replay onto the protected
+parent or its ancestors.
+
 A fresh restack refuses while any journal exists, even on an unrelated stack
 in another worktree. Publishing a new journal is atomic and exclusive: it
 links a fully written temporary file into place, so two simultaneous starts

@@ -17,6 +17,7 @@ import (
 // and no credential is ever needed.
 func syntheticRemote(t *testing.T) (upstream string, client Client) {
 	t.Helper()
+	testutil.IsolateGit(t)
 
 	root := t.TempDir()
 	upstream = filepath.Join(root, "upstream.git")

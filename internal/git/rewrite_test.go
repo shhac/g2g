@@ -20,6 +20,7 @@ import (
 // and the question here is what Git actually produces.
 func stackRepo(t *testing.T, overlap bool) (Client, map[string]string) {
 	t.Helper()
+	testutil.IsolateGit(t)
 
 	dir := t.TempDir()
 	env := syntheticEnv()

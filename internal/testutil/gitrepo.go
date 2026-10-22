@@ -21,6 +21,16 @@ func SyntheticGitEnv() []string {
 	)
 }
 
+// IsolateGit keeps the test's own subprocesses away from personal Git settings,
+// including signing programs and hooks. Helper-only environments do not cover
+// commands started by the code under test, or commands in a cloned repository.
+// Setenv restores the caller's environment when the test finishes.
+func IsolateGit(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+}
+
 // GitRepo is a throwaway repository a test builds a branch shape in.
 //
 // Each package used to bootstrap its own, and the bootstrap had been copied
@@ -45,6 +55,7 @@ type GitRepo struct {
 // makes.
 func NewGitRepo(t *testing.T, trunk string) GitRepo {
 	t.Helper()
+	IsolateGit(t)
 
 	repo := GitRepo{t: t, Dir: t.TempDir()}
 	repo.Run("init", "-q", "--initial-branch="+trunk)

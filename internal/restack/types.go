@@ -65,11 +65,12 @@ type Step struct {
 	// ForkPoint is where the branch's own commits begin. Base..Branch would be
 	// the wrong range: it includes whatever the parent dropped or rewrote.
 	ForkPoint string
-	// Tip is the branch's current object, recorded so an abort can restore it.
+	// Tip is the branch's object when the plan was made, before any move the
+	// caller makes first.
 	Tip string
 	// Head is where the branch will be when the rewrite runs, which is Tip
 	// unless the caller moves it first. Everything the plan measures about the
-	// branch is measured here.
+	// branch is measured here, and it is what an abort restores.
 	Head string
 	// Behind means the parent is being replayed too and this branch does not
 	// contain the version of it being replayed: the parent gained commits
@@ -92,6 +93,15 @@ type Step struct {
 	// reapplies it changed between Git 2.54 and 2.55, and it is exactly the
 	// case a restack exists for, so the commits are never handed over at all.
 	Collapses bool
+}
+
+// start is where the rewrite finds the branch: Head, or Tip for a step built
+// without one.
+func (s Step) start() string {
+	if s.Head != "" {
+		return s.Head
+	}
+	return s.Tip
 }
 
 // Pending is where refs will be by the time the rewrite runs.

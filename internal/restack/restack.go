@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // RequireClean refuses a rewrite over a working tree with changes, before
@@ -63,7 +64,14 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 // begin persists both rollback state and the checkout's owner before any ref
 // moves. Worktree identity is optional for injected Git implementations.
 func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Record, error) {
-	record := s.record(plan, standing)
+	// The structure as recorded now, not as the plan read it: a caller may
+	// have reforked a branch it moved between planning and here, and putting
+	// back the edge it replaced would record a fork its branch no longer has.
+	recorded, err := s.Graph.Store.Load(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	record := s.record(plan, standing, recorded)
 	if err := s.journalFollowed(ctx, &record, plan); err != nil {
 		return Record{}, err
 	}
@@ -85,7 +93,16 @@ func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Recor
 // record is what survives an interrupted rewrite. ReturnTo is where the
 // checkout stood, not the selection's target: the two differ whenever someone
 // restacks a stack from outside it, and it was the target that was written.
-func (s Service) record(plan Plan, standing checkout) Record {
+//
+// Original and Structure are where this rewrite starts, after anything the
+// caller moved first. pull takes a reviewer's commit before it replays, and
+// records that it now agrees with the remote. An abort that put the branch
+// back before the take removed the commit here while the sync point still
+// said this clone had it, which can read as a drop of this clone's own for
+// push to publish. recorded is the graph as stored when the rewrite begins,
+// for the same reason: a fork the caller recorded for what it took belongs to
+// what it took, and the one before it may not be in the taken version at all.
+func (s Service) record(plan Plan, standing checkout, recorded graph.Graph) Record {
 	record := Record{
 		Above:          plan.Above,
 		OntoParent:     plan.Onto.Parent,
@@ -101,12 +118,12 @@ func (s Service) record(plan Plan, standing checkout) Record {
 		Structure:      map[string]RecordedEdge{},
 	}
 	for _, step := range plan.Steps {
-		record.Original[step.Branch] = step.Tip
+		record.Original[step.Branch] = step.start()
 	}
 	// Every selected branch rather than every step: recording walks the whole
 	// selection, so that is what an abort has to be able to put back.
 	for _, branch := range plan.Discovery.Branches {
-		if edge, tracked := plan.Discovery.Graph.Edges[branch]; tracked {
+		if edge, tracked := recorded.Edges[branch]; tracked {
 			record.Structure[branch] = RecordedEdge{Parent: edge.Parent, ForkPoint: edge.ForkPoint}
 		}
 	}

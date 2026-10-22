@@ -62,7 +62,8 @@ type Record struct {
 	// finishes or is aborted. Empty when they were on no branch.
 	ReturnTo string `json:"returnTo,omitempty"`
 	// Original maps every branch in the operation to its tip when the
-	// operation began. This is the whole reason for --abort.
+	// operation began, after anything the caller moved first: pull's taken
+	// branches stay taken. This is the whole reason for --abort.
 	Original map[string]string `json:"original"`
 	// Reparent maps a branch to the parent this operation moves it to. It is
 	// recorded rather than re-derived because once the rewrite has happened
@@ -70,7 +71,8 @@ type Record struct {
 	// it as moved off its parent and can no longer tell where it was headed.
 	Reparent map[string]string `json:"reparent,omitempty"`
 	// Structure is every selected branch's recorded edge when the operation
-	// began. A resumed pass writes fork points and reparenting as it goes --
+	// began, read from the store then, so a fork pull recorded for a branch it
+	// took is the one put back. A resumed pass writes fork points and reparenting as it goes --
 	// planning against the old ones would see drift that is only its own
 	// progress -- so --abort has to put those back as well as the tips, or it
 	// leaves every branch recorded as forking where it no longer does.

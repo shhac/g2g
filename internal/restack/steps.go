@@ -120,8 +120,8 @@ func (s Service) resolveStep(ctx context.Context, branch, parent, forkPoint stri
 	}
 	// Where the parent will be, which is not where Git says it is when the
 	// caller is about to move it. The tip below is deliberately not overlaid:
-	// it is what an abort restores this branch to, so it has to be where the
-	// branch was before any of this ran.
+	// the caller overlays it as the step's Head, and the plan keeps both so a
+	// revalidation sees a branch that moved before the caller did.
 	base = pending.at(parent, base)
 	if forkPoint == "" {
 		forkPoint = base

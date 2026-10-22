@@ -3,6 +3,7 @@ package restack
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -133,6 +134,87 @@ func TestConflictingApplyJournalsOriginalTips(t *testing.T) {
 		if journal.record.Original[branch] == "" {
 			t.Errorf("no original tip recorded for %s, so --abort cannot restore it", branch)
 		}
+	}
+}
+
+// A restack of its own starts where the plan found everything, so that is what
+// an abort puts back: every tip, and every edge as recorded before the replay.
+func TestConflictingApplyJournalsWhereAStandaloneRestackStarts(t *testing.T) {
+	git := stackGit()
+	git.previewClean = false
+	git.rebaseErr = errors.New("synthetic conflict")
+	service, _, journal := newService(git, stack())
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, Pending{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Apply(context.Background(), plan); err == nil {
+		t.Fatal("Apply() error = nil for a conflicting rewrite")
+	}
+
+	want := map[string]string{"synthetic-a": "a-old", "synthetic-b": "b-old"}
+	if !maps.Equal(journal.record.Original, want) {
+		t.Errorf("Original = %v, want %v", journal.record.Original, want)
+	}
+	for branch, edge := range stack().Edges {
+		if got := journal.record.Structure[branch]; got != (RecordedEdge{Parent: edge.Parent, ForkPoint: edge.ForkPoint}) {
+			t.Errorf("Structure[%s] = %+v, want the edge recorded before the replay", branch, got)
+		}
+	}
+}
+
+// pull takes a reviewer's version of a branch before it replays, records
+// that it now agrees with the remote, and reforks the branch where that
+// version begins. The replay's journal starts from there: an abort that put
+// the branch back before the take dropped the reviewer's commit here while the
+// sync point said it was had, and restoring the fork from before the refork
+// recorded one the taken version does not contain.
+func TestConflictingApplyJournalsWhatTheCallerTookAsItsStart(t *testing.T) {
+	git := stackGit()
+	git.previewClean = false
+	git.rebaseErr = errors.New("synthetic conflict")
+	git.objects["a-reviewed"] = "a-reviewed"
+	git.objects["a-begins"] = "a-begins"
+	git.ancestors["a-reviewed"] = []string{"trunk-old"}
+	service, store, journal := newService(git, stack())
+	pending := Pending{Tips: map[string]string{"synthetic-a": "a-reviewed"}}
+	plan, err := service.Plan(context.Background(), selection(), Onto{}, false, pending, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Blocked() != "" {
+		t.Fatalf("Plan() blocked: %s", plan.Blocked())
+	}
+
+	// What the caller does between planning and applying: take the version,
+	// and record where it begins.
+	git.objects["synthetic-a"] = "a-reviewed"
+	git.ancestors["synthetic-a"] = []string{"trunk-old", "a-begins"}
+	reforked := store.graph.Clone()
+	edge := reforked.Edges["synthetic-a"]
+	edge.ForkPoint = "a-begins"
+	reforked.Edges["synthetic-a"] = edge
+	store.graph = reforked
+
+	if err := service.Apply(context.Background(), plan); err == nil {
+		t.Fatal("Apply() error = nil for a conflicting rewrite")
+	}
+	want := map[string]string{"synthetic-a": "a-reviewed", "synthetic-b": "b-old"}
+	if !maps.Equal(journal.record.Original, want) {
+		t.Errorf("Original = %v, want the taken version and b's own tip %v", journal.record.Original, want)
+	}
+	if got := journal.record.Structure["synthetic-a"].ForkPoint; got != "a-begins" {
+		t.Errorf("Structure[synthetic-a] fork = %s, want the refork a-begins", got)
+	}
+
+	if err := service.Abort(context.Background()); err != nil {
+		t.Fatalf("Abort() error = %v", err)
+	}
+	if got := git.restored["synthetic-a"]; got != "a-reviewed" {
+		t.Errorf("abort restored synthetic-a to %s, want the taken a-reviewed", got)
+	}
+	if got := store.graph.Edges["synthetic-a"].ForkPoint; got != "a-begins" {
+		t.Errorf("abort recorded synthetic-a forking at %s, want a-begins", got)
 	}
 }
 

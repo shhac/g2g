@@ -164,3 +164,45 @@ func TestJourneySharedStackAConflictingPullCanBeContinued(t *testing.T) {
 		t.Errorf("the remote's shared.txt = %q, want the resolution", got)
 	}
 }
+
+// The same pull, abandoned instead. The pull took Bob's B and recorded it
+// forking where his version begins -- A as published, which Alice's A has
+// moved past -- before its replay stopped. Aborting the replay keeps both:
+// Bob's B, and the fork it actually has. Putting B back before the take, while
+// the sync point said Alice had Bob's version, made push read Bob's commit as
+// one she dropped and offer to publish that. And the fork recorded before the
+// pull was Alice's own A, which Bob's B does not contain, so putting that back
+// with Bob's B left it recorded as moved off its parent.
+func TestJourneySharedStackAConflictingPullCanBeAbandoned(t *testing.T) {
+	s := newSharedStackEditing(t, "shared.txt", "shared.txt")
+	s.asBob()
+	mustRun(t, "push", "--apply")
+
+	s.asAlice()
+	aliceA, aliceC := s.tip(s.Local, "synthetic-a"), s.tip(s.Local, "synthetic-c")
+	forkC := s.recordedFork("synthetic-c")
+	publishedA, bobB := s.tip(s.Remote, "synthetic-a"), s.tip(s.Remote, "synthetic-b")
+	pullStopsThenAbort(t)
+
+	for branch, want := range map[string]string{"synthetic-a": aliceA, "synthetic-b": bobB, "synthetic-c": aliceC} {
+		if got := s.tip(s.Local, branch); got != want {
+			t.Errorf("abort left %s at %s, want %s", branch, got, want)
+		}
+	}
+	if got := s.tip(s.Local, "refs/g2g/synced/origin/synthetic-b"); got != bobB {
+		t.Errorf("synthetic-b's sync point is at %s, want Bob's %s", got, bobB)
+	}
+	if got := s.recordedFork("synthetic-b"); got != publishedA {
+		t.Errorf("synthetic-b is recorded forking at %s, want where Bob's version begins, %s", got, publishedA)
+	}
+	if got := s.recordedFork("synthetic-c"); got != forkC {
+		t.Errorf("synthetic-c is recorded forking at %s, want its fork from before the pull, %s", got, forkC)
+	}
+	s.assertClean(s.Local)
+	if status := mustRun(t, "status"); strings.Contains(status, "moved off parent") || strings.Contains(status, "fork point") {
+		t.Errorf("the abort left the structure invalid:\n%s", status)
+	}
+	if push := mustRun(t, "push"); strings.Contains(push, "Drops") {
+		t.Errorf("push reads Bob's commit as one dropped here:\n%s", push)
+	}
+}

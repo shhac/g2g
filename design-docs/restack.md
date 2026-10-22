@@ -318,7 +318,10 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
   reconcile its index after interruption between the ref move and read-tree
 - **every branch's tip at operation start**, so `--abort` can roll back paths
   that already completed — which git cannot do, because it only knows about the
-  current invocation
+  current invocation. The start is after whatever the caller moved first: a
+  branch `pull` took stays taken, because its sync point already records that
+  this clone agrees with the remote, and putting it back before the take would
+  make the remote's commits read as ones dropped here
 - **the reparenting the operation intends**, because once the rewrite has moved
   a branch a fresh plan can no longer tell where it was headed: it reports the
   branch as moved off its parent, which is true and useless
@@ -326,7 +329,8 @@ So g2g's journal only needs what spans *several* invocations, which is a tree
   resumed pass records fork points and reparenting as it goes (planning against
   the old ones would read its own progress as drift), and an `--abort` that put
   back only the tips left each branch recorded as forking at a parent tip it no
-  longer contained
+  longer contained. It is read from the store when the operation begins, so a
+  fork `pull` recorded for a version it took is the one put back
 
 - **each worktree brought along with its branch** (`--worktrees follow`), with
   the commit its index describes, written before the branch moves and after

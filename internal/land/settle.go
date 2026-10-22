@@ -138,7 +138,7 @@ func nextInterval(interval, waited time.Duration) time.Duration {
 // UNKNOWN while it thinks. None of them is about CI.
 func (s Service) settlePush(ctx context.Context, step Step, tip string, remote string) (githubstack.MergeState, error) {
 	var settled githubstack.MergeState
-	err := settle(ctx, s.pause, fmt.Sprintf("GitHub to see %s at %s", step.Branch, shortID(tip)), func(ctx context.Context) (bool, error) {
+	err := settle(ctx, s.pause, fmt.Sprintf("GitHub to see %s at %s", step.Branch, localgit.Short(tip)), func(ctx context.Context) (bool, error) {
 		state, err := s.state(ctx, step.Number)
 		if err != nil {
 			return false, err
@@ -168,7 +168,7 @@ func (s Service) settlePush(ctx context.Context, step Step, tip string, remote s
 	}
 	if published, present := tips[step.Branch]; !present || published != tip {
 		return settled, fmt.Errorf("%s is not on %s at %s (it has %s), so GitHub was never going to see it · the push did not take effect",
-			step.Branch, remote, shortID(tip), describeTip(published))
+			step.Branch, remote, localgit.Short(tip), describeTip(published))
 	}
 	return settled, err
 }
@@ -179,7 +179,7 @@ func describeTip(tip string) string {
 	if tip == "" {
 		return "no such branch"
 	}
-	return shortID(tip)
+	return localgit.Short(tip)
 }
 
 // settleMerge waits until the merge has reached the base on the remote.
@@ -218,11 +218,4 @@ func (s Service) state(ctx context.Context, number int) (githubstack.MergeState,
 		return githubstack.MergeState{}, err
 	}
 	return mergeability.States[number], nil
-}
-
-func shortID(object string) string {
-	if len(object) <= 7 {
-		return object
-	}
-	return object[:7]
 }

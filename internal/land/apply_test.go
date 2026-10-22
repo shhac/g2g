@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 )
 
@@ -344,7 +345,7 @@ func TestAWaitThatFailsSaysWhetherThePushEvenLanded(t *testing.T) {
 	if err == nil {
 		t.Fatal("Apply() error = nil, want a refusal")
 	}
-	for _, want := range []string{"not on origin", "the push did not take effect", shortID("one-stale")} {
+	for _, want := range []string{"not on origin", "the push did not take effect", localgit.Short("one-stale")} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}

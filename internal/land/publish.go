@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -40,7 +41,7 @@ func (s Service) republish(ctx context.Context, plan Plan, above Republish) (boo
 	return s.pushPinned(ctx, plan, above.Branch, above.RemoteTip, func(branches []string) error {
 		for _, branch := range branches {
 			if !slices.ContainsFunc(plan.Republish, func(r Republish) bool { return r.Branch == branch }) {
-				return fmt.Errorf("publishing %s would also publish %s, which is not on %s · run g2g push --branch %s --scope path --apply if you mean both", above.Branch, branch, plan.Options.Remote, above.Branch)
+				return fmt.Errorf("publishing %s would also publish %s, which is not on %s · run g2g push --branch %s --scope path --apply if you mean both", above.Branch, branch, plan.Options.Remote, repair.Quote(above.Branch))
 			}
 		}
 		return nil

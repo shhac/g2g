@@ -282,3 +282,64 @@ Graphite enrollment, release or remote publication.
   Queue API contracts are schema-validated and exercised offline; no hosted
   queue was mutated. When auto-merge is disabled, initial prerequisites must
   already pass: --wait observes an accepted request, not prerequisite completion.
+
+## Post-implementation repository audit
+
+The initial implementation was committed on main in four commits, ending at
+0a0204e. At the user's request, Claude Opus 5.5 then reviewed the repository and
+implemented the confirmed findings in separate passes; the coordinator reviewed
+and committed each validated batch. The CLI reported the actual model as
+claude-opus-5-5, with no model fallback.
+
+- d526811 preserves collected reviewer commits when a pull's replay is aborted.
+  The journal now captures post-collection heads and the graph structure at
+  replay start, including fork points the collection updated. Standalone
+  restack rollback and the protected --above boundary retain their contracts.
+- 9bca8fa preserves branch, scope, remote and --above in partial-pull advice,
+  reports the branches actually collected, quotes repair arguments, and targets
+  declaration undo advice at the branch that was declared.
+- 0497723 replaces landing's private short-ID formatter with localgit.Short
+  and quotes its remaining repair target.
+- 7bfd9c9 leases remote cleanup on the cycle's merged head or the exact tip
+  assessed by push's preflight. Later remote reads never refresh this baseline.
+  The coordinator caught and reproduced a flaw in an intermediate version:
+  a post-merge reviewer revert can pass whole-branch absorption without having
+  landed. The final implementation reuses push's per-commit assessment instead.
+  Printed recipes capture each merge head, pin the merge and deletion to it,
+  and refuse an unset or empty capture before invoking a tool.
+- 84b6688 isolates adapter subprocesses and cloned test repositories from
+  personal Git configuration. The first final full/race run exposed that
+  fixture setup alone ignored the global configuration: commits and rebases
+  started by the adapters still inherited signing settings. The regression
+  supplies a synthetic unavailable signer, proves commits succeed in both the
+  fixture and a clone, and checks environment restoration without editing the
+  caller's configuration.
+
+Real-Git regressions reproduce the abort and unleased-deletion bugs against the
+old implementation. Coverage includes repeated pulls, reforked incoming history,
+post-merge pushes and reverts, a push between the deletion read and write, a
+changed remote between preflight and planning, direct and queued descent, and
+interrupted-descent cleanup. Shell tests check argument quoting and empty-head
+refusal. A final read-only Claude source review found no blockers; the coordinator
+also reviewed the new tests and reproduced the failures independently.
+
+Final verification passed:
+
+- go test ./... -timeout 45m: all 32 package results clean; CLI 1138.598s.
+- go test -race ./internal/link ./internal/cli ./internal/land
+  ./internal/restack -timeout 45m: all four packages clean; CLI 1261.910s.
+- go vet ./..., gofmt and git diff --check.
+- Rebuilt /tmp/g2g-feedback-build and checked its version and root/create/pull/
+  land help, including help with an invalid G2G_TIMEOUT.
+
+All 501 source, configuration and fixture hashes match the manifest recorded
+when the corrected full/race runs started. Logs are
+/tmp/g2g-claude-followup-full-tests-isolated.log and
+/tmp/g2g-claude-followup-race-tests-isolated.log. The first failed runs are
+retained separately under the same names without -isolated.
+
+The existing conservative refusal for an interrupted descent of a several-commit
+squash without a sync point remains: push cannot establish the remote work's
+identity in that case. This audit does not loosen that publication policy or the
+offline status preference recorded above. No hosted queue was exercised, and
+all Git remote writes stayed in disposable local test repositories.

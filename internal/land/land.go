@@ -41,9 +41,10 @@ type Git interface {
 // merges would do, and the two mutations that land one.
 type GitHub interface {
 	Inspect(ctx context.Context, branches []string) ([]githubstack.PullRequest, error)
-	Mergeability(ctx context.Context, numbers []int) (githubstack.Mergeability, error)
+	Mergeability(ctx context.Context, numbers []int, trunk ...string) (githubstack.Mergeability, error)
 	Merge(ctx context.Context, number int, method githubstack.Method, admin bool, head string) error
 	Retarget(ctx context.Context, changes []githubstack.BaseChange) ([]error, error)
+	RequestQueue(ctx context.Context, number int, id, head string, autoMerge ...bool) error
 }
 
 // The three services landing composes. Each is an interface rather than the
@@ -91,6 +92,8 @@ type Options struct {
 	// lands the way its declaration says.
 	MethodChosen bool
 	Admin        bool
+	// Wait keeps observing a queue request until confirmed merged.
+	Wait bool
 	// The two deletions, both on unless asked otherwise. Forgetting each
 	// landed branch is not an option: one left recorded under a branch that
 	// has merged and gone makes every later replay measure against a structure

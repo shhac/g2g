@@ -321,3 +321,31 @@ func TestLandedNoticeSaysOnlyWhatItRemoved(t *testing.T) {
 		}
 	}
 }
+
+func TestPendingWithoutNewMutationIsReportedAsPendingExitThree(t *testing.T) {
+	var out bytes.Buffer
+	cmd := newLand(land.Service{}, comment.Service{}, nil, testCompletions(), nil, Presentation{})
+	cmd.SetOut(&out)
+	pending := &land.Pending{Branch: "synthetic-one", Number: 41, State: "queued", Retry: "g2g land --branch synthetic-two --scope path --remote synthetic"}
+	stopped := &land.Stopped{Branch: "synthetic-one", Pending: pending, Err: pending}
+	handled, err := landInterrupted(cmd, context.Background(), stopped, nil, Presentation{})
+	if !handled || exitCode(err) != 3 || !strings.Contains(out.String(), pending.Retry) || !strings.Contains(out.String(), "Nothing merged.") {
+		t.Fatalf("out=%s err=%v", out.String(), err)
+	}
+}
+func TestLandingMachineMetadataDistinguishesQueueAndPending(t *testing.T) {
+	plan := land.Plan{Queue: &githubstack.Queue{ID: "MQ_synthetic"}, Steps: []land.Step{{Branch: "synthetic-one", Number: 41, Queue: true, Pending: "queued"}}}
+	doc := landView(plan).document()
+	if len(doc.Landing) != 1 || doc.Landing[0].Merge != "queue" || doc.Landing[0].Pending != "queued" {
+		t.Fatalf("landing=%+v", doc.Landing)
+	}
+	for _, step := range doc.Sequence {
+		if strings.Contains(step.Command, "prune") || strings.Contains(step.Command, "--delete") {
+			t.Fatal(doc.Sequence)
+		}
+	}
+	plan.Steps = []land.Step{{Branch: "synthetic-done", Landed: true}}
+	if merges := landView(plan).document().Landing; len(merges) != 0 {
+		t.Fatalf("cleanup-only branch promises a merge: %+v", merges)
+	}
+}

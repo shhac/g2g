@@ -2,6 +2,7 @@ package land
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -20,7 +21,8 @@ type Stopped struct {
 	// Landed names the branches whose merge completed, in the order they did.
 	// A merge completes when GitHub accepts it, so the branch the descent
 	// stopped at is among them when what failed came after its merge.
-	Landed []string
+	Landed  []string
+	Pending *Pending
 	// Tidied names the branches that had already landed and whose cleanup this
 	// run finished: forgotten and deleted, which is not coming back either.
 	Tidied []string
@@ -39,7 +41,7 @@ type Stopped struct {
 // part-way -- with the exit status that says so -- told a script something had
 // landed when nothing had.
 func (e *Stopped) PartWay() bool {
-	return len(e.Landed) != 0 || len(e.Tidied) != 0 || len(e.Changed) != 0
+	return e.Pending != nil || len(e.Landed) != 0 || len(e.Tidied) != 0 || len(e.Changed) != 0
 }
 
 func (e *Stopped) Error() string {
@@ -76,7 +78,11 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			landed = append(landed, step.Branch)
 		}
 		if err != nil {
-			return &Stopped{Landed: landed, Tidied: tidied, Changed: changed, Branch: step.Branch, Err: err}
+			var pending *Pending
+			if errors.As(err, &pending) {
+				pending.Retry = plan.RetryCommand()
+			}
+			return &Stopped{Landed: landed, Tidied: tidied, Changed: changed, Branch: step.Branch, Pending: pending, Err: err}
 		}
 		if !step.Merges() {
 			tidied = append(tidied, step.Branch)
@@ -105,6 +111,13 @@ func (s Service) cycle(ctx context.Context, plan Plan, step Step, changed *[]str
 		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
 	)
 	if step.Merges() {
+		if plan.Queue != nil {
+			merged, err = s.mergeQueued(ctx, plan, step, changed)
+			if err != nil {
+				return merged, err
+			}
+			return merged, s.tidy(ctx, plan, step, changed)
+		}
 		if merged, err = s.merge(ctx, plan, step, changed); err != nil {
 			return merged, err
 		}
@@ -167,7 +180,10 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	if err := s.mergeReady(ctx, plan, step, tip, settled); err != nil {
 		return false, err
 	}
-	return true, s.settleMerge(ctx, plan, step)
+	*changed = append(*changed, fmt.Sprintf("requested merge of #%d", step.Number))
+	observed := false
+	err = s.settleMergeObserved(ctx, plan, step, &observed)
+	return observed, err
 }
 
 // retarget points one pull request at its base. It is one change on its own,
@@ -204,7 +220,7 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step, expectedTip 
 	}
 	decided := step
 	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
-		now, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin})
+		now, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin, Queue: plan.Queue != nil, QueueAutoMerge: plan.Queue != nil && plan.Queue.AutoMergeAllowed})
 		if note.Reason != "" {
 			return Step{}, fmt.Errorf("%s", note.Sentence())
 		}

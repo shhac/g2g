@@ -143,10 +143,13 @@ type fakeGitHub struct {
 	prs    []githubstack.PullRequest
 	// states is what Mergeability answers, and merging mutates it, so a settle
 	// that asks after a merge sees what GitHub would say.
-	states   map[int]githubstack.MergeState
-	allowed  githubstack.Allowed
-	asked    int
-	mergeErr error
+	states     map[int]githubstack.MergeState
+	allowed    githubstack.Allowed
+	queue      *githubstack.Queue
+	queueErr   error
+	afterQueue func(int)
+	asked      int
+	mergeErr   error
 	// retargetErr is GitHub refusing to move a base.
 	retargetErr error
 	// settleOn runs after the first question, standing in for GitHub catching
@@ -161,7 +164,7 @@ func (f *fakeGitHub) Inspect(_ context.Context, _ []string) ([]githubstack.PullR
 	return f.prs, nil
 }
 
-func (f *fakeGitHub) Mergeability(_ context.Context, numbers []int) (githubstack.Mergeability, error) {
+func (f *fakeGitHub) Mergeability(_ context.Context, numbers []int, trunk ...string) (githubstack.Mergeability, error) {
 	f.asked++
 	if f.asked > 1 && f.settleOn != nil {
 		f.settleOn()
@@ -171,7 +174,7 @@ func (f *fakeGitHub) Mergeability(_ context.Context, numbers []int) (githubstack
 	for _, number := range numbers {
 		states[number] = f.states[number]
 	}
-	return githubstack.Mergeability{Allowed: f.allowed, States: states}, nil
+	return githubstack.Mergeability{Allowed: f.allowed, Queue: f.queue, States: states}, nil
 }
 
 func (f *fakeGitHub) Merge(_ context.Context, number int, method githubstack.Method, admin bool, head string) error {
@@ -213,6 +216,7 @@ func (f *fakeGitHub) Retarget(_ context.Context, changes []githubstack.BaseChang
 		}
 		state := f.states[number]
 		state.Base = base
+		state.QueueEnabled = f.queue != nil
 		f.states[number] = state
 		for index, pr := range f.prs {
 			if pr.Number == number {
@@ -390,4 +394,18 @@ func (f *fakeGit) HoldersElsewhere(context.Context) (map[string]worktree.Holder,
 
 func (f *fakeGit) WorktreeClean(_ context.Context, path string) (bool, error) {
 	return f.clean[strings.TrimPrefix(path, "/synthetic/worktrees/")], nil
+}
+
+func (f *fakeGitHub) RequestQueue(ctx context.Context, number int, id, head string, autoMerge ...bool) error {
+	f.events.record(fmt.Sprintf("queue:%d:%s", number, head))
+	if f.queueErr != nil {
+		return f.queueErr
+	}
+	state := f.states[number]
+	state.AutoMerge = true
+	f.states[number] = state
+	if f.afterQueue != nil {
+		f.afterQueue(number)
+	}
+	return nil
 }

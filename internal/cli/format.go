@@ -40,13 +40,14 @@ const (
 const schemaVersion = 3
 
 type jsonDocument struct {
-	SchemaVersion int          `json:"schemaVersion"`
-	Operation     string       `json:"operation"`
-	Target        string       `json:"target"`
-	TargetSource  string       `json:"targetSource,omitempty"`
-	Trunk         string       `json:"trunk"`
-	Branches      []jsonBranch `json:"branches"`
-	Command       []string     `json:"command,omitempty"`
+	Landing       []jsonLanding `json:"landing,omitempty"`
+	SchemaVersion int           `json:"schemaVersion"`
+	Operation     string        `json:"operation"`
+	Target        string        `json:"target"`
+	TargetSource  string        `json:"targetSource,omitempty"`
+	Trunk         string        `json:"trunk"`
+	Branches      []jsonBranch  `json:"branches"`
+	Command       []string      `json:"command,omitempty"`
 	// Blocked is the reason apply would refuse. It is reported alongside
 	// Command rather than instead of it, so a consumer can see the plan's
 	// destination and decide for itself; check this before acting on Command.
@@ -126,6 +127,13 @@ type jsonNote struct {
 	Severity string `json:"severity"`
 }
 
+type jsonLanding struct {
+	Branch  string `json:"branch"`
+	Merge   string `json:"merge"`
+	Method  string `json:"method,omitempty"`
+	Pending string `json:"pending,omitempty"`
+}
+
 func (v stackView) document() jsonDocument {
 	doc := jsonDocument{
 		SchemaVersion: schemaVersion,
@@ -136,6 +144,9 @@ func (v stackView) document() jsonDocument {
 		Blocked:       plainCommands(v.Blocked),
 		Repair:        repairDocument(v.Repair),
 		Branches:      []jsonBranch{},
+	}
+	for _, step := range v.Landing {
+		doc.Landing = append(doc.Landing, jsonLanding(step))
 	}
 	for _, node := range v.Nodes {
 		if node.Trunk {
@@ -198,6 +209,9 @@ func writePorcelain(writer io.Writer, view stackView) error {
 			// the record type and ignores fields added after the ones it knows.
 			"branch", branch.Branch, porcelainNumber(branch.PullRequest), branch.State, branch.Severity, branch.URL, porcelainBool(branch.Target), branch.Parent,
 		})
+	}
+	for _, step := range doc.Landing {
+		records = append(records, []string{"landing", step.Branch, step.Merge, step.Method, step.Pending})
 	}
 	if doc.Blocked != "" {
 		records = append(records, []string{"blocked", doc.Blocked})

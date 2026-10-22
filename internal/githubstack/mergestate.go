@@ -93,7 +93,38 @@ type MergeState struct {
 	Review string
 	// MergeCommit is what landed, and is what makes "has the merge reached the
 	// remote base" answerable by ancestry rather than by watching a tip move.
-	MergeCommit string
+	MergeCommit  string
+	QueueEnabled bool
+	QueueEntry   *QueueEntry
+	AutoMerge    bool
+	Checks       Checks
+}
+
+// QueueEntry is live queue membership, never evidence that work merged.
+type QueueEntry struct {
+	ID         string `json:"id"`
+	State      string `json:"state"`
+	HeadCommit *struct {
+		OID string `json:"oid"`
+	} `json:"headCommit"`
+}
+
+func (m MergeState) Pending() bool { return m.QueueEntry != nil || m.AutoMerge }
+
+// Queue is the policy of the eventual target, independent of a PR's current base.
+type Queue struct {
+	AutoMergeAllowed bool   `json:"-"`
+	ID               string `json:"id"`
+	Configuration    *struct {
+		MergeMethod string `json:"mergeMethod"`
+	} `json:"configuration"`
+}
+
+func (q *Queue) Method() Method {
+	if q == nil || q.Configuration == nil {
+		return ""
+	}
+	return Method(strings.ToLower(q.Configuration.MergeMethod))
 }
 
 // Merged reports a pull request GitHub has recorded as merged.
@@ -123,6 +154,7 @@ func (a Allowed) Permits(method Method) bool {
 // where each pull request stands.
 type Mergeability struct {
 	Allowed Allowed
+	Queue   *Queue
 	// States is keyed by pull request number, because the caller already
 	// resolved which pull request it means. Asking again by head branch would
 	// be a second identity derivation that could disagree with the first.
@@ -137,17 +169,41 @@ const stateMerged = "MERGED"
 // which rides along as three more fields rather than costing a second round
 // trip. The repository is named by gh's {owner}/{repo} placeholders, exactly
 // as Inspect does.
-func (c Client) Mergeability(ctx context.Context, numbers []int) (Mergeability, error) {
+func (c Client) Mergeability(ctx context.Context, numbers []int, trunk ...string) (Mergeability, error) {
 	for _, number := range numbers {
 		if number <= 0 {
 			return Mergeability{}, fmt.Errorf("pull request number is required")
 		}
 	}
-	output, err := c.graphql(ctx, "batched_merge_state", "pull_requests", len(numbers), mergeabilityQuery(numbers))
+	var vars []string
+	if len(trunk) != 0 && trunk[0] != "" {
+		vars = []string{"-f", "trunk=" + trunk[0]}
+	}
+	output, err := c.graphql(ctx, "batched_merge_state", "pull_requests", len(numbers), mergeabilityQuery(numbers, trunk...), vars...)
 	if err != nil {
 		return Mergeability{}, repositoryError(err, output)
 	}
 	result, err := parseMergeability(output, numbers)
+	if err == nil {
+		var blocked []int
+		for _, number := range numbers {
+			if result.States[number].StateStatus == StatusBlocked {
+				blocked = append(blocked, number)
+			}
+		}
+		if len(blocked) != 0 {
+			checks, checkErr := c.requiredChecks(ctx, blocked)
+			if checkErr == nil {
+				for number, detail := range checks {
+					state := result.States[number]
+					state.Checks = detail
+					result.States[number] = state
+				}
+			}
+			// Details explain a refusal; failure to read them must never invent
+			// a passing or running check. The protection refusal remains unknown.
+		}
+	}
 	if err == nil && c.Observations != nil {
 		c.observationError(ctx, c.Observations.ObserveStates(ctx, result.States))
 	}
@@ -159,29 +215,39 @@ func (c Client) Mergeability(ctx context.Context, numbers []int) (Mergeability, 
 // By number rather than by head branch: the caller has already decided which
 // pull request each branch means, and resolving it a second time by a
 // different rule is how two answers come to disagree about the same branch.
-func mergeabilityQuery(numbers []int) string {
-	fields := make([]string, 0, len(numbers)+3)
-	fields = append(fields, "squashMergeAllowed", "mergeCommitAllowed", "rebaseMergeAllowed")
+func mergeabilityQuery(numbers []int, trunk ...string) string {
+	fields := make([]string, 0, len(numbers)+4)
+	declarations := "$owner: String!, $name: String!"
+	if len(trunk) != 0 && trunk[0] != "" {
+		declarations += ", $trunk: String!"
+		fields = append(fields, "targetQueue: mergeQueue(branch: $trunk) { id configuration { mergeMethod } }")
+	}
+	fields = append(fields, "squashMergeAllowed", "mergeCommitAllowed", "rebaseMergeAllowed", "autoMergeAllowed")
 	for index, number := range numbers {
-		fields = append(fields, fmt.Sprintf("pr%d: pullRequest(number: %d) { number headRefName headRefOid baseRefName state isDraft mergeable mergeStateStatus reviewDecision mergeCommit { oid } }", index, number))
+		fields = append(fields, fmt.Sprintf("pr%d: pullRequest(number: %d) { number headRefName headRefOid baseRefName state isDraft mergeable mergeStateStatus reviewDecision mergeCommit { oid } isMergeQueueEnabled mergeQueueEntry { id state headCommit { oid } } autoMergeRequest { enabledAt } }", index, number))
 	}
 	// Named, unlike the head-ref lookup next door. Two queries to the same
 	// endpoint that begin identically cannot be told apart by anything reading
 	// the invocation -- a test route, a shell history, GitHub's own logs -- and
 	// the name costs nothing.
-	return fmt.Sprintf("query Mergeability($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(fields, " "))
+	return fmt.Sprintf("query Mergeability(%s) { repository(owner: $owner, name: $name) { %s } }", declarations, strings.Join(fields, " "))
 }
 
 type mergeStateNode struct {
-	Number      int    `json:"number"`
-	Head        string `json:"headRefName"`
-	HeadOID     string `json:"headRefOid"`
-	Base        string `json:"baseRefName"`
-	State       string `json:"state"`
-	Draft       bool   `json:"isDraft"`
-	Mergeable   string `json:"mergeable"`
-	StateStatus string `json:"mergeStateStatus"`
-	Review      string `json:"reviewDecision"`
+	Number       int         `json:"number"`
+	Head         string      `json:"headRefName"`
+	HeadOID      string      `json:"headRefOid"`
+	Base         string      `json:"baseRefName"`
+	State        string      `json:"state"`
+	Draft        bool        `json:"isDraft"`
+	Mergeable    string      `json:"mergeable"`
+	StateStatus  string      `json:"mergeStateStatus"`
+	Review       string      `json:"reviewDecision"`
+	QueueEnabled bool        `json:"isMergeQueueEnabled"`
+	QueueEntry   *QueueEntry `json:"mergeQueueEntry"`
+	AutoMerge    *struct {
+		EnabledAt string `json:"enabledAt"`
+	} `json:"autoMergeRequest"`
 	MergeCommit *struct {
 		OID string `json:"oid"`
 	} `json:"mergeCommit"`
@@ -196,15 +262,16 @@ func (n mergeStateNode) mergeState(alias string) (MergeState, error) {
 		return MergeState{}, fmt.Errorf("gh api graphql response has invalid %s merge state", alias)
 	}
 	state := MergeState{
-		Number:      n.Number,
-		Head:        n.Head,
-		HeadOID:     n.HeadOID,
-		Base:        n.Base,
-		State:       n.State,
-		Draft:       n.Draft,
-		Mergeable:   n.Mergeable,
-		StateStatus: n.StateStatus,
-		Review:      n.Review,
+		Number:       n.Number,
+		Head:         n.Head,
+		HeadOID:      n.HeadOID,
+		Base:         n.Base,
+		State:        n.State,
+		Draft:        n.Draft,
+		Mergeable:    n.Mergeable,
+		StateStatus:  n.StateStatus,
+		Review:       n.Review,
+		QueueEnabled: n.QueueEnabled, QueueEntry: n.QueueEntry, AutoMerge: n.AutoMerge != nil,
 	}
 	if n.MergeCommit != nil {
 		state.MergeCommit = n.MergeCommit.OID
@@ -219,6 +286,18 @@ func parseMergeability(output []byte, numbers []int) (Mergeability, error) {
 	}
 
 	result := Mergeability{States: make(map[int]MergeState, len(numbers))}
+	if _, present := repository["targetQueue"]; present {
+		if err := aliasField(repository, "targetQueue", "queue", &result.Queue); err != nil {
+			return Mergeability{}, err
+		}
+	}
+	if result.Queue != nil {
+		if _, present := repository["autoMergeAllowed"]; present {
+			if err := aliasField(repository, "autoMergeAllowed", "", &result.Queue.AutoMergeAllowed); err != nil {
+				return Mergeability{}, err
+			}
+		}
+	}
 	allowed := map[string]*bool{
 		"squashMergeAllowed": &result.Allowed.Squash,
 		"mergeCommitAllowed": &result.Allowed.Merge,

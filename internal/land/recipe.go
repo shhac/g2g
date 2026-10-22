@@ -27,9 +27,15 @@ type Command struct {
 // the preview an answer to "I do not trust this yet" rather than a description
 // of one.
 func (p Plan) Commands() []Command {
+	if p.Queue != nil && p.Options.Wait {
+		return []Command{{Command: p.RetryCommand() + " --apply", Effect: "wait for confirmed queue merges before replaying and cleaning up the stack"}}
+	}
 	commands := make([]Command, 0, len(p.Steps)*4)
 	for _, step := range p.Steps {
 		commands = append(commands, p.mergeCommands(step)...)
+		if step.Queue && !p.Options.Wait && step.Merges() {
+			return commands
+		}
 		commands = append(commands, p.cleanupCommands(step)...)
 	}
 	commands = append(commands, p.republishCommands()...)
@@ -44,6 +50,9 @@ func (p Plan) mergeCommands(step Step) []Command {
 		return nil
 	}
 	commands := make([]Command, 0, 3)
+	if step.Queue && step.Pending != "" {
+		return []Command{{Command: fmt.Sprintf("gh pr view %d", step.Number), Effect: "observe the existing merge request; cleanup waits for confirmed merge"}}
+	}
 	if step.Push {
 		commands = append(commands, Command{
 			Command: p.pushCommand(step.Branch),
@@ -57,8 +66,8 @@ func (p Plan) mergeCommands(step Step) []Command {
 		})
 	}
 	return append(commands, Command{
-		Command: mergeCommand(step, p.Options),
-		Effect:  fmt.Sprintf("land %s", step.Branch),
+		Command: p.mergeCommand(step),
+		Effect:  mergeEffect(step),
 	})
 }
 
@@ -168,9 +177,29 @@ func (p Plan) deletions(step Step) []Command {
 }
 
 func mergeCommand(step Step, options Options) string {
+	if step.Queue {
+		return fmt.Sprintf("gh pr merge %d", step.Number)
+	}
 	command := fmt.Sprintf("gh pr merge %d %s", step.Number, options.Method.Flag())
 	if step.Admin {
 		command += " --admin"
 	}
 	return command
+}
+
+func mergeEffect(step Step) string {
+	if step.Queue {
+		return "request a merge through the queue; cleanup waits for confirmed merge"
+	}
+	return fmt.Sprintf("land %s", step.Branch)
+}
+
+// A ruleset queue can disallow auto-merge, which gh pr merge cannot currently
+// handle. Use the same head-pinned GraphQL mutation the adapter sends.
+func (p Plan) mergeCommand(step Step) string {
+	if !step.Queue || p.Queue.AutoMergeAllowed {
+		return mergeCommand(step, p.Options)
+	}
+	query := `mutation Enqueue($pr: ID!, $head: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pr, expectedHeadOid: $head}) { clientMutationId } }`
+	return repair.Command([]string{"gh", "api", "graphql", "-f", "query=" + query, "-f", "pr=" + step.ID, "-f", "head=" + step.HeadOID})
 }

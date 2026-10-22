@@ -12,6 +12,7 @@ import (
 // machine-readable formats are alternative views of identical facts rather
 // than parallel implementations that can drift.
 type stackView struct {
+	Landing      []landingStep
 	Operation    string
 	Target       string
 	TargetSource string
@@ -288,4 +289,12 @@ func (v stackView) commandHeading() string {
 		return "Command to run once unblocked"
 	}
 	return "Command to run"
+}
+
+// landingStep carries operation facts independently of rendered annotations.
+type landingStep struct {
+	Branch  string
+	Merge   string
+	Method  string
+	Pending string
 }

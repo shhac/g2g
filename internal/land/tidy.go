@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/restack"
@@ -21,6 +22,17 @@ import (
 // not be deleted is untidy, and reporting it as a failed land would be wrong
 // about the thing that matters and would strand the branches above.
 func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]string) error {
+	if plan.Queue != nil {
+		recorded, err := s.Graph.Store.Load(ctx)
+		if err != nil {
+			return err
+		}
+		if note, err := s.pendingSurvivors(ctx, plan, recorded, githubstack.Mergeability{}, false); err != nil {
+			return err
+		} else if note.Reason != "" {
+			return errors.New(note.Sentence())
+		}
+	}
 	advanced, err := s.advance(ctx, plan)
 	if advanced {
 		*changed = append(*changed, "brought the stack up to date after "+step.Branch)

@@ -111,15 +111,27 @@ case "$1 $2" in
   case "$query" in
   *"query Mergeability"*)
     printf '{"data":{"repository":{"squashMergeAllowed":true,"mergeCommitAllowed":true,"rebaseMergeAllowed":true'
+    auto_allowed=true
+    if [ "$(read_state queue '')" = no-auto ]; then auto_allowed=false; fi
+    printf ',"autoMergeAllowed":%s' "$auto_allowed"
+    if [ -f "$state_dir/queue" ]; then printf ',"targetQueue":{"id":"MQ_synthetic","configuration":{"mergeMethod":"SQUASH"}}'; fi
     index=0
     for number in $(printf '%s' "$query" | grep -o 'pullRequest(number: [0-9][0-9]*)' | grep -o '[0-9][0-9]*'); do
       branch=$(branch_for "$number")
       merged=$(read_state "pr-$number.state" OPEN)
       base=$(read_state "pr-$number.base" main)
       commit=$(read_state "pr-$number.merge" "")
+      queue_enabled=false
+      if [ -f "$state_dir/queue" ] && [ "$base" = main ]; then queue_enabled=true; fi
+      queue_entry=null
+      auto_merge=null
+      if [ "$merged" != MERGED ] && [ -f "$state_dir/pr-$number.pending" ]; then
+        queue_entry="{\"id\":\"MQE_$number\",\"state\":\"QUEUED\",\"headCommit\":{\"oid\":\"$(head_oid "$branch")\"}}"
+        auto_merge='{ "enabledAt":"2026-01-01T00:00:00Z" }'
+      fi
       if [ -n "$commit" ]; then commit="{\"oid\":\"$commit\"}"; else commit=null; fi
-      printf ',"pr%s":{"number":%s,"headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":null,"mergeCommit":%s}' \
-        "$index" "$number" "$branch" "$(head_oid "$branch")" "$base" "$merged" "$commit"
+      printf ',"pr%s":{"number":%s,"headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"%s","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":null,"mergeCommit":%s,"mergeQueueEntry":%s,"autoMergeRequest":%s,"isMergeQueueEnabled":%s}' \
+        "$index" "$number" "$branch" "$(head_oid "$branch")" "$base" "$merged" "$commit" "$queue_entry" "$auto_merge" "$queue_enabled"
       index=$((index + 1))
     done
     printf '}}}\n'
@@ -141,6 +153,23 @@ case "$1 $2" in
       index=$((index + 1))
     done
     printf '}}}\n'
+    ;;
+  *"mutation RequestMergeQueue"*|*"mutation EnqueueMergeQueue"*)
+    number=""
+    expected_head=""
+    for arg in "$@"; do
+      case "$arg" in
+      pullRequest0=PR_*) number="${arg#pullRequest0=PR_}" ;;
+      head0=*) expected_head="${arg#head0=}" ;;
+      esac
+    done
+    if [ -z "$number" ] || [ "$expected_head" != "$(head_oid "$(branch_for "$number")")" ]; then
+      printf 'synthetic queue head mismatch\n' >&2
+      exit 1
+    fi
+    printf '%s\n' "$number" >> "$state_dir/queue-attempts"
+    touch "$state_dir/pr-$number.pending"
+    printf '{"data":{"w0":{"clientMutationId":null}}}\n'
     ;;
   *"query=mutation "*)
     # Every write of the document is applied, in alias order, as GitHub

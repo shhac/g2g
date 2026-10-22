@@ -2,6 +2,7 @@ package land
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/repair"
@@ -13,9 +14,10 @@ import (
 // renders and the sequence Apply walks are both built from it, so the recipe
 // shown and the work done cannot describe different things.
 type Step struct {
-	Branch string
-	Number int
-	URL    string
+	Branch  string
+	Number  int
+	HeadOID string
+	URL     string
 	// ID is the pull request's node id, which pointing it at Base addresses.
 	ID string
 
@@ -29,7 +31,9 @@ type Step struct {
 	// as it is here.
 	Push bool
 	// Admin is set when merging needs branch protection bypassed.
-	Admin bool
+	Admin   bool
+	Queue   bool
+	Pending string
 	// Landed means the work is already in the base by content, so there is
 	// nothing to merge and only the cleanup is left. It is answered by Git,
 	// never by the pull request's own state.
@@ -70,8 +74,10 @@ type facts struct {
 	// Tip is the commit this branch is on here. GitHub answers about the head
 	// it currently knows, which for a while after a push is the one before it,
 	// so a verdict is only about this branch when the two agree.
-	Tip   string
-	Admin bool
+	Tip            string
+	Admin          bool
+	Queue          bool
+	QueueAutoMerge bool
 }
 
 // classify decides what land does about one branch, or why it will not.
@@ -87,6 +93,9 @@ func classify(in facts) (Step, repair.Note) {
 	// never had, so the pull request can read merged, closed or missing while
 	// the work is plainly in the trunk -- and the advice for each of those is
 	// to do something about a branch that is already finished.
+	if in.Landed && in.State.Pending() {
+		return Step{}, repair.Note{Reason: fmt.Sprintf("%s has a pending merge request although its content is in the trunk", branch), Ways: []repair.Step{{Effect: "finish or remove the pending request before cleaning up its branch"}}}
+	}
 	if in.Landed {
 		step.Landed = true
 		if open := in.Step.Resolution.Open; open != nil {
@@ -139,6 +148,14 @@ func classify(in facts) (Step, repair.Note) {
 		step.From = open.Base
 	}
 	step.Push = !in.Current
+	step.Queue = in.Queue
+	if in.State.Pending() {
+		step.Pending = pendingKind(in.State)
+		if !in.Current || in.State.HeadOID != in.Tip || in.State.Base != step.Base || (in.State.QueueEntry != nil && in.State.QueueEntry.HeadCommit != nil && in.State.QueueEntry.HeadCommit.OID != in.Tip) {
+			return Step{}, repair.Note{Reason: fmt.Sprintf("%s already has a pending merge request at a different head or base", pullRequest(branch, open.Number)), Ways: []repair.Step{{Effect: "inspect or remove the existing request before changing its head or base"}}}
+		}
+		return step, repair.Note{}
+	}
 
 	if in.State.Draft {
 		return Step{}, repair.Note{
@@ -167,26 +184,32 @@ func classify(in facts) (Step, repair.Note) {
 	// repository reports an unapproved pull request as blocked. --admin
 	// bypasses both, and someone reaching for it to get past restarted checks
 	// should not silently also get past a review nobody gave.
+	if in.Queue && in.State.HeadOID == in.Tip && in.State.Base == step.Base && (len(in.State.Checks.Failed) != 0 || len(in.State.Checks.Cancelled) != 0) {
+		return Step{}, repair.Note{Reason: checkReason(branch, open.Number, in.State.Checks), Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect and fix the required checks before requesting a merge"}}}
+	}
 	if requiresReview(in.State) && !in.Admin {
+		ways := []repair.Step{{Effect: "get it approved"}}
+		if !in.Queue {
+			ways = append(ways, repair.Step{Command: "g2g land --admin", Effect: "merge without an approval"})
+		}
 		return Step{}, repair.Note{
 			Reason: fmt.Sprintf("%s is not approved (%s)", pullRequest(branch, open.Number), reviewWord(in.State.Review)),
-			Ways: []repair.Step{
-				{Effect: "get it approved"},
-				{Command: "g2g land --admin", Effect: "merge without an approval"},
-			},
+			Ways:   ways,
 		}
 	}
 	blocked := in.State.StateStatus == githubstack.StatusBlocked
-	if blocked && !in.Admin {
+	if blocked && in.Queue && !in.QueueAutoMerge {
+		return Step{}, repair.Note{Reason: checkReason(branch, open.Number, in.State.Checks) + "; this repository disables auto-merge, so queue prerequisites must pass before enrollment", Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect requirements, then rerun when they pass"}}}
+	}
+	if blocked && !in.Admin && !in.Queue {
 		return Step{}, repair.Note{
-			Reason: fmt.Sprintf("%s is blocked by branch protection, which is what required checks report while they run", pullRequest(branch, open.Number)),
+			Reason: checkReason(branch, open.Number, in.State.Checks),
 			Ways: []repair.Step{
-				{Command: "g2g land --admin", Effect: "merge without waiting for them"},
-				{Effect: "wait for the checks and rerun"},
+				{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect the required checks and protection requirements"},
 			},
 		}
 	}
-	step.Admin = blocked
+	step.Admin = blocked && in.Admin
 	return step, repair.Note{}
 }
 
@@ -208,4 +231,18 @@ func reviewWord(decision string) string {
 
 func pullRequest(branch string, number int) string {
 	return fmt.Sprintf("%s (#%d)", branch, number)
+}
+
+func checkReason(branch string, number int, checks githubstack.Checks) string {
+	prefix := pullRequest(branch, number)
+	if len(checks.Failed) != 0 {
+		return prefix + " has failed required checks: " + strings.Join(checks.Failed, ", ")
+	}
+	if len(checks.Cancelled) != 0 {
+		return prefix + " has cancelled required checks: " + strings.Join(checks.Cancelled, ", ")
+	}
+	if checks.Complete && len(checks.Pending) != 0 {
+		return prefix + " is waiting for required checks: " + strings.Join(checks.Pending, ", ")
+	}
+	return prefix + " is blocked by branch protection; the remaining requirement is unknown"
 }

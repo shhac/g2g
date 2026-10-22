@@ -189,10 +189,18 @@ func describeTip(tip string) string {
 // merge and replays the branch above onto it. The merge commit is already in
 // the answer GitHub gives about the merge it just performed.
 func (s Service) settleMerge(ctx context.Context, plan Plan, step Step) error {
+	observed := false
+	return s.settleMergeObserved(ctx, plan, step, &observed)
+}
+
+func (s Service) settleMergeObserved(ctx context.Context, plan Plan, step Step, observed *bool) error {
 	return settle(ctx, s.pause, fmt.Sprintf("the merge of %s to reach %s", step.Branch, plan.Trunk), func(ctx context.Context) (bool, error) {
 		state, err := s.state(ctx, step.Number)
 		if err != nil {
 			return false, err
+		}
+		if state.Merged() {
+			*observed = true
 		}
 		if !state.Merged() || state.MergeCommit == "" {
 			return false, nil

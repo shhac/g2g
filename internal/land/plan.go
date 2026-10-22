@@ -21,6 +21,7 @@ type Plan struct {
 	stack.Discovery
 	Options Options
 	Trunk   string
+	Queue   *githubstack.Queue
 	// Declaration is set when the branch landed is a declared trunk going into
 	// Trunk. See declared.go.
 	Declaration graph.Declaration
@@ -96,6 +97,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
+		queuePolicy(p.Queue) == queuePolicy(other.Queue) &&
 		p.Declaration == other.Declaration &&
 		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
 		p.Worktrees.Equal(other.Worktrees) &&
@@ -108,6 +110,7 @@ func (p Plan) Equal(other Plan) bool {
 // sameStep compares everything about a step but how ready it is.
 func sameStep(one, other Step) bool {
 	one.Admin, other.Admin = false, false
+	one.Pending, other.Pending = "", ""
 	return one == other
 }
 
@@ -138,11 +141,25 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		return plan.refuse(note), nil
 	}
 
-	mergeability, err := s.GitHub.Mergeability(ctx, openNumbers(discovery))
+	mergeability, err := s.GitHub.Mergeability(ctx, openNumbers(discovery), plan.Trunk)
 	if err != nil {
 		return Plan{}, err
 	}
-	if !mergeability.Allowed.Permits(options.Method) {
+	plan.Queue = mergeability.Queue
+	if plan.Queue != nil {
+		if options.Admin || options.MethodChosen {
+			return plan.refuse(repair.Note{Reason: "the target uses a merge queue; --admin and --method cannot override its policy", Ways: []repair.Step{{Effect: "remove the override and use the queue"}}}), nil
+		}
+		if plan.declared() && plan.Declaration.By != "" && githubstack.Method(plan.Declaration.By) != plan.Queue.Method() {
+			return plan.refuse(repair.Note{Reason: "the declared merge method conflicts with the target merge queue", Ways: []repair.Step{{Effect: "change the declaration to the queue's merge method"}}}), nil
+		}
+	}
+	if note, err := s.pendingSurvivors(ctx, plan, recorded, mergeability, true); err != nil {
+		return Plan{}, err
+	} else if note.Reason != "" {
+		return plan.refuse(note), nil
+	}
+	if plan.Queue == nil && !mergeability.Allowed.Permits(options.Method) {
 		return plan.refuse(repair.Note{
 			Reason: fmt.Sprintf("this repository does not allow %s merges", options.Method),
 			Ways:   allowedWays(mergeability.Allowed),
@@ -155,7 +172,10 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 	if refused.Reason != "" {
 		return plan.refuse(refused), nil
 	}
-	plan.Steps, plan.Protected = forecastAdmin(steps, protectedAfterRestack(steps, mergeability), options.Admin)
+	plan.Steps = steps
+	if plan.Queue == nil {
+		plan.Steps, plan.Protected = forecastAdmin(steps, protectedAfterRestack(steps, mergeability), options.Admin)
+	}
 	if len(plan.Steps) != 0 {
 		last := plan.Steps[len(plan.Steps)-1].Branch
 		plan.Above = recorded.Children(last)
@@ -206,17 +226,21 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 		step.ExpectedBase = discovery.Base
 		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
-			Step:    step,
-			State:   stateFor(mergeability, step),
-			Landed:  s.landedIn(ctx, step.Branch, trunks),
-			Current: tip != "" && tips[step.Branch] == tip,
-			Tip:     tip,
-			Admin:   options.Admin,
+			Step:           step,
+			State:          stateFor(mergeability, step),
+			Landed:         s.landedIn(ctx, step.Branch, trunks),
+			Current:        tip != "" && tips[step.Branch] == tip,
+			Tip:            tip,
+			Queue:          mergeability.Queue != nil,
+			QueueAutoMerge: mergeability.Queue != nil && mergeability.Queue.AutoMergeAllowed,
+			Admin:          options.Admin,
 		})
 		if note.Reason != "" {
 			return nil, note, nil
 		}
+		decided.HeadOID = tip
 		decided.RemoteTip = tips[step.Branch]
+		decided.Queue = mergeability.Queue != nil
 		// Everything above the bottom branch is replayed onto the advanced
 		// trunk before its turn, which rewrites it, so it will need publishing
 		// however current it looks now.

@@ -34,6 +34,17 @@ func TestEveryGraphQLDocumentIsValidAgainstGitHubsSchema(t *testing.T) {
 			_, err := c.Inspect(context.Background(), []string{"synthetic-lower", "synthetic-top"})
 			return err
 		}},
+		{name: "merge queue readiness", call: func(c Client) error {
+			_, err := c.Mergeability(context.Background(), []int{11, 12}, "synthetic-trunk")
+			return err
+		}},
+		{name: "required checks", call: func(c Client) error { _, err := c.requiredChecks(context.Background(), []int{11, 12}); return err }},
+		{name: "queue enrollment without auto-merge", call: func(c Client) error {
+			return c.RequestQueue(context.Background(), 11, "PR_synthetic_11", "synthetic-head", false)
+		}},
+		{name: "merge queue request", call: func(c Client) error {
+			return c.RequestQueue(context.Background(), 11, "PR_synthetic_11", "synthetic-head")
+		}},
 		{name: "mergeability", call: func(c Client) error {
 			_, err := c.Mergeability(context.Background(), []int{11, 12})
 			return err

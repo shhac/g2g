@@ -64,7 +64,7 @@ func TestClassifyRefusesWhatItCannotMerge(t *testing.T) {
 			in: facts{Step: openStep("synthetic-one", "synthetic-main", 41, "synthetic-main"),
 				State: githubstack.MergeState{Number: 41, Mergeable: "MERGEABLE", StateStatus: githubstack.StatusBlocked}},
 			want:  "blocked by branch protection",
-			wants: "g2g land --admin",
+			wants: "gh pr checks 41",
 		},
 		"review required without admin": {
 			in: facts{Step: openStep("synthetic-one", "synthetic-main", 41, "synthetic-main"),

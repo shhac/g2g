@@ -24,6 +24,21 @@ func landView(plan land.Plan) stackView {
 		return view.refusing(plan.Repair)
 	}
 	view.Sequence = landSequence(plan)
+	for _, step := range plan.Steps {
+		if step.Landed {
+			continue
+		}
+		mode := "direct"
+		method := string(plan.Options.Method)
+		if step.Queue {
+			mode = "queue"
+			method = string(plan.Queue.Method())
+		}
+		view.Landing = append(view.Landing, landingStep{Branch: step.Branch, Merge: mode, Method: method, Pending: step.Pending})
+	}
+	if plan.Queue != nil {
+		view = view.note("The target's merge queue owns the merge method. Only a confirmed merge permits replay and cleanup.", severityNeutral)
+	}
 	if plan.KeepTrunk {
 		view = view.note(fmt.Sprintf("%s is checked out in another worktree and will be left at its current tip; the merge is checked against the fetched trunk.", plan.Trunk), severityNeutral)
 		if plan.Detach {
@@ -93,6 +108,15 @@ func landMarks(step land.Step) []stackMark {
 		marks = append(marks, stackMark{Subject: "base", OK: true})
 	}
 	detail := "merge"
+	if step.Queue {
+		detail = "request merge through queue"
+		if step.Pending != "" {
+			detail = step.Pending
+			if step.Pending == "waiting" {
+				detail = "waiting for merge requirements"
+			}
+		}
+	}
 	severity := severityOK
 	if step.Admin {
 		detail, severity = "merge with --admin", severityWarn

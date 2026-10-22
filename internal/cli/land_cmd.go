@@ -22,7 +22,7 @@ func newLand(service land.Service, comments comment.Service, replay replayState,
 	cmd := &cobra.Command{
 		Use:     "land",
 		GroupID: groupPublish,
-		Short:   "Squash-merge a stack down onto its trunk, bottom first (preview by default)",
+		Short:   "Land a stack onto its trunk, bottom first, directly or through its merge queue (preview by default)",
 		Args:    cobra.NoArgs,
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -41,10 +41,11 @@ func newLand(service land.Service, comments comment.Service, replay replayState,
 	// and typing land means "take it down as far as here", and stack would
 	// merge everything above you as well.
 	flags.selection.registerScope(cmd, shape.ProjectScopes, shape.ScopePath, scopeUsage("land", shape.ProjectScopes))
-	cmd.Flags().StringVar(&flags.method, "method", string(githubstack.MethodSquash), "how to merge each pull request: "+methodNames())
+	cmd.Flags().StringVar(&flags.method, "method", string(githubstack.MethodSquash), "direct merge method: "+methodNames()+" (refused for a merge queue)")
 	_ = cmd.RegisterFlagCompletionFunc("method", completionCallback(methodCompletions()))
 	cmd.Flags().StringVar(&flags.options.Remote, "remote", localgit.DefaultRemote, "Git remote the branches are published to")
-	cmd.Flags().BoolVar(&flags.options.Admin, "admin", false, "merge without waiting for required checks, which a replay restarts on every branch above the first")
+	cmd.Flags().BoolVar(&flags.options.Wait, "wait", false, "wait for queued merges and continue the descent within the landing budget")
+	cmd.Flags().BoolVar(&flags.options.Admin, "admin", false, "bypass required checks and approvals for direct merges (refused for a merge queue)")
 	cmd.Flags().BoolVar(&flags.noDeleteRemote, "no-delete-remote", false, "keep the published branch after its pull request merges")
 	cmd.Flags().BoolVar(&flags.noDeleteLocal, "no-delete-local", false, "keep the local branch after its pull request merges")
 	registerNoSetUpstream(cmd, &flags.noSetUpstream)
@@ -122,7 +123,14 @@ func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service
 		// would be wrong about the thing that matters most. One that
 		// stopped before changing anything is exactly "not applied", and
 		// exits as the failure it is.
-		interrupted: func(ctx context.Context, _ land.Plan, err error) (bool, error) {
+		interrupted: func(ctx context.Context, plan land.Plan, err error) (bool, error) {
+			var stopped *land.Stopped
+			if errors.As(err, &stopped) && stopped.Pending != nil {
+				stopped.Pending.Retry = plan.RetryCommand()
+				if flag := cmd.Flag("timeout"); flag != nil && flag.Changed {
+					stopped.Pending.Retry += " --timeout " + flag.Value.String()
+				}
+			}
 			return landInterrupted(cmd, ctx, err, replay, presentation)
 		},
 		// Not aimed at the selection: what it selected has merged and its
@@ -181,6 +189,9 @@ func landInterrupted(cmd *cobra.Command, ctx context.Context, err error, replay 
 // with the rest of the cause.
 func stoppedInLandReplay(cmd *cobra.Command, stopped *land.Stopped, conflicted []string, p Presentation) error {
 	problem, ways := resumeAdvice(conflicted)
+	if stopped.Pending != nil {
+		return writeStoppedPartWay(cmd, p, "Pending at "+stopped.Branch+": "+stopped.Pending.Error(), landedSoFar(stopped)+" Rerun "+runnable(stopped.Pending.Retry)+" to observe or continue.", stopped)
+	}
 	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way at "+stopped.Branch+": the replay above it "+problem+".",
 		landedSoFar(stopped)+" "+ways+" Once it is finished, rerun "+runnable("g2g land")+" to forget and remove what merged; the merge stays either way.",
@@ -192,6 +203,9 @@ func stoppedMidLand(cmd *cobra.Command, stopped *land.Stopped, p Presentation) e
 	// The merges that happened are permanent, so this is not a failure to
 	// retry — but it is not what was asked for either, and a script reading
 	// only the status had no way to tell the two apart.
+	if stopped.Pending != nil {
+		return writeStoppedPartWay(cmd, p, "Pending at "+stopped.Branch+": "+stopped.Pending.Error(), landedSoFar(stopped)+" Rerun "+runnable(stopped.Pending.Retry)+" to observe or continue.", stopped)
+	}
 	return writeStoppedPartWay(cmd, p,
 		"Stopped part-way at "+stopped.Branch+": "+stopped.Err.Error(),
 		landedSoFar(stopped)+" Rerun "+runnable("g2g land")+" to see what is left.",

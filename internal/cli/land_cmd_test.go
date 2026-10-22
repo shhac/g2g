@@ -92,9 +92,11 @@ func TestLandRecipeIsNumberedAndRunnable(t *testing.T) {
 	rendered := output.String()
 	for _, want := range []string{
 		"Commands this would run, in order",
-		"1  gh pr merge 41 --squash",
+		"1  g2g_landed_41=$(git rev-parse --verify refs/heads/synthetic-one)",
+		`2  gh pr merge 41 --squash --match-head-commit "${g2g_landed_41:?}"`,
 		"gh pr edit 42 --base synthetic-main",
-		"gh pr merge 42 --squash --admin",
+		`gh pr merge 42 --squash --match-head-commit "${g2g_landed_42:?}" --admin`,
+		`git push --force-with-lease=refs/heads/synthetic-two:"${g2g_landed_42:?}" origin --delete refs/heads/synthetic-two`,
 		"git branch -D synthetic-two",
 	} {
 		if !strings.Contains(rendered, want) {
@@ -131,7 +133,7 @@ func TestPorcelainNumbersEachStepOfTheRecipe(t *testing.T) {
 	if err := writeLandPlan(&output, landPlanFixture(), Presentation{Format: formatPorcelain}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "step\t1\tgh pr merge 41 --squash") {
+	if !strings.Contains(output.String(), "step\t1\tg2g_landed_41=") || !strings.Contains(output.String(), "step\t2\tgh pr merge 41 --squash") {
 		t.Errorf("porcelain does not number the recipe:\n%s", output.String())
 	}
 }

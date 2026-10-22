@@ -21,7 +21,10 @@ import (
 // Nothing here can stop the descent. The work is merged; a branch that could
 // not be deleted is untidy, and reporting it as a failed land would be wrong
 // about the thing that matters and would strand the branches above.
-func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]string) error {
+//
+// head is the head known to have landed. It is decided before the advance
+// rather than read after it, because the replay can move this very branch.
+func (s Service) tidy(ctx context.Context, plan Plan, step Step, head string, changed *[]string) error {
 	if plan.Queue != nil {
 		recorded, err := s.Graph.Store.Load(ctx)
 		if err != nil {
@@ -43,7 +46,7 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, changed *[]stri
 	if err := s.forget(ctx, plan, step.Branch); err != nil {
 		return err
 	}
-	s.remove(ctx, plan, step)
+	s.remove(ctx, plan, step, head)
 	return nil
 }
 
@@ -152,9 +155,13 @@ func (s Service) forget(ctx context.Context, plan Plan, landed string) error {
 // returned. The pull request is merged: a ref that would not delete is
 // untidiness, and turning it into a failed land would both misreport what
 // happened and stop the branches above from landing at all.
-func (s Service) remove(ctx context.Context, plan Plan, step Step) {
+//
+// The remote branch goes only while it still holds head, the one that landed.
+// A reviewer can push to it after the merge, and that commit is on the remote
+// alone; a branch somebody has moved on, or recreated, is left where it is.
+func (s Service) remove(ctx context.Context, plan Plan, step Step, head string) {
 	if plan.Options.DeleteRemote {
-		if err := s.Git.DeleteRemoteBranch(ctx, plan.Options.Remote, step.Branch); err != nil {
+		if err := s.Git.DeleteRemoteBranch(ctx, plan.Options.Remote, step.Branch, head); err != nil {
 			diagnostic.Warn(ctx, "land.delete_remote", fmt.Sprintf("could not delete %s on %s: %v", step.Branch, plan.Options.Remote, err))
 		}
 	}

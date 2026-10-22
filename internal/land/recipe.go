@@ -66,9 +66,32 @@ func (p Plan) mergeCommands(step Step) []Command {
 		})
 	}
 	return append(commands, Command{
+		Command: landedVariable(step) + "=$(" + repair.Command([]string{"git", "rev-parse", "--verify", "refs/heads/" + step.Branch}) + ")",
+		Effect:  "remember the head about to merge, which the merge and the deletion after it are pinned to",
+	}, Command{
 		Command: p.mergeCommand(step),
 		Effect:  mergeEffect(step),
 	})
+}
+
+// landedVariable names the shell variable a recipe keeps a merging branch's
+// head in. The head is captured just before the merge, once this branch has
+// been published as it is now: every branch above the first is replayed
+// before its turn, so the head the plan saw is one it no longer has. Uses
+// require a nonempty value: a failed or omitted capture must not disable the
+// head check on gh pr merge.
+func landedVariable(step Step) string {
+	return fmt.Sprintf("g2g_landed_%d", step.Number)
+}
+
+// recipeHead is the recipe's expected head for step: the variable its merge
+// line captured, or for a branch already landed, the head the plan found in
+// the trunk -- as Apply pins them. Empty when there is none to pin.
+func recipeHead(step Step) (variable, literal string) {
+	if step.Merges() {
+		return landedVariable(step), ""
+	}
+	return "", step.LandedHead
 }
 
 // republishCommands publish what the syncs replayed above the descent, once,
@@ -159,12 +182,26 @@ func (p Plan) cleanupCommands(step Step) []Command {
 }
 
 // deletions remove the landed branch, here and on the remote.
+//
+// The remote one is leased on the head that landed, as Apply's is: a
+// reviewer's commit pushed after the merge makes git refuse rather than take
+// it. Never a bare lease, which trusts the tracking ref, nor a tip read now,
+// which always matches. With no head to pin there is nothing safe to offer,
+// and Apply leaves that branch too.
 func (p Plan) deletions(step Step) []Command {
 	commands := make([]Command, 0, 2)
-	if p.Options.DeleteRemote {
+	variable, literal := recipeHead(step)
+	if p.Options.DeleteRemote && (variable != "" || literal != "") {
+		target := []string{p.Options.Remote, "--delete", "refs/heads/" + step.Branch}
+		// The lease names the head the merge line captured, so the shell
+		// expands it; everything else is quoted as written.
+		command := "git push " + repair.Quote("--force-with-lease=refs/heads/"+step.Branch+":") + `"${` + variable + `:?}" ` + repair.Command(target)
+		if variable == "" {
+			command = repair.Command(append([]string{"git", "push", localgit.Lease{Branch: step.Branch, Expected: literal}.Argument()}, target...))
+		}
 		commands = append(commands, Command{
-			Command: fmt.Sprintf("git push %s --delete %s", repair.Quote(p.Options.Remote), repair.Quote(step.Branch)),
-			Effect:  "remove the published branch, if the merge has not already",
+			Command: command,
+			Effect:  "remove the published branch while it is still what landed, if the merge has not already",
 		})
 	}
 	if p.Options.DeleteLocal {
@@ -176,11 +213,15 @@ func (p Plan) deletions(step Step) []Command {
 	return commands
 }
 
+// mergeCommand is pinned to the head its recipe captured, as Apply's merge
+// is: a push to the branch between the capture and the merge makes GitHub
+// refuse rather than merge something nobody published here.
 func mergeCommand(step Step, options Options) string {
+	pinned := ` --match-head-commit "${` + landedVariable(step) + `:?}"`
 	if step.Queue {
-		return fmt.Sprintf("gh pr merge %d", step.Number)
+		return fmt.Sprintf("gh pr merge %d", step.Number) + pinned
 	}
-	command := fmt.Sprintf("gh pr merge %d %s", step.Number, options.Method.Flag())
+	command := fmt.Sprintf("gh pr merge %d %s", step.Number, options.Method.Flag()) + pinned
 	if step.Admin {
 		command += " --admin"
 	}
@@ -195,11 +236,12 @@ func mergeEffect(step Step) string {
 }
 
 // A ruleset queue can disallow auto-merge, which gh pr merge cannot currently
-// handle. Use the same head-pinned GraphQL mutation the adapter sends.
+// handle. Use the same head-pinned GraphQL mutation the adapter sends, pinned
+// to the captured head rather than the plan's, which a publish just replaced.
 func (p Plan) mergeCommand(step Step) string {
 	if !step.Queue || p.Queue.AutoMergeAllowed {
 		return mergeCommand(step, p.Options)
 	}
 	query := `mutation Enqueue($pr: ID!, $head: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pr, expectedHeadOid: $head}) { clientMutationId } }`
-	return repair.Command([]string{"gh", "api", "graphql", "-f", "query=" + query, "-f", "pr=" + step.ID, "-f", "head=" + step.HeadOID})
+	return repair.Command([]string{"gh", "api", "graphql", "-f", "query=" + query, "-f", "pr=" + step.ID}) + ` -f "head=${` + landedVariable(step) + `:?}"`
 }

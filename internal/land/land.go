@@ -32,7 +32,7 @@ type Git interface {
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	Absorbed(ctx context.Context, base, branch string) (bool, error)
 	DeleteBranch(ctx context.Context, branch string) error
-	DeleteRemoteBranch(ctx context.Context, remote, branch string) error
+	DeleteRemoteBranch(ctx context.Context, remote, branch, expected string) error
 	SwitchBranch(ctx context.Context, branch string) error
 	SwitchDetached(ctx context.Context, revision string) error
 }

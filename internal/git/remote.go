@@ -168,6 +168,7 @@ func PushArguments(remote string, leases []Lease, upstream Upstream) []string {
 }
 
 // DeleteRemoteBranch removes a branch from the remote after its work has
+// landed, provided the remote still holds expected: the head the caller knows
 // landed.
 //
 // This is a push, which is why it lives here rather than going through gh: the
@@ -175,23 +176,42 @@ func PushArguments(remote string, leases []Lease, upstream Upstream) []string {
 // job. gh pr merge's own --delete-branch is deliberately not used, because it
 // deletes the local branch too and that is a separate decision.
 //
+// The lease is pinned for the reason PushAtomic's are. A reviewer can push to
+// the branch after its merge, and an unleased delete took that commit with it.
+// The tip read here only decides whether there is anything to delete and how
+// to say that the branch moved; it is never the baseline, because a lease taken
+// from a fresh read always matches whatever it is protecting against.
+//
 // A branch the remote no longer has is not a failure. Repositories configured
 // to delete a branch on merge have already done this, which makes the ordinary
 // success case indistinguishable from a no-op, and it should be.
-func (c Client) DeleteRemoteBranch(ctx context.Context, remote, branch string) error {
+func (c Client) DeleteRemoteBranch(ctx context.Context, remote, branch, expected string) error {
 	if err := c.Remote(ctx, remote); err != nil {
 		return err
 	}
 	if err := safeRef(branch); err != nil {
 		return err
 	}
+	if expected == "" {
+		return fmt.Errorf("no landed head was given for %s, so deleting it on %s could remove work that never landed", branch, remote)
+	}
 	tips, err := c.RemoteTips(ctx, remote, []string{branch})
 	if err != nil {
 		return err
 	}
-	if _, present := tips[branch]; !present {
+	held, present := tips[branch]
+	if !present {
 		return nil
 	}
-	_, err = c.run(ctx, "push", remote, "--delete", branch)
+	if held != expected {
+		return fmt.Errorf("%s on %s is at %s, not %s, which is what landed, so it is left in place", branch, remote, held, expected)
+	}
+	_, err = c.run(ctx, deleteRemoteArguments(remote, Lease{Branch: branch, Expected: expected})...)
 	return err
+}
+
+// deleteRemoteArguments is the invocation DeleteRemoteBranch makes: a delete
+// git refuses unless the remote still holds the leased tip.
+func deleteRemoteArguments(remote string, lease Lease) []string {
+	return []string{"push", lease.Argument(), remote, "--delete", "refs/heads/" + lease.Branch}
 }

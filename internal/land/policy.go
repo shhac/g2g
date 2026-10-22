@@ -47,6 +47,12 @@ type Step struct {
 	// reviewer having pushed a fix -- push refuses both, correctly, and land
 	// has to know which one it is looking at.
 	RemoteTip string
+	// LandedHead is, for a branch already landed, the only commit its remote
+	// branch may be deleted at: the remote tip push's preflight read and found
+	// to hold nothing of the remote's own, or else the branch here, whose work
+	// Git found in the trunk. Never a later read of the remote. Empty for a
+	// branch still to merge, whose merge decides it.
+	LandedHead string
 }
 
 // Retargets reports a pull request that has to be pointed somewhere else first.

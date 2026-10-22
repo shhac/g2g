@@ -137,7 +137,8 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 		options.Method = method
 		plan.Options = options
 	}
-	if note := s.blockedBefore(ctx, &plan, recorded); note.Sentence() != "" {
+	note, checked := s.blockedBefore(ctx, &plan, recorded)
+	if note.Sentence() != "" {
 		return plan.refuse(note), nil
 	}
 
@@ -165,7 +166,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			Ways:   allowedWays(mergeability.Allowed),
 		}), nil
 	}
-	steps, refused, err := s.decideSteps(ctx, discovery, options, mergeability)
+	steps, refused, err := s.decideSteps(ctx, discovery, options, mergeability, checked)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -207,7 +208,10 @@ func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
 // decideSteps decides every branch of the descent in order, or the reason the
 // whole descent is refused.
-func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, options Options, mergeability githubstack.Mergeability) ([]Step, repair.Note, error) {
+//
+// checked are the remote tips push's preflight found hold nothing of the
+// remote's own, which is what a branch already landed may be deleted at.
+func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, options Options, mergeability githubstack.Mergeability, checked map[string]string) ([]Step, repair.Note, error) {
 	tips, err := s.Git.RemoteTips(ctx, options.Remote, discovery.Branches)
 	if err != nil {
 		return nil, repair.Note{}, err
@@ -240,6 +244,9 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 		}
 		decided.HeadOID = tip
 		decided.RemoteTip = tips[step.Branch]
+		if decided.Landed {
+			decided.LandedHead = deletableHead(tip, checked[step.Branch])
+		}
 		decided.Queue = mergeability.Queue != nil
 		// Everything above the bottom branch is replayed onto the advanced
 		// trunk before its turn, which rewrites it, so it will need publishing
@@ -346,6 +353,27 @@ func (s Service) landedIn(ctx context.Context, branch string, trunks []string) b
 		}
 	}
 	return false
+}
+
+// deletableHead is the commit a branch already landed may be deleted at on the
+// remote: the tip push's preflight read and found to hold nothing of the
+// remote's own, and otherwise the branch here, whose work was found in the
+// trunk.
+//
+// The first is what an interrupted descent's rerun needs: its replay collapsed
+// the branch here onto the trunk while the remote kept the merged head, which
+// push reads as commits this clone dropped since the two agreed. Nothing else
+// stands in for it. Not the remote's tip read later, which the preflight did
+// not assess; not whether Git can merge that tip into the trunk without change,
+// which a reviewer's revert also passes; and not the head a merged pull
+// request reports, which nothing establishes GitHub stops moving. Without that
+// evidence the lease is the branch here, and a remote holding anything else is
+// left and reported.
+func deletableHead(tip, checked string) string {
+	if checked != "" {
+		return checked
+	}
+	return tip
 }
 
 // trunksToAsk is where a branch's work may already be: the trunk here, and —

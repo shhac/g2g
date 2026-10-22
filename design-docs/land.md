@@ -61,7 +61,7 @@ merge
 wait: the merge has reached the base
 advance the trunk, replay the rest  ← pull
 reparent what sat on it, forget it  ← in that order
-delete it, here and on the remote
+delete it, here and on the remote   ← the remote leased on the head that landed
 ```
 
 **Only the branch about to merge is published.** Pushing the whole stack after
@@ -266,6 +266,39 @@ strand every branch above. Each cleanup is reported and skipped.
 
 A branch the remote deleted on merge has reached the state it was asked for, so
 that is a success rather than a special case.
+
+The remote deletion is leased, as every other remote write is, and the lease
+names **the head that landed**, never the remote's own tip. A reviewer can push
+to a branch after its merge -- while the descent waits, replays and cleans up,
+or before a rerun that only cleans up -- and that commit exists on the remote
+alone. The deletion was once a bare `git push --delete`, which took it with the
+branch. Now it is `git push --force-with-lease=refs/heads/<b>:<landed>
+<remote> --delete refs/heads/<b>`, where the landed head is:
+
+- for a merge this run made, directly or through a queue, the head the merge
+  was pinned to (`--match-head-commit`, or the queue's head check). That is the
+  cycle's own publish, not the plan's head: every branch above the first is
+  replayed before its turn.
+- for a branch already landed (`Step.LandedHead`), the remote tip push's
+  preflight read and found to hold nothing of the remote's own -- the branch
+  exactly, an ancestor, a replayed version, or only commits this clone dropped
+  since the two last agreed -- and otherwise the branch here, whose work was
+  found in the trunk. The first is what an interrupted descent's rerun needs:
+  its replay collapsed the branch here onto the trunk while the remote kept the
+  merged head. A later read of the remote never replaces the tip the preflight
+  checked. Whether Git can merge the remote tip into the trunk without change
+  never decides: a reviewer's revert of squashed work passes that and exists on
+  the remote alone (see `landed.Missing`). The head a merged pull request
+  reports is not used either, since nothing here establishes that GitHub stops
+  moving it.
+
+A remote branch holding anything else -- moved on, or deleted and recreated --
+is left where it is and reported like any other cleanup that could not finish.
+So is one with no such evidence: untidy, never lossy. On the ordinary path the
+post-merge commit rarely gets that far, because the advance takes it into the branch here and
+prune then refuses to forget a branch carrying work the trunk lacks; the lease
+is what holds where nothing pulls the branch, such as a single branch landed
+past a trunk held in another worktree.
 
 `gh pr merge --delete-branch` is never passed: it deletes the local branch too,
 which would make publishing cleanup quietly remove the user's own work outside

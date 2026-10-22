@@ -182,66 +182,67 @@ func (s Service) pendingSurvivors(ctx context.Context, plan Plan, recorded graph
 
 // mergeQueued observes existing requests before any head/base mutation. A new
 // request pins its head and is never retried blindly after transport failure.
-func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed *[]string) (bool, error) {
+// It answers with the head it merged, which observeQueue holds the merge to.
+func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed *[]string) (bool, string, error) {
 	readiness, err := s.GitHub.Mergeability(ctx, []int{step.Number}, plan.Trunk)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if queuePolicy(readiness.Queue) != queuePolicy(plan.Queue) {
-		return false, fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
+		return false, "", fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
 	}
 	recorded, err := s.Graph.Store.Load(ctx)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if note, err := s.pendingSurvivors(ctx, plan, recorded, readiness, true); err != nil {
-		return false, err
+		return false, "", err
 	} else if note.Reason != "" {
-		return false, errors.New(note.Sentence())
+		return false, "", errors.New(note.Sentence())
 	}
 	state := readiness.States[step.Number]
 	tip, err := s.Git.Resolve(ctx, step.Branch)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !state.Pending() && !state.Merged() {
 		pushed, err := s.publish(ctx, plan, step)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if pushed {
 			*changed = append(*changed, "published "+step.Branch)
 		}
 		if step.Retargets() {
 			if err := s.retarget(ctx, step); err != nil {
-				return false, err
+				return false, "", err
 			}
 			*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
 		}
 		tip, err = s.Git.Resolve(ctx, step.Branch)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		state, err = s.settlePush(ctx, step, tip, plan.Options.Remote)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		// Retargeting may change which queue applies. Read the target policy again,
 		// immediately before the head-pinned irreversible request.
 		readiness, err = s.GitHub.Mergeability(ctx, []int{step.Number}, plan.Trunk)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if queuePolicy(readiness.Queue) != queuePolicy(plan.Queue) {
-			return false, fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
+			return false, "", fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
 		}
 		state = readiness.States[step.Number]
 		if !state.Merged() && !state.QueueEnabled {
-			return false, fmt.Errorf("#%d does not report a required merge queue at %s; refusing to request an ordinary auto-merge", step.Number, step.Base)
+			return false, "", fmt.Errorf("#%d does not report a required merge queue at %s; refusing to request an ordinary auto-merge", step.Number, step.Base)
 		}
 		if !state.Merged() {
 			if _, err := s.recheck(ctx, plan, step, tip, state); err != nil {
-				return false, err
+				return false, "", err
 			}
 		}
 		if !state.Pending() && !state.Merged() {
@@ -254,17 +255,18 @@ func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed 
 			cancel()
 			if readErr != nil {
 				if requestErr != nil {
-					return false, &Pending{Branch: step.Branch, Number: step.Number, State: "merge request outcome unknown", Cause: fmt.Errorf("inspect #%d before retrying: %w", step.Number, requestErr)}
+					return false, "", &Pending{Branch: step.Branch, Number: step.Number, State: "merge request outcome unknown", Cause: fmt.Errorf("inspect #%d before retrying: %w", step.Number, requestErr)}
 				}
-				return false, &Pending{Branch: step.Branch, Number: step.Number, State: "merge requested", Cause: readErr}
+				return false, "", &Pending{Branch: step.Branch, Number: step.Number, State: "merge requested", Cause: readErr}
 			}
 			state = after.States[step.Number]
 			if requestErr != nil && !state.Pending() && !state.Merged() {
-				return false, requestErr
+				return false, "", requestErr
 			}
 		}
 	}
-	return s.observeQueue(ctx, plan, step, tip, state)
+	merged, err := s.observeQueue(ctx, plan, step, tip, state)
+	return merged, tip, err
 }
 
 func (s Service) observeQueue(ctx context.Context, plan Plan, step Step, tip string, state githubstack.MergeState) (bool, error) {

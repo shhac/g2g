@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
 	syncer "github.com/shhac/g2g/internal/sync"
@@ -25,17 +26,21 @@ import (
 // error is a note with only a reason, which reads as that error. Every plan
 // derives its sentence from its note, so the two cannot disagree, and asking
 // whether the sentence is empty asks the same question of every source.
-func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.Graph) repair.Note {
+//
+// It also answers with the remote tips push's preflight found carry no work of
+// the remote's own (checkedTips), which is what lets a branch already landed be
+// deleted on the remote at all.
+func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.Graph) (repair.Note, map[string]string) {
 	if note := structuralRefusal(*plan, recorded); note.Sentence() != "" {
-		return note
+		return note, nil
 	}
 	discovery, options := plan.Discovery, plan.Options
 	if dirty := s.dirtyWhereItMatters(ctx, recorded, discovery.Target, discovery.Base); dirty.Reason != "" {
-		return dirty
+		return dirty, nil
 	}
 	kept, held := s.heldElsewhere(ctx, recorded, *plan)
 	if held.Reason != "" {
-		return held
+		return held, nil
 	}
 	plan.KeepTrunk, plan.Detach, plan.Worktrees = kept.trunk, kept.detach, kept.follow
 	// An error planning the push is not a refusal here: each cycle plans its
@@ -43,30 +48,58 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	// before anything has merged.
 	pushed, err := s.Pusher.Plan(ctx, pushSelection(*plan), options.Remote, options.Upstream)
 	if err == nil && pushed.Blocked() != "" {
-		return pushed.Repair
+		return pushed.Repair, nil
 	}
 	if err == nil && options.Strict && pushed.Strict.Reason != "" {
-		return pushed.Strict
+		return pushed.Strict, nil
+	}
+	var checked map[string]string
+	if err == nil {
+		checked = checkedTips(pushed)
 	}
 	if plan.KeepTrunk {
-		return repair.Note{}
+		return repair.Note{}, checked
 	}
 	synced, err := s.Syncer.Plan(ctx, syncSelection(*plan, discovery.Target), options.Remote, syncer.TakeNothing, options.Worktrees)
 	if err != nil && plan.declared() {
 		// Nothing about a base alone makes sync unable to answer, so a failure
 		// here is one the advance after the merge would meet too.
-		return repair.Note{Reason: err.Error()}
+		return repair.Note{Reason: err.Error()}, nil
 	}
 	if err == nil && synced.Blocked() != "" {
-		return synced.Repair
+		return synced.Repair, nil
 	}
 	if err == nil && len(synced.Worktrees.Leave) != 0 {
-		return leftBehind(synced)
+		return leftBehind(synced), nil
 	}
 	if err == nil && options.Strict && synced.Strict.Reason != "" {
-		return synced.Strict
+		return synced.Strict, nil
 	}
-	return repair.Note{}
+	return repair.Note{}, checked
+}
+
+// checkedTips are the remote tips push's preflight read and found to hold
+// nothing of the remote's own: the branch exactly, an ancestor of it, a version
+// it replayed, or one carrying only commits this clone dropped since the two
+// last agreed. Push publishes over each of those, so deleting the branch at
+// that tip loses no more than publishing would.
+//
+// Membership is push's own assessment, by sync point and per commit, never the
+// whole-branch merge: a reviewer's revert vanishes from a three-way merge
+// with a squashed trunk, and landed.Missing says why that alone must not
+// decide. Each tip is the one push read; a later read of the remote is not
+// covered by it, and must not take its place.
+func checkedTips(pushed push.Plan) map[string]string {
+	checked := map[string]string{}
+	for branch, publication := range pushed.Publishing {
+		switch publication.Standing {
+		case push.Current, push.Ahead, push.Rewritten, push.Dropping:
+			if tip := pushed.RemoteTips[branch]; tip != "" {
+				checked[branch] = tip
+			}
+		}
+	}
+	return checked
 }
 
 // structuralRefusal is every refusal the plan's own shape answers, with

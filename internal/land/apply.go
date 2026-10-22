@@ -19,8 +19,10 @@ import (
 // has usually expired with it.
 type Stopped struct {
 	// Landed names the branches whose merge completed, in the order they did.
-	// A merge completes when GitHub accepts it, so the branch the descent
-	// stopped at is among them when what failed came after its merge.
+	// A merge completes when GitHub is observed reporting it MERGED -- a
+	// request it accepted is not one -- so the branch the descent stopped at is
+	// among them when what failed came after that, such as the merge commit
+	// not yet being in the fetched trunk, which is what gates the replay.
 	Landed  []string
 	Pending *Pending
 	// Tidied names the branches that had already landed and whose cleanup this
@@ -71,9 +73,10 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	for _, step := range plan.Steps {
 		merged, err := s.cycle(ctx, plan, step, &changed)
 		// Recorded before the error is looked at. A merge is done once GitHub
-		// accepts it, whatever fails after -- the wait for it to reach the base,
-		// the replay above it -- and reporting only whole cycles told someone
-		// whose branch had merged that it had not.
+		// is observed reporting it MERGED, whatever fails after -- the wait for
+		// the merge commit to reach the fetched base, the replay above it -- and
+		// reporting only whole cycles told someone whose branch had merged that
+		// it had not.
 		if merged {
 			landed = append(landed, step.Branch)
 		}
@@ -105,30 +108,40 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 //
 // changed collects what it does short of a merge that stays done, so a stop
 // before the merge still says the remote moved.
+//
+// The head carried into the tidy is the one known to have landed, and the
+// remote branch is deleted only while it still holds that head: a merge
+// performed here landed the head it was pinned to, which is this cycle's
+// publish rather than the plan's, since every branch above the first is
+// replayed before its turn. A branch already landed has the head its plan
+// had evidence for (Step.LandedHead). The remote's tip as read now is
+// never it: a reviewer's commit pushed after the merge is exactly what the
+// remote would then answer with.
 func (s Service) cycle(ctx context.Context, plan Plan, step Step, changed *[]string) (merged bool, err error) {
 	diagnostic.Event(ctx, "land.cycle",
 		diagnostic.Field{Key: "branch", Value: step.Branch},
 		diagnostic.Field{Key: "merges", Value: fmt.Sprintf("%t", step.Merges())},
 	)
+	head := step.LandedHead
 	if step.Merges() {
 		if plan.Queue != nil {
-			merged, err = s.mergeQueued(ctx, plan, step, changed)
-			if err != nil {
-				return merged, err
-			}
-			return merged, s.tidy(ctx, plan, step, changed)
+			merged, head, err = s.mergeQueued(ctx, plan, step, changed)
+		} else {
+			merged, head, err = s.merge(ctx, plan, step, changed)
 		}
-		if merged, err = s.merge(ctx, plan, step, changed); err != nil {
+		if err != nil {
 			return merged, err
 		}
 	}
-	return merged, s.tidy(ctx, plan, step, changed)
+	return merged, s.tidy(ctx, plan, step, head, changed)
 }
 
 // merge publishes the branch, points its pull request at the right base, waits
-// for GitHub to have seen both, and merges. It reports the merge as done once
-// GitHub has accepted it, even if the wait after it then fails.
-func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]string) (bool, error) {
+// for GitHub to have seen both, and merges the head it published. It reports
+// the merge as done once GitHub is observed reporting it MERGED, even if the
+// wait for the merge commit to reach the fetched base then fails; a request
+// GitHub merely accepted is not a merge. It answers with the head it merged.
+func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]string) (bool, string, error) {
 	// Unconditionally, whatever the plan said. Step.Push was decided before
 	// anything moved, and by the time a branch above the first comes round its
 	// replay has rewritten it -- so a plan that said "already published" is
@@ -138,7 +151,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	// preview wrong.
 	pushed, err := s.publish(ctx, plan, step)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if pushed {
 		*changed = append(*changed, "published "+step.Branch)
@@ -154,17 +167,17 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 			diagnostic.Field{Key: "to", Value: step.Base},
 		)
 		if err := s.retarget(ctx, step); err != nil {
-			return false, err
+			return false, "", err
 		}
 		*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
 	}
 	tip, err := s.Git.Resolve(ctx, step.Branch)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	settled, err := s.settlePush(ctx, step, tip, plan.Options.Remote)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	// Decided again, immediately before the one act that cannot be undone. The
 	// plan was made before anything moved; this branch has since been rebuilt
@@ -178,12 +191,12 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	// The plan's forecast still counts, so the merge is never less than the
 	// recipe said it would be.
 	if err := s.mergeReady(ctx, plan, step, tip, settled); err != nil {
-		return false, err
+		return false, "", err
 	}
 	*changed = append(*changed, fmt.Sprintf("requested merge of #%d", step.Number))
 	observed := false
 	err = s.settleMergeObserved(ctx, plan, step, &observed)
-	return observed, err
+	return observed, tip, err
 }
 
 // retarget points one pull request at its base. It is one change on its own,

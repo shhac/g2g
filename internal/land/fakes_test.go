@@ -115,9 +115,22 @@ func (f *fakeGit) DeleteBranch(_ context.Context, branch string) error {
 	return f.deleteErr
 }
 
-func (f *fakeGit) DeleteRemoteBranch(_ context.Context, _, branch string) error {
-	f.events.record("delete-remote:" + branch)
-	return f.deleteErr
+// DeleteRemoteBranch honours the lease as git does: a branch the remote no
+// longer has is already deleted, and one holding anything but expected stays.
+func (f *fakeGit) DeleteRemoteBranch(_ context.Context, _, branch, expected string) error {
+	f.events.record("delete-remote:" + branch + "@" + expected)
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	held, present := f.tips[branch]
+	if !present {
+		return nil
+	}
+	if expected == "" || held != expected {
+		return fmt.Errorf("synthetic: %s is at %s, not %q", branch, held, expected)
+	}
+	delete(f.tips, branch)
+	return nil
 }
 
 func (f *fakeGit) SwitchBranch(_ context.Context, branch string) error {
@@ -250,6 +263,12 @@ type fakePusher struct {
 	executeErr error
 	// upstreams is what each push that ran was planned to do with upstreams.
 	upstreams []localgit.Upstream
+	// assessed is where push finds each named branch stands against what the
+	// remote holds, on top of the selected branch's own answer.
+	assessed map[string]push.Standing
+	// planned runs once, after the first plan has read the remote: somebody
+	// pushing between the preflight and the rest of planning.
+	planned func()
 }
 
 func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string, upstream localgit.Upstream) (push.Plan, error) {
@@ -266,6 +285,19 @@ func (f *fakePusher) Plan(_ context.Context, selection stack.Selection, _ string
 	plan.Publishing = map[string]push.Publication{selection.Branch: {Standing: push.Ahead, Ours: 1}}
 	if f.level {
 		plan.Publishing[selection.Branch] = push.Publication{Standing: push.Current}
+	}
+	for branch, standing := range f.assessed {
+		plan.Publishing[branch] = push.Publication{Standing: standing}
+	}
+	if f.git != nil {
+		plan.RemoteTips = map[string]string{}
+		for branch, tip := range f.git.tips {
+			plan.RemoteTips[branch] = tip
+		}
+	}
+	if f.planned != nil {
+		f.planned()
+		f.planned = nil
 	}
 	return plan, nil
 }
@@ -297,6 +329,9 @@ type fakeSyncer struct {
 	// leaves are branches the sync would leave where they are, because
 	// another worktree with changes holds them.
 	leaves []string
+	// replayed runs as each sync applies, standing in for the replay moving
+	// what sits above the merge onto new commits.
+	replayed func()
 }
 
 func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string, _ syncer.Take, _ worktree.Policy) (syncer.Plan, error) {
@@ -315,6 +350,9 @@ func (f *fakeSyncer) Plan(_ context.Context, selection graph.Selection, _ string
 
 func (f *fakeSyncer) Apply(_ context.Context, plan syncer.Plan) error {
 	f.events.record("sync:" + plan.Restack.Discovery.Target)
+	if f.replayed != nil {
+		f.replayed()
+	}
 	return nil
 }
 

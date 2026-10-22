@@ -116,7 +116,7 @@ case "$1" in
 esac`,
 	})
 
-	if err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "origin", "synthetic-gone"); err != nil {
+	if err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "origin", "synthetic-gone", "1111111111111111111111111111111111111111"); err != nil {
 		t.Fatalf("DeleteRemoteBranch() error = %v", err)
 	}
 	called, err := os.ReadFile(arguments)
@@ -128,7 +128,7 @@ esac`,
 	}
 }
 
-func TestDeleteRemoteBranchPushesADeleteForABranchTheRemoteHas(t *testing.T) {
+func TestDeleteRemoteBranchPushesALeasedDeleteForABranchTheRemoteHas(t *testing.T) {
 	arguments := filepath.Join(t.TempDir(), "git-arguments")
 	t.Setenv("GIT_ARGUMENTS", arguments)
 	testutil.WithFakeExecutables(t, map[string]string{
@@ -139,14 +139,166 @@ case "$1" in
 esac`,
 	})
 
-	if err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed"); err != nil {
+	if err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed", "1111111111111111111111111111111111111111"); err != nil {
 		t.Fatalf("DeleteRemoteBranch() error = %v", err)
 	}
 	called, err := os.ReadFile(arguments)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(called), "push origin --delete synthetic-landed") {
-		t.Errorf("git calls missing the delete push: %q", called)
+	if want := "push --force-with-lease=refs/heads/synthetic-landed:1111111111111111111111111111111111111111 origin --delete refs/heads/synthetic-landed"; !strings.Contains(string(called), want) {
+		t.Errorf("git calls = %q, want the leased delete %q", called, want)
+	}
+}
+
+// The deletion is only ever of the head that landed. Without one there is
+// nothing to pin a lease to, and a delete without a lease is the bug.
+func TestDeleteRemoteBranchRefusesWithoutALandedHead(t *testing.T) {
+	arguments := filepath.Join(t.TempDir(), "git-arguments")
+	t.Setenv("GIT_ARGUMENTS", arguments)
+	testutil.WithFakeExecutables(t, map[string]string{
+		"git": `printf '%s\n' "$*" >> "$GIT_ARGUMENTS"
+case "$1" in
+  remote) printf 'https://example.test/synthetic.git\n' ;;
+  ls-remote) printf '1111111111111111111111111111111111111111\trefs/heads/synthetic-landed\n' ;;
+esac`,
+	})
+
+	if err := (Client{Runner: subprocess.ExecRunner{}}).DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed", ""); err == nil {
+		t.Fatal("DeleteRemoteBranch() error = nil, want a refusal without a landed head")
+	}
+	called, _ := os.ReadFile(arguments)
+	if strings.Contains(string(called), "push") {
+		t.Errorf("pushed a delete with no landed head: %q", called)
+	}
+}
+
+// What a fake cannot say is whether git honours the lease on a delete, so the
+// rest of these run against a real bare remote.
+
+// recordingRunner runs git for real, remembering each invocation, and lets a
+// test act just before one starts -- which is where a reviewer's push lands
+// between the read and the write.
+type recordingRunner struct {
+	calls  [][]string
+	before func(args []string)
+}
+
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	r.calls = append(r.calls, args)
+	if r.before != nil {
+		r.before(args)
+	}
+	return subprocess.ExecRunner{}.Run(ctx, name, args...)
+}
+
+func (r *recordingRunner) pushes() [][]string {
+	var pushes [][]string
+	for _, call := range r.calls {
+		if call[0] == "push" {
+			pushes = append(pushes, call)
+		}
+	}
+	return pushes
+}
+
+// publishedBranch is a branch with one commit of its own, pushed to the
+// synthetic remote, and its tip.
+func publishedBranch(t *testing.T, branch string) string {
+	t.Helper()
+	gitExec(t, "switch", "-qc", branch)
+	if err := os.WriteFile(branch+".txt", []byte(branch), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitExec(t, "add", "-A")
+	gitExec(t, "commit", "-qm", "synthetic "+branch)
+	gitExec(t, "push", "-q", "origin", branch)
+	gitExec(t, "switch", "-q", "synthetic-trunk")
+	return revision(t, branch)
+}
+
+func remoteTip(t *testing.T, client Client, branch string) string {
+	t.Helper()
+	tips, err := client.RemoteTips(context.Background(), "origin", []string{branch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tips[branch]
+}
+
+func TestDeleteRemoteBranchDeletesTheHeadThatLanded(t *testing.T) {
+	_, client := syntheticRemote(t)
+	landed := publishedBranch(t, "synthetic-landed")
+	runner := &recordingRunner{}
+	client.Runner = runner
+
+	if err := client.DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed", landed); err != nil {
+		t.Fatalf("DeleteRemoteBranch() error = %v", err)
+	}
+	if tip := remoteTip(t, client, "synthetic-landed"); tip != "" {
+		t.Errorf("remote still has synthetic-landed at %s", tip)
+	}
+	want := []string{"push", "--force-with-lease=refs/heads/synthetic-landed:" + landed, "origin", "--delete", "refs/heads/synthetic-landed"}
+	if pushes := runner.pushes(); len(pushes) != 1 || !slices.Equal(pushes[0], want) {
+		t.Errorf("pushes = %q, want exactly %q", pushes, want)
+	}
+}
+
+// A reviewer pushed after the merge. The branch is no longer the head that
+// landed, and their commit exists nowhere else.
+func TestDeleteRemoteBranchLeavesABranchThatMovedAfterItLanded(t *testing.T) {
+	upstream, client := syntheticRemote(t)
+	landed := publishedBranch(t, "synthetic-landed")
+	reviewed := advanceUpstream(t, upstream, "synthetic-landed", "review.txt")
+	runner := &recordingRunner{}
+	client.Runner = runner
+
+	err := client.DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed", landed)
+	if err == nil || !strings.Contains(err.Error(), "left in place") {
+		t.Fatalf("DeleteRemoteBranch() error = %v, want the moved branch left in place", err)
+	}
+	if tip := remoteTip(t, client, "synthetic-landed"); tip != reviewed {
+		t.Errorf("remote synthetic-landed = %q, want the reviewer's %s kept", tip, reviewed)
+	}
+	if pushes := runner.pushes(); len(pushes) != 0 {
+		t.Errorf("pushes = %q, want none", pushes)
+	}
+}
+
+// The same push arriving after the remote was read and before the delete
+// reaches it. Only the lease stands between that commit and the delete.
+func TestDeleteRemoteBranchLeaseHoldsAgainstAPushAfterItLooked(t *testing.T) {
+	upstream, client := syntheticRemote(t)
+	landed := publishedBranch(t, "synthetic-landed")
+	reviewed := ""
+	runner := &recordingRunner{before: func(args []string) {
+		if args[0] == "push" && reviewed == "" {
+			reviewed = advanceUpstream(t, upstream, "synthetic-landed", "review.txt")
+		}
+	}}
+	client.Runner = runner
+
+	if err := client.DeleteRemoteBranch(context.Background(), "origin", "synthetic-landed", landed); err == nil {
+		t.Fatal("DeleteRemoteBranch() error = nil, want the lease to refuse")
+	}
+	if tip := remoteTip(t, client, "synthetic-landed"); reviewed == "" || tip != reviewed {
+		t.Errorf("remote synthetic-landed = %q, want the reviewer's %q kept", tip, reviewed)
+	}
+	want := []string{"push", "--force-with-lease=refs/heads/synthetic-landed:" + landed, "origin", "--delete", "refs/heads/synthetic-landed"}
+	if pushes := runner.pushes(); len(pushes) != 1 || !slices.Equal(pushes[0], want) {
+		t.Errorf("pushes = %q, want exactly %q", pushes, want)
+	}
+}
+
+func TestDeleteRemoteBranchAcceptsABranchARealRemoteNeverHad(t *testing.T) {
+	_, client := syntheticRemote(t)
+	runner := &recordingRunner{}
+	client.Runner = runner
+
+	if err := client.DeleteRemoteBranch(context.Background(), "origin", "synthetic-gone", "1111111111111111111111111111111111111111"); err != nil {
+		t.Fatalf("DeleteRemoteBranch() error = %v, want a missing branch to be no failure", err)
+	}
+	if pushes := runner.pushes(); len(pushes) != 0 {
+		t.Errorf("pushes = %q, want none", pushes)
 	}
 }

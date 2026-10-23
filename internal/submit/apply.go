@@ -32,14 +32,15 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 		return err
 	}
 	diagnostic.Event(ctx, "submit.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Snapshot.Branches, ",")}, diagnostic.Field{Key: "draft", Value: fmt.Sprintf("%t", spec.Draft)})
-	if err := validateSpec(plan, spec); err != nil {
+	requests, err := preparePulls(plan, spec)
+	if err != nil {
 		return err
 	}
 	if err := s.Pusher.Execute(ctx, plan.Push); err != nil {
 		return err
 	}
 	pushed := !plan.Push.NothingToPublish()
-	opened, err := s.createMissingPulls(ctx, plan, spec)
+	opened, err := s.createPulls(ctx, requests, spec.Draft)
 	if err != nil {
 		return stopped(pushed, opened, err)
 	}
@@ -78,16 +79,25 @@ func stopped(pushed bool, opened []string, err error) error {
 	return &Stopped{Pushed: pushed, Opened: opened, Err: err}
 }
 
-// validateSpec checks everything the spec contributes to a mutation, and runs
-// before the push because the push cannot be taken back.
-//
-// Reviewers reach gh as "--reviewer <value>", so a value gh would read as an
-// option is the shared CheckArgument case. Leaving it to gh meant the refusal
-// arrived after the refs were already published, which is the one ordering
-// this command exists to get right.
+// validateSpec checks the same preparation Read and Apply use, before any push.
 func validateSpec(plan Plan, spec Spec) error {
+	_, err := preparePulls(plan, spec)
+	return err
+}
+
+// creation is a validated request, with its base taken from the snapshot rather
+// than the order metadata happened to appear in the submission document.
+type creation struct {
+	Pull
+	Base string
+}
+
+// preparePulls validates all metadata and produces the ordered work to execute.
+// Existing pull requests need no metadata and never become creation requests.
+// Reviewers are checked here because a refusal after publishing is too late.
+func preparePulls(plan Plan, spec Spec) ([]creation, error) {
 	if spec.Version != 1 {
-		return fmt.Errorf("submission spec version must be 1")
+		return nil, fmt.Errorf("submission spec version must be 1")
 	}
 	selected := make(map[string]bool, len(plan.Snapshot.Branches))
 	for _, branch := range plan.Snapshot.Branches {
@@ -96,53 +106,45 @@ func validateSpec(plan Plan, spec Spec) error {
 	pulls := make(map[string]Pull, len(spec.Pulls))
 	for _, pull := range spec.Pulls {
 		if !selected[pull.Branch] {
-			return fmt.Errorf("submission spec branch %q is unknown; want a branch in the selected stack", pull.Branch)
+			return nil, fmt.Errorf("submission spec branch %q is unknown; want a branch in the selected stack", pull.Branch)
 		}
 		if _, duplicate := pulls[pull.Branch]; duplicate {
-			return fmt.Errorf("submission spec repeats branch %q", pull.Branch)
+			return nil, fmt.Errorf("submission spec repeats branch %q", pull.Branch)
 		}
 		pulls[pull.Branch] = pull
 	}
-	for _, branch := range plan.CreationBranches() {
+	requests := make([]creation, 0, len(spec.Pulls))
+	for step := range githubstack.Along(plan.Snapshot.Base, plan.Snapshot.Branches, plan.Existing) {
+		if step.Resolution.Open != nil {
+			continue
+		}
+		branch := step.Branch
 		pull, present := pulls[branch]
 		if !present {
-			return fmt.Errorf("submission spec is incomplete: missing PR entry for branch %q", branch)
+			return nil, fmt.Errorf("submission spec is incomplete: missing PR entry for branch %q", branch)
 		}
 		if strings.TrimSpace(pull.Title) == "" {
-			return fmt.Errorf("submission spec is incomplete: missing title for branch %q", branch)
+			return nil, fmt.Errorf("submission spec is incomplete: missing title for branch %q", branch)
 		}
 		for _, reviewer := range pull.Reviewers {
 			if err := subprocess.CheckArgument("gh", "reviewer", reviewer); err != nil {
-				return fmt.Errorf("branch %q: %w", branch, err)
+				return nil, fmt.Errorf("branch %q: %w", branch, err)
 			}
 		}
+		requests = append(requests, creation{Pull: pull, Base: step.ExpectedBase})
 	}
-	return nil
+	return requests, nil
 }
 
-// createMissingPulls creates one pull request per branch that has no open one.
-// Keying off open pull requests rather than any match is what lets a branch
-// with a closed predecessor be re-submitted instead of silently skipped and
-// then failing at the link step.
-//
-// It returns the branches it opened one for, including when it stops early.
-func (s Service) createMissingPulls(ctx context.Context, plan Plan, spec Spec) ([]string, error) {
-	resolutions := githubstack.ResolveHeads(plan.Existing)
-	base := plan.Snapshot.Base
-	opened := make([]string, 0, len(spec.Pulls))
-	pulls := make(map[string]Pull, len(spec.Pulls))
-	for _, pull := range spec.Pulls {
-		pulls[pull.Branch] = pull
-	}
-	for _, branch := range plan.Snapshot.Branches {
-		pull := pulls[branch]
-		if resolutions[branch].Open == nil {
-			if err := s.GitHub.Create(ctx, branch, base, pull.Title, pull.Body, spec.Draft, pull.Reviewers); err != nil {
-				return opened, fmt.Errorf("opening the pull request for %s: %w", pull.Branch, err)
-			}
-			opened = append(opened, pull.Branch)
+// createPulls executes only prepared requests and reports every opened branch,
+// including when a later request fails. No validation or selection follows push.
+func (s Service) createPulls(ctx context.Context, requests []creation, draft bool) ([]string, error) {
+	opened := make([]string, 0, len(requests))
+	for _, request := range requests {
+		if err := s.GitHub.Create(ctx, request.Branch, request.Base, request.Title, request.Body, draft, request.Reviewers); err != nil {
+			return opened, fmt.Errorf("opening the pull request for %s: %w", request.Branch, err)
 		}
-		base = branch
+		opened = append(opened, request.Branch)
 	}
 	return opened, nil
 }

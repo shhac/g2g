@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -67,15 +68,9 @@ func (p Plan) NothingToRetarget() bool { return p.Blocked() == "" && len(p.Chang
 
 // Equal compares everything that changes what the write does.
 func (p Plan) Equal(other Plan) bool {
-	if !p.Discovery.Equal(other.Discovery) || !p.Repair.Equal(other.Repair) || len(p.Changes) != len(other.Changes) {
-		return false
-	}
-	for index, change := range p.Changes {
-		if change != other.Changes[index] {
-			return false
-		}
-	}
-	return true
+	return p.Discovery.Equal(other.Discovery) &&
+		p.Repair.Equal(other.Repair) &&
+		slices.Equal(p.Changes, other.Changes)
 }
 
 // Ready reports a service with everything it needs.

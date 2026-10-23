@@ -150,15 +150,9 @@ func (s Service) ApplyMirror(ctx context.Context, plan MirrorPlan) error {
 
 // Equal compares everything that changes what the write does.
 func (p MirrorPlan) Equal(other MirrorPlan) bool {
-	if !p.Repair.Equal(other.Repair) || len(p.Writes) != len(other.Writes) {
-		return false
-	}
-	for index, write := range p.Writes {
-		if write != other.Writes[index] {
-			return false
-		}
-	}
-	return slices.Equal(p.Prunes, other.Prunes) &&
+	return p.Repair.Equal(other.Repair) &&
+		slices.Equal(p.Writes, other.Writes) &&
+		slices.Equal(p.Prunes, other.Prunes) &&
 		slices.Equal(p.Strangers, other.Strangers) &&
 		slices.Equal(p.UnknownRoots, other.UnknownRoots)
 }

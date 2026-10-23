@@ -237,20 +237,11 @@ func (s Service) ApplyAdopt(ctx context.Context, plan AdoptPlan) error {
 
 // Equal compares everything that changes what the write does.
 func (p AdoptPlan) Equal(other AdoptPlan) bool {
-	if p.From != other.From || !p.Repair.Equal(other.Repair) || len(p.Adopt) != len(other.Adopt) || len(p.Conflicts) != len(other.Conflicts) {
-		return false
-	}
-	for index, adoption := range p.Adopt {
-		if adoption != other.Adopt[index] {
-			return false
-		}
-	}
-	for index, conflict := range p.Conflicts {
-		if conflict != other.Conflicts[index] {
-			return false
-		}
-	}
-	return slices.Equal(p.Agreed, other.Agreed) &&
+	return p.From == other.From &&
+		p.Repair.Equal(other.Repair) &&
+		slices.Equal(p.Adopt, other.Adopt) &&
+		slices.Equal(p.Conflicts, other.Conflicts) &&
+		slices.Equal(p.Agreed, other.Agreed) &&
 		slices.Equal(p.Unconfirmed, other.Unconfirmed) &&
 		p.Updated.Equal(other.Updated)
 }

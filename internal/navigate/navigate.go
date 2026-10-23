@@ -178,41 +178,28 @@ func (s Service) fromTrunk(ctx context.Context, request Request, move Move, unde
 
 // outline is a stack reduced to what a walk needs.
 type outline struct {
-	base    string
-	parents map[string]string
-	members []string
-	absent  []string
-	source  stack.Source
+	base   string
+	forest shape.Forest
+	absent []string
+	source stack.Source
 }
 
 // outlineOf reads a snapshot's edges. The base is among them as a root, which
 // no walk looks up: descending and finding the bottom both stop on reaching it.
 func outlineOf(snapshot stack.Snapshot) outline {
 	return outline{
-		base:    snapshot.Base,
-		parents: snapshot.Shape().Parents,
-		members: append([]string{snapshot.Base}, snapshot.Branches...),
-		absent:  snapshot.Absent,
-		source:  snapshot.Source,
+		base:   snapshot.Base,
+		forest: snapshot.Shape(),
+		absent: snapshot.Absent,
+		source: snapshot.Source,
 	}
-}
-
-func (s outline) children(branch string) []string {
-	children := make([]string, 0)
-	for _, member := range s.members {
-		if parent, ok := s.parents[member]; ok && parent == branch && member != branch {
-			children = append(children, member)
-		}
-	}
-	slices.Sort(children)
-	return children
 }
 
 // walk takes the steps a request asks for from the last branch walked, and
 // refuses at the first place the answer is not one branch.
 func walk(move Move, within outline) Move {
 	move.Base = within.base
-	move.Parents = within.parents
+	move.Parents = within.forest.Parents
 	move.Source = within.source
 	switch move.Direction {
 	case Up:
@@ -240,7 +227,7 @@ func walk(move Move, within outline) Move {
 func climb(move Move, within outline, steps int, toEnd bool) Move {
 	for taken := 0; steps < 0 || taken < steps; taken++ {
 		current := move.Walked[len(move.Walked)-1]
-		above := within.children(current)
+		above := within.forest.Children(current)
 		switch {
 		case len(above) == 0 && toEnd:
 			move.Destination = current
@@ -262,7 +249,7 @@ func descend(move Move, within outline) Move {
 		if current == within.base {
 			return refuseBelowTrunkAfter(move, taken)
 		}
-		parent, known := within.parents[current]
+		parent, known := within.forest.Parents[current]
 		if !known {
 			return move.refuse(repair.Note{Reason: fmt.Sprintf("%s places nothing below %s", describeSource(within.source), current)})
 		}
@@ -281,7 +268,7 @@ func bottom(move Move, within outline) Move {
 	}
 	path := []string{move.Origin}
 	for current := move.Origin; ; {
-		parent, known := within.parents[current]
+		parent, known := within.forest.Parents[current]
 		if !known {
 			return move.refuse(repair.Note{Reason: fmt.Sprintf("%s places nothing below %s", describeSource(within.source), current)})
 		}

@@ -117,8 +117,24 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 	if err != nil {
 		return collected{}, err
 	}
-	found := collected{collections: make([]Collection, 0, len(c.branches)), stuck: make([]divergence, 0), begins: map[string]string{}}
-	for index, branch := range c.branches {
+	found := combineVerdicts(c.branches, verdicts)
+	if len(found.stuck) != 0 || found.refusal != nil {
+		return found, nil
+	}
+	starts, err := s.starts(ctx, c, found.collections)
+	if err != nil {
+		return collected{}, err
+	}
+	maps.Copy(found.begins, starts)
+	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(found.collections))})
+	return found, nil
+}
+
+// combineVerdicts reduces independent reads in selection order. The first
+// refusal wins, and only an actual collection contributes a replay boundary.
+func combineVerdicts(branches []string, verdicts []verdict) collected {
+	found := collected{collections: make([]Collection, 0, len(branches)), stuck: make([]divergence, 0), begins: map[string]string{}}
+	for index, branch := range branches {
 		verdict := verdicts[index]
 		if verdict.collection != nil {
 			found.collections = append(found.collections, *verdict.collection)
@@ -137,16 +153,7 @@ func (s Service) collect(ctx context.Context, c collecting) (collected, error) {
 			found.unsynced = append(found.unsynced, branch)
 		}
 	}
-	if len(found.stuck) != 0 || found.refusal != nil {
-		return found, nil
-	}
-	starts, err := s.starts(ctx, c, found.collections)
-	if err != nil {
-		return collected{}, err
-	}
-	maps.Copy(found.begins, starts)
-	diagnostic.Event(ctx, "sync.collect", diagnostic.Field{Key: "branches", Value: fmt.Sprint(len(found.collections))})
-	return found, nil
+	return found
 }
 
 // collecting is what deciding each branch reads: the selection, what the

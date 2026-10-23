@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	localgit "github.com/shhac/g2g/internal/git"
@@ -117,11 +118,7 @@ func (s Service) pendingSurvivors(ctx context.Context, plan Plan, recorded graph
 	affected := recorded.Shape().Subtree(root)
 	var extras []string
 	for _, branch := range affected {
-		found := false
-		for _, selected := range plan.Branches {
-			found = found || branch == selected
-		}
-		if !found {
+		if !slices.Contains(plan.Branches, branch) {
 			extras = append(extras, branch)
 		}
 	}
@@ -132,19 +129,16 @@ func (s Service) pendingSurvivors(ctx context.Context, plan Plan, recorded graph
 			return repair.Note{}, err
 		}
 		prs = append([]githubstack.PullRequest{}, prs...)
+		known := make(map[int]bool, len(prs))
+		for _, pr := range prs {
+			known[pr.Number] = true
+		}
 		for _, pr := range more {
-			for _, branch := range extras {
-				if pr.Head == branch {
-					known := false
-					for _, existing := range prs {
-						known = known || existing.Number == pr.Number
-					}
-					if !known {
-						prs = append(prs, pr)
-					}
-					break
-				}
+			if !slices.Contains(extras, pr.Head) || known[pr.Number] {
+				continue
 			}
+			prs = append(prs, pr)
+			known[pr.Number] = true
 		}
 	}
 	resolutions := githubstack.ResolveHeads(prs)

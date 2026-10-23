@@ -29,6 +29,8 @@ type ExecRunner struct{}
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, name, args...)
 	command.WaitDelay = waitDelay
+	cleanup := configureCancellation(command)
+	defer cleanup()
 	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {
 		return output, ctx.Err()

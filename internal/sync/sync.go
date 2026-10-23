@@ -73,18 +73,12 @@ func (s Service) plan(ctx context.Context, selection graph.Selection, remote str
 	comparisonBase := plan.Base
 	parents := discovery.Graph.Shape().Parents
 	if above != "" {
-		if !discovery.Graph.Tracked(above) || !stackedOn(discovery.Target, above, parents) {
-			return plan.refused(repair.Note{Reason: "--above must name a recorded ancestor of the selected branch, or that branch itself"}), nil
+		var note repair.Note
+		discovery, comparisonBase, note = selectAbove(discovery, above, parents)
+		if note.Reason != "" {
+			return plan.refused(note), nil
 		}
-		selected := make([]string, 0, len(discovery.Branches))
-		for _, branch := range discovery.Branches {
-			if stackedOn(branch, above, parents) {
-				selected = append(selected, branch)
-			}
-		}
-		discovery.Branches = selected
 		plan.Base = above
-		comparisonBase, _ = discovery.Graph.Parent(above)
 	}
 
 	// The base and everything selected, in one fetch. Fetching only the base is

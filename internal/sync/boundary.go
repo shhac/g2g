@@ -8,6 +8,24 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 )
 
+// selectAbove narrows the existing selection to a recorded ancestor and what
+// depends on it. Its parent remains the comparison base for collection only;
+// the boundary itself is never replayed onto that parent by this pull.
+func selectAbove(discovery graph.Discovery, above string, parents map[string]string) (graph.Discovery, string, repair.Note) {
+	if !discovery.Graph.Tracked(above) || !stackedOn(discovery.Target, above, parents) {
+		return discovery, "", repair.Note{Reason: "--above must name a recorded ancestor of the selected branch, or that branch itself"}
+	}
+	selected := make([]string, 0, len(discovery.Branches))
+	for _, branch := range discovery.Branches {
+		if stackedOn(branch, above, parents) {
+			selected = append(selected, branch)
+		}
+	}
+	discovery.Branches = selected
+	parent, _ := discovery.Graph.Parent(above)
+	return discovery, parent, repair.Note{}
+}
+
 // boundaryFork preserves a collected boundary's structural range even though
 // the replay deliberately excludes it. An incoming version can lose the old
 // fork when its publisher rewrites it onto an older or different trunk.

@@ -16,10 +16,7 @@ import (
 
 // PinForkPoint records a ref for a fork point so the object survives gc.
 func (c Client) PinForkPoint(ctx context.Context, branch, object string) error {
-	if err := safeRef(branch); err != nil {
-		return err
-	}
-	if err := safeRef(object); err != nil {
+	if err := safeRefs(branch, object); err != nil {
 		return err
 	}
 	_, err := c.run(ctx, "update-ref", forkPointPrefix+branch, object)

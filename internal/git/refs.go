@@ -18,10 +18,7 @@ import (
 // restores a branch git has already forgotten about, because git only rolls
 // back the single rebase invocation it was running.
 func (c Client) UpdateBranch(ctx context.Context, branch, object string) error {
-	if err := safeRef(branch); err != nil {
-		return err
-	}
-	if err := safeRef(object); err != nil {
+	if err := safeRefs(branch, object); err != nil {
 		return err
 	}
 	_, err := c.run(ctx, "update-ref", "refs/heads/"+branch, object)
@@ -35,10 +32,7 @@ func (c Client) UpdateBranch(ctx context.Context, branch, object string) error {
 // back, and the difference between "you are behind" and "you have diverged" is
 // exactly what they need to be told.
 func (c Client) FastForward(ctx context.Context, branch, to string) error {
-	if err := safeRef(branch); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(branch, to); err != nil {
 		return err
 	}
 	current, err := c.Resolve(ctx, branch)
@@ -71,10 +65,7 @@ func (c Client) FastForward(ctx context.Context, branch, to string) error {
 // calling it one would be a lie. Naming it separately is what keeps "you are
 // behind" and "this replaces what you have" from becoming the same call.
 func (c Client) ResetBranch(ctx context.Context, branch, to string) error {
-	if err := safeRef(branch); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(branch, to); err != nil {
 		return err
 	}
 	current, err := c.Resolve(ctx, branch)
@@ -142,10 +133,7 @@ func (c Client) moveBranch(ctx context.Context, branch, from, to string) error {
 // read-tree is the plumbing git switch itself uses for this. It refuses rather
 // than discarding anything it would have to overwrite.
 func (c Client) SwitchTree(ctx context.Context, from, to string) error {
-	if err := safeRef(from); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(from, to); err != nil {
 		return err
 	}
 	_, err := c.run(ctx, "read-tree", "-m", "-u", from, to)

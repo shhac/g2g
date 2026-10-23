@@ -177,10 +177,7 @@ func (c Client) WorktreeClean(ctx context.Context, path string) (bool, error) {
 // bring that worktree's index and files from the commit they describe to the
 // one the branch now points at.
 func (c Client) SwitchTreeIn(ctx context.Context, path, from, to string) error {
-	if err := safeRef(from); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(from, to); err != nil {
 		return err
 	}
 	// Stat data the other worktree has not refreshed reads as a change to

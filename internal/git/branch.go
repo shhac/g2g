@@ -38,10 +38,7 @@ func (c Client) CheckBranchName(ctx context.Context, name string) error {
 // refuses rather than overwriting a local change the new start point would
 // clobber.
 func (c Client) CreateBranch(ctx context.Context, name, start string) error {
-	if err := safeRef(name); err != nil {
-		return err
-	}
-	if err := safeRef(start); err != nil {
+	if err := safeRefs(name, start); err != nil {
 		return err
 	}
 	_, err := c.run(ctx, "switch", "-c", name, start)

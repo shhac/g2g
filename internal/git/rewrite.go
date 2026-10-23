@@ -112,10 +112,7 @@ func (c Client) replay(ctx context.Context, onto string, ranges []Range, extra .
 	}
 	args := append([]string{"replay", "--onto=" + onto}, extra...)
 	for _, replayed := range ranges {
-		if err := safeRef(replayed.From); err != nil {
-			return nil, err
-		}
-		if err := safeRef(replayed.To); err != nil {
+		if err := safeRefs(replayed.From, replayed.To); err != nil {
 			return nil, err
 		}
 		args = append(args, replayed.spec())
@@ -142,13 +139,7 @@ func parseRefUpdates(output []byte) []RefUpdate {
 // the rewrite conflicts. It necessarily takes over the checkout: resolving a
 // conflict needs a working tree the user can edit, and that is theirs.
 func (c Client) Rebase(ctx context.Context, onto string, replayed Range) error {
-	if err := safeRef(onto); err != nil {
-		return err
-	}
-	if err := safeRef(replayed.From); err != nil {
-		return err
-	}
-	if err := safeRef(replayed.To); err != nil {
+	if err := safeRefs(onto, replayed.From, replayed.To); err != nil {
 		return err
 	}
 	// Both flags exist to stop this depending on which Git is installed, and

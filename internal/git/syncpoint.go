@@ -45,10 +45,8 @@ type SyncPoint struct {
 // and anything dropped, which is how a later read checks the point describes
 // this branch and how status names what was dropped.
 func (c Client) RecordSync(ctx context.Context, remote, branch string, point SyncPoint) error {
-	for _, value := range []string{remote, branch, point.Tip, point.Local} {
-		if err := safeRef(value); err != nil {
-			return err
-		}
+	if err := safeRefs(remote, branch, point.Tip, point.Local); err != nil {
+		return err
 	}
 	message := "g2g " + point.Command + " local=" + point.Local
 	if len(point.Dropped) != 0 {
@@ -70,10 +68,7 @@ func (c Client) ReadSync(ctx context.Context, remote, branch string) (SyncPoint,
 // SyncHistory reads a branch's sync points, newest first, at most limit of
 // them. A branch with none has an empty history.
 func (c Client) SyncHistory(ctx context.Context, remote, branch string, limit int) ([]SyncPoint, error) {
-	if err := safeRef(remote); err != nil {
-		return nil, err
-	}
-	if err := safeRef(branch); err != nil {
+	if err := safeRefs(remote, branch); err != nil {
 		return nil, err
 	}
 	ref := SyncedRef(remote, branch)
@@ -302,10 +297,7 @@ func (c Client) forgetSync(ctx context.Context, branch string) {
 // when it was first recorded, which a reflog written with update-ref cannot
 // say otherwise.
 func (c Client) MoveSync(ctx context.Context, from, to string) error {
-	if err := safeRef(from); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(from, to); err != nil {
 		return err
 	}
 	remotes, err := c.remotes(ctx)

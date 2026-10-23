@@ -25,10 +25,7 @@ func (c Client) CherryDropped(ctx context.Context, upstream, head string) ([]str
 // which is what distinguishes "this branch has nothing left to contribute"
 // from "some commit somewhere below it is already upstream".
 func (c Client) Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error) {
-	if err := safeRef(upstream); err != nil {
-		return nil, nil, err
-	}
-	if err := safeRef(head); err != nil {
+	if err := safeRefs(upstream, head); err != nil {
 		return nil, nil, err
 	}
 	args := []string{"cherry", upstream, head}
@@ -78,10 +75,7 @@ const absorbedMinorVersion = 38
 // conflict asks the same question of the trunk as it was when those lines
 // last changed; see absorbedEarlier.
 func (c Client) Absorbed(ctx context.Context, base, branch string) (bool, error) {
-	if err := safeRef(base); err != nil {
-		return false, err
-	}
-	if err := safeRef(branch); err != nil {
+	if err := safeRefs(base, branch); err != nil {
 		return false, err
 	}
 	supported, err := c.supportsMergeTree(ctx)
@@ -216,10 +210,7 @@ func (c Client) Commits(ctx context.Context, tip string, excluded []string) ([]s
 // matched here is matched there too and an empty answer is exact; a commit
 // listed here may still have an equivalent somewhere below the bounds.
 func (c Client) Inequivalent(ctx context.Context, left, right string, bounds []string) (leftOnly, rightOnly []string, err error) {
-	if err := safeRef(left); err != nil {
-		return nil, nil, err
-	}
-	if err := safeRef(right); err != nil {
+	if err := safeRefs(left, right); err != nil {
 		return nil, nil, err
 	}
 	args := []string{"rev-list", "--left-right", "--cherry-mark", "--no-merges", left + "..." + right}

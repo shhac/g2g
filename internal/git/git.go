@@ -56,6 +56,17 @@ func safeRef(ref string) error {
 	return subprocess.CheckArgument("git", "branch name", ref)
 }
 
+// safeRefs validates positional references in order, including empty values,
+// and reports the first refusal exactly as safeRef does for one argument.
+func safeRefs(refs ...string) error {
+	for _, ref := range refs {
+		if err := safeRef(ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c Client) Clean(ctx context.Context) error {
 	output, err := c.run(ctx, "status", "--porcelain")
 	if err != nil {

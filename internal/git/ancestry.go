@@ -74,10 +74,7 @@ func (c Client) AncestorBranches(ctx context.Context, target string) ([]string, 
 // ancestor, behind of zero means it is a descendant and therefore never a
 // candidate parent.
 func (c Client) Divergence(ctx context.Context, other, target string) (ahead, behind int, err error) {
-	if err := safeRef(other); err != nil {
-		return 0, 0, err
-	}
-	if err := safeRef(target); err != nil {
+	if err := safeRefs(other, target); err != nil {
 		return 0, 0, err
 	}
 	output, err := c.run(ctx, "rev-list", "--left-right", "--count", other+"..."+target)
@@ -104,10 +101,7 @@ func (c Client) Divergence(ctx context.Context, other, target string) (ahead, be
 // would turn every ordinary "no" into a broken command, so exit 1 alone is
 // translated back into a false answer and every other status stays an error.
 func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
-	if err := safeRef(ancestor); err != nil {
-		return false, err
-	}
-	if err := safeRef(descendant); err != nil {
+	if err := safeRefs(ancestor, descendant); err != nil {
 		return false, err
 	}
 	_, err := c.run(ctx, "merge-base", "--is-ancestor", ancestor, descendant)
@@ -127,10 +121,7 @@ func (c Client) IsAncestor(ctx context.Context, ancestor, descendant string) (bo
 // commit, because every caller wants the commit to replay from and there is
 // no such commit to hand them.
 func (c Client) MergeBase(ctx context.Context, one, other string) (string, error) {
-	if err := safeRef(one); err != nil {
-		return "", err
-	}
-	if err := safeRef(other); err != nil {
+	if err := safeRefs(one, other); err != nil {
 		return "", err
 	}
 	output, err := c.run(ctx, "merge-base", one, other)

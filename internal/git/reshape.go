@@ -24,10 +24,7 @@ import (
 // read can — a commit a remote holds but this clone never fetched reads as
 // unpublished, which errs toward warning.
 func (c Client) Unpublished(ctx context.Context, branch, since string) ([]Commit, error) {
-	if err := safeRef(branch); err != nil {
-		return nil, err
-	}
-	if err := safeRef(since); err != nil {
+	if err := safeRefs(branch, since); err != nil {
 		return nil, err
 	}
 	output, err := c.run(ctx, "log", "--format=%H%x09%s", since+".."+branch, "--not", "--remotes")
@@ -84,10 +81,7 @@ func (c Client) MoveBranch(ctx context.Context, branch, from, to string) error {
 // reflog and configuration and moves HEAD in every worktree that has it
 // checked out. It refuses a name that is already taken rather than forcing.
 func (c Client) RenameBranch(ctx context.Context, from, to string) error {
-	if err := safeRef(from); err != nil {
-		return err
-	}
-	if err := safeRef(to); err != nil {
+	if err := safeRefs(from, to); err != nil {
 		return err
 	}
 	if from == to {

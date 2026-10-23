@@ -174,43 +174,12 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.Discovery = discovery
-	at, err := s.Git.Resolve(ctx, plan.Parent)
+	plan, err = s.resolveStart(ctx, plan, request.At)
 	if err != nil {
 		return Plan{}, err
 	}
-	plan.At, plan.ParentAt, plan.AtSource = at, at, request.At
-	if request.At != "" {
-		if err := subprocess.CheckArgument("git", "starting revision", request.At); err != nil {
-			return plan.refuse(repair.Note{Reason: err.Error()}), nil
-		}
-		plan.At, err = s.Git.Resolve(ctx, request.At)
-		if err != nil {
-			return Plan{}, err
-		}
-		note, err := s.startAt(ctx, plan)
-		if err != nil {
-			return Plan{}, err
-		}
-		if note.Reason != "" {
-			return plan.refuse(note), nil
-		}
-	}
-	protectHead := head
-	if head != "" && request.At != "" {
-		if ancestry, ok := s.Git.(interface {
-			IsAncestor(context.Context, string, string) (bool, error)
-		}); ok {
-			contained, err := ancestry.IsAncestor(ctx, head, plan.At)
-			if err != nil {
-				return Plan{}, err
-			}
-			if contained {
-				protectHead = ""
-			}
-		}
-	}
-	if blocked, refused := refuseDetachedAway(plan, protectHead); refused {
-		return blocked, nil
+	if plan.Blocked() != "" {
+		return plan, nil
 	}
 	if blocked, refused := refuseRecord(plan, discovery); refused {
 		return blocked, nil
@@ -227,6 +196,48 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	}
 	plan.Staged = staged
 	return refuseCommit(plan), nil
+}
+
+// resolveStart chooses the pinned start and proves that switching to it keeps
+// the original detached HEAD reachable, independently of the rollback target.
+func (s Service) resolveStart(ctx context.Context, plan Plan, requested string) (Plan, error) {
+	at, err := s.Git.Resolve(ctx, plan.Parent)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan.At, plan.ParentAt, plan.AtSource = at, at, requested
+	if requested != "" {
+		if err := subprocess.CheckArgument("git", "starting revision", requested); err != nil {
+			return plan.refuse(repair.Note{Reason: err.Error()}), nil
+		}
+		plan.At, err = s.Git.Resolve(ctx, requested)
+		if err != nil {
+			return Plan{}, err
+		}
+		note, err := s.startAt(ctx, plan)
+		if err != nil {
+			return Plan{}, err
+		}
+		if note.Reason != "" {
+			return plan.refuse(note), nil
+		}
+	}
+	protectHead := plan.ReturnTip
+	if plan.ReturnTip != "" && requested != "" {
+		if ancestry, ok := s.Git.(interface {
+			IsAncestor(context.Context, string, string) (bool, error)
+		}); ok {
+			contained, err := ancestry.IsAncestor(ctx, plan.ReturnTip, plan.At)
+			if err != nil {
+				return Plan{}, err
+			}
+			if contained {
+				protectHead = ""
+			}
+		}
+	}
+	protected, _ := refuseDetachedAway(plan, protectHead)
+	return protected, nil
 }
 
 // refuseName turns away a name before it reaches anything that could misread

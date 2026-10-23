@@ -182,17 +182,12 @@ func describeTip(tip string) string {
 	return localgit.Short(tip)
 }
 
-// settleMerge waits until the merge has reached the base on the remote.
+// settleMergeObserved waits until the merge has reached the base on the remote.
 //
 // By ancestry, never by watching the tip change: a colleague's unrelated push
 // changes it too, and acting on that fetches a base that does not contain this
 // merge and replays the branch above onto it. The merge commit is already in
 // the answer GitHub gives about the merge it just performed.
-func (s Service) settleMerge(ctx context.Context, plan Plan, step Step) error {
-	observed := false
-	return s.settleMergeObserved(ctx, plan, step, &observed)
-}
-
 func (s Service) settleMergeObserved(ctx context.Context, plan Plan, step Step, observed *bool) error {
 	return settle(ctx, s.pause, fmt.Sprintf("the merge of %s to reach %s", step.Branch, plan.Trunk), func(ctx context.Context) (bool, error) {
 		state, err := s.state(ctx, step.Number)

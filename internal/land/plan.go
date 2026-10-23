@@ -97,7 +97,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options &&
 		p.Trunk == other.Trunk &&
-		queuePolicy(p.Queue) == queuePolicy(other.Queue) &&
+		sameQueue(p.Queue, other.Queue) &&
 		p.Declaration == other.Declaration &&
 		p.KeepTrunk == other.KeepTrunk && p.Detach == other.Detach &&
 		p.Worktrees.Equal(other.Worktrees) &&

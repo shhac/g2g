@@ -55,11 +55,14 @@ func pendingState(state githubstack.MergeState) string {
 	}
 	return "merge requested"
 }
-func queuePolicy(q *githubstack.Queue) string {
-	if q == nil {
-		return ""
+
+// sameQueue compares the policy the descent agreed to, including queue presence.
+// Method normalizes GitHub's spelling; configuration pointer identity is immaterial.
+func sameQueue(one, other *githubstack.Queue) bool {
+	if one == nil || other == nil {
+		return one == other
 	}
-	return fmt.Sprintf("%s:%s:auto=%t", q.ID, q.Method(), q.AutoMergeAllowed)
+	return one.ID == other.ID && one.Method() == other.Method() && one.AutoMergeAllowed == other.AutoMergeAllowed
 }
 
 // RetryCommand preserves the invocation's selection and important choices.
@@ -188,7 +191,7 @@ func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed 
 	if err != nil {
 		return false, "", err
 	}
-	if queuePolicy(readiness.Queue) != queuePolicy(plan.Queue) {
+	if !sameQueue(readiness.Queue, plan.Queue) {
 		return false, "", fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
 	}
 	recorded, err := s.Graph.Store.Load(ctx)
@@ -233,7 +236,7 @@ func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed 
 		if err != nil {
 			return false, "", err
 		}
-		if queuePolicy(readiness.Queue) != queuePolicy(plan.Queue) {
+		if !sameQueue(readiness.Queue, plan.Queue) {
 			return false, "", fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
 		}
 		state = readiness.States[step.Number]
@@ -316,7 +319,7 @@ func (s Service) observeQueue(ctx context.Context, plan Plan, step Step, tip str
 			if err != nil {
 				return false, err
 			}
-			if queuePolicy(readiness.Queue) != queuePolicy(plan.Queue) {
+			if !sameQueue(readiness.Queue, plan.Queue) {
 				return false, &queueRefusal{fmt.Errorf("the target merge queue policy changed while waiting")}
 			}
 			state = readiness.States[step.Number]

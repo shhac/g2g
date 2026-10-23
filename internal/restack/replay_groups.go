@@ -66,7 +66,16 @@ func (g replayGroup) onto() string {
 func (p Plan) groups() []replayGroup {
 	groups := make([]replayGroup, 0, 1)
 	member := map[string]int{}
-	for _, step := range p.rewriting() {
+	follows := map[string]bool{}
+	for _, step := range p.Steps {
+		if step.Collapses {
+			_, replayed := member[step.Parent]
+			follows[step.Branch] = replayed || follows[step.Parent]
+			continue
+		}
+		// A ref-only parent follows the replay below it. Start a new group
+		// on its resulting tip rather than its stale planned base.
+		step.Behind = step.Behind || follows[step.Parent]
 		if at, above := member[step.Parent]; above && !step.Behind {
 			groups[at] = append(groups[at], step)
 			member[step.Branch] = at

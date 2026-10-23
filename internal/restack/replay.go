@@ -87,6 +87,13 @@ func (s Service) replay(ctx context.Context, plan Plan) error {
 		if err := s.Git.Replay(ctx, group.onto(), group.ranges()); err != nil {
 			return err
 		}
+		branches := make([]string, 0, len(group))
+		for _, step := range group {
+			branches = append(branches, step.Branch)
+		}
+		if err := s.collapseAfter(ctx, plan, branches); err != nil {
+			return err
+		}
 	}
 	return s.verify(ctx, plan)
 }

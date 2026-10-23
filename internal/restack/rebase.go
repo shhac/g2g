@@ -66,6 +66,9 @@ func (s Service) rebaseEach(ctx context.Context, plan Plan) error {
 		if err := s.Git.Rebase(ctx, base, localgit.Range{From: step.ForkPoint, To: step.Branch}); err != nil {
 			return err
 		}
+		if err := s.collapseAfter(ctx, plan, []string{step.Branch}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

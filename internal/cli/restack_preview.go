@@ -44,10 +44,15 @@ func restackView(plan restack.Plan) stackView {
 // pull is the trunk rather than the ref it fetched the trunk into.
 func ontoEach(plan restack.Plan, branches []string) string {
 	parent := map[string]string{}
+	collapses := map[string]bool{}
 	for _, step := range plan.Steps {
 		parent[step.Branch] = step.Parent
+		collapses[step.Branch] = step.Collapses
 	}
 	rootParent := func(branch string) string {
+		if collapses[branch] {
+			return plan.ParentAfter(branch)
+		}
 		for {
 			above, stepped := parent[branch]
 			if _, rewritten := parent[above]; !stepped || !rewritten {

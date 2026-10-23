@@ -52,6 +52,11 @@ func (s Service) preview(ctx context.Context, plan Plan) (updates []localgit.Ref
 		for _, update := range grouped {
 			replayedTo[update.Branch()] = update.New
 		}
+		for _, step := range plan.collapsing() {
+			if tip, moved := replayedTo[step.Parent]; moved {
+				replayedTo[step.Branch] = tip
+			}
+		}
 	}
 	// Predicted means the preview actually ran, which the two returns above
 	// already answer for the cases where it did not. Deriving it from the error

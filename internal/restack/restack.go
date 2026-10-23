@@ -176,6 +176,30 @@ func (s Service) collapse(ctx context.Context, plan Plan) error {
 	return nil
 }
 
+// collapseAfter carries ref-only branches along when a replay moves their
+// parent. Their planned Base is the parent's old tip; moving them only before
+// the engines run strands an empty child there, including after --continue.
+func (s Service) collapseAfter(ctx context.Context, plan Plan, replayed []string) error {
+	moved := make(map[string]bool, len(replayed))
+	for _, branch := range replayed {
+		moved[branch] = true
+	}
+	for _, step := range plan.collapsing() {
+		if !moved[step.Parent] {
+			continue
+		}
+		base, err := s.Git.Resolve(ctx, step.Parent)
+		if err != nil {
+			return err
+		}
+		if err := s.Git.UpdateBranch(ctx, step.Branch, base); err != nil {
+			return err
+		}
+		moved[step.Branch] = true
+	}
+	return nil
+}
+
 // absorb keeps the commits a parent dropped by re-recording where the branch
 // forks, which needs no rewriting at all: the parent's tip is already an
 // ancestor of the branch.

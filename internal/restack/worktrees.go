@@ -36,10 +36,16 @@ func own(steps []Step, absorb bool, pending Pending) []string {
 	if absorb {
 		return branches
 	}
+	moving := map[string]bool{}
 	for _, step := range steps {
-		if _, callers := pending.Tips[step.Branch]; callers || (step.Collapses && step.Head == step.Base) {
+		if _, callers := pending.Tips[step.Branch]; callers {
+			moving[step.Branch] = true
 			continue
 		}
+		if step.Collapses && step.Head == step.Base && !moving[step.Parent] {
+			continue
+		}
+		moving[step.Branch] = true
 		branches = append(branches, step.Branch)
 	}
 	return branches

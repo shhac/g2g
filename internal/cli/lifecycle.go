@@ -256,18 +256,7 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	mutateCtx, cancelMutation := f.mutationBudget(budgets, root, f.mutationSize(validated))
 	defer cancelMutation()
 	if err := f.execute(mutateCtx, validated); err != nil {
-		if f.interrupted != nil {
-			reading, cancelReading := context.WithTimeout(context.WithoutCancel(mutateCtx), interruptedReadBudget)
-			defer cancelReading()
-			if handled, report := f.interrupted(reading, validated, err); handled {
-				return report
-			}
-		}
-		presented := writeNotApplied(cmd.OutOrStdout(), p, mutationTimeout(err, f.notices.recovery))
-		if f.wrapMutationError != nil {
-			return f.wrapMutationError(presented)
-		}
-		return presented
+		return f.executionFailed(cmd, mutateCtx, validated, p, err)
 	}
 
 	if err := prose(cmd.OutOrStdout(), p, p.notice(f.notices.applied)); err != nil {
@@ -280,6 +269,23 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 		return nil
 	}
 	return writeSuggestedNextStep(cmd.OutOrStdout(), p, f.suggest(validated))
+}
+
+// executionFailed diagnoses an interrupted mutation on a budget it has not
+// already spent, then preserves the command's reporting and wrapping policy.
+func (f applyFlow[P]) executionFailed(cmd *cobra.Command, mutateCtx context.Context, validated P, p Presentation, err error) error {
+	if f.interrupted != nil {
+		reading, cancelReading := context.WithTimeout(context.WithoutCancel(mutateCtx), interruptedReadBudget)
+		defer cancelReading()
+		if handled, report := f.interrupted(reading, validated, err); handled {
+			return report
+		}
+	}
+	presented := writeNotApplied(cmd.OutOrStdout(), p, mutationTimeout(err, f.notices.recovery))
+	if f.wrapMutationError != nil {
+		return f.wrapMutationError(presented)
+	}
+	return presented
 }
 
 type outputFlusher interface{ Flush() error }

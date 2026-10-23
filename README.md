@@ -318,10 +318,12 @@ add. It reports what it finds and repairs none of it:
 Each branch is also compared with what its remote last held **here**: the
 remote-tracking ref a push or `git fetch` left, and the ref under
 `refs/g2g/remotes/` that `g2g pull` fetches into. Where one descends from the
-other the descendant is the later knowledge; where they are not in order the
-remote-tracking ref wins, because it is what a push moves and what `git status`
-compares with. Nothing is fetched, so the answer is exactly as current as the
-last fetch or push, and the output ends by saying so.
+other the descendant is the later knowledge. If neither contains the other,
+status reports **conflicting local records** rather than inferring ahead,
+behind, or dropped commits from one of them. A published branch whose base has
+conflicting records is uncertain too. `git fetch <remote>` refreshes the
+tracking records when you want to resolve the uncertainty. Status itself
+fetches nothing, and the output says that its evidence is local.
 
 | Mark | Means |
 |---|---|
@@ -332,6 +334,7 @@ last fetch or push, and the output ends by saying so.
 | `replayed since pushed · N changed in the replay` | restacked, and N commits' patches changed while a conflict was resolved; `push` publishes them |
 | `diverged · N here, M there` | both have moved · `g2g pull` shows the ways to reconcile |
 | `on a commit not here` | the remote's tip was never fetched · `g2g pull` fetches it |
+| `conflicting local records` | tracking and isolated fetched records for the branch or its base disagree; their order is unknown offline · `git fetch <remote>` |
 | `not on origin` | never published |
 
 Commits are counted by content and bounded to the branch's own, as `push`

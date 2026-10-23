@@ -160,8 +160,12 @@ description: |
   graphite`) and marks each branch against what the remote last held here,
   from local refs alone — `refs/remotes/<remote>/<branch>` and
   `refs/g2g/remotes/<remote>/<branch>`, taking whichever descends from the
-  other and the remote-tracking ref when they are not in order
-  (`git.Client.KnownTips`, through `push.Known`). It never fetches and never
+  other. When they cannot be ordered, `KnownTipsWithConflicts` lets
+  `push.Known` report `conflicting local records` instead of inferring ahead,
+  behind or dropped commits, including when a published base is uncertain.
+  `git fetch <remote>` refreshes tracking knowledge; the offline command never
+  does so itself. `KnownTips` retains its tracking preference for structural
+  evidence. Status never fetches and never
   calls `gh`; that is what makes it safe to run before deciding whether to.
   Marks are `origin✓`, `N ahead`, `N behind`, `replayed since pushed`,
   `diverged · N here, M there`, `on a commit not here`, `not on origin`, counted

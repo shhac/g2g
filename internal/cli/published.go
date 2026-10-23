@@ -110,6 +110,8 @@ func publishedMark(remote string, publication push.Publication) stackMark {
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d dropped here", publication.Dropped), Severity: severityWarn}
 	case push.Restoring:
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("dropped %d still here", publication.Dropped), Severity: severityWarn}
+	case push.Conflicting:
+		return stackMark{Subject: remote, Detail: "conflicting local records", Severity: severityWarn}
 	default:
 		return stackMark{}
 	}
@@ -151,10 +153,12 @@ func markPublished(view stackView, acted selected, publishing map[string]push.Pu
 // the branches that are not where the remote is.
 func publishedNotes(view stackView, acted selected, publishing map[string]push.Publication) stackView {
 	remote := acted.remote
-	var ahead, behind, diverged, unknown, restoring []string
+	var ahead, behind, diverged, unknown, restoring, conflicting []string
 	for _, node := range view.Nodes {
 		publication := publishing[node.Branch]
 		switch {
+		case publication.Standing == push.Conflicting:
+			conflicting = append(conflicting, node.Branch)
 		case publication.Standing == push.Unknown:
 			unknown = append(unknown, node.Branch)
 		case publication.Standing == push.Diverged:
@@ -187,6 +191,9 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 	}
 	if len(unknown) != 0 {
 		view = view.note(remote+" is on a commit this repository has not fetched for "+words.List(unknown)+" · run "+runnable(acted.aimedOr(pullCommand))+" to see it.", severityWarn)
+	}
+	if len(conflicting) != 0 {
+		view = view.note("The local tracking and fetched records used for "+words.List(conflicting)+" disagree; their order cannot be established offline · run "+runnable("git fetch "+repair.Quote(remote))+" to refresh the tracking records.", severityWarn)
 	}
 	return view.note("Compared with "+remote+" as last fetched or pushed · nothing was asked of the network.", severityNeutral)
 }

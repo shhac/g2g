@@ -20,6 +20,7 @@ func TestEachStandingIsMarkedInItsOwnWords(t *testing.T) {
 		{push.Publication{Standing: push.Current}, "origin✓", severityOK},
 		{push.Publication{Standing: push.New}, "not on origin", severityNeutral},
 		{push.Publication{Standing: push.Landed}, "", severityNeutral},
+		{push.Publication{Standing: push.Conflicting}, "origin✗ conflicting local records", severityWarn},
 		{push.Publication{Standing: push.Unknown}, "origin✗ on a commit not here", severityWarn},
 		{push.Publication{Standing: push.Ahead, Ours: 2}, "origin✗ 2 ahead", severityWarn},
 		{push.Publication{Standing: push.Behind, Theirs: 3}, "origin✗ 3 behind", severityWarn},

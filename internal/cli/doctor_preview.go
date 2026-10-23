@@ -5,6 +5,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -45,6 +46,13 @@ func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string
 			continue
 		}
 		publication := publishing[branch]
+		if publication.Standing == push.Conflicting {
+			findings = append(findings, finding{
+				Branch: branch, Problem: "conflicting local remote records for this branch or its base",
+				Command: "git fetch " + repair.Quote(remote), Severity: severityWarn,
+			})
+			continue
+		}
 		if publication.Standing == push.Diverged && !discovery.Graph.IsTrunk(branch) {
 			findings = append(findings, finding{
 				Branch:   branch,

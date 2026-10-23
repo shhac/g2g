@@ -31,16 +31,28 @@ var ErrNoSuchRemote = errors.New("no such remote")
 // pruned, so a branch deleted on the remote — which is what merging and
 // deleting it does — lived on in it and read as published for good.
 func (c Client) KnownTips(ctx context.Context, remote string, branches []string) (map[string]string, error) {
+	tips, _, err := c.knownTips(ctx, remote, branches, false)
+	return tips, err
+}
+
+// KnownTipsWithConflicts also identifies branches whose two local records
+// disagree and cannot be ordered by ancestry. An offline report must not turn
+// that preference into a claim about commits the remote dropped.
+func (c Client) KnownTipsWithConflicts(ctx context.Context, remote string, branches []string) (tips map[string]string, conflicts map[string]bool, err error) {
+	return c.knownTips(ctx, remote, branches, true)
+}
+
+func (c Client) knownTips(ctx context.Context, remote string, branches []string, detectConflicts bool) (map[string]string, map[string]bool, error) {
 	if err := c.Remote(ctx, remote); err != nil {
 		// git says a remote is not there with status 2, and nothing else there.
 		if code, exited := subprocess.ExitCode(err); exited && code == 2 {
-			return nil, fmt.Errorf("%w %q", ErrNoSuchRemote, remote)
+			return nil, nil, fmt.Errorf("%w %q", ErrNoSuchRemote, remote)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	for _, branch := range branches {
 		if err := safeRef(branch); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	// One process for every ref under both prefixes. Resolving them by name
@@ -48,7 +60,7 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 	// of them in a fresh stack, and falls back to a process per ref.
 	output, err := c.run(ctx, "for-each-ref", "--format=%(objectname) %(refname)", TrackingRef(remote, ""), IsolatedRef(remote, ""))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resolved := map[string]string{}
 	tracking := false
@@ -62,6 +74,7 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 	// is later is a question per branch; they are asked at once, into a slice
 	// sized first so each owns its element.
 	answers := make([]string, len(branches))
+	disagrees := make([]bool, len(branches))
 	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		tracked, fetched := resolved[TrackingRef(remote, branch)], resolved[IsolatedRef(remote, branch)]
 		if tracked == "" && tracking {
@@ -69,18 +82,27 @@ func (c Client) KnownTips(ctx context.Context, remote string, branches []string)
 		}
 		tip, err := c.later(ctx, tracked, fetched)
 		answers[index] = tip
+		if err == nil && detectConflicts && tracked != "" && fetched != "" && tracked != fetched && tip == tracked {
+			ordered, readErr := c.IsAncestor(ctx, fetched, tracked)
+			disagrees[index] = !ordered
+			return readErr
+		}
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tips := make(map[string]string, len(branches))
+	conflicts := make(map[string]bool)
 	for index, branch := range branches {
 		if answers[index] != "" {
 			tips[branch] = answers[index]
 		}
+		if disagrees[index] {
+			conflicts[branch] = true
+		}
 	}
-	return tips, nil
+	return tips, conflicts, nil
 }
 
 // later is whichever of the two tips is the more recent knowledge, preferring

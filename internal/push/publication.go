@@ -82,6 +82,10 @@ const (
 	// since the two last agreed: publishing would put them back. pull drops
 	// them here too, or keeps them as this clone's own with --keep.
 	Restoring
+	// Conflicting means the offline records for this branch or its base
+	// disagree without ancestry establishing which was observed later.
+	// Only Known returns it; push reads the remote itself for its leases.
+	Conflicting
 )
 
 // Rejected reports a branch the lease would refuse: the remote holds something

@@ -203,67 +203,86 @@ func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed 
 		return false, "", err
 	}
 	if !state.Pending() && !state.Merged() {
-		pushed, err := s.publish(ctx, plan, step)
+		tip, state, err = s.prepareQueue(ctx, plan, step, changed)
 		if err != nil {
 			return false, "", err
 		}
-		if pushed {
-			*changed = append(*changed, "published "+step.Branch)
-		}
-		if step.Retargets() {
-			if err := s.retarget(ctx, step); err != nil {
-				return false, "", err
-			}
-			*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
-		}
-		tip, err = s.Git.Resolve(ctx, step.Branch)
+	}
+	if !state.Pending() && !state.Merged() {
+		state, err = s.requestQueue(ctx, plan, step, tip, changed)
 		if err != nil {
 			return false, "", err
-		}
-		state, err = s.settlePush(ctx, step, tip, plan.Options.Remote)
-		if err != nil {
-			return false, "", err
-		}
-		// Retargeting may change which queue applies. Read the target policy again,
-		// immediately before the head-pinned irreversible request.
-		readiness, err = s.GitHub.Mergeability(ctx, []int{step.Number}, plan.Trunk)
-		if err != nil {
-			return false, "", err
-		}
-		if !sameQueue(readiness.Queue, plan.Queue) {
-			return false, "", fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
-		}
-		state = readiness.States[step.Number]
-		if !state.Merged() && !state.QueueEnabled {
-			return false, "", fmt.Errorf("#%d does not report a required merge queue at %s; refusing to request an ordinary auto-merge", step.Number, step.Base)
-		}
-		if !state.Merged() {
-			if _, err := s.recheck(ctx, plan, step, tip, state); err != nil {
-				return false, "", err
-			}
-		}
-		if !state.Pending() && !state.Merged() {
-			requestErr := s.GitHub.RequestQueue(ctx, step.Number, step.ID, tip, plan.Queue.AutoMergeAllowed)
-			if requestErr == nil {
-				*changed = append(*changed, fmt.Sprintf("requested merge of #%d through the queue", step.Number))
-			}
-			observe, cancel := context.WithTimeout(context.WithoutCancel(ctx), diagnoseBudget)
-			after, readErr := s.GitHub.Mergeability(observe, []int{step.Number}, plan.Trunk)
-			cancel()
-			if readErr != nil {
-				if requestErr != nil {
-					return false, "", &Pending{Branch: step.Branch, Number: step.Number, State: "merge request outcome unknown", Cause: fmt.Errorf("inspect #%d before retrying: %w", step.Number, requestErr)}
-				}
-				return false, "", &Pending{Branch: step.Branch, Number: step.Number, State: "merge requested", Cause: readErr}
-			}
-			state = after.States[step.Number]
-			if requestErr != nil && !state.Pending() && !state.Merged() {
-				return false, "", requestErr
-			}
 		}
 	}
 	merged, err := s.observeQueue(ctx, plan, step, tip, state)
 	return merged, tip, err
+}
+
+// prepareQueue publishes and retargets before rechecking the eventual queue's
+// policy and the exact head. An existing request never enters this phase.
+func (s Service) prepareQueue(ctx context.Context, plan Plan, step Step, changed *[]string) (string, githubstack.MergeState, error) {
+	pushed, err := s.publish(ctx, plan, step)
+	if err != nil {
+		return "", githubstack.MergeState{}, err
+	}
+	if pushed {
+		*changed = append(*changed, "published "+step.Branch)
+	}
+	if step.Retargets() {
+		if err := s.retarget(ctx, step); err != nil {
+			return "", githubstack.MergeState{}, err
+		}
+		*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", step.Number, step.Base))
+	}
+	tip, err := s.Git.Resolve(ctx, step.Branch)
+	if err != nil {
+		return "", githubstack.MergeState{}, err
+	}
+	if _, err := s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {
+		return "", githubstack.MergeState{}, err
+	}
+	// Retargeting may change which queue applies. Read the target policy again,
+	// immediately before the head-pinned irreversible request.
+	readiness, err := s.GitHub.Mergeability(ctx, []int{step.Number}, plan.Trunk)
+	if err != nil {
+		return "", githubstack.MergeState{}, err
+	}
+	if !sameQueue(readiness.Queue, plan.Queue) {
+		return "", githubstack.MergeState{}, fmt.Errorf("the target merge queue policy changed; rerun %s", plan.RetryCommand())
+	}
+	state := readiness.States[step.Number]
+	if !state.Merged() && !state.QueueEnabled {
+		return "", githubstack.MergeState{}, fmt.Errorf("#%d does not report a required merge queue at %s; refusing to request an ordinary auto-merge", step.Number, step.Base)
+	}
+	if !state.Merged() {
+		if _, err := s.recheck(ctx, plan, step, tip, state); err != nil {
+			return "", githubstack.MergeState{}, err
+		}
+	}
+	return tip, state, nil
+}
+
+// requestQueue sends one request and diagnoses its outcome on an independent
+// budget. A transport error never justifies blindly repeating the request.
+func (s Service) requestQueue(ctx context.Context, plan Plan, step Step, tip string, changed *[]string) (githubstack.MergeState, error) {
+	requestErr := s.GitHub.RequestQueue(ctx, step.Number, step.ID, tip, plan.Queue.AutoMergeAllowed)
+	if requestErr == nil {
+		*changed = append(*changed, fmt.Sprintf("requested merge of #%d through the queue", step.Number))
+	}
+	observe, cancel := context.WithTimeout(context.WithoutCancel(ctx), diagnoseBudget)
+	after, readErr := s.GitHub.Mergeability(observe, []int{step.Number}, plan.Trunk)
+	cancel()
+	if readErr != nil {
+		if requestErr != nil {
+			return githubstack.MergeState{}, &Pending{Branch: step.Branch, Number: step.Number, State: "merge request outcome unknown", Cause: fmt.Errorf("inspect #%d before retrying: %w", step.Number, requestErr)}
+		}
+		return githubstack.MergeState{}, &Pending{Branch: step.Branch, Number: step.Number, State: "merge requested", Cause: readErr}
+	}
+	state := after.States[step.Number]
+	if requestErr != nil && !state.Pending() && !state.Merged() {
+		return githubstack.MergeState{}, requestErr
+	}
+	return state, nil
 }
 
 func (s Service) observeQueue(ctx context.Context, plan Plan, step Step, tip string, state githubstack.MergeState) (bool, error) {

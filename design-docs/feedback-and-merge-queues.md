@@ -263,11 +263,12 @@ Graphite enrollment, release or remote publication.
   its own patches. Added verified boundary refork planning/recording before
   descendant replay and a real regression; ambiguous feature-parent cases
   refuse rather than record a guessed boundary.
-- A separate, pre-existing offline status limitation remains: when divergent
+- A separate, pre-existing offline status limitation was identified: when divergent
   local remote records disagree, KnownTips intentionally prefers the tracking
   ref, even over a freshly fetched isolated tip. A synthetic reproduction is
-  recorded in ignored FEEDBACK/2026-10-22-feedback-queue-build.md. This work
-  preserves that documented preference and all pinned push leases.
+  recorded in ignored FEEDBACK/2026-10-22-feedback-queue-build.md. The initial work
+  preserved that documented preference and all pinned push leases. The follow-up
+  below resolves the misleading status advice by reporting conflicting records.
 - Final submit audit added an apply-only guard before its initial metadata
   discovery, so a detached active restack cannot hide its owner behind a generic
   discovery error. Preview reads remain available.
@@ -343,3 +344,50 @@ squash without a sync point remains: push cannot establish the remote work's
 identity in that case. This audit does not loosen that publication policy or the
 offline status preference recorded above. No hosted queue was exercised, and
 all Git remote writes stayed in disposable local test repositories.
+
+## Additional feedback reproduced on current main
+
+The follow-up started at `fd655c2`, with a fresh CLI build identified as
+`feedback-repro-fd655c2`. All reproductions used synthetic repositories, local
+bare remotes and disposable worktrees. No hosted service was changed.
+
+- `5e44220` fixes empty branches left on their parents' old tips after a
+  replay. The CLI reproduction stopped on a conflict and then reported
+  `Restack complete` while the empty top branch remained behind. A real-Git
+  regression also exposed empty intermediate branches left behind by a clean
+  replay. Ref-only descendants now follow each completed parent replay;
+  previews name their immediate parent, and descendants with commits replay
+  onto the resulting tip. Coverage includes clean replay, conflict recovery,
+  abort, and clean versus dirty linked worktrees.
+- `18327bd` fixes the reproduced stale-lock mechanism in subprocess
+  cancellation. A real Git command held `index.lock` while a synthetic
+  fsmonitor hook waited; cancellation through the original runner left the
+  lock behind. On Unix, cancellation now signals the invocation's process
+  group, allowing Git to remove its own locks, with bounded forced termination
+  for unresponsive processes and remaining descendants. The exact original
+  landing discovery timing was not reproduced. Existing locks are not
+  removed by the runner. Race tests cover real Git cleanup and an
+  unresponsive child; Linux and Windows test binaries cross-compile.
+- `bdf19ef` fixes misleading offline status advice after a rewritten published
+  parent is pulled. The local and freshly fetched tips matched, but a divergent
+  stale tracking ref produced `dropped 1 still here` and advice to pull away
+  work. Status and doctor now disclose conflicting local remote records;
+  comparisons also remain uncertain when their published base has conflicting
+  evidence. A normal Git fetch resolves the warning. Structural `KnownTips`
+  retains its existing preference, and push still reads the live remote and
+  uses its pinned leases. Tests preserve the user's tracking refs during
+  pull/status and verify that refreshing them clears the warning.
+
+Final verification passed on the combined source:
+
+- Race-enabled build and vet, the full offline suite across all packages, and
+  all 539 CLI tests in sixteen separate processes; the suite completed in 329
+  seconds. The final scoped race checks also passed, with no race reports.
+- The final rebuilt CLI (`dev-bdf19ef`) passed both direct synthetic
+  reproductions: conflict recovery left the empty branch exactly on its parent,
+  the preview named that parent, and status disclosed conflicting records
+  without the false dropped-commit advice.
+- The g2g skill's quick validator passed with its cached PyYAML dependency.
+
+The full/race log is `/tmp/g2g-feedback-fixes-full-race.log`; the executable for
+local trials is `/tmp/g2g-feedback-fixed`. No changes were pushed or released.

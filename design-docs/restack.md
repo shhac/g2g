@@ -284,6 +284,15 @@ moves the checked-out branch, the checkout is reconciled before the rebase
 starts, on the first pass and on every resumed one: git reads an index that
 still describes the old commit as uncommitted changes and refuses to begin.
 
+A collapsed branch whose parent is replayed must also follow that parent's
+result. Its planned base is the old parent tip, so the initial collapse alone
+cannot place it correctly. After each replay group or successful rebase,
+`collapseAfter` moves its ref-only descendants onto their parents' resulting
+tips, in parent order. Children with commits start their own replay on that
+result, and previews propagate the same predicted tips. These moves belong to
+the existing rollback journal. An empty branch in another worktree is included
+in the worktree policy even if it initially equals its planned base.
+
 ## Why not a dedicated worktree
 
 Running the rebase in a private worktree keeps the user's checkout usable, and

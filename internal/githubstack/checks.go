@@ -52,28 +52,46 @@ func (c Client) requiredChecks(ctx context.Context, numbers []int) (map[int]Chec
 		if err := aliasField(repository, fmt.Sprintf("c%d", i), "checks", &node); err != nil {
 			return nil, err
 		}
-		detail := Checks{}
-		if node.Rollup != nil {
-			detail.Complete = !node.Rollup.Contexts.PageInfo.More
-			for _, check := range node.Rollup.Contexts.Nodes {
-				if !check.Required {
-					continue
-				}
-				name := check.Name
-				if name == "" {
-					name = check.Context
-				}
-				switch {
-				case check.Conclusion == "CANCELLED":
-					detail.Cancelled = append(detail.Cancelled, name)
-				case check.State == "FAILURE" || check.State == "ERROR" || check.Conclusion == "FAILURE" || check.Conclusion == "TIMED_OUT" || check.Conclusion == "ACTION_REQUIRED" || check.Conclusion == "STARTUP_FAILURE":
-					detail.Failed = append(detail.Failed, name)
-				case check.State == "PENDING" || (check.Status != "" && check.Status != "COMPLETED"):
-					detail.Pending = append(detail.Pending, name)
-				}
-			}
+		if node.Rollup == nil {
+			result[n] = Checks{}
+			continue
 		}
-		result[n] = detail
+		result[n] = classifyChecks(node.Rollup.Contexts.Nodes, node.Rollup.Contexts.PageInfo.More)
 	}
 	return result, nil
+}
+
+// classifyChecks retains required results only. Cancellation precedes failure,
+// and failure precedes pending status; an unknown completed result says nothing.
+func classifyChecks(nodes []checkNode, more bool) Checks {
+	detail := Checks{Complete: !more}
+	for _, check := range nodes {
+		if !check.Required {
+			continue
+		}
+		name := check.Name
+		if name == "" {
+			name = check.Context
+		}
+		switch {
+		case check.Conclusion == "CANCELLED":
+			detail.Cancelled = append(detail.Cancelled, name)
+		case failedCheck(check):
+			detail.Failed = append(detail.Failed, name)
+		case check.State == "PENDING" || (check.Status != "" && check.Status != "COMPLETED"):
+			detail.Pending = append(detail.Pending, name)
+		}
+	}
+	return detail
+}
+
+func failedCheck(check checkNode) bool {
+	if check.State == "FAILURE" || check.State == "ERROR" {
+		return true
+	}
+	switch check.Conclusion {
+	case "FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
+		return true
+	}
+	return false
 }

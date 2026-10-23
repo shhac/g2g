@@ -110,42 +110,8 @@ func classify(in facts) (Step, repair.Note) {
 		return step, repair.Note{}
 	}
 
-	switch in.Step.Classify() {
-	case githubstack.StepAmbiguous:
-		return Step{}, repair.Note{
-			Reason: fmt.Sprintf("%s has %d open pull requests, so which one to merge cannot be derived", branch, in.Step.Resolution.OpenCount),
-			Ways: []repair.Step{
-				{Effect: "close the ones that are not wanted, then rerun"},
-			},
-		}
-	case githubstack.StepMissing:
-		return Step{}, repair.Note{
-			Reason: branch + " has no pull request to merge",
-			Ways: []repair.Step{
-				{Command: "g2g submit", Effect: "open one for it"},
-			},
-		}
-	case githubstack.StepSuperseded:
-		// Landing is handled above, by content, so reaching here means the
-		// work is not upstream -- and the two ways that happens want different
-		// sentences. A merged pull request with work left over is a branch
-		// somebody committed to afterwards, which is not the same event as one
-		// that was closed and abandoned, and telling them apart is the
-		// difference between "you have unpublished work" and "you have none".
-		if in.Step.Merged() {
-			return Step{}, repair.Note{
-				Reason: fmt.Sprintf("%s merged, but %s carries work that is not in %s", pullRequest(branch, in.Step.Resolution.Latest.Number), branch, in.Step.ExpectedBase),
-				Ways: []repair.Step{
-					{Command: "g2g submit", Effect: "open a pull request for what is left"},
-				},
-			}
-		}
-		return Step{}, repair.Note{
-			Reason: branch + " has no open pull request; the last one was closed without merging",
-			Ways: []repair.Step{
-				{Command: "g2g submit", Effect: "open a replacement"},
-			},
-		}
+	if note := resolutionRefusal(in); note.Reason != "" {
+		return Step{}, note
 	}
 
 	open := in.Step.Resolution.Open
@@ -163,11 +129,67 @@ func classify(in facts) (Step, repair.Note) {
 		return step, repair.Note{}
 	}
 
-	if in.State.Draft {
-		return Step{}, repair.Note{
-			Reason: fmt.Sprintf("%s is a draft", pullRequest(branch, open.Number)),
+	if note := readinessRefusal(in, step); note.Reason != "" {
+		return Step{}, note
+	}
+	step.Admin = in.State.StateStatus == githubstack.StatusBlocked && in.Admin
+	return step, repair.Note{}
+}
+
+// resolutionRefusal decides whether there is one actionable pull request.
+// Landed content is handled before this, and volatile readiness afterwards.
+func resolutionRefusal(in facts) repair.Note {
+	branch := in.Step.Branch
+	switch in.Step.Classify() {
+	case githubstack.StepAmbiguous:
+		return repair.Note{
+			Reason: fmt.Sprintf("%s has %d open pull requests, so which one to merge cannot be derived", branch, in.Step.Resolution.OpenCount),
 			Ways: []repair.Step{
-				{Command: fmt.Sprintf("gh pr ready %d", open.Number), Effect: "mark it ready for review"},
+				{Effect: "close the ones that are not wanted, then rerun"},
+			},
+		}
+	case githubstack.StepMissing:
+		return repair.Note{
+			Reason: branch + " has no pull request to merge",
+			Ways: []repair.Step{
+				{Command: "g2g submit", Effect: "open one for it"},
+			},
+		}
+	case githubstack.StepSuperseded:
+		// Landing is handled above, by content, so reaching here means the
+		// work is not upstream -- and the two ways that happens want different
+		// sentences. A merged pull request with work left over is a branch
+		// somebody committed to afterwards, which is not the same event as one
+		// that was closed and abandoned, and telling them apart is the
+		// difference between "you have unpublished work" and "you have none".
+		if in.Step.Merged() {
+			return repair.Note{
+				Reason: fmt.Sprintf("%s merged, but %s carries work that is not in %s", pullRequest(branch, in.Step.Resolution.Latest.Number), branch, in.Step.ExpectedBase),
+				Ways: []repair.Step{
+					{Command: "g2g submit", Effect: "open a pull request for what is left"},
+				},
+			}
+		}
+		return repair.Note{
+			Reason: branch + " has no open pull request; the last one was closed without merging",
+			Ways: []repair.Step{
+				{Command: "g2g submit", Effect: "open a replacement"},
+			},
+		}
+	}
+
+	return repair.Note{}
+}
+
+// readinessRefusal keeps draft, conflict, checks, review and protection in their
+// established priority. Existing pending requests have already been handled.
+func readinessRefusal(in facts, step Step) repair.Note {
+	branch := in.Step.Branch
+	if in.State.Draft {
+		return repair.Note{
+			Reason: fmt.Sprintf("%s is a draft", pullRequest(branch, step.Number)),
+			Ways: []repair.Step{
+				{Command: fmt.Sprintf("gh pr ready %d", step.Number), Effect: "mark it ready for review"},
 			},
 		}
 	}
@@ -179,8 +201,8 @@ func classify(in facts) (Step, repair.Note) {
 	// reliable signal and mergeability is derived from it, so the head is what
 	// decides whether to read it at all.
 	if in.State.Mergeable == githubstack.MergeableConflicting && in.State.HeadOID == in.Tip {
-		return Step{}, repair.Note{
-			Reason: fmt.Sprintf("%s conflicts with its base", pullRequest(branch, open.Number)),
+		return repair.Note{
+			Reason: fmt.Sprintf("%s conflicts with its base", pullRequest(branch, step.Number)),
 			Ways: []repair.Step{
 				{Command: "g2g pull", Effect: "bring the stack up to date and replay it"},
 			},
@@ -191,32 +213,31 @@ func classify(in facts) (Step, repair.Note) {
 	// bypasses both, and someone reaching for it to get past restarted checks
 	// should not silently also get past a review nobody gave.
 	if in.Queue && in.State.HeadOID == in.Tip && in.State.Base == step.Base && (len(in.State.Checks.Failed) != 0 || len(in.State.Checks.Cancelled) != 0) {
-		return Step{}, repair.Note{Reason: checkReason(branch, open.Number, in.State.Checks), Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect and fix the required checks before requesting a merge"}}}
+		return repair.Note{Reason: checkReason(branch, step.Number, in.State.Checks), Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", step.Number), Effect: "inspect and fix the required checks before requesting a merge"}}}
 	}
 	if requiresReview(in.State) && !in.Admin {
 		ways := []repair.Step{{Effect: "get it approved"}}
 		if !in.Queue {
 			ways = append(ways, repair.Step{Command: "g2g land --admin", Effect: "merge without an approval"})
 		}
-		return Step{}, repair.Note{
-			Reason: fmt.Sprintf("%s is not approved (%s)", pullRequest(branch, open.Number), reviewWord(in.State.Review)),
+		return repair.Note{
+			Reason: fmt.Sprintf("%s is not approved (%s)", pullRequest(branch, step.Number), reviewWord(in.State.Review)),
 			Ways:   ways,
 		}
 	}
 	blocked := in.State.StateStatus == githubstack.StatusBlocked
 	if blocked && in.Queue && !in.QueueAutoMerge {
-		return Step{}, repair.Note{Reason: checkReason(branch, open.Number, in.State.Checks) + "; this repository disables auto-merge, so queue prerequisites must pass before enrollment", Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect requirements, then rerun when they pass"}}}
+		return repair.Note{Reason: checkReason(branch, step.Number, in.State.Checks) + "; this repository disables auto-merge, so queue prerequisites must pass before enrollment", Ways: []repair.Step{{Command: fmt.Sprintf("gh pr checks %d", step.Number), Effect: "inspect requirements, then rerun when they pass"}}}
 	}
 	if blocked && !in.Admin && !in.Queue {
-		return Step{}, repair.Note{
-			Reason: checkReason(branch, open.Number, in.State.Checks),
+		return repair.Note{
+			Reason: checkReason(branch, step.Number, in.State.Checks),
 			Ways: []repair.Step{
-				{Command: fmt.Sprintf("gh pr checks %d", open.Number), Effect: "inspect the required checks and protection requirements"},
+				{Command: fmt.Sprintf("gh pr checks %d", step.Number), Effect: "inspect the required checks and protection requirements"},
 			},
 		}
 	}
-	step.Admin = blocked && in.Admin
-	return step, repair.Note{}
+	return repair.Note{}
 }
 
 // requiresReview reports a pull request whose repository asked for a review it

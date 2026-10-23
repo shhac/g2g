@@ -184,30 +184,31 @@ func (c Client) Mergeability(ctx context.Context, numbers []int, trunk ...string
 		return Mergeability{}, repositoryError(err, output)
 	}
 	result, err := parseMergeability(output, numbers)
-	if err == nil {
-		var blocked []int
-		for _, number := range numbers {
-			if result.States[number].StateStatus == StatusBlocked {
-				blocked = append(blocked, number)
-			}
-		}
-		if len(blocked) != 0 {
-			checks, checkErr := c.requiredChecks(ctx, blocked)
-			if checkErr == nil {
-				for number, detail := range checks {
-					state := result.States[number]
-					state.Checks = detail
-					result.States[number] = state
-				}
-			}
-			// Details explain a refusal; failure to read them must never invent
-			// a passing or running check. The protection refusal remains unknown.
+	if err != nil {
+		return result, err
+	}
+	var blocked []int
+	for _, number := range numbers {
+		if result.States[number].StateStatus == StatusBlocked {
+			blocked = append(blocked, number)
 		}
 	}
-	if err == nil && c.Observations != nil {
+	if len(blocked) != 0 {
+		checks, checkErr := c.requiredChecks(ctx, blocked)
+		if checkErr == nil {
+			for number, detail := range checks {
+				state := result.States[number]
+				state.Checks = detail
+				result.States[number] = state
+			}
+		}
+		// Details explain a refusal; failure to read them must never invent
+		// a passing or running check. The protection refusal remains unknown.
+	}
+	if c.Observations != nil {
 		c.observationError(ctx, c.Observations.ObserveStates(ctx, result.States))
 	}
-	return result, err
+	return result, nil
 }
 
 // mergeabilityQuery batches one aliased lookup per pull request number.

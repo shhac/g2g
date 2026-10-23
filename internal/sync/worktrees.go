@@ -26,6 +26,26 @@ type heldDecision struct {
 	refusal   repair.Note
 }
 
+// collectWithWorktrees decides this pull's own moves before planning replay.
+// A left branch fixes the position anything above it is measured against, so
+// collection is repeated once with those branches held where they are.
+func (s Service) collectWithWorktrees(ctx context.Context, c collecting, plan Plan) (collected, heldDecision, error) {
+	found, err := s.collect(ctx, c)
+	if err != nil {
+		return collected{}, heldDecision{}, err
+	}
+	// A failure to ask is not a refusal: a pull that was safe before the
+	// question existed stays as safe without an answer.
+	held, _ := worktree.Read(ctx, s.Git, plan.Policy, append(moves(plan, found), stuckBranches(found)...))
+	decided := decideHeld(plan, found, held, c.branches)
+	if decided.refusal.Reason != "" || len(decided.fixed) == 0 {
+		return found, decided, nil
+	}
+	c.fixed = decided.fixed
+	found, err = s.collect(ctx, c)
+	return found, decided, err
+}
+
 // moves are the branches a pull moves itself: the base it advances and the
 // branches it collects.
 func moves(plan Plan, found collected) []string {

@@ -137,27 +137,15 @@ func (s Service) plan(ctx context.Context, selection graph.Selection, remote str
 		command: command, takeCommand: command + " --take " + string(SidePublished),
 		latest: latest,
 	}
-	found, err := s.collect(ctx, collecting)
+	found, decided, err := s.collectWithWorktrees(ctx, collecting, plan)
 	if err != nil {
 		return Plan{}, err
 	}
-	// A failure to ask is not a refusal: a pull that was safe before the
-	// question existed stays as safe without an answer.
-	held, _ := worktree.Read(ctx, s.Git, worktrees, append(moves(plan, found), stuckBranches(found)...))
-	decided := decideHeld(plan, found, held, discovery.Branches)
 	if decided.refusal.Reason != "" {
 		return plan.refused(decided.refusal), nil
 	}
 	if decided.trunkLeft {
 		plan.Advance, plan.Supersede = false, false
-	}
-	if len(decided.fixed) != 0 {
-		// Asked again with the left branches fixed, so what sits on them is
-		// decided against where they will actually be.
-		collecting.fixed = decided.fixed
-		if found, err = s.collect(ctx, collecting); err != nil {
-			return Plan{}, err
-		}
 	}
 	plan.Worktrees = decided.outcome
 	plan.Commits = syncpoint.Grouped(found.commits)

@@ -41,15 +41,7 @@ path. A fork is valid g2g structure, but it must be narrowed to a linear path
 before GitHub native-stack operations can act on it. A path with fewer than two pull-request-backed
 branches is a successful no-op because `gh stack link` cannot accept it.
 
-## Current entry points
-
-For new local structure, begin with `g2g adopt --trunk <root> --apply` when g2g
-cannot infer the root, then inspect it with `g2g status`, or `g2g doctor` for
-only what needs putting right. Use `restack`, `pull`, and `prune` to maintain
-the recorded forest. Use `push`, `submit`, `land`, and `g2g github link`,
-`retarget` and `unlink` when projecting or publishing an eligible linear path
-to GitHub. Use `g2g graphite adopt`, `g2g graphite mirror`, or `--from graphite`
-only when Graphite is part of the repository's existing workflow.
+## Where to look now
 
 The Graphite display grammar remains a compatibility boundary; see
 [graphite CLI contract](graphite-cli-contract.md). This document intentionally

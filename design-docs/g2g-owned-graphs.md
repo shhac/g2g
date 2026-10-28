@@ -388,7 +388,7 @@ the user's working tree so it can be resolved, then resumed or aborted through
 g2g's journal. [restack](restack.md) describes those boundaries.
 
 GitHub native stacks remain linear. A fork is valid local structure but must be
-narrowed to a path before `github link`, `submit`, `push`, or
+narrowed to a path before `github link`, `submit`, `land`, or
 `github retarget` can project it. `graphite mirror` is the sole
 Graphite-writing command and only makes a configured Graphite repository agree
 with the local forest; all other Graphite use is read-only.

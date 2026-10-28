@@ -1,7 +1,7 @@
 # Land
 
-**Status:** direct descent introduced in v0.30.0; merge queue support added by
-[the feedback plan](feedback-and-merge-queues.md). The publishing decisions were each
+**Status:** direct descent introduced in v0.30.0; merge queue support added
+later (see [GitHub merge queues](#github-merge-queues)). The publishing decisions were each
 wrong first and were corrected by running the thing against real Git; where an
 observation decided the design it is noted.
 
@@ -433,7 +433,9 @@ establish a duplicate run or authorize automatically rerunning it.
 
 Waiting for CI on the direct-merge path. Third-party merge queues. Landing a
 forked selection. Undoing a descent: a merge cannot be taken back, and
-pretending otherwise would be dishonest.
+pretending otherwise would be dishonest. A warning that a commit hook is
+installed, considered for readiness: a hook file does not prove the checks it
+names ran.
 
 Landing without replaying what sits above, so that a pull request keeps the
 head its reviewers saw until a later merge. It was considered and turned down:

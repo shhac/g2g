@@ -172,10 +172,10 @@ result without mutating anything.
 
 ## Two engines
 
-| | `git replay` | `git rebase --update-refs` |
+| | `git replay` | `git rebase --onto`, per branch |
 |---|---|---|
 | Touches worktree/HEAD | never | yes |
-| Whole stack in one call | yes, atomically | yes, per linear path |
+| Whole stack in one call | yes, atomically | no, one branch at a time |
 | Conflict | exit 1, **no ref moves**, no state to clean | stops, resumable |
 | Resolvable | no `--continue` | `--continue` / `--abort` |
 | Preview without mutating | `--ref-action=print` | — |
@@ -298,7 +298,7 @@ on a rewritten branch and the new tree differs, the index is left stale.
 `git read-tree -m -u` brings it from the recorded old tip to the new one;
 `git reset --keep HEAD` cannot do this once HEAD already names the moved ref.
 
-**Apply, conflict predicted** uses `git rebase --update-refs` **in the user's
+**Apply, conflict predicted** uses `git rebase --onto`, one branch at a time, **in the user's
 own worktree**. This is a deliberate renegotiation of the no-checkout
 invariant: resolving a conflict requires a working tree the user can edit with
 their own tools, and that is their checkout. The alternative was rejected on
@@ -336,13 +336,12 @@ in a directory the user did not choose, without their build tooling.
 ## Resumable state
 
 `git rebase` already journals one invocation. `.git/rebase-merge/` holds the
-todo list, `onto`, `orig-head`, `head-name`, and an `update-refs` file of
-`(ref, old, new)` triples — and **`--abort` restores every branch that
-invocation touched**, verified. Another process sees the interrupted state
+todo list, `onto`, `orig-head` and `head-name` — and **`--abort` restores the
+branch that invocation was rebasing**, verified. Another process sees the interrupted state
 through `git status`.
 
 So g2g's journal only needs what spans *several* invocations, which is a tree
-(one rebase per root-to-leaf path). At `$GIT_COMMON_DIR/g2g/restack.json`:
+(one rebase per branch). At `$GIT_COMMON_DIR/g2g/restack.json`:
 
 - the `--onto` for the in-flight rebase
 - the branch the user was on, to restore afterwards

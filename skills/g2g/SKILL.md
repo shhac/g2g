@@ -405,8 +405,8 @@ description: |
   movement, not structural drift. Validate against Git at read time instead.
 - `restack` is the only code permitted to rewrite history, and only through
   `internal/git`'s two engines. `git replay` previews exact object ids without
-  moving a ref and applies cleanly without touching the checkout; `git rebase
-  --update-refs` is used only once a preview has established the rewrite
+  moving a ref and applies cleanly without touching the checkout; a per-branch
+  `git rebase --onto` is used only once a preview has established the rewrite
   conflicts, and it runs in the user's own working tree because resolving a
   conflict needs a tree they can edit. Do not move it to a private worktree:
   git refuses to check out a branch already checked out elsewhere, and the
@@ -562,6 +562,15 @@ description: |
 
 ## Use safely
 
+- After command discovery, use the resolved command's `--help` to inspect the
+  current interface (for example, `g2g github --help` after a Homebrew
+  install).
+- Start with `g2g status` (offline, one stack) or `g2g doctor` (offline, every
+  stack, only what is wrong); reach for `g2g github status` when the question
+  is about pull requests.
+- Read the preview before any `--apply`. `pull` never changes GitHub; the
+  commands that do are `submit`, `land` and everything under `g2g github`
+  except `status` and `adopt`.
 - For a person who wants an editor workflow, `g2g submit --edit` opens one
   temporary JSON document, not a buffer per PR. It retains the document on all
   failures and after preview; successful `--edit --apply` cleans it up unless
@@ -620,7 +629,7 @@ description: |
   is to feed the next one: `Inspect` is a single `gh api graphql` naming the
   repository through `{owner}`/`{repo}`, and revisions resolve through
   `git.Client.ResolveAll` in one process.
-- Per-branch Git reads go through `link.eachBranch`, which runs them several at
+- Per-branch Git reads go through `parallel.Each`, which runs them several at
   a time and cancels the rest on the first failure. Write results into a slice
   index the read was given, never a shared map, and keep any fake it can reach
   safe to call concurrently. `go test -race ./internal/link ./internal/cli`.
@@ -650,13 +659,3 @@ description: |
   `--stack-number` to override, previews first, and only `--apply` invokes
   `gh stack unstack`. It must never alter Graphite, branches, PR content,
   reviewers, or PR lifecycle.
-
-- After command discovery, use the resolved command's `--help` to inspect the
-  current interface (for example, `g2g github --help` after a Homebrew
-  install).
-- Start with `g2g status` (offline, one stack) or `g2g doctor` (offline, every
-  stack, only what is wrong); reach for `g2g github status` when the question
-  is about pull requests.
-- Read the preview before any `--apply`. `pull` never changes GitHub; the
-  commands that do are `submit`, `land` and everything under `g2g github`
-  except `status` and `adopt`.

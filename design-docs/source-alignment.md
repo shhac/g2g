@@ -296,13 +296,6 @@ about which store is losing the edge.
 
 ## What this costs elsewhere
 
-**The read-only invariant changes.** g2g's entire Graphite surface today is
-two read commands, `gt --version` and `gt log short --all --reverse
---no-interactive`. `mirror` adds `gt track` and, under `--prune`, `gt untrack`.
-The claim that g2g "reads Graphite and never writes it back" becomes false and
-must be rewritten here and in the repository skill, and the tests asserting no
-`gt` invocation need re-scoping to the commands that legitimately make none.
-
 **The enrolment gate needs no exception after all.** The proposal expected one:
 `mirror` is explicit consent to write Graphite, so the gate would not apply.
 Building it showed the exception is unnecessary and worse. A mirror has to read
@@ -356,25 +349,12 @@ just added in `gt`". It would also be the first stored cross-tool state in a
 design that has deliberately avoided any. g2g wins, the preview names every
 edge it will overwrite, and that is enough.
 
-## Milestones
-
-All four are built, in this order and for these reasons:
-
-1. **`--from`.** Smallest, independently useful, and a prerequisite for
-   trusting either of the others: it is the only way to see both views. Pure
-   read path, no new external command.
-2. **The gated Graphite write surface**, then **`mirror` without `--prune`**.
-3. **`import`.** Needs fork-point derivation and the conflict refusal, and is
-   the one that shifts authority, so it went after a `--from` view existed to
-   judge what it is about to claim.
-4. **`mirror --prune`.** Separable, and the only destructive piece.
-
 ## Deferred
 
-**Handing a stack back to Graphite.** Today that is `untrack` per branch across
-the path, which drops the fork points and so ends `restack` for those branches.
-The mechanism is right and the affordance is missing; if it is worth one
-command it is a path-scoped `untrack`, not a stored authority field.
+**Handing a stack back to Graphite.** That is `untrack --scope subtree` from
+the bottom of what is handed back, which drops the fork points and so ends
+`restack` for those branches. It stays a scoped `untrack`, not a stored
+authority field.
 
 **Mirroring to GitHub.** Closed while native stacks are linear, not deferred
 pending effort.

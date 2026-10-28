@@ -1403,6 +1403,11 @@ g2g graphite adopt --apply
 **Neither command ever removes a branch from g2g's graph.** This keeps the two
 records in step; it does not hand ownership over.
 
+After a replay, `graphite mirror` restores Graphite's parent edges but not its
+record that each branch was submitted, and `gt sync` then offers, defaulting to yes, to overwrite each local
+branch with its remote version: the pre-replay commit, which would orphan
+everything above it. Answer no.
+
 `graphite mirror` writes only Graphite, and is the only command that does. Its `--prune`
 is opt-in, because "this branch's work has landed" is certain and "Graphite
 knows a branch we do not" is not — it is just as likely to be one you tracked
@@ -1667,12 +1672,14 @@ and race flags.
 | `internal/graph` | the forest g2g owns — model, ancestry discovery, and the store; depends on Git alone |
 | `internal/shape` | the scope vocabulary and forest traversal every record shares; depends on nothing |
 | `internal/stack` | source resolution — which record describes a branch — and selection within it |
-| `internal/graphite` | strict, compatibility-gated read-only Graphite display parser |
+| `internal/graphite` | strict, compatibility-gated Graphite display parser, and the two `gt` writes `graphite mirror` makes |
 | `internal/git`, `internal/githubstack` | narrow repository, publication, and PR seams |
 | `internal/create`, `internal/navigate` | starting a branch on a recorded one, and moving the checkout |
 | `internal/reshape` | deleting, folding and renaming a recorded branch; moves refs, never replays |
 | `internal/restack` | the only history-rewriting service, with the journal that makes it resumable |
 | `internal/sync`, `internal/prune` | `pull`'s fetch, fast-forward and replay; forgetting landed branches |
+| `internal/syncpoint` | where this clone and the remote last agreed on each branch, read and recorded for pull and push |
+| `internal/worktree` | what to do about a branch another worktree holds: follow, leave or refuse |
 | `internal/landed` | the one by-content "has this landed" check every caller shares |
 | `internal/push`, `internal/submit` | atomic stack-ref publication; spec-driven pull request creation |
 | `internal/retarget` | moving pull request bases to match the resolved stack |
@@ -1681,6 +1688,7 @@ and race flags.
 | `internal/land` | taking a stack down onto its trunk by composing push, pull and prune |
 | `internal/align` | `graphite mirror` and `graphite adopt`, keeping g2g's graph and Graphite's in step, and `github adopt`, adopting a stack from its pull requests |
 | `internal/repair` | a refusal's reason and its ways out, shared by every package that refuses |
+| `internal/words` | agreeing with a count and listing names as a subject |
 | `internal/parallel` | bounded concurrency for independent per-branch reads |
 | `internal/diagnostic` | opt-in, stderr-only `--debug` events and bounded, redacted output |
 | `internal/subprocess` | the boundary for `git`, `gt`, and `gh` invocations |

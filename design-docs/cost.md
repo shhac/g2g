@@ -123,6 +123,14 @@ Known, measured, and left for a change of its own:
   `base...branch` includes the parent's old commits. Bounding the parent's side
   at both versions of the grandparent, as `Inequivalent` does, would make it
   cost the branch's own commits.
+- **A drifted branch on a trunk asks one more ancestry question.** Telling a
+  trunk that lags its upstream from one that moved on
+  (`graph.AheadOnUpstream`, in `classify` and in restack's steps) costs one
+  `merge-base --is-ancestor` of the trunk's tip against the fork point, per
+  drifted branch whose parent is a trunk: one per stack after the trunk
+  advances. Only the lagging case, which is rare, also reads the upstream
+  (`for-each-ref`) and asks a second. Answering every stack root on a trunk
+  from one `merge-base --independent`-style call would make it one process.
 - **A squash check that conflicts** walks back through the base looking for
   where the branch was taken in, up to 32 merges, a process each. `merge-tree
   --stdin` would take them all in one.

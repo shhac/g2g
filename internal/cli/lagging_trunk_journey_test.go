@@ -90,9 +90,9 @@ func TestStatusReadsAStartOnTheRemoteTrunkAsALaggingTrunk(t *testing.T) {
 // stack that is genuinely stale still settles in the same restack.
 func TestRestackSettlesTheRestOfAStackAroundALaggingTrunk(t *testing.T) {
 	l := newLaggingTrunk(t)
-	main, pinned := l.tip(l.Local, "main"), l.tip(l.fresh, l.pinned)
+	main := l.tip(l.Local, "main")
 	l.commit(l.fresh, l.pinned, "pinned-more.txt", "pinned")
-	pinned = l.tip(l.fresh, l.pinned)
+	pinned := l.tip(l.fresh, l.pinned)
 
 	mustRun(t, "restack", "--branch", "main", "--scope", "stack", "--apply")
 

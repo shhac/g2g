@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/shape"
@@ -54,7 +55,10 @@ type fakeGitHub struct {
 	// one, as GitHub refuses one alias of a document and applies the rest;
 	// whole fails every write of a call, as a request that never arrived does.
 	failOn int
-	whole  error
+	// failEach refuses the write at that position within every request, as
+	// a refusal that is not going away does.
+	failEach int
+	whole    error
 }
 
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
@@ -77,6 +81,7 @@ func (f *fakeGitHub) Conversations(_ context.Context, numbers []int, marker stri
 
 func (f *fakeGitHub) WriteComments(_ context.Context, writes []githubstack.CommentWrite) ([]error, error) {
 	f.requests++
+	first := len(f.sent)
 	outcomes := make([]error, len(writes))
 	for index, write := range writes {
 		what := "add " + write.Subject
@@ -88,6 +93,8 @@ func (f *fakeGitHub) WriteComments(_ context.Context, writes []githubstack.Comme
 		case f.whole != nil:
 			outcomes[index] = f.whole
 		case f.failOn != 0 && len(f.sent) == f.failOn:
+			outcomes[index] = errors.New("synthetic write failure")
+		case f.failEach != 0 && len(f.sent)-first == f.failEach:
 			outcomes[index] = errors.New("synthetic write failure")
 		}
 	}
@@ -565,7 +572,7 @@ func TestPlanNamesTheAmbiguousBranchInItsRefusal(t *testing.T) {
 func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
 	github := chainGitHub()
 	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
-	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github}
+	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github, pause: instant}
 	_, err := service.Keep(context.Background(), stack.Selection{})
 	var notKept *NotKept
 	if !errors.As(err, &notKept) || len(github.sent) != 0 {
@@ -573,7 +580,7 @@ func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
 	}
 
 	github = chainGitHub()
-	github.failOn = 3
+	github.failEach = 3
 	service.GitHub = github
 	_, err = service.Keep(context.Background(), stack.Selection{})
 	var stopped *Stopped
@@ -581,6 +588,35 @@ func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
 		t.Fatalf("Keep() = %v, want NotKept around a stop after #11 and #12", err)
 	}
 }
+
+// A failure moments after a pull request opened is often GitHub not yet
+// answering for it, and the same run a little later succeeds. Keep tries once
+// more, planning again so only what is missing is written; a plan that
+// refuses is not retried.
+func TestKeepTriesAFailureOnceMore(t *testing.T) {
+	github := chainGitHub()
+	github.failOn = 3
+	waits := 0
+	service := Service{Selector: fakeSelector{forest: chain(), current: "synthetic-one"}, GitHub: github, pause: func(context.Context, time.Duration) error {
+		waits++
+		return nil
+	}}
+	if _, err := service.Keep(context.Background(), stack.Selection{}); err != nil {
+		t.Fatalf("Keep() = %v, want the second attempt to keep them", err)
+	}
+	if waits != 1 || github.requests != 2 {
+		t.Errorf("waited %d times over %d requests, want once over two", waits, github.requests)
+	}
+
+	github = chainGitHub()
+	github.prs = append(github.prs, pr(19, "synthetic-two", "synthetic-one", "OPEN"))
+	service.GitHub, waits = github, 0
+	if _, err := service.Keep(context.Background(), stack.Selection{}); err == nil || waits != 0 {
+		t.Errorf("Keep() = %v after %d waits, want a refusal not retried", err, waits)
+	}
+}
+
+func instant(context.Context, time.Duration) error { return nil }
 
 // A run that writes some comments and not others reports both, because those
 // written stay written. One that writes none is an ordinary failure, whether

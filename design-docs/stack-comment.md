@@ -265,6 +265,15 @@ so the run exits `3` and names `g2g github comment --apply`, aimed with
 `--branch` when the run was. `land` names it bare, because the branch it was
 asked to land may have merged and gone.
 
+A failure is tried once more, after three seconds. A pull request opened or
+merged a moment ago is one GitHub can fail to answer for: a `submit` that
+opened one reported the comments not kept, and the same `github comment`
+moments later kept them. The second attempt plans again from the comments'
+markers, so it writes only what is still missing; a blocked plan is not
+retried, because it would refuse the same way. The report's last line says on
+its own that only the comments were not kept, because it is often the only
+line read: the one before it, with the reason, was cut off by `tail -1`.
+
 After every branch of a stack has landed there is nothing left above to keep a
 comment on, so the merged pull requests keep the last comment they had.
 

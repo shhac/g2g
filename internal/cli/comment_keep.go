@@ -41,6 +41,9 @@ func commentsNotKept(cmd *cobra.Command, err error, retry string, p Presentation
 		if err := prose(cmd.OutOrStdout(), p, "\n"+p.problem("Done, but "+notKept.Error()+".")); err != nil {
 			return err
 		}
-		return writeWhatStands(cmd, p, "Everything else stands. Run "+runnable(retry)+" to keep them.", notKept)
+		// Last, and whole on its own: it is often the only line read, and
+		// "Everything else stands" alone could not say whether the comments
+		// failed, were skipped, or were left for later.
+		return writeWhatStands(cmd, p, "Everything else stands; only the stack comments were not kept · run "+runnable(retry)+" to keep them.", notKept)
 	})
 }

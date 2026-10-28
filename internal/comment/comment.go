@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
@@ -50,6 +51,9 @@ type Service struct {
 	// Version is the g2g that writes the comments, named in their footer so a
 	// reader can tell which one drew the stack.
 	Version string
+	// pause is the clock Keep's retry waits on. Nil is the real one; a test
+	// sets one that returns at once.
+	pause func(context.Context, time.Duration) error
 }
 
 // Ready reports a service with everything it needs.

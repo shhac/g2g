@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/stack"
 )
@@ -89,18 +91,60 @@ func (s Service) Execute(ctx context.Context, plan Plan) error {
 // in its own preview, and every write is an edit of a comment this tool owns
 // or a new one on an open pull request, so nothing here is worth a second
 // confirmation. A plan that is blocked is not written, and says why.
+//
+// A failure is tried once more, after a pause. A pull request opened or merged
+// a moment ago is one GitHub can fail to answer for, and the same run moments
+// later succeeded. The second attempt plans again from the comments' own
+// markers, so it writes only what is still missing. A refusal is not retried:
+// it would refuse the same way.
 func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, error) {
+	plan, err := s.keepOnce(ctx, selection)
+	if err == nil || plan.Blocked() != "" {
+		return plan, notKept(err)
+	}
+	diagnostic.Event(ctx, "comment.keep_retry", diagnostic.Field{Key: "error", Value: err.Error()})
+	if waited := s.wait(ctx, keepRetryWait); waited != nil {
+		return plan, notKept(err)
+	}
+	plan, err = s.keepOnce(ctx, selection)
+	return plan, notKept(err)
+}
+
+// keepRetryWait is how long Keep gives GitHub before its second attempt.
+const keepRetryWait = 3 * time.Second
+
+func (s Service) keepOnce(ctx context.Context, selection stack.Selection) (Plan, error) {
 	plan, err := s.Plan(ctx, selection)
 	if err != nil {
-		return Plan{}, &NotKept{Err: err}
+		return Plan{}, err
 	}
 	if plan.Blocked() != "" {
-		return plan, &NotKept{Err: fmt.Errorf("%s", plan.Blocked())}
+		return plan, errors.New(plan.Blocked())
 	}
-	if err := s.Execute(ctx, plan); err != nil {
-		return plan, &NotKept{Err: err}
+	return plan, s.Execute(ctx, plan)
+}
+
+// wait is the pause before Keep's second attempt, which stops early when the
+// context does: the command's budget is what bounds it.
+func (s Service) wait(ctx context.Context, wait time.Duration) error {
+	if s.pause != nil {
+		return s.pause(ctx, wait)
 	}
-	return plan, nil
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func notKept(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &NotKept{Err: err}
 }
 
 // NotKept is a command that did its own work and then could not keep the

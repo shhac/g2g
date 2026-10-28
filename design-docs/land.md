@@ -106,8 +106,10 @@ on a branch about to be deleted is moved first, in that branch's cleanup,
 before the deletion (`Plan.moves`, `rehome.go`): a later step's, which its own
 merge then has nothing left to move, and a survivor outside the selection
 (`Plan.Survivors`, read in the request that already protects queued
-survivors). A move GitHub refuses keeps the branch on the remote and stops
-part-way. Only pull requests on recorded branches are found; one opened on a
+survivors). It runs before the branch is forgotten: a move GitHub refuses
+keeps the branch, on the remote and in the graph, and stops part-way naming
+the `gh pr edit` for each, so landing again finds the branch landed and
+finishes its cleanup. Forgotten first, a rerun had nothing left to tidy. Only pull requests on recorded branches are found; one opened on a
 landed branch the graph does not record is still at risk.
 
 This is the one place `land` changes what a merge will do, which is otherwise

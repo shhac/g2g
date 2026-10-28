@@ -1,6 +1,7 @@
 package land
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -115,29 +116,34 @@ func (s Service) rehome(ctx context.Context, plan Plan, step Step, changed *[]st
 		return kept(plan, step, moves, err)
 	}
 	var refused []BaseMove
-	var reasons []error
+	var first error
 	for index, outcome := range outcomes {
-		if outcome != nil {
-			refused, reasons = append(refused, moves[index]), append(reasons, outcome)
+		if outcome == nil {
+			*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", moves[index].Number, moves[index].Base))
 			continue
 		}
-		*changed = append(*changed, fmt.Sprintf("pointed #%d at %s", moves[index].Number, moves[index].Base))
+		refused = append(refused, moves[index])
+		first = cmp.Or(first, outcome)
 	}
 	if len(refused) != 0 {
-		return kept(plan, step, refused, reasons[0])
+		return kept(plan, step, refused, first)
 	}
 	return nil
 }
 
 // kept is why a landed branch was left on the remote: the pull requests on it
-// could not be moved, and the way to finish is to move them and land again.
+// could not be moved. It is still recorded, so the way to finish is to move
+// each one by hand and land again, which tidies it. The move is named exactly,
+// as the recipe names it: github retarget would aim each at the branch it is
+// recorded on, which is this one.
 func kept(plan Plan, step Step, moves []BaseMove, err error) error {
 	numbers := make([]string, 0, len(moves))
+	edits := make([]string, 0, len(moves))
 	for _, move := range moves {
 		numbers = append(numbers, fmt.Sprintf("#%d", move.Number))
+		edits = append(edits, repair.Command([]string{"gh", "pr", "edit", fmt.Sprint(move.Number), "--base", move.Base}))
 	}
 	return fmt.Errorf("could not point %s at %s (%v), so %s is kept on %s rather than closing %s · run %s, then %s",
 		words.List(numbers), plan.Trunk, err, step.Branch, plan.Options.Remote, words.Pick(len(moves), "it", "them"),
-		repair.Command([]string{"g2g", "github", "retarget", "--branch", moves[0].Head, "--apply"}),
-		plan.RetryCommand()+" --apply")
+		words.List(edits), plan.RetryCommand()+" --apply")
 }

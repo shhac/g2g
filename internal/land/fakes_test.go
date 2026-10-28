@@ -165,6 +165,8 @@ type fakeGitHub struct {
 	mergeErr   error
 	// retargetErr is GitHub refusing to move a base.
 	retargetErr error
+	// refuseMove is GitHub refusing to move these pull requests' bases alone.
+	refuseMove map[int]error
 	// settleOn runs after the first question, standing in for GitHub catching
 	// up with a push it had not yet observed.
 	settleOn func()
@@ -220,6 +222,10 @@ func (f *fakeGitHub) Retarget(_ context.Context, changes []githubstack.BaseChang
 		f.events.record(fmt.Sprintf("retarget:%d:%s", number, base))
 		if f.retargetErr != nil {
 			outcomes[position] = f.retargetErr
+			continue
+		}
+		if refused := f.refuseMove[number]; refused != nil {
+			outcomes[position] = refused
 			continue
 		}
 		known := slices.ContainsFunc(f.prs, func(pr githubstack.PullRequest) bool { return pr.Number == number && pr.ID == change.ID })

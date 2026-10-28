@@ -47,10 +47,13 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, head string, ch
 	if err != nil {
 		return err
 	}
-	if err := s.forget(ctx, plan, step.Branch); err != nil {
+	// Before forget: a move that is refused keeps the branch recorded, so
+	// rerunning land finds it landed and finishes its cleanup. Forgotten
+	// first, a rerun had nothing left to tidy and the branch stayed for good.
+	if err := s.rehome(ctx, plan, step, changed); err != nil {
 		return err
 	}
-	if err := s.rehome(ctx, plan, step, changed); err != nil {
+	if err := s.forget(ctx, plan, step.Branch); err != nil {
 		return err
 	}
 	s.remove(ctx, plan, step, head)

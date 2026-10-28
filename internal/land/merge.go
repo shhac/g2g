@@ -6,16 +6,14 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/pause"
 )
 
 // mergeReady retries only the explicit base-change refusal, at most twice.
 // Each retry waits for recomputation and rechecks approval, protection, head
 // and base. The merge itself is pinned to the head this descent published.
 func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip string, state githubstack.MergeState) error {
-	wait := s.pause
-	if wait == nil {
-		wait = pause
-	}
+	wait := pause.Or(s.pause)
 	for attempt := 1; ; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err

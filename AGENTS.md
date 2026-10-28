@@ -539,7 +539,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Thirteen things exist once and must not be reimplemented locally. Each was found as
+Fourteen things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -579,6 +579,10 @@ property the original had.
   them named `pickWord`, and two their own list join. It depends on nothing,
   so any package may use it; a join that only says "a, b, c" is a different
   sentence and stays where it is.
+- `internal/pause` — a wait that stops when its context does, behind a
+  `pause.Func` a test replaces (`pause.Or` is the real one when unset). land
+  had its own, keeping the stack comments copied it line for line, and only
+  land's copy was tested for stopping with the context.
 - `internal/worktree` — what to do about a branch another worktree holds:
   sorting held branches into follow, leave and refuse (`Policy.Split`),
   reading the holders and whether each is clean (`Read`), the refusal and its

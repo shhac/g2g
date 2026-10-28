@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -103,7 +104,7 @@ func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, err
 		return plan, notKept(err)
 	}
 	diagnostic.Event(ctx, "comment.keep_retry", diagnostic.Field{Key: "error", Value: err.Error()})
-	if waited := s.wait(ctx, keepRetryWait); waited != nil {
+	if pause.Or(s.pause)(ctx, keepRetryWait) != nil {
 		return plan, notKept(err)
 	}
 	plan, err = s.keepOnce(ctx, selection)
@@ -122,22 +123,6 @@ func (s Service) keepOnce(ctx context.Context, selection stack.Selection) (Plan,
 		return plan, errors.New(plan.Blocked())
 	}
 	return plan, s.Execute(ctx, plan)
-}
-
-// wait is the pause before Keep's second attempt, which stops early when the
-// context does: the command's budget is what bounds it.
-func (s Service) wait(ctx context.Context, wait time.Duration) error {
-	if s.pause != nil {
-		return s.pause(ctx, wait)
-	}
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 func notKept(err error) error {

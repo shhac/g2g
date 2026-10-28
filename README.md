@@ -1690,6 +1690,7 @@ and race flags.
 | `internal/repair` | a refusal's reason and its ways out, shared by every package that refuses |
 | `internal/words` | agreeing with a count and listing names as a subject |
 | `internal/parallel` | bounded concurrency for independent per-branch reads |
+| `internal/pause` | the one wait, which stops with its context and which tests replace |
 | `internal/diagnostic` | opt-in, stderr-only `--debug` events and bounded, redacted output |
 | `internal/subprocess` | the boundary for `git`, `gt`, and `gh` invocations |
 | `internal/testutil` | fake executables installed on `PATH` during tests |

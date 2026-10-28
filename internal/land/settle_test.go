@@ -160,21 +160,6 @@ func TestSettleReportsEachAttemptUnderDebug(t *testing.T) {
 	}
 }
 
-// The real pauser is what bounds a settle against the mutation budget, so a
-// context that is already done must not buy another interval.
-func TestThePauserStopsWhenTheContextDoes(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	started := time.Now()
-	if err := pause(ctx, time.Hour); err == nil {
-		t.Fatal("pause() error = nil, want the context's own")
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Errorf("pause() took %v, want to stop with the context", elapsed)
-	}
-}
-
 // A wait that has gone on for a minute is asked less often: still widening
 // from the ceiling a young wait keeps to, never past the slow one.
 func TestSettleSlowsDownOnceAWaitHasGoneOnAMinute(t *testing.T) {

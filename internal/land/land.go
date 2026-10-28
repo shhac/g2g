@@ -13,6 +13,7 @@ import (
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/stack"
@@ -81,7 +82,7 @@ type Service struct {
 
 	// pause is the clock the two waits use. Nil is the real one; a test
 	// supplies its own so the suite does not spend the wall time.
-	pause pauser
+	pause pause.Func
 }
 
 // Options are the choices a run was given.

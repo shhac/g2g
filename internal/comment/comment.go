@@ -17,10 +17,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
@@ -53,7 +53,7 @@ type Service struct {
 	Version string
 	// pause is the clock Keep's retry waits on. Nil is the real one; a test
 	// sets one that returns at once.
-	pause func(context.Context, time.Duration) error
+	pause pause.Func
 }
 
 // Ready reports a service with everything it needs.

@@ -9,6 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -33,28 +34,6 @@ const (
 // the wait, and the read is what says why.
 const diagnoseBudget = 10 * time.Second
 
-// pauser waits, or reports that the context gave up first.
-//
-// It is a parameter rather than a call to time.Sleep so that a test can drive
-// the loop without spending the wall clock the real one does. This is the
-// first thing in g2g that waits for anything, and a test that genuinely slept
-// would be the reason nobody ran it.
-type pauser func(context.Context, time.Duration) error
-
-// pause is the real wait. It stops early when the context does, because the
-// mutation budget is the only thing bounding a settle and a timer that
-// ignored it would outlive the command.
-func pause(ctx context.Context, wait time.Duration) error {
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
 // NotSettled reports a wait that ran out before GitHub agreed.
 //
 // It names what was being waited for rather than saying "timed out", because
@@ -77,10 +56,8 @@ func (e *NotSettled) Error() string {
 // a push it has had a moment to see, a merge it performed itself -- and a loop
 // that slept first would add its whole interval to every branch in the stack
 // for nothing.
-func settle(ctx context.Context, wait pauser, what string, ask func(context.Context) (bool, error)) error {
-	if wait == nil {
-		wait = pause
-	}
+func settle(ctx context.Context, wait pause.Func, what string, ask func(context.Context) (bool, error)) error {
+	wait = pause.Or(wait)
 	interval, waited := settleFirst, time.Duration(0)
 	for attempts := 1; ; attempts++ {
 		settled, err := ask(ctx)

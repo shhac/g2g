@@ -9,6 +9,39 @@ type MergeBases interface {
 	MergeBase(ctx context.Context, one, other string) (string, error)
 }
 
+// Upstream is the optional part of a Git reader that says where a trunk's
+// remote was when last fetched or pushed, from local refs alone.
+type Upstream interface {
+	KnownParent(ctx context.Context, trunk string) (string, error)
+}
+
+// AheadOnUpstream reports a branch on a trunk whose fork point is past the
+// trunk's local tip and on the trunk's known upstream: it started where the
+// remote's trunk is, as create --at starts one, and the local trunk only lags
+// behind it. Nothing moved back, so the branch is not stale, and replaying it
+// onto the local tip would take out trunk commits the remote has. A deliberate
+// rewind of a trunk is asked for by name, with restack --onto.
+//
+// A reader that cannot say where the upstream is answers no, which is how
+// every such branch read before this existed. The ancestry of the local tip is
+// asked first because it is false for every trunk that simply moved on, so the
+// ordinary case costs one process.
+func AheadOnUpstream(ctx context.Context, git ordering, g Graph, parent, tip, fork string) (bool, error) {
+	upstream, ok := git.(Upstream)
+	if !ok || g.Tracked(parent) || fork == tip {
+		return false, nil
+	}
+	ahead, err := git.IsAncestor(ctx, tip, fork)
+	if err != nil || !ahead {
+		return false, err
+	}
+	known, err := upstream.KnownParent(ctx, parent)
+	if err != nil || known == "" {
+		return false, err
+	}
+	return git.IsAncestor(ctx, fork, known)
+}
+
 // ordering answers whether one commit is an ancestor of another.
 type ordering interface {
 	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)

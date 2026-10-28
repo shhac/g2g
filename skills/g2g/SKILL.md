@@ -358,6 +358,12 @@ description: |
   ancestor; arbitrary feature descendants are refused. Parent-tip starts retain
   ordinary create behavior. Create at the pinned OID, verify PlanTrack's fork,
   and roll back to the original HEAD, never to a different start revision.
+- A branch whose fork point is past its trunk's local tip and on the trunk's
+  known upstream (`graph.AheadOnUpstream`) sits on a trunk that lags; it is not
+  stale and nothing moved back. `status` advises `pull`, and `restack` and a
+  `pull` that leaves a held trunk give it no step while still replaying the
+  rest of the stack. A deliberately rewound trunk is restacked onto by name,
+  `restack --branch <b> --onto <trunk>`, per run and never stored.
 - `up`/`down`/`top`/`bottom` are the only commands that act without `--apply`,
   and that exception is deliberate: moving the checkout changes no ref, record
   or remote, and `git switch` refuses to clobber local changes. Do not add a

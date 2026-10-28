@@ -391,3 +391,30 @@ Final verification passed on the combined source:
 
 The full/race log is `/tmp/g2g-feedback-fixes-full-race.log`; the executable for
 local trials is `/tmp/g2g-feedback-fixed`. No changes were pushed or released.
+
+## A lagging trunk read as moved back
+
+Reported after `create --at origin/main` in a linked worktree whose local trunk
+was behind: `status` called the trunk moved back and offered
+`restack --absorb` or a restack that drops the trunk's commits. Reproduced on
+`ffe83be` with synthetic branches, a local bare remote and the trunk held,
+with staged changes, by the main checkout. There it went further: `pull`
+said it left the trunk and then replayed the branch backwards onto it,
+dropping the remote's trunk commits, stopped part-way and left the linked
+checkout with staged changes nobody made. With the main checkout clean, `pull`
+advanced the trunk and nothing went wrong.
+
+- `graph.AheadOnUpstream` reads a fork point past a trunk's local tip, and
+  on its known upstream, as a lagging trunk rather than a stale branch.
+  `classify` calls it aligned, and `restack` (and so `pull`) gives it no step,
+  so the rest of a stack still settles around it. `status` names the lag and
+  advises `pull`. A deliberate trunk rewind is `restack --onto <trunk>`, per
+  run, rather than a stored per-trunk setting that would outlive the rewind.
+- The part-way stop was `read-tree -m -u` refusing stale stat data after the
+  ref had moved. `SwitchTree` now refreshes the index first, as `git switch`
+  does and as `SwitchTreeIn` already did, through one shared implementation.
+
+Coverage: `internal/cli/lagging_trunk_journey_test.go` (status, a multi-branch
+restack around the lagging branch, pull leaving a held trunk, the `--onto`
+rewind) and `TestSwitchTreeBringsAlongACheckoutWithStaleStatData`. The three
+behavioural journeys and the stat test fail on the previous code.

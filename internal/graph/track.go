@@ -219,9 +219,7 @@ func (s Service) initialFork(ctx context.Context, forks MergeBases, parent, targ
 // remote's copy of the trunk is the local one moved on, which is a local trunk
 // that was stale when the branch was tracked.
 func (s Service) upstreamFork(ctx context.Context, forks MergeBases, parent, target, fork string) (string, error) {
-	known, ok := s.Git.(interface {
-		KnownParent(context.Context, string) (string, error)
-	})
+	known, ok := s.Git.(Upstream)
 	if !ok {
 		return fork, nil
 	}

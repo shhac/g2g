@@ -54,6 +54,9 @@ func readPublished(ctx context.Context, published push.Known, remote string, nam
 // pull there would put those commits back on it and undo the move; what the
 // person has to decide is whether the child keeps them, which is restack's
 // --absorb.
+//
+// A trunk is asked too, and means something else: its child started on the
+// remote's trunk and the local copy lags, so publishedNotes advises a pull.
 func carried(ctx context.Context, published push.Known, discovery graph.Discovery, publishing map[string]push.Publication, tips map[string]string) error {
 	for branch, publication := range publishing {
 		if publication.Standing != push.Behind {
@@ -165,6 +168,14 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 			diverged = append(diverged, node.Branch)
 		case publication.Standing == push.Restoring:
 			restoring = append(restoring, node.Branch)
+		// A trunk behind its remote lags it; it was not moved back. Folding
+		// the remote's trunk commits into the child is the wrong offer, and
+		// a trunk rewound on purpose is restacked onto by name.
+		case publication.CarriedBy != "" && node.Trunk:
+			view = view.note(fmt.Sprintf("%s is %s behind %s, where %s already starts · run %s to bring %s up to it, or %s if %s was rewound on purpose.",
+				node.Branch, words.Count(publication.Theirs, "commit", "commits"), remote, publication.CarriedBy,
+				runnable(acted.aimedOr(pullCommand)), node.Branch,
+				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy)+" --onto "+repair.Quote(node.Branch)), node.Branch), severityWarn)
 		case publication.CarriedBy != "":
 			view = view.note(fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
 				node.Branch, words.Count(publication.Theirs, "commit", "commits"), publication.CarriedBy,

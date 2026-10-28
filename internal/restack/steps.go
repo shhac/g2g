@@ -47,6 +47,15 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
 			return nil, err
 		}
+		if !onto.Reparents() && parent == edge.Parent {
+			lagging, err := graph.AheadOnUpstream(ctx, s.Git, discovery.Graph, parent, base, resolvedFork)
+			if err != nil {
+				return nil, err
+			}
+			if lagging {
+				continue
+			}
+		}
 		resolvedFork, advanced, err := s.laterFork(ctx, onto, base, head, resolvedFork)
 		if err != nil {
 			return nil, err

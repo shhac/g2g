@@ -132,6 +132,31 @@ default one.
 A preview must always name dropped orphans. Silently changing what a branch
 contains is the one thing this command must never do.
 
+### A trunk that lags dropped nothing
+
+A fork point past a trunk's local tip looks exactly like a parent that dropped
+commits, and usually is not one. `create --at origin/main` starts a branch on
+the remote's trunk while the local copy, often held by another worktree,
+stays behind; the orphan set is then the remote's trunk commits. Dropping them
+replays the branch backwards onto a stale trunk, and absorbing them makes them
+the branch's own work.
+
+`graph.AheadOnUpstream` is the one rule: a branch whose parent is a trunk,
+whose fork point descends from the trunk's local tip, and which is contained
+in the trunk's known upstream (`KnownParent`, local refs only). Such a branch
+classifies as aligned, measured from its fork point. restack gives it no step,
+so it does not hold up anything else: a branch stacked on it is still replayed
+if it is stale, and so is a sibling on the same trunk. `status` says the trunk
+is behind and advises a pull rather than reading the trunk as moved back. A
+reader that cannot name the upstream answers no, which is how every such
+branch read before.
+
+A trunk rewound on purpose is restacked onto by name:
+`restack --branch <b> --onto <trunk>`. `--onto` names where the branch goes,
+so the rule does not apply, and the dropped commits are listed as for any
+parent. That is per run on purpose: a stored per-trunk setting would outlive
+the rewind it was set for.
+
 ## Restack can empty a branch
 
 Rebase and replay both drop commits whose patch content is already upstream.

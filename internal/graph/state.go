@@ -200,6 +200,15 @@ func classify(ctx context.Context, git Ancestry, g Graph, present map[string]boo
 	if forkPoint == parentTip {
 		return emptyOrAligned(ctx, git, edge.Parent, branch)
 	}
+	lagging, err := AheadOnUpstream(ctx, git, g, edge.Parent, parentTip, forkPoint)
+	if err != nil {
+		return "", err
+	}
+	if lagging {
+		// Measured from the fork point: every commit the trunk lags by is
+		// past its local tip, and none of them is the branch's own.
+		return emptyOrAligned(ctx, git, forkPoint, branch)
+	}
 	return drifted(ctx, git, g, present, branch, StateNeedsRestack)
 }
 

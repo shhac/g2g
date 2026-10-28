@@ -87,6 +87,24 @@ func carrierOf(ctx context.Context, published push.Known, discovery graph.Discov
 	return "", nil
 }
 
+// carriedNote is the next step for a branch its remote is ahead of only
+// because a branch stacked on it already holds the remote's tip. For a branch
+// moved back by hand, the question is whether the child keeps the commits. A
+// trunk behind its remote was not moved back, it lags: folding the remote's
+// trunk commits into the child is the wrong offer, and a trunk rewound on
+// purpose is restacked onto by name.
+func carriedNote(node stackNode, publication push.Publication, acted selected) string {
+	child, commits := publication.CarriedBy, words.Count(publication.Theirs, "commit", "commits")
+	if node.Trunk {
+		return fmt.Sprintf("%s is %s behind %s, where %s already starts · run %s to bring %s up to it, or %s if %s was rewound on purpose.",
+			node.Branch, commits, acted.remote, child, runnable(acted.aimedOr(pullCommand)), node.Branch,
+			runnable("g2g restack --branch "+repair.Quote(child)+" --onto "+repair.Quote(node.Branch)), node.Branch)
+	}
+	return fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
+		node.Branch, commits, child, runnable("g2g restack --branch "+repair.Quote(child)+" --absorb"), child,
+		runnable("g2g restack --branch "+repair.Quote(child)))
+}
+
 // publishedMark is one branch against its remote, in the words git status uses.
 // A branch that landed and left the remote says nothing: its state already
 // says what happened to it.
@@ -168,19 +186,8 @@ func publishedNotes(view stackView, acted selected, publishing map[string]push.P
 			diverged = append(diverged, node.Branch)
 		case publication.Standing == push.Restoring:
 			restoring = append(restoring, node.Branch)
-		// A trunk behind its remote lags it; it was not moved back. Folding
-		// the remote's trunk commits into the child is the wrong offer, and
-		// a trunk rewound on purpose is restacked onto by name.
-		case publication.CarriedBy != "" && node.Trunk:
-			view = view.note(fmt.Sprintf("%s is %s behind %s, where %s already starts · run %s to bring %s up to it, or %s if %s was rewound on purpose.",
-				node.Branch, words.Count(publication.Theirs, "commit", "commits"), remote, publication.CarriedBy,
-				runnable(acted.aimedOr(pullCommand)), node.Branch,
-				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy)+" --onto "+repair.Quote(node.Branch)), node.Branch), severityWarn)
 		case publication.CarriedBy != "":
-			view = view.note(fmt.Sprintf("%s was moved back past %s %s still carries · run %s to keep them in %s, or %s to drop them from it too.",
-				node.Branch, words.Count(publication.Theirs, "commit", "commits"), publication.CarriedBy,
-				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy)+" --absorb"), publication.CarriedBy,
-				runnable("g2g restack --branch "+repair.Quote(publication.CarriedBy))), severityWarn)
+			view = view.note(carriedNote(node, publication, acted), severityWarn)
 		case publication.Standing == push.Behind:
 			behind = append(behind, node.Branch)
 		// A trunk is published by landing on it, never by pushing it.

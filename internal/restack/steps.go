@@ -47,14 +47,12 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
 			return nil, err
 		}
-		if !onto.Reparents() && parent == edge.Parent {
-			lagging, err := graph.AheadOnUpstream(ctx, s.Git, discovery.Graph, parent, base, resolvedFork)
-			if err != nil {
-				return nil, err
-			}
-			if lagging {
-				continue
-			}
+		lagging, err := s.onLaggingTrunk(ctx, onto, discovery.Graph, edge.Parent, parent, base, resolvedFork)
+		if err != nil {
+			return nil, err
+		}
+		if lagging {
+			continue
 		}
 		resolvedFork, advanced, err := s.laterFork(ctx, onto, base, head, resolvedFork)
 		if err != nil {
@@ -97,6 +95,19 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		steps = append(steps, step)
 	}
 	return steps, nil
+}
+
+// onLaggingTrunk reports a branch that started on its trunk's upstream while
+// the local trunk lags behind it (graph.AheadOnUpstream). It gets no step:
+// replaying it onto the local tip would take out the trunk commits the remote
+// has. A branch moved by name, with --onto, is asked nothing, because the
+// person named where it goes; that is how a trunk rewound on purpose is
+// restacked onto.
+func (s Service) onLaggingTrunk(ctx context.Context, onto Onto, recorded graph.Graph, recordedParent, parent, base, fork string) (bool, error) {
+	if onto.Reparents() || parent != recordedParent {
+		return false, nil
+	}
+	return graph.AheadOnUpstream(ctx, s.Git, recorded, parent, base, fork)
 }
 
 // laterFork is fork moved up to where base and head meet, and whether it

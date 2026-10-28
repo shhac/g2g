@@ -249,7 +249,7 @@ func (s Service) prepareQueue(ctx context.Context, plan Plan, step Step, changed
 	if pushed {
 		*changed = append(*changed, "published "+step.Branch)
 	}
-	if step.Retargets() && !plan.movedEarly(step) {
+	if plan.retargetsAtMerge(step) {
 		if err := s.retarget(ctx, step); err != nil {
 			return "", githubstack.MergeState{}, err
 		}

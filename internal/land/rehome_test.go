@@ -27,8 +27,8 @@ func TestLandingTheBottomMovesThePullRequestAboveBeforeDeletingItsBase(t *testin
 	landingTheBottom(w)
 	plan := w.plan(t, Defaults())
 	want := []BaseMove{{Number: 42, ID: "PR_synthetic_42", Head: "synthetic-two", From: "synthetic-one", Base: "synthetic-main"}}
-	if !slices.Equal(plan.Survivors, want) {
-		t.Fatalf("Survivors = %+v, want %+v", plan.Survivors, want)
+	if !slices.Equal(plan.Moves, want) {
+		t.Fatalf("Moves = %+v, want %+v", plan.Moves, want)
 	}
 	recipe := make([]string, 0, len(plan.Commands()))
 	for _, command := range plan.Commands() {
@@ -52,8 +52,9 @@ func TestLandingTheBottomMovesThePullRequestAboveBeforeDeletingItsBase(t *testin
 func TestTheNextStepIsMovedBeforeTheBranchBelowIsDeleted(t *testing.T) {
 	w := newWorld(t)
 	plan := w.plan(t, Defaults())
-	if len(plan.Survivors) != 0 {
-		t.Errorf("Survivors = %+v, want none: every branch is a step", plan.Survivors)
+	want := []BaseMove{{Number: 42, ID: "PR_synthetic_42", Head: "synthetic-two", From: "synthetic-one", Base: "synthetic-main"}}
+	if !slices.Equal(plan.Moves, want) {
+		t.Errorf("Moves = %+v, want %+v", plan.Moves, want)
 	}
 
 	if err := w.service.Apply(context.Background(), plan); err != nil {
@@ -81,8 +82,8 @@ func TestKeepingTheRemoteBranchMovesNothingEarly(t *testing.T) {
 	options := Defaults()
 	options.DeleteRemote = false
 	plan := w.plan(t, options)
-	if len(plan.Survivors) != 0 {
-		t.Fatalf("Survivors = %+v, want none when nothing is deleted", plan.Survivors)
+	if len(plan.Moves) != 0 {
+		t.Fatalf("Moves = %+v, want none when nothing is deleted", plan.Moves)
 	}
 	if err := w.service.Apply(context.Background(), plan); err != nil {
 		t.Fatalf("Apply() error = %v", err)

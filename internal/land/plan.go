@@ -36,10 +36,10 @@ type Plan struct {
 	// push their pull requests go on showing commits built on a branch that
 	// has merged and gone.
 	Republish []Republish
-	// Survivors are the open pull requests outside the selection that sit on
-	// a branch the descent deletes on the remote. Each is pointed at the trunk
-	// first, as a later step's is; see BaseMove.
-	Survivors []BaseMove
+	// Moves are the pull requests the descent points at the trunk before it
+	// deletes the branch each sits on: a later step's, and a survivor's
+	// outside the selection. See BaseMove.
+	Moves []BaseMove
 	// Protected names the branches whose merge will need --admin once their
 	// own restack has force-pushed them and restarted the required checks
 	// that were green when this was planned. It is said in the preview
@@ -109,7 +109,7 @@ func (p Plan) Equal(other Plan) bool {
 		slices.EqualFunc(p.Steps, other.Steps, sameStep) &&
 		slices.Equal(p.Above, other.Above) &&
 		slices.Equal(p.Republish, other.Republish) &&
-		slices.Equal(p.Survivors, other.Survivors)
+		slices.Equal(p.Moves, other.Moves)
 }
 
 // sameStep compares everything about a step but how ready it is.
@@ -193,7 +193,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 			return Plan{}, err
 		}
 	}
-	plan.Survivors = survivorMoves(plan, found)
+	plan.Moves = planMoves(plan, found)
 	diagnostic.Event(ctx, "land.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(discovery.Branches, ",")},
 		diagnostic.Field{Key: "landing", Value: fmt.Sprint(plan.Landing())},

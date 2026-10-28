@@ -59,7 +59,7 @@ func (p Plan) mergeCommands(step Step) []Command {
 			Effect:  "publish it as it is here",
 		})
 	}
-	if step.Retargets() && !p.movedEarly(step) {
+	if p.retargetsAtMerge(step) {
 		commands = append(commands, Command{
 			Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, repair.Quote(step.Base)),
 			Effect:  fmt.Sprintf("merge into %s rather than %s", step.Base, step.From),

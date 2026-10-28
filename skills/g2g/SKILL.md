@@ -230,7 +230,7 @@ description: |
   comes. A pull request on a branch the descent is about to delete is moved in
   that branch's cleanup, before the deletion, because a base deleted with a
   push closes it for good: the next step up, and any survivor outside a
-  `--scope path` selection (`Plan.Survivors`). A refused move keeps the branch
+  `--scope path` selection, decided once as `Plan.Moves`. A refused move keeps the branch
   and stops part-way. Direct merges wait for GitHub to see the push and merge, without
   waiting for CI; merge propagation is answered by ancestry from the
   merge commit, never by watching a tip change, because a colleague's push

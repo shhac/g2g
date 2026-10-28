@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
@@ -26,21 +27,27 @@ type BaseMove struct {
 	Base   string
 }
 
-// survivorMoves are the open pull requests outside the selection that sit on a
-// branch the descent deletes on the remote.
-func survivorMoves(plan Plan, found survivors) []BaseMove {
+// planMoves decides, once, every pull request the descent moves before a
+// deletion: each later step still sitting on a branch landed before it, then
+// each survivor outside the selection on a branch the descent deletes. A step
+// keeps its From, which is a fact about where it points now and what the
+// preview marks; whether its own merge still moves it is retargetsAtMerge.
+func planMoves(plan Plan, found survivors) []BaseMove {
 	if !plan.Options.DeleteRemote {
 		return nil
 	}
-	deleted := make(map[string]bool, len(plan.Steps))
+	landing := make(map[string]bool, len(plan.Steps))
+	var moves []BaseMove
 	for _, step := range plan.Steps {
-		deleted[step.Branch] = true
+		if step.Retargets() && landing[step.From] {
+			moves = append(moves, BaseMove{Number: step.Number, ID: step.ID, Head: step.Branch, From: step.From, Base: step.Base})
+		}
+		landing[step.Branch] = true
 	}
 	resolutions := githubstack.ResolveHeads(found.prs)
-	var moves []BaseMove
 	for _, branch := range found.affected {
 		open := resolutions[branch].Open
-		if open == nil || !deleted[open.Base] || plan.landing(branch) {
+		if open == nil || !landing[open.Base] || landing[branch] {
 			continue
 		}
 		moves = append(moves, BaseMove{Number: open.Number, ID: open.ID, Head: branch, From: open.Base, Base: plan.Trunk})
@@ -48,47 +55,20 @@ func survivorMoves(plan Plan, found survivors) []BaseMove {
 	return moves
 }
 
-// landing reports a branch the descent has a step for.
-func (p Plan) landing(branch string) bool {
-	for _, step := range p.Steps {
-		if step.Branch == branch {
-			return true
-		}
-	}
-	return false
-}
-
-// movedEarly reports a step whose pull request sits on a branch landed before
-// it, which the cleanup of that branch points at the trunk before deleting it,
-// so the step's own merge has nothing left to move.
-func (p Plan) movedEarly(step Step) bool {
-	if !p.Options.DeleteRemote || !step.Retargets() {
-		return false
-	}
-	for _, below := range p.Steps {
-		if below.Branch == step.Branch {
-			return false
-		}
-		if below.Branch == step.From {
-			return true
-		}
-	}
-	return false
+// retargetsAtMerge reports a step whose own merge has to move its pull
+// request: one the cleanup below it does not move first. Apply, the queue
+// path and the recipe all ask this, so they cannot come to disagree.
+func (p Plan) retargetsAtMerge(step Step) bool {
+	return step.Retargets() && !slices.ContainsFunc(p.Moves, func(move BaseMove) bool { return move.Number == step.Number })
 }
 
 // moves are the pull requests to point at the trunk before step's branch is
-// deleted on the remote: a later step still sitting on it, and any survivor
-// outside the selection.
+// deleted on the remote.
 func (p Plan) moves(step Step) []BaseMove {
 	var moves []BaseMove
-	for _, above := range p.Steps {
-		if above.From == step.Branch && p.movedEarly(above) {
-			moves = append(moves, BaseMove{Number: above.Number, ID: above.ID, Head: above.Branch, From: above.From, Base: above.Base})
-		}
-	}
-	for _, survivor := range p.Survivors {
-		if survivor.From == step.Branch {
-			moves = append(moves, survivor)
+	for _, move := range p.Moves {
+		if move.From == step.Branch {
+			moves = append(moves, move)
 		}
 	}
 	return moves

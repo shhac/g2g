@@ -24,6 +24,9 @@ func landPlanFixture() land.Plan {
 			// by its own replay, and still pointing at the branch below it.
 			{Branch: "synthetic-two", Number: 42, URL: "https://example.test/42", Base: "synthetic-main", From: "synthetic-one", Push: true, Admin: true},
 		},
+		// What Plan decides for that shape: #42 is moved off synthetic-one
+		// before synthetic-one is deleted.
+		Moves: []land.BaseMove{{Number: 42, Head: "synthetic-two", From: "synthetic-one", Base: "synthetic-main"}},
 	}
 	plan.Snapshot = stack.Snapshot{
 		Target:       "synthetic-two",

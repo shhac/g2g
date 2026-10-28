@@ -103,10 +103,11 @@ a new pull request. Waiting for a branch's own turn to move it is too late for
 the next step up, whose base is deleted in the cleanup below it, and a branch
 above a `--scope path` descent never gets a turn at all. So every pull request
 on a branch about to be deleted is moved first, in that branch's cleanup,
-before the deletion (`Plan.moves`, `rehome.go`): a later step's, which its own
-merge then has nothing left to move, and a survivor outside the selection
-(`Plan.Survivors`, read in the request that already protects queued
-survivors). It runs before the branch is forgotten: a move GitHub refuses
+before the deletion. Which ones is decided once, at plan time, as `Plan.Moves`
+(`rehome.go`): a later step's, whose own merge then has nothing left to move
+(`retargetsAtMerge`, which Apply, the queue path and the recipe all ask), and a
+survivor outside the selection, read in the request that already protects
+queued survivors. It runs before the branch is forgotten: a move GitHub refuses
 keeps the branch, on the remote and in the graph, and stops part-way naming
 the `gh pr edit` for each, so landing again finds the branch landed and
 finishes its cleanup. Forgotten first, a rerun had nothing left to tidy. Only pull requests on recorded branches are found; one opened on a

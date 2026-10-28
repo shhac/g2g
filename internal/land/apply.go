@@ -156,7 +156,7 @@ func (s Service) merge(ctx context.Context, plan Plan, step Step, changed *[]str
 	if pushed {
 		*changed = append(*changed, "published "+step.Branch)
 	}
-	if step.Retargets() && !plan.movedEarly(step) {
+	if plan.retargetsAtMerge(step) {
 		// The base only goes stale during the run: the branch below merged and
 		// GitHub has not yet moved this pull request off it. Merging it there
 		// would put the work into a branch that is about to be deleted, and

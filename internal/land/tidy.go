@@ -26,18 +26,8 @@ import (
 // rather than read after it, because the replay can move this very branch.
 func (s Service) tidy(ctx context.Context, plan Plan, step Step, head string, changed *[]string) error {
 	if plan.Queue != nil {
-		recorded, err := s.Graph.Store.Load(ctx)
-		if err != nil {
+		if err := s.guardSurvivors(ctx, plan, githubstack.Mergeability{}, false); err != nil {
 			return err
-		}
-		found, err := s.readSurvivors(ctx, plan, recorded)
-		if err != nil {
-			return err
-		}
-		if note, err := s.pendingSurvivors(ctx, plan, found, githubstack.Mergeability{}, false); err != nil {
-			return err
-		} else if note.Reason != "" {
-			return errors.New(note.Sentence())
 		}
 	}
 	advanced, err := s.advance(ctx, plan)

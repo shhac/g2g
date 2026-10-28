@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/shhac/g2g/internal/subprocess"
 	"github.com/shhac/g2g/internal/testutil"
@@ -139,6 +140,35 @@ func TestSwitchTreeInBringsAnotherWorktreeAlong(t *testing.T) {
 		t.Errorf("status after SwitchTreeIn = %q, want clean", status)
 	}
 	if content, err := os.ReadFile(other + "/root.txt"); err != nil || string(content) != "changed" {
+		t.Errorf("root.txt = %q, %v, want the new tip's content", content, err)
+	}
+}
+
+// A file touched without being changed leaves stat data read-tree takes for a
+// change. git switch refreshes before it merges trees; SwitchTree has to as
+// well, or it refuses a clean checkout after the ref has already moved. No
+// git status runs before it, because status refreshes the index itself.
+func TestSwitchTreeBringsAlongACheckoutWithStaleStatData(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic root", "root.txt", "root")
+	from := repo.Revision("HEAD")
+	repo.Commit("synthetic change", "root.txt", "changed")
+	to := repo.Revision("HEAD")
+	repo.Run("reset", "-q", "--hard", from)
+	touched := time.Now().Add(time.Hour)
+	if err := os.Chtimes(repo.Dir+"/root.txt", touched, touched); err != nil {
+		t.Fatal(err)
+	}
+	repo.Run("update-ref", "refs/heads/synthetic-trunk", to)
+
+	inRepo(t, repo.Dir)
+	if err := (Client{Runner: subprocess.ExecRunner{}}).SwitchTree(context.Background(), from, to); err != nil {
+		t.Fatal(err)
+	}
+	if status := repo.Run("status", "--porcelain"); status != "" {
+		t.Errorf("status after SwitchTree = %q, want clean", status)
+	}
+	if content, err := os.ReadFile(repo.Dir + "/root.txt"); err != nil || string(content) != "changed" {
 		t.Errorf("root.txt = %q, %v, want the new tip's content", content, err)
 	}
 }

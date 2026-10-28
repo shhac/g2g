@@ -133,10 +133,23 @@ func (c Client) moveBranch(ctx context.Context, branch, from, to string) error {
 // read-tree is the plumbing git switch itself uses for this. It refuses rather
 // than discarding anything it would have to overwrite.
 func (c Client) SwitchTree(ctx context.Context, from, to string) error {
+	return c.switchTree(ctx, nil, from, to)
+}
+
+// switchTree is SwitchTree in the worktree at, which is this one when empty.
+//
+// git switch refreshes the index before it merges trees, and read-tree does
+// not: stat data nobody refreshed — a file touched by an editor or a build, a
+// copied checkout — reads to it as a change, and it refuses a tree that is in
+// fact clean, after the ref has already moved. Refreshing fails when something
+// really has changed; read-tree is what says so. Only the other-worktree copy
+// of this used to refresh.
+func (c Client) switchTree(ctx context.Context, at []string, from, to string) error {
 	if err := safeRefs(from, to); err != nil {
 		return err
 	}
-	_, err := c.run(ctx, "read-tree", "-m", "-u", from, to)
+	_, _ = c.run(ctx, append(slices.Clone(at), "update-index", "-q", "--refresh")...)
+	_, err := c.run(ctx, append(slices.Clone(at), "read-tree", "-m", "-u", from, to)...)
 	return err
 }
 

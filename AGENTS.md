@@ -336,7 +336,10 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   what differs between the target and HEAD, and by then they are the same
   commit. `Service.standingOn` records both ends before anything moves and
   `resettle` hands them to `git.Client.SwitchTree` (`read-tree -m -u`), which is
-  the plumbing `git switch` itself uses.
+  the plumbing `git switch` itself uses. It refreshes the index first, as
+  `git switch` does: stale stat data reads to `read-tree` as a change, so a
+  touched but unchanged file refused the resettle after the ref had moved.
+  `SwitchTreeIn` shares the one implementation; only it refreshed, before.
 - A rewrite never strands another worktree. It does not need to check a branch
   out to move it, so nothing stopped it: Git updated the ref, that worktree's
   index still described the old commit, and its next `git status` reported

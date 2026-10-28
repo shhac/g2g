@@ -177,13 +177,5 @@ func (c Client) WorktreeClean(ctx context.Context, path string) (bool, error) {
 // bring that worktree's index and files from the commit they describe to the
 // one the branch now points at.
 func (c Client) SwitchTreeIn(ctx context.Context, path, from, to string) error {
-	if err := safeRefs(from, to); err != nil {
-		return err
-	}
-	// Stat data the other worktree has not refreshed reads as a change to
-	// read-tree, which then refuses a tree that is in fact clean. Refreshing
-	// fails when something really has changed; read-tree is what says so.
-	_, _ = c.run(ctx, "-C", path, "update-index", "-q", "--refresh")
-	_, err := c.run(ctx, "-C", path, "read-tree", "-m", "-u", from, to)
-	return err
+	return c.switchTree(ctx, []string{"-C", path}, from, to)
 }

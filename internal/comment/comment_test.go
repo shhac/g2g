@@ -55,10 +55,10 @@ type fakeGitHub struct {
 	// one, as GitHub refuses one alias of a document and applies the rest;
 	// whole fails every write of a call, as a request that never arrived does.
 	failOn int
-	// failEach refuses the write at that position within every request, as
-	// a refusal that is not going away does.
-	failEach int
-	whole    error
+	// refuse refuses every write for this pull request's node id, as a
+	// refusal that is not going away does.
+	refuse string
+	whole  error
 }
 
 func (f *fakeGitHub) Inspect(context.Context, []string) ([]githubstack.PullRequest, error) {
@@ -81,7 +81,6 @@ func (f *fakeGitHub) Conversations(_ context.Context, numbers []int, marker stri
 
 func (f *fakeGitHub) WriteComments(_ context.Context, writes []githubstack.CommentWrite) ([]error, error) {
 	f.requests++
-	first := len(f.sent)
 	outcomes := make([]error, len(writes))
 	for index, write := range writes {
 		what := "add " + write.Subject
@@ -94,11 +93,29 @@ func (f *fakeGitHub) WriteComments(_ context.Context, writes []githubstack.Comme
 			outcomes[index] = f.whole
 		case f.failOn != 0 && len(f.sent) == f.failOn:
 			outcomes[index] = errors.New("synthetic write failure")
-		case f.failEach != 0 && len(f.sent)-first == f.failEach:
+		case f.refuse != "" && write.Subject == f.refuse:
 			outcomes[index] = errors.New("synthetic write failure")
+		default:
+			f.keep(write)
 		}
 	}
 	return outcomes, f.whole
+}
+
+// keep records a write GitHub applied, so the next read finds it: an added
+// comment on its pull request, an edited one with its new body.
+func (f *fakeGitHub) keep(write githubstack.CommentWrite) {
+	for number, conversation := range f.conversations {
+		for index, comment := range conversation.Comments {
+			if comment.ID == write.Comment {
+				conversation.Comments[index].Body = write.Body
+			}
+		}
+		if write.Comment == "" && conversation.ID == write.Subject {
+			conversation.Comments = append(conversation.Comments, githubstack.Comment{ID: fmt.Sprintf("IC_synthetic_%d_added", number), Body: write.Body, Author: "synthetic-author", Editable: true})
+		}
+		f.conversations[number] = conversation
+	}
 }
 
 // chain is trunk ← one ← two ← three, the ordinary stack.
@@ -580,7 +597,7 @@ func TestKeepWritesNothingWhenBlockedAndSaysWhatStoppedIt(t *testing.T) {
 	}
 
 	github = chainGitHub()
-	github.failEach = 3
+	github.refuse = "PR_synthetic_13"
 	service.GitHub = github
 	_, err = service.Keep(context.Background(), stack.Selection{})
 	var stopped *Stopped
@@ -606,6 +623,11 @@ func TestKeepTriesAFailureOnceMore(t *testing.T) {
 	}
 	if waits != 1 || github.requests != 2 {
 		t.Errorf("waited %d times over %d requests, want once over two", waits, github.requests)
+	}
+	// What the first attempt wrote is current by the second, so only the
+	// failed write is sent again.
+	if retried := github.sent[3:]; !slices.Equal(retried, []string{"add PR_synthetic_13"}) {
+		t.Errorf("second attempt sent %v, want only the comment that failed", retried)
 	}
 
 	github = chainGitHub()

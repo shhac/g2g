@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -107,8 +108,23 @@ func (s Service) Keep(ctx context.Context, selection stack.Selection) (Plan, err
 	if pause.Or(s.pause)(ctx, keepRetryWait) != nil {
 		return plan, notKept(err)
 	}
-	plan, err = s.keepOnce(ctx, selection)
-	return plan, notKept(err)
+	retried, again := s.keepOnce(ctx, selection)
+	return retried, notKept(across(err, again))
+}
+
+// across is the second attempt's failure without losing what the first
+// wrote: those comments stay written even when the retry writes nothing more,
+// and a report that dropped them would ask for work already done.
+func across(first, second error) error {
+	var earlier *Stopped
+	if second == nil || !errors.As(first, &earlier) {
+		return second
+	}
+	var later *Stopped
+	if !errors.As(second, &later) {
+		return &Stopped{Written: earlier.Written, Failed: earlier.Failed, Err: second}
+	}
+	return &Stopped{Written: append(slices.Clone(earlier.Written), later.Written...), Failed: later.Failed, Err: later.Err}
 }
 
 // keepRetryWait is how long Keep gives GitHub before its second attempt.

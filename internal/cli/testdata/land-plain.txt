@@ -9,10 +9,10 @@ Commands this would run, in order
    2  gh pr merge 41 --squash --match-head-commit "${g2g_landed_41:?}"  · land synthetic-one
    3  g2g pull --apply  · advance the trunk and replay what is left onto it
    4  g2g prune --branch synthetic-one --scope branch --apply  · forget it, once what sat on it has been reparented
-   5  git push --force-with-lease=refs/heads/synthetic-one:"${g2g_landed_41:?}" origin --delete refs/heads/synthetic-one  · remove the published branch while it is still what landed, if the merge has not already
-   6  git branch -D synthetic-one  · remove it here
-   7  g2g push --branch synthetic-two --scope path --apply  · publish it as it is here
-   8  gh pr edit 42 --base synthetic-main  · merge into synthetic-main rather than synthetic-one
+   5  gh pr edit 42 --base synthetic-main  · aim synthetic-two at synthetic-main first: deleting synthetic-one with a push would close its pull request
+   6  git push --force-with-lease=refs/heads/synthetic-one:"${g2g_landed_41:?}" origin --delete refs/heads/synthetic-one  · remove the published branch while it is still what landed, if the merge has not already
+   7  git branch -D synthetic-one  · remove it here
+   8  g2g push --branch synthetic-two --scope path --apply  · publish it as it is here
    9  g2g_landed_42=$(git rev-parse --verify refs/heads/synthetic-two)  · remember the head about to merge, which the merge and the deletion after it are pinned to
   10  gh pr merge 42 --squash --match-head-commit "${g2g_landed_42:?}" --admin  · land synthetic-two
   11  g2g pull --apply  · advance the trunk and replay what is left onto it

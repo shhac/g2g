@@ -99,47 +99,64 @@ func (p Plan) RetryCommand() string {
 	return repair.Command(args)
 }
 
-// pendingSurvivors protects every branch the replay can move, including those
-// above a target that selected only the bottom of a stack.
-func (s Service) pendingSurvivors(ctx context.Context, plan Plan, recorded graph.Graph, readiness githubstack.Mergeability, allowPendingRoot bool) (repair.Note, error) {
-	if len(plan.Branches) == 0 {
-		return repair.Note{}, nil
-	}
-	root := ""
+// survivors are the branches a descent's replay can move, with their pull
+// requests: the recorded subtree from the first branch of the selection the
+// graph records, and what lies outside the selection read in one request.
+type survivors struct {
+	root     string
+	affected []string
+	prs      []githubstack.PullRequest
+}
+
+// readSurvivors reads the survivors of plan. Branches outside the selection
+// are the only ones it asks GitHub about; the selection's own pull requests
+// came with the plan.
+func (s Service) readSurvivors(ctx context.Context, plan Plan, recorded graph.Graph) (survivors, error) {
+	found := survivors{prs: plan.PullRequests}
 	for _, branch := range plan.Branches {
 		if recorded.Records(branch) {
-			root = branch
+			found.root = branch
 			break
 		}
 	}
-	if root == "" {
-		return repair.Note{}, nil
+	if found.root == "" {
+		return found, nil
 	}
-	affected := recorded.Shape().Subtree(root)
+	found.affected = recorded.Shape().Subtree(found.root)
 	var extras []string
-	for _, branch := range affected {
+	for _, branch := range found.affected {
 		if !slices.Contains(plan.Branches, branch) {
 			extras = append(extras, branch)
 		}
 	}
-	prs := plan.PullRequests
-	if len(extras) != 0 {
-		more, err := s.GitHub.Inspect(ctx, extras)
-		if err != nil {
-			return repair.Note{}, err
+	if len(extras) == 0 {
+		return found, nil
+	}
+	more, err := s.GitHub.Inspect(ctx, extras)
+	if err != nil {
+		return survivors{}, err
+	}
+	found.prs = append([]githubstack.PullRequest{}, found.prs...)
+	known := make(map[int]bool, len(found.prs))
+	for _, pr := range found.prs {
+		known[pr.Number] = true
+	}
+	for _, pr := range more {
+		if !slices.Contains(extras, pr.Head) || known[pr.Number] {
+			continue
 		}
-		prs = append([]githubstack.PullRequest{}, prs...)
-		known := make(map[int]bool, len(prs))
-		for _, pr := range prs {
-			known[pr.Number] = true
-		}
-		for _, pr := range more {
-			if !slices.Contains(extras, pr.Head) || known[pr.Number] {
-				continue
-			}
-			prs = append(prs, pr)
-			known[pr.Number] = true
-		}
+		found.prs = append(found.prs, pr)
+		known[pr.Number] = true
+	}
+	return found, nil
+}
+
+// pendingSurvivors protects every branch the replay can move, including those
+// above a target that selected only the bottom of a stack.
+func (s Service) pendingSurvivors(ctx context.Context, plan Plan, found survivors, readiness githubstack.Mergeability, allowPendingRoot bool) (repair.Note, error) {
+	root, affected, prs := found.root, found.affected, found.prs
+	if root == "" {
+		return repair.Note{}, nil
 	}
 	resolutions := githubstack.ResolveHeads(prs)
 	var numbers []int
@@ -192,7 +209,11 @@ func (s Service) mergeQueued(ctx context.Context, plan Plan, step Step, changed 
 	if err != nil {
 		return false, "", err
 	}
-	if note, err := s.pendingSurvivors(ctx, plan, recorded, readiness, true); err != nil {
+	found, err := s.readSurvivors(ctx, plan, recorded)
+	if err != nil {
+		return false, "", err
+	}
+	if note, err := s.pendingSurvivors(ctx, plan, found, readiness, true); err != nil {
 		return false, "", err
 	} else if note.Reason != "" {
 		return false, "", errors.New(note.Sentence())
@@ -228,7 +249,7 @@ func (s Service) prepareQueue(ctx context.Context, plan Plan, step Step, changed
 	if pushed {
 		*changed = append(*changed, "published "+step.Branch)
 	}
-	if step.Retargets() {
+	if step.Retargets() && !plan.movedEarly(step) {
 		if err := s.retarget(ctx, step); err != nil {
 			return "", githubstack.MergeState{}, err
 		}

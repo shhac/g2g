@@ -30,7 +30,11 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, head string, ch
 		if err != nil {
 			return err
 		}
-		if note, err := s.pendingSurvivors(ctx, plan, recorded, githubstack.Mergeability{}, false); err != nil {
+		found, err := s.readSurvivors(ctx, plan, recorded)
+		if err != nil {
+			return err
+		}
+		if note, err := s.pendingSurvivors(ctx, plan, found, githubstack.Mergeability{}, false); err != nil {
 			return err
 		} else if note.Reason != "" {
 			return errors.New(note.Sentence())
@@ -44,6 +48,9 @@ func (s Service) tidy(ctx context.Context, plan Plan, step Step, head string, ch
 		return err
 	}
 	if err := s.forget(ctx, plan, step.Branch); err != nil {
+		return err
+	}
+	if err := s.rehome(ctx, plan, step, changed); err != nil {
 		return err
 	}
 	s.remove(ctx, plan, step, head)

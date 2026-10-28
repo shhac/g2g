@@ -59,7 +59,7 @@ func (p Plan) mergeCommands(step Step) []Command {
 			Effect:  "publish it as it is here",
 		})
 	}
-	if step.Retargets() {
+	if step.Retargets() && !p.movedEarly(step) {
 		commands = append(commands, Command{
 			Command: fmt.Sprintf("gh pr edit %d --base %s", step.Number, repair.Quote(step.Base)),
 			Effect:  fmt.Sprintf("merge into %s rather than %s", step.Base, step.From),
@@ -188,8 +188,17 @@ func (p Plan) cleanupCommands(step Step) []Command {
 // it. Never a bare lease, which trusts the tracking ref, nor a tip read now,
 // which always matches. With no head to pin there is nothing safe to offer,
 // and Apply leaves that branch too.
+//
+// Every pull request still sitting on the branch is pointed at the trunk
+// first, because deleting a base with a push closes what sits on it.
 func (p Plan) deletions(step Step) []Command {
 	commands := make([]Command, 0, 2)
+	for _, move := range p.moves(step) {
+		commands = append(commands, Command{
+			Command: fmt.Sprintf("gh pr edit %d --base %s", move.Number, repair.Quote(move.Base)),
+			Effect:  fmt.Sprintf("aim %s at %s first: deleting %s with a push would close its pull request", move.Head, move.Base, move.From),
+		})
+	}
 	variable, literal := recipeHead(step)
 	if p.Options.DeleteRemote && (variable != "" || literal != "") {
 		target := []string{p.Options.Remote, "--delete", "refs/heads/" + step.Branch}

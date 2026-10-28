@@ -225,7 +225,11 @@ func TestQueueSurvivorProtectionFindsNewRootAfterTidying(t *testing.T) {
 	w.github.states[42] = state
 	plan.Queue = nil
 	plan.PullRequests = w.github.prs
-	note, err := w.service.pendingSurvivors(context.Background(), plan, w.store.graph, githubstack.Mergeability{}, true)
+	found, err := w.service.readSurvivors(context.Background(), plan, w.store.graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, err := w.service.pendingSurvivors(context.Background(), plan, found, githubstack.Mergeability{}, true)
 	if err != nil || !strings.Contains(note.Reason, "synthetic-two") {
 		t.Fatalf("note=%+v err=%v", note, err)
 	}

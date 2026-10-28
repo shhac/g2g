@@ -96,6 +96,20 @@ stale. GitHub does retarget a child when its base branch is deleted, but
 asynchronously, and `--no-delete-remote` stops it happening at all. Relying on
 it is relying on a race.
 
+And a race `land` can lose for good: it deletes a landed branch with a push,
+and GitHub closes a pull request whose base was deleted that way. A closed one
+cannot be retargeted, nor reopened once its base is gone, so the only repair is
+a new pull request. Waiting for a branch's own turn to move it is too late for
+the next step up, whose base is deleted in the cleanup below it, and a branch
+above a `--scope path` descent never gets a turn at all. So every pull request
+on a branch about to be deleted is moved first, in that branch's cleanup,
+before the deletion (`Plan.moves`, `rehome.go`): a later step's, which its own
+merge then has nothing left to move, and a survivor outside the selection
+(`Plan.Survivors`, read in the request that already protects queued
+survivors). A move GitHub refuses keeps the branch on the remote and stops
+part-way. Only pull requests on recorded branches are found; one opened on a
+landed branch the graph does not record is still at risk.
+
 This is the one place `land` changes what a merge will do, which is otherwise
 `github retarget`'s alone. It uses the same client method rather than growing its own,
 and every base it would move is named in the preview. That method sends

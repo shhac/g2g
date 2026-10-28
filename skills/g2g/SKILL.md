@@ -227,7 +227,11 @@ description: |
   direct push would overwrite a reviewer's commit and then merge it. It aims
   every pull request at the trunk rather than at the branch below it, which is
   where each correctly sits now and which will not exist by the time its turn
-  comes. Direct merges wait for GitHub to see the push and merge, without
+  comes. A pull request on a branch the descent is about to delete is moved in
+  that branch's cleanup, before the deletion, because a base deleted with a
+  push closes it for good: the next step up, and any survivor outside a
+  `--scope path` selection (`Plan.Survivors`). A refused move keeps the branch
+  and stops part-way. Direct merges wait for GitHub to see the push and merge, without
   waiting for CI; merge propagation is answered by ancestry from the
   merge commit, never by watching a tip change, because a colleague's push
   changes that too. It merges nothing until every branch has been found

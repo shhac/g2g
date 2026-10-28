@@ -173,6 +173,28 @@ func TestSwitchTreeBringsAlongACheckoutWithStaleStatData(t *testing.T) {
 	}
 }
 
+// Refreshing only clears stat data. A file whose content really changed is
+// still refused by read-tree, and left exactly as it was: the refresh must
+// never become a way to discard work.
+func TestSwitchTreeStillRefusesARealChange(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic root", "root.txt", "root")
+	from := repo.Revision("HEAD")
+	repo.Commit("synthetic change", "root.txt", "changed")
+	to := repo.Revision("HEAD")
+	repo.Run("reset", "-q", "--hard", from)
+	repo.Write("root.txt", "work in progress")
+	repo.Run("update-ref", "refs/heads/synthetic-trunk", to)
+
+	inRepo(t, repo.Dir)
+	if err := (Client{Runner: subprocess.ExecRunner{}}).SwitchTree(context.Background(), from, to); err == nil {
+		t.Fatal("SwitchTree() = nil over a file with uncommitted content")
+	}
+	if content, err := os.ReadFile(repo.Dir + "/root.txt"); err != nil || string(content) != "work in progress" {
+		t.Errorf("root.txt = %q, %v, want the uncommitted content kept", content, err)
+	}
+}
+
 // A bisect started on a branch keeps it in use, as a rebase does; one started
 // from a detached HEAD records a commit, which holds no branch.
 func TestABranchAnotherWorktreeIsBisectingIsHeldAndBusy(t *testing.T) {

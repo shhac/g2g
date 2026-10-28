@@ -281,10 +281,16 @@ func TestStoppedBeforeAnythingChangedIsNotPartWay(t *testing.T) {
 
 // GitHub refusing to move a base stops the descent before that pull request
 // merges, naming it: merged where it points now, its work would land in a
-// branch that has already gone.
+// branch that has already gone. With the remote branch kept, nothing moves it
+// early, so this is the pull request's own turn.
 func TestARefusedRetargetStopsBeforeThatMerge(t *testing.T) {
 	w := newWorld(t)
-	plan := w.plan(t, Defaults())
+	options := Defaults()
+	options.DeleteRemote = false
+	plan := w.plan(t, options)
+	if len(plan.Moves) != 0 || !plan.retargetsAtMerge(plan.Steps[1]) {
+		t.Fatalf("Moves = %+v, want #42 moved at its own merge", plan.Moves)
+	}
 	w.github.retargetErr = errors.New("synthetic retarget refusal")
 
 	err := w.service.Apply(context.Background(), plan)

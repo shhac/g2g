@@ -138,3 +138,27 @@ func TestRestackOntoTheTrunkByNameStillDropsWhatItLacks(t *testing.T) {
 		t.Errorf("--onto the lagging trunk did not offer the rewind:\n%s", stdout)
 	}
 }
+
+// A fork past the trunk's tip that its remote never had is a trunk moved back
+// by hand, not one that lags: the branch is stale, and restack replays it and
+// drops the commit the trunk no longer has, as it always has.
+func TestATrunkRewoundByHandIsNotReadAsLagging(t *testing.T) {
+	w := newWorld(t)
+	w.commit(w.Local, "main", "unpushed.txt", "local only")
+	unpushed := w.tip(w.Local, "main")
+	mustRun(t, "create", "synthetic-rewound", "--apply")
+	w.commit(w.Local, "synthetic-rewound", "own.txt", "own")
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "reset", "-q", "--hard", "origin/main")
+
+	stdout := mustRun(t, "status", "--branch", "synthetic-rewound")
+	if !strings.Contains(stdout, "needs restack") {
+		t.Errorf("a branch on a commit the trunk dropped read as current:\n%s", stdout)
+	}
+	mustRun(t, "restack", "--branch", "synthetic-rewound", "--apply")
+	if !w.contains(w.Local, "main", "synthetic-rewound") || w.contains(w.Local, unpushed, "synthetic-rewound") {
+		t.Error("synthetic-rewound was not replayed onto main without the dropped commit")
+	}
+	w.assertHas(w.Local, "synthetic-rewound", "own.txt")
+	w.assertClean(w.Local)
+}

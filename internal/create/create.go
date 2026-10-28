@@ -349,7 +349,7 @@ func (s Service) startAt(ctx context.Context, plan Plan) (repair.Note, error) {
 		}}, nil
 	}
 	git, ok := s.Git.(interface {
-		KnownParent(context.Context, string) (string, error)
+		graph.Upstream
 		IsAncestor(context.Context, string, string) (bool, error)
 	})
 	if !ok {

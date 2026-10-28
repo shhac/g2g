@@ -177,5 +177,5 @@ func (c Client) WorktreeClean(ctx context.Context, path string) (bool, error) {
 // bring that worktree's index and files from the commit they describe to the
 // one the branch now points at.
 func (c Client) SwitchTreeIn(ctx context.Context, path, from, to string) error {
-	return c.switchTree(ctx, []string{"-C", path}, from, to)
+	return c.switchTree(ctx, path, from, to)
 }

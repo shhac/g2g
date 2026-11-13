@@ -471,8 +471,13 @@ description: |
   selected records. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
 - Projection is a capability, not a scope. `github link`, `submit`, `land` and
-  `github retarget` take `stack|path` and refuse a forked selection through
-  `Snapshot.RequireLinear`, which names the remedy instead of choosing a line.
+  `github retarget` take `stack|path`. `github link`, `land` and
+  `submit --link` refuse a forked selection through `Snapshot.RequireLinear`,
+  which names the leaves to select instead of choosing a line. `submit` and
+  `retarget` take a fork whole, every pull request aimed at its own parent
+  through `githubstack.Across`, never `Along`'s rolling base, which on a fork
+  is a sibling. submit plans its push with `push.Service.PlanOf` over the
+  snapshot it selected, because what it leaves out of a fork is no scope.
 - Selected from a trunk, `stack` is the whole tree under it — a trunk's path is
   itself. That is how a rewrite asks for an entire shape without being handed a
   scope that could reach another trunk.

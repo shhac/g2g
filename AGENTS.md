@@ -593,7 +593,11 @@ property the original had.
   diagnostic event. `applyFlow` is its one caller.
 - `githubstack.PathStep.Classify` — what one branch's pull request is.
   `github link` and `submit` apply different policy to the same answer; only the policy
-  differs.
+  differs. A selection that may fork is walked with `githubstack.Across` over
+  `Snapshot.Shape().Parents`: `Along`'s rolling base is the branch before, which
+  on a fork is a sibling. `submit` refused forks until it switched, so a fork
+  took one submit per leaf and was half published between them; only linking
+  (`github link`, `land`, `submit --link`) needs one line.
 - `repair.Note` — a refusal in two shapes: why, and the ways out. A plan that
   refuses stores only the note, in `Repair`, and its `Blocked()` is a method
   over it, so the line a machine reads and the column a person reads cannot

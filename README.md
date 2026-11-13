@@ -8,9 +8,10 @@ only Git: neither Graphite nor GitHub is required.
 Graphite is an optional source and alignment target. g2g can read a
 Graphite-described stack where one exists, adopt it into the local forest, or
 mirror local structure back to Graphite. GitHub is a publishing and projection
-integration: g2g can create pull requests, inspect their bases, and project a
-selected **linear** path onto GitHub native stacks. It never flattens a fork
-merely to publish it.
+integration: g2g can create pull requests for a stack, forked or not, each
+based on the branch it sits on, inspect their bases, and project a selected
+**linear** path onto GitHub native stacks. It never flattens a fork merely to
+publish it.
 
 ![A published stack falling behind main, pulled, and pushed back in step](assets/demo.gif)
 
@@ -233,10 +234,12 @@ g2g restack --apply          # me and what depends on me
 g2g status --scope all       # every stack in the repository
 ```
 
-A GitHub native stack is linear, so `submit`, `land`, `github link`,
-`github unlink` and `github retarget` take `stack` or `path` only, and refuse a
-selection that forks — naming the remedy rather than choosing a line. Selecting
-a leaf is that remedy and needs no flag: a leaf has no descendants, so `stack`
+`submit`, `land`, `github link`, `github unlink` and `github retarget` take
+`stack` or `path` only. A pull request has one base, and on a fork that is the
+branch it is recorded on, so `submit` and `github retarget` take a stack that
+forks whole. A GitHub native stack is one line, so `github link`, `land` and
+`submit --link` refuse one, naming the leaves to select rather than choosing a
+line. Selecting a leaf needs no flag: a leaf has no descendants, so `stack`
 collapses to an ordered path by itself. [`github comment`](#github-comment) has
 no `--scope`.
 
@@ -1010,7 +1013,7 @@ since the last fetch.
 
 #### submit
 
-`g2g submit` is a preview-first publication path for a resolved linear stack.
+`g2g submit` is a preview-first publication path for a resolved stack.
 With `--apply`, it validates metadata for PRs being created, revalidates immediately before
 mutation, performs one atomic lease-protected push, creates only missing PRs
 bottom-to-top as drafts, preserves existing PRs, and keeps the stack comment on
@@ -1020,10 +1023,17 @@ linked pull request through `gh pr merge`, the direct landing transport;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
 
-Branches at the top of the stack, above the one submitted, that have no commits
-of their own yet and no open pull request are left out, and the preview marks
-them so: a branch just created to work in next has nothing to open a pull
-request for. The branch named, or the one you stand on, is never left out.
+A stack that forks is submitted whole, in the same one push: each missing pull
+request opens on the branch it is recorded on, never on a sibling, and the
+preview draws the tree. Only `--link` needs one line; it refuses a fork and
+offers dropping `--link`.
+
+Branches above the one submitted that have no commits of their own yet and no
+open pull request are left out, with anything above them that is left out
+too, and the preview marks them so: a branch just created to work in next has
+nothing to open a pull request for. On a fork each arm is asked on its own.
+The branch named, or the one you stand on, is never left out, and neither is a
+branch something submitted sits on.
 
 After pushing, `submit` waits, up to a minute, until GitHub shows each
 existing pull request it pushed to at the pushed head. A push finishing is not

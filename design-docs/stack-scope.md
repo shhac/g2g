@@ -114,9 +114,17 @@ widening the selection: each such branch, and the `g2g restack --branch
 
 ## Projection is linear, and that is a capability, not a scope
 
-A GitHub native stack is linear. `github link`, `submit`, `land` and
-`github retarget` therefore cannot project a fork, and offer only `stack | path`, refusing a
-forked `stack` and naming the remedy: select a leaf.
+A GitHub native stack is linear. `github link` and `land` therefore cannot
+project a fork, and offer only `stack | path`, refusing a forked `stack` and
+naming the remedy: select a leaf, each of which the refusal lists.
+
+A pull request is not a native stack. It has one base, and on a fork that base
+is well defined: the branch its own branch is recorded on. So `submit` and
+`github retarget` take the same two scopes and a fork whole, aiming each pull
+request at its own parent (`githubstack.Across`) rather than at the branch
+before it in the selection. They used to refuse it, so submitting a fork took
+one submit per leaf, each its own atomic push, with the stack half published
+between them. `submit --link` is still a projection and refuses a fork.
 
 Selecting a leaf is the remedy because it needs no machinery. A leaf has no
 descendants, so `stack` collapses to the ancestry on its own:

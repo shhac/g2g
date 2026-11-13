@@ -50,7 +50,7 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 			},
 			notices: flowNotices{
 				preview:  "Rerun with --apply to move these bases.",
-				noOp:     "Every pull request already sits on the branch below it. Nothing to do.",
+				noOp:     "Every pull request already sits on the branch it is recorded on. Nothing to do.",
 				applied:  "Retargeted.",
 				changed:  "GitHub now merges each pull request into the branch below it.",
 				recovery: "Some bases may already have moved · run g2g github status to see which.",
@@ -59,8 +59,8 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
 	selection.register(cmd, completions, stack.ReadableSources, "local branch to retarget from (defaults to current branch)", "trunk to use as the base")
-	// A GitHub native stack is linear, so these are the two scopes that can
-	// produce one. stack still refuses when it forks, naming the remedy.
+	// The scopes submit takes, so its advice to retarget reaches what it
+	// submitted. A fork is fine: each base is the branch it is recorded on.
 	selection.registerScopeOf(cmd, retargetCommand, "retarget")
 	cmd.Flags().BoolVar(&apply, "apply", false, "move the bases instead of previewing the change")
 	return cmd

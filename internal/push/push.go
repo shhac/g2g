@@ -169,9 +169,22 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, publishingTrunk(err, remote)
 	}
-	// A fork is published whole: one atomic push has no order to keep, and
-	// each branch's lease and comparison are its own. The linear projections
-	// are submit's and link's, onto GitHub, not this one's.
+	return s.PlanOf(ctx, snapshot, remote, upstream)
+}
+
+// PlanOf plans publishing exactly the branches snapshot selects. It is for a
+// command that has already selected and narrowed what it publishes -- submit
+// leaves out a branch with nothing to submit yet, which no scope can say once
+// the stack forks -- so push is not asked to select a second time and come
+// back with a set the command did not mean.
+//
+// A fork is published whole: one atomic push has no order to keep, and each
+// branch's lease and comparison are its own. The linear projection is link's,
+// onto a GitHub native stack, not this one's.
+func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote string, upstream localgit.Upstream) (Plan, error) {
+	if s.Git == nil {
+		return Plan{}, fmt.Errorf("push service is not fully configured")
+	}
 	if len(snapshot.Branches) == 0 {
 		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
 	}
@@ -200,7 +213,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		diagnostic.Field{Key: "decision", Value: "ready"},
 		diagnostic.Field{Key: "target", Value: snapshot.Target},
 		diagnostic.Field{Key: "target_source", Value: snapshot.TargetSource},
-		diagnostic.Field{Key: "scope", Value: string(selection.EffectiveScope())},
+		diagnostic.Field{Key: "scope", Value: string(snapshot.Scope)},
 		diagnostic.Field{Key: "base", Value: snapshot.Base},
 		diagnostic.Field{Key: "remote", Value: remote},
 		diagnostic.Field{Key: "branches", Value: strings.Join(snapshot.Branches, ",")},

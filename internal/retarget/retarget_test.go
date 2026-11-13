@@ -21,9 +21,17 @@ func (fakeGit) LocalBranches(context.Context) ([]string, error) {
 
 // fakeSelector supplies a fixed resolved path, so these tests are about what
 // retarget decides rather than about how a stack is selected.
-type fakeSelector struct{}
+type fakeSelector struct{ forked bool }
 
-func (fakeSelector) Select(context.Context, stack.Selection, string) (stack.Snapshot, error) {
+func (f fakeSelector) Select(context.Context, stack.Selection, string) (stack.Snapshot, error) {
+	if f.forked {
+		return stack.Snapshot{
+			Target:   "synthetic-lower",
+			Base:     "synthetic-trunk",
+			Branches: []string{"synthetic-lower", "synthetic-left", "synthetic-right"},
+			Parents:  map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-left": "synthetic-lower", "synthetic-right": "synthetic-lower"},
+		}, nil
+	}
 	return stack.Snapshot{
 		Target:   "synthetic-top",
 		Base:     "synthetic-trunk",
@@ -321,5 +329,28 @@ func TestExecuteThatMovesNothingIsAnOrdinaryFailure(t *testing.T) {
 				t.Errorf("error = %v, want both named once with their shared reason", err)
 			}
 		})
+	}
+}
+
+// A fork has a well-defined base for every pull request: the branch each is
+// recorded on. Each sibling is aimed at the parent they share, never at the
+// sibling before it.
+func TestRetargetAimsEachArmOfAForkAtItsOwnParent(t *testing.T) {
+	github := &fakeGitHub{prs: []githubstack.PullRequest{
+		open(1, "synthetic-lower", "synthetic-trunk"),
+		open(2, "synthetic-left", "synthetic-trunk"),
+		open(3, "synthetic-right", "synthetic-left"),
+	}}
+	service := Service{Git: fakeGit{}, Selector: fakeSelector{forked: true}, GitHub: github}
+	plan, err := service.Plan(context.Background(), stack.Selection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(plan.Changes))
+	for _, change := range plan.Changes {
+		got = append(got, fmt.Sprintf("#%d %s->%s", change.Number, change.From, change.To))
+	}
+	if want := "#2 synthetic-trunk->synthetic-lower; #3 synthetic-left->synthetic-lower"; strings.Join(got, "; ") != want {
+		t.Errorf("changes = %q, want %q", strings.Join(got, "; "), want)
 	}
 }

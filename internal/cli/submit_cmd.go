@@ -30,8 +30,8 @@ func newSubmit(service submit.Service, comments comment.Service, completions sta
 		return options.run(cmd, service, presentation.resolve(cmd))
 	}
 	options.selection.register(cmd, completions, stack.ReadableSources, "local branch to submit (defaults to current branch)", "trunk to use as the submit base")
-	// A GitHub native stack is linear, so these are the two scopes that can
-	// produce one. stack still refuses when it forks, naming the remedy.
+	// A forked stack is submitted whole; only --link, which makes a GitHub
+	// native stack, needs one line and refuses a fork.
 	options.selection.registerScope(cmd, shape.ProjectScopes, shape.ScopeStack, scopeUsage("submit", shape.ProjectScopes))
 	cmd.Flags().StringVar(&options.remote, "remote", localgit.DefaultRemote, "Git remote to push to")
 	cmd.Flags().StringVar(&options.specPath, "spec", "", "submission JSON spec to validate or apply")

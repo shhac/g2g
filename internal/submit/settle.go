@@ -62,7 +62,7 @@ func (s Service) settleHeads(ctx context.Context, plan Plan) error {
 // submission published, at the tip it published.
 func (s Service) pushedHeads(ctx context.Context, plan Plan) (map[string]string, error) {
 	reported := map[string]string{}
-	for step := range githubstack.Along(plan.Snapshot.Base, plan.Snapshot.Branches, plan.Existing) {
+	for step := range plan.steps() {
 		// A head GitHub did not report is one there is nothing to compare
 		// with, which is no reason to wait.
 		if step.Resolution.Open == nil || step.Resolution.Open.HeadOID == "" || plan.Push.Publishing[step.Branch].UpToDate() {

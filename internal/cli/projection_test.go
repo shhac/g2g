@@ -23,37 +23,60 @@ const forkedNodes = `{"nodes":[` +
 
 const forkedPullRequests = `{"data":{"repository":{"pr0":` + forkedNodes + `,"pr1":` + forkedNodes + `,"pr2":` + forkedNodes + `}}}`
 
-// GitHub's native stack is one ordered list and a pull request has one base,
-// so a command that projects a stack cannot represent a fork. Each of these
-// used to treat the fork as a line: retarget moved a correctly based pull
-// request onto its sibling, and link linked the siblings as a chain.
-func TestProjectingCommandsRefuseAFork(t *testing.T) {
+// GitHub's native stack is one ordered list, so a command that links one
+// cannot represent a fork. link used to link the siblings as a chain.
+func TestLinkingRefusesAFork(t *testing.T) {
 	for _, test := range []struct {
 		args     []string
 		mutation string
 	}{
 		{args: []string{"github", "link", "--branch", "synthetic-lower", "--apply"}, mutation: "gh stack link"},
-		{args: []string{"github", "retarget", "--branch", "synthetic-lower", "--apply"}, mutation: "gh " + retargetMutationPrefix},
-		{args: []string{"submit", "--branch", "synthetic-lower"}, mutation: "git push"},
+		{args: []string{"submit", "--branch", "synthetic-lower", "--link", "--apply"}, mutation: "git push"},
 	} {
-		t.Run(test.args[0], func(t *testing.T) {
+		t.Run(strings.Join(test.args[:2], " "), func(t *testing.T) {
 			recorder, _ := g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
 
 			stdout, _, err := run(t, test.args...)
-			if err == nil || !strings.Contains(err.Error(), "more than one branch above it") {
+			if err == nil || !strings.Contains(err.Error()+stdout, "more than one branch above it") {
 				t.Fatalf("%v: error = %v, want the fork refused\n%s", test.args, err, stdout)
 			}
-			if !strings.Contains(err.Error(), "--scope path") {
-				t.Errorf("refusal does not name the way out: %v", err)
+			if !strings.Contains(err.Error()+stdout, "--scope path") {
+				t.Errorf("refusal does not name the way out: %v\n%s", err, stdout)
 			}
 			recorder.AssertNone(test.mutation, "gh pr create")
 		})
 	}
 }
 
+// A pull request has one base, and on a fork it is the branch the pull
+// request's branch is recorded on, so submit and retarget take a fork whole.
+// They used to treat it as a line: retarget moved a correctly based pull
+// request onto its sibling. With every base already right, neither moves one.
+func TestSubmitAndRetargetLeaveAForkCorrectlyBased(t *testing.T) {
+	for _, args := range [][]string{
+		{"github", "retarget", "--branch", "synthetic-lower", "--apply"},
+		{"submit", "--branch", "synthetic-lower"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			recorder, _ := g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
+
+			stdout, _, err := run(t, args...)
+			if err != nil {
+				t.Fatalf("%v: %v\n%s", args, err, stdout)
+			}
+			for _, branch := range []string{"synthetic-top", "synthetic-side"} {
+				if !strings.Contains(stdout, branch) {
+					t.Errorf("%v does not show %s:\n%s", args, branch, stdout)
+				}
+			}
+			recorder.AssertNone("gh "+retargetMutationPrefix, "gh pr create", "gh pr edit")
+		})
+	}
+}
+
 // push is not a projection: one atomic push has no order to keep, so the same
-// fork the projections refuse is published whole.
-func TestPushPublishesTheForkTheProjectionsRefuse(t *testing.T) {
+// fork linking refuses is published whole.
+func TestPushPublishesTheForkLinkingRefuses(t *testing.T) {
 	recorder, _ := g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
 
 	stdout, _, err := run(t, "push", "--branch", "synthetic-lower", "--apply")

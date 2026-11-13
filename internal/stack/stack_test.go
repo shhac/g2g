@@ -2,6 +2,7 @@ package stack
 
 import (
 	"maps"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,20 @@ func TestSitsOnPrefersTheRecordedParentAndFallsBackToTheBase(t *testing.T) {
 	}
 	if got := snapshot.Shape().Parents; !maps.Equal(got, want) {
 		t.Errorf("Shape() = %v, want %v", got, want)
+	}
+}
+
+// A refusal to project a fork names the leaves, each a --branch that turns the
+// scope into one line, so the way out is something to paste rather than find.
+func TestRequireLinearNamesTheLeavesToChooseFrom(t *testing.T) {
+	forked := Snapshot{
+		Target:   "synthetic-a",
+		Base:     "main",
+		Branches: []string{"synthetic-a", "synthetic-b", "synthetic-c", "synthetic-d", "synthetic-e"},
+		Parents:  map[string]string{"synthetic-a": "main", "synthetic-b": "synthetic-a", "synthetic-c": "synthetic-b", "synthetic-d": "synthetic-b", "synthetic-e": "synthetic-d"},
+	}
+	err := forked.RequireLinear("land")
+	if err == nil || !strings.Contains(err.Error(), `"synthetic-b" has more than one branch above it · select a leaf with --branch (synthetic-c, synthetic-e)`) {
+		t.Fatalf("err = %v", err)
 	}
 }

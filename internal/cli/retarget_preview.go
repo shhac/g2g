@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/shhac/g2g/internal/retarget"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -14,8 +15,9 @@ import (
 func retargetView(plan retarget.Plan) stackView {
 	view := stackView{Operation: "github retarget", Target: plan.Target, TargetSource: plan.TargetSource}
 	view.Nodes = append(view.Nodes, stackNode{Branch: plan.Base, Trunk: true})
+	depths := shape.Depths(append([]string{plan.Base}, plan.Discovery.Branches...), plan.Discovery.ParentOf)
 	for _, branch := range plan.Discovery.Branches {
-		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target})
+		view.Nodes = append(view.Nodes, stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Discovery.Parents[branch], Depth: depths[branch]})
 	}
 	if len(plan.Ambiguous) != 0 {
 		view = view.note(fmt.Sprintf("%s %s more than one open pull request · this leaves %s alone.",

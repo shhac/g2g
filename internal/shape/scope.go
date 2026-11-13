@@ -66,9 +66,10 @@ var RewriteScopes = []Scope{ScopeBranch, ScopePath, ScopeSubtree, ScopeStack, Sc
 // "the trunk moved, bring every stack on it up to date".
 var SyncScopes = []Scope{ScopeStack, ScopeTrunk}
 
-// ProjectScopes is what a command that projects onto a GitHub native stack may
-// offer. A native stack is linear, so these are the two that can produce one —
-// and stack still refuses when it forks.
+// ProjectScopes is what a command that projects a stack onto GitHub may offer:
+// the stack a branch is in, or the line to it. A native stack is linear, so
+// link and land refuse a stack that forks; submit and retarget aim each pull
+// request at its own parent and take a fork whole.
 var ProjectScopes = []Scope{ScopeStack, ScopePath}
 
 // Linear reports whether a scope can only ever produce one ordered path

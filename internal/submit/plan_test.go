@@ -3,6 +3,7 @@ package submit
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -334,6 +335,9 @@ func TestBranchesWithNothingToSubmitAboveTheTargetAreLeftOut(t *testing.T) {
 		{name: "an empty branch under one with work", target: "synthetic/lower", empty: []string{"synthetic/middle"}},
 		{name: "an empty branch with an open pull request", target: "synthetic/lower", empty: []string{"synthetic/middle", "synthetic/top"}, prs: []githubstack.PullRequest{open("synthetic/top")}},
 		{name: "the target itself empty", target: "synthetic/top", empty: []string{"synthetic/top"}},
+		// Two open pull requests resolve to none, and leaving the branch out
+		// would hide the ambiguity that blocks the submission.
+		{name: "an empty branch with two open pull requests", target: "synthetic/lower", empty: []string{"synthetic/middle", "synthetic/top"}, prs: []githubstack.PullRequest{open("synthetic/top"), {Number: 8, Head: "synthetic/top", Base: "synthetic/middle", State: "OPEN"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service, git := planService(&fakeGitHub{prs: test.prs})
@@ -347,8 +351,8 @@ func TestBranchesWithNothingToSubmitAboveTheTargetAreLeftOut(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !slices.Equal(plan.Waiting, test.waiting) {
-				t.Fatalf("waiting = %v, want %v", plan.Waiting, test.waiting)
+			if waiting := slices.Sorted(maps.Keys(plan.Waiting)); !slices.Equal(waiting, test.waiting) {
+				t.Fatalf("waiting = %v, want %v", waiting, test.waiting)
 			}
 			kept := len(snapshot().Branches) - len(test.waiting)
 			if got := plan.Snapshot.Branches; !slices.Equal(got, snapshot().Branches[:kept]) {
@@ -357,8 +361,8 @@ func TestBranchesWithNothingToSubmitAboveTheTargetAreLeftOut(t *testing.T) {
 			if len(test.waiting) == 0 {
 				return
 			}
-			if git.planned.Branch != "synthetic/lower" || git.planned.Scope != stack.ScopePath {
-				t.Errorf("push planned %+v, want the path to the last branch kept", git.planned)
+			if !slices.Equal(git.planned.Branches, plan.Snapshot.Branches) {
+				t.Errorf("push planned %v, want exactly the branches submitted, %v", git.planned.Branches, plan.Snapshot.Branches)
 			}
 			for _, branch := range test.waiting {
 				if _, kept := plan.Snapshot.Parents[branch]; kept {

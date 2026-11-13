@@ -242,6 +242,21 @@ case "$1 $2" in
     ;;
   esac
   ;;
+"pr create")
+  # Opening a pull request records its head and base under the next number,
+  # so every later query answers from what was actually opened.
+  head="" base=""
+  previous=""
+  for arg in "$@"; do
+    case "$previous" in --head) head="$arg" ;; --base) base="$arg" ;; esac
+    previous="$arg"
+  done
+  number=41
+  while [ -f "$state_dir/pr-$number.head" ]; do number=$((number + 1)); done
+  printf '%s\n' "$head" > "$state_dir/pr-$number.head"
+  printf '%s\n' "$base" > "$state_dir/pr-$number.base"
+  printf 'https://example.test/%s\n' "$number"
+  ;;
 "pr edit")
   # A base moves through the mutation above. gh pr edit spent requests
   # looking the pull request up first, and reaching for it again is the

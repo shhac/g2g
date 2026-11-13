@@ -93,12 +93,10 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 		return Plan{}, err
 	}
 	// Which base each pull request should have is well defined on a fork, and
-	// the edges below are what answer it. The refusal is the projection rule
-	// every publishing command follows, so a person always retargets exactly
-	// the line they would link and push.
-	if err := discovery.Snapshot.RequireLinear("retarget"); err != nil {
-		return Plan{}, err
-	}
+	// the edges below are what answer it: each is aimed at the branch it is
+	// recorded on. submit publishes a fork whole, and this is what it names
+	// for a pull request left on a base the stack no longer has, so refusing
+	// one here refused the advice.
 	plan := Plan{Discovery: discovery, Changes: []Change{}, Ambiguous: []string{}}
 	for step := range githubstack.Across(discovery.Shape().Parents, discovery.Branches, discovery.PullRequests) {
 		switch step.Classify() {

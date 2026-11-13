@@ -14,6 +14,7 @@ import (
 	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -38,8 +39,11 @@ type Git interface {
 // pinned to the tip you just read always matches: a reviewer's commit sitting
 // on the remote was force-pushed over, and then a pull request opened for
 // what was left. push refuses exactly that, and land already went through it.
+//
+// It is handed the snapshot submit selected rather than a selection to make
+// again: what submit leaves out of a fork is no scope push could be asked for.
 type Pusher interface {
-	Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (push.Plan, error)
+	PlanOf(ctx context.Context, snapshot stack.Snapshot, remote string, upstream localgit.Upstream) (push.Plan, error)
 	Execute(ctx context.Context, plan push.Plan) error
 }
 
@@ -51,8 +55,8 @@ type GitHub interface {
 
 type Service struct {
 	Git Git
-	// Selector supplies the ordered path, from whichever source describes the
-	// branch.
+	// Selector supplies the selection, forked or not, from whichever source
+	// describes the branch.
 	Selector stack.PathSelector
 	GitHub   GitHub
 	Pusher   Pusher
@@ -73,9 +77,9 @@ type Plan struct {
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
 	// Waiting are the branches above the target left out of the submission,
-	// in order: each has no commits of its own yet and no open pull request,
-	// which GitHub would refuse to open.
-	Waiting []string
+	// each with what it sits on: each has no commits of its own yet and no
+	// open pull request, which GitHub would refuse to open.
+	Waiting map[string]string
 }
 
 // Ready reports a service with everything it needs.
@@ -100,7 +104,15 @@ func (p Plan) Blocked() string {
 // rather than of publishing commits to pull requests with intentional bases.
 func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
 
+// LinkRepair is why the pull requests cannot be linked, and the ways out. A
+// GitHub native stack is one line, so a fork can be submitted and not linked.
 func (p Plan) LinkRepair() repair.Note {
+	if err := p.Snapshot.RequireLinear("linking"); err != nil {
+		return repair.Note{
+			Reason: err.Error(),
+			Ways:   []repair.Step{{Effect: "drop --link to publish the whole fork, with each pull request based on its own parent"}},
+		}
+	}
 	misbased := p.misbased()
 	if len(misbased) == 0 {
 		return repair.Note{}
@@ -116,10 +128,10 @@ func (p Plan) LinkRepair() repair.Note {
 }
 
 // misbased is each selected branch whose open pull request is based somewhere
-// other than where the stack records it -- the branch below it, or the base.
+// other than where the stack records it -- the branch it sits on, or the base.
 func (p Plan) misbased() []githubstack.PathStep {
 	misbased := make([]githubstack.PathStep, 0)
-	for step := range githubstack.Along(p.Snapshot.Base, p.Snapshot.Branches, p.Existing) {
+	for step := range p.steps() {
 		if step.Classify() == githubstack.StepBaseMismatch {
 			misbased = append(misbased, step)
 		}
@@ -141,6 +153,13 @@ func (p Plan) OffStack() []githubstack.PathStep {
 		}
 	}
 	return off
+}
+
+// steps is each selected branch with the base its recorded parent implies.
+// A fork has no "branch before this one", so a rolling base would open a
+// pull request on its sibling.
+func (p Plan) steps() func(func(githubstack.PathStep) bool) {
+	return githubstack.Across(p.Snapshot.Shape().Parents, p.Snapshot.Branches, p.Existing)
 }
 
 // retarget is the command that moves every misbased pull request of this
@@ -197,22 +216,16 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	snapshot := discovery.Snapshot
-	// Missing pull requests are created each on the one before it, and the
-	// result is linked as one list, so a fork would open a pull request on its
-	// sibling and link the two as a line.
-	if err := snapshot.RequireLinear("submit"); err != nil {
-		return Plan{}, err
-	}
-	waiting, err := s.waiting(ctx, snapshot, discovery.PullRequests)
+	// A fork is submitted whole: each missing pull request opens on the
+	// branch it is recorded on, and the push is one atomic push whatever the
+	// shape. Only linking needs a line, and LinkRepair refuses a fork.
+	waiting, err := s.waiting(ctx, discovery.Snapshot, discovery.PullRequests)
 	if err != nil {
 		return Plan{}, err
 	}
-	if len(waiting) != 0 {
-		snapshot, selection = narrowed(snapshot, selection, len(waiting))
-	}
-	issues, superseded := assessExisting(discovery.PullRequests, snapshot.Base, snapshot.Branches)
-	published, err := s.Pusher.Plan(ctx, selection, remote, upstream)
+	snapshot := narrowed(discovery.Snapshot, waiting)
+	issues, superseded := assessExisting(snapshot, discovery.PullRequests)
+	published, err := s.Pusher.PlanOf(ctx, snapshot, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -225,58 +238,81 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	return plan, nil
 }
 
-// waiting is the run of branches at the top of the selection, above the
-// target, that have nothing to submit: no commits beyond the branch below and
-// no open pull request. A branch just created to work in next is one, and
-// taking it in asked for a title it could not use and a pull request GitHub
-// refuses. The target itself is never left out, because naming it is asking.
-func (s Service) waiting(ctx context.Context, snapshot stack.Snapshot, prs []githubstack.PullRequest) ([]string, error) {
-	target := slices.Index(snapshot.Branches, snapshot.Target)
-	if target < 0 {
+// waiting is each branch above the target with nothing to submit, with what
+// it sits on: no commits beyond its parent, no open pull request, and nothing
+// above it that is submitted either. A branch just created to work in next is
+// one, and taking it in asked for a title it could not use and a pull request
+// GitHub refuses. The target itself is never left out, because naming it is
+// asking, and neither is a branch something submitted sits on, because its
+// pull request is what that one is based on.
+//
+// Each arm of a fork is asked on its own, from its top down, so an empty
+// branch at the top of one arm is left out while the other arm is submitted.
+func (s Service) waiting(ctx context.Context, snapshot stack.Snapshot, prs []githubstack.PullRequest) (map[string]string, error) {
+	if !slices.Contains(snapshot.Branches, snapshot.Target) {
 		return nil, nil
 	}
+	forest := shape.Forest{Parents: snapshot.Shape().Parents}
+	above := forest.Subtree(snapshot.Target)[1:]
 	resolutions := githubstack.ResolveHeads(prs)
-	top := len(snapshot.Branches)
-	for ; top-1 > target; top-- {
-		branch := snapshot.Branches[top-1]
+	waiting := map[string]string{}
+	// Reversed pre-order reaches every child before its parent.
+	for _, branch := range slices.Backward(above) {
+		if !allWaiting(forest.Children(branch), waiting) {
+			continue
+		}
 		idle, err := s.idle(ctx, snapshot, resolutions[branch], branch)
 		if err != nil {
 			return nil, err
 		}
-		if !idle {
-			break
+		if idle {
+			waiting[branch] = snapshot.SitsOn(branch)
 		}
 	}
-	return slices.Clone(snapshot.Branches[top:]), nil
+	return waiting, nil
+}
+
+func allWaiting(branches []string, waiting map[string]string) bool {
+	for _, branch := range branches {
+		if _, left := waiting[branch]; !left {
+			return false
+		}
+	}
+	return true
 }
 
 // idle reports a branch with nothing to submit: no open pull request, and no
-// commit beyond what it sits on.
+// commit beyond what it sits on. Two open pull requests resolve to none, and
+// leaving that branch out would hide the ambiguity that blocks it.
 func (s Service) idle(ctx context.Context, snapshot stack.Snapshot, resolution githubstack.Resolution, branch string) (bool, error) {
-	if resolution.Open != nil {
+	if resolution.OpenCount != 0 {
 		return false, nil
 	}
 	return s.Git.IsAncestor(ctx, branch, snapshot.SitsOn(branch))
 }
 
-// narrowed is the selection without its last count branches. A submitted stack
-// is linear, so what remains is the path to the last branch kept, and push is
-// asked for that rather than for the branches it would otherwise publish.
-func narrowed(snapshot stack.Snapshot, selection stack.Selection, count int) (stack.Snapshot, stack.Selection) {
-	kept := len(snapshot.Branches) - count
-	parents := maps.Clone(snapshot.Parents)
-	for _, branch := range snapshot.Branches[kept:] {
-		delete(parents, branch)
+// narrowed is the selection without the branches left out of it.
+func narrowed(snapshot stack.Snapshot, left map[string]string) stack.Snapshot {
+	if len(left) == 0 {
+		return snapshot
 	}
-	snapshot.Branches, snapshot.Parents = snapshot.Branches[:kept:kept], parents
-	selection.Branch, selection.Scope = snapshot.Branches[kept-1], stack.ScopePath
-	return snapshot, selection
+	parents := maps.Clone(snapshot.Parents)
+	kept := make([]string, 0, len(snapshot.Branches))
+	for _, branch := range snapshot.Branches {
+		if _, out := left[branch]; out {
+			delete(parents, branch)
+			continue
+		}
+		kept = append(kept, branch)
+	}
+	snapshot.Branches, snapshot.Parents = kept, parents
+	return snapshot
 }
 
 // Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
-		slices.Equal(p.Waiting, other.Waiting) &&
+		maps.Equal(p.Waiting, other.Waiting) &&
 		p.Snapshot.Equal(other.Snapshot) &&
 		githubstack.SettledEqual(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&
@@ -289,10 +325,10 @@ func (p Plan) Equal(other Plan) bool {
 // whose branch names were used before is the recovery this command exists for,
 // so that history is recorded as superseded and a new pull request is created.
 // Existing bases are preserved; only explicit linking requires agreement.
-func assessExisting(prs []githubstack.PullRequest, base string, branches []string) (map[string]string, map[string]githubstack.PullRequest) {
+func assessExisting(snapshot stack.Snapshot, prs []githubstack.PullRequest) (map[string]string, map[string]githubstack.PullRequest) {
 	issues := map[string]string{}
 	superseded := map[string]githubstack.PullRequest{}
-	for step := range githubstack.Along(base, branches, prs) {
+	for step := range (Plan{Snapshot: snapshot, Existing: prs}).steps() {
 		// A missing pull request is not an issue for submit: creating it is the
 		// job. That is the whole of submit's policy difference from link.
 		switch step.Classify() {

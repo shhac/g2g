@@ -125,7 +125,8 @@ func TestApplyLinkFailureFollowsSuccessfulCreation(t *testing.T) {
 }
 
 func snapshot() stack.Snapshot {
-	return stack.Snapshot{Base: "main", Branches: []string{"synthetic/lower", "synthetic/middle", "synthetic/top"}}
+	return stack.Snapshot{Base: "main", Branches: []string{"synthetic/lower", "synthetic/middle", "synthetic/top"},
+		Parents: map[string]string{"synthetic/lower": "main", "synthetic/middle": "synthetic/lower", "synthetic/top": "synthetic/middle"}}
 }
 
 type fakeGit struct {
@@ -137,7 +138,7 @@ type fakeGit struct {
 	remoteErr   error
 	// empty are the branches with no commits beyond the one below them.
 	empty   map[string]bool
-	planned stack.Selection
+	planned stack.Snapshot
 }
 
 func (*fakeGit) CurrentBranch(context.Context) (string, error) { return "synthetic/top", nil }
@@ -157,11 +158,11 @@ func (f *fakeGit) IsAncestor(_ context.Context, ancestor, _ string) (bool, error
 
 // The fake Git also stands in for push. Publishing is push's, so what these
 // tests need of it is only whether it was asked to publish and what it said.
-func (f *fakeGit) Plan(_ context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (push.Plan, error) {
+func (f *fakeGit) PlanOf(_ context.Context, selected stack.Snapshot, remote string, upstream localgit.Upstream) (push.Plan, error) {
 	if f.remoteErr != nil {
 		return push.Plan{}, f.remoteErr
 	}
-	f.planned = selection
+	f.planned = selected
 	tips := testutil.RemoteTips(snapshot().Branches)
 	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Repair: repair.Note{Reason: f.pushBlocked}}, nil
 }

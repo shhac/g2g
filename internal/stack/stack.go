@@ -16,6 +16,7 @@ import (
 
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 
 	"github.com/shhac/g2g/internal/subprocess"
@@ -225,7 +226,24 @@ func (s Snapshot) RequireLinear(what string) error {
 	if !s.Forks() {
 		return nil
 	}
-	return fmt.Errorf("%s needs one ordered path and %q has more than one branch above it · select a leaf with --branch, or narrow with --scope path", what, s.forkedAt())
+	return fmt.Errorf("%s needs one ordered path and %q has more than one branch above it · select a leaf with --branch (%s), or narrow with --scope path", what, s.forkedAt(), strings.Join(s.leaves(), ", "))
+}
+
+// leaves are the selected branches nothing selected sits on, in selection
+// order and quoted for pasting: each one is a --branch that collapses the
+// scope to a single line.
+func (s Snapshot) leaves() []string {
+	under := make(map[string]bool, len(s.Parents))
+	for _, parent := range s.Parents {
+		under[parent] = true
+	}
+	leaves := make([]string, 0)
+	for _, branch := range s.Branches {
+		if !under[branch] {
+			leaves = append(leaves, repair.Quote(branch))
+		}
+	}
+	return leaves
 }
 
 // forkedAt names a branch the selection divides at, so the message points at

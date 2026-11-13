@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
-	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
@@ -117,7 +116,7 @@ func preparePulls(plan Plan, spec Spec) ([]creation, error) {
 		pulls[pull.Branch] = pull
 	}
 	requests := make([]creation, 0, len(spec.Pulls))
-	for step := range githubstack.Along(plan.Snapshot.Base, plan.Snapshot.Branches, plan.Existing) {
+	for step := range plan.steps() {
 		if step.Resolution.Open != nil {
 			continue
 		}

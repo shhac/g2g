@@ -3,9 +3,11 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
 	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/submit"
 )
 
@@ -22,8 +24,15 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		TargetSource: plan.Snapshot.TargetSource,
 		Nodes:        []stackNode{{Branch: plan.Snapshot.Base, Trunk: true}},
 	}
-	for _, branch := range plan.Snapshot.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target}
+	forest := submitted(plan)
+	order := forest.Subtree(plan.Snapshot.Base)[1:]
+	depths := shape.Depths(append([]string{plan.Snapshot.Base}, order...), forest.Parent)
+	for _, branch := range order {
+		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, Parent: forest.Parents[branch], Depth: depths[branch]}
+		if _, left := plan.Waiting[branch]; left {
+			view.Nodes = append(view.Nodes, node.labeled("left out · no commits of its own yet", severityNeutral))
+			continue
+		}
 		state, level := "create "+openAs(draft), severity("")
 		previous, replaced := plan.Superseded[branch]
 		existing := existingNumber(plan, branch)
@@ -37,9 +46,6 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 			state = fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State))
 		}
 		view.Nodes = append(view.Nodes, node.labeled(state, level))
-	}
-	for _, branch := range plan.Waiting {
-		view.Nodes = append(view.Nodes, stackNode{Branch: branch}.labeled("left out · no commits of its own yet", severityNeutral))
 	}
 
 	if template != "" {
@@ -71,6 +77,14 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)
 	}
 	return view
+}
+
+// submitted is what the preview draws: the branches submitted and those left
+// out, each hanging from what it sits on, so a fork is drawn as one.
+func submitted(plan submit.Plan) shape.Forest {
+	parents := plan.Snapshot.Shape().Parents
+	maps.Copy(parents, plan.Waiting)
+	return shape.Forest{Parents: parents}
 }
 
 // openAs names what a missing pull request will be opened as. The preview is

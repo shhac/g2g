@@ -14,7 +14,6 @@ import (
 	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -76,10 +75,13 @@ type Plan struct {
 	Superseded map[string]githubstack.PullRequest
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
+	// Selected is the selection as discovered, before anything was left out
+	// of it: what the preview draws. Snapshot is what is submitted.
+	Selected stack.Snapshot
 	// Waiting are the branches above the target left out of the submission,
-	// each with what it sits on: each has no commits of its own yet and no
-	// open pull request, which GitHub would refuse to open.
-	Waiting map[string]string
+	// in selection order: each has no commits of its own yet and no open pull
+	// request, which GitHub would refuse to open.
+	Waiting []string
 }
 
 // Ready reports a service with everything it needs.
@@ -214,13 +216,13 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err != nil {
 		return Plan{}, err
 	}
-	snapshot := narrowed(discovery.Snapshot, waiting)
+	snapshot := without(discovery.Snapshot, waiting)
 	issues, superseded := assessExisting(snapshot, discovery.PullRequests)
 	published, err := s.Pusher.PlanOf(ctx, snapshot, remote, upstream)
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published, Waiting: waiting}
+	plan := Plan{Selected: discovery.Snapshot, Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published, Waiting: waiting}
 	decision := "ready"
 	if plan.Blocked() != "" {
 		decision = "blocked"
@@ -229,81 +231,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	return plan, nil
 }
 
-// waiting is each branch above the target with nothing to submit, with what
-// it sits on: no commits beyond its parent, no open pull request, and nothing
-// above it that is submitted either. A branch just created to work in next is
-// one, and taking it in asked for a title it could not use and a pull request
-// GitHub refuses. The target itself is never left out, because naming it is
-// asking, and neither is a branch something submitted sits on, because its
-// pull request is what that one is based on.
-//
-// Each arm of a fork is asked on its own, from its top down, so an empty
-// branch at the top of one arm is left out while the other arm is submitted.
-func (s Service) waiting(ctx context.Context, snapshot stack.Snapshot, prs []githubstack.PullRequest) (map[string]string, error) {
-	if !slices.Contains(snapshot.Branches, snapshot.Target) {
-		return nil, nil
-	}
-	forest := shape.Forest{Parents: snapshot.Shape().Parents}
-	above := forest.Subtree(snapshot.Target)[1:]
-	resolutions := githubstack.ResolveHeads(prs)
-	waiting := map[string]string{}
-	// Reversed pre-order reaches every child before its parent.
-	for _, branch := range slices.Backward(above) {
-		if !allWaiting(forest.Children(branch), waiting) {
-			continue
-		}
-		idle, err := s.idle(ctx, snapshot, resolutions[branch], branch)
-		if err != nil {
-			return nil, err
-		}
-		if idle {
-			waiting[branch] = snapshot.SitsOn(branch)
-		}
-	}
-	return waiting, nil
-}
-
-func allWaiting(branches []string, waiting map[string]string) bool {
-	for _, branch := range branches {
-		if _, left := waiting[branch]; !left {
-			return false
-		}
-	}
-	return true
-}
-
-// idle reports a branch with nothing to submit: no open pull request, and no
-// commit beyond what it sits on. Two open pull requests resolve to none, and
-// leaving that branch out would hide the ambiguity that blocks it.
-func (s Service) idle(ctx context.Context, snapshot stack.Snapshot, resolution githubstack.Resolution, branch string) (bool, error) {
-	if resolution.OpenCount != 0 {
-		return false, nil
-	}
-	return s.Git.IsAncestor(ctx, branch, snapshot.SitsOn(branch))
-}
-
-// narrowed is the selection without the branches left out of it.
-func narrowed(snapshot stack.Snapshot, left map[string]string) stack.Snapshot {
-	if len(left) == 0 {
-		return snapshot
-	}
-	parents := maps.Clone(snapshot.Parents)
-	kept := make([]string, 0, len(snapshot.Branches))
-	for _, branch := range snapshot.Branches {
-		if _, out := left[branch]; out {
-			delete(parents, branch)
-			continue
-		}
-		kept = append(kept, branch)
-	}
-	snapshot.Branches, snapshot.Parents = kept, parents
-	return snapshot
-}
-
 // Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
 	return p.Remote == other.Remote &&
-		maps.Equal(p.Waiting, other.Waiting) &&
+		slices.Equal(p.Waiting, other.Waiting) &&
+		p.Selected.Equal(other.Selected) &&
 		p.Snapshot.Equal(other.Snapshot) &&
 		githubstack.SettledEqual(p.Existing, other.Existing) &&
 		maps.Equal(p.Issues, other.Issues) &&

@@ -3,11 +3,10 @@ package cli
 import (
 	"fmt"
 	"io"
-	"maps"
+	"slices"
 	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/submit"
 )
 
@@ -18,34 +17,16 @@ import (
 // submit_spec.go and submit_templates.go beside it.
 
 func submitView(plan submit.Plan, template string, draft, link, comments bool) stackView {
+	selected := plan.Selected
 	view := stackView{
 		Operation:    "submit",
-		Target:       plan.Snapshot.Target,
-		TargetSource: plan.Snapshot.TargetSource,
-		Nodes:        []stackNode{{Branch: plan.Snapshot.Base, Trunk: true}},
+		Target:       selected.Target,
+		TargetSource: selected.TargetSource,
+		Nodes:        treeNodes(selected.Base, selected.Target, selected.Branches, selected.ParentOf),
 	}
-	forest := submitted(plan)
-	order := forest.Subtree(plan.Snapshot.Base)[1:]
-	depths := shape.Depths(append([]string{plan.Snapshot.Base}, order...), forest.Parent)
-	for _, branch := range order {
-		node := stackNode{Branch: branch, Target: branch == plan.Snapshot.Target, Parent: forest.Parents[branch], Depth: depths[branch]}
-		if _, left := plan.Waiting[branch]; left {
-			view.Nodes = append(view.Nodes, node.labeled("left out · no commits of its own yet", severityNeutral))
-			continue
-		}
-		state, level := "create "+openAs(draft), severity("")
-		previous, replaced := plan.Superseded[branch]
-		existing := existingNumber(plan, branch)
-		switch {
-		case plan.Issues[branch] != "":
-			state, level = "blocked: "+plan.Issues[branch], severityBad
-		case existing != 0:
-			node.PRNumber = existing
-			state, level = "existing", severityOK
-		case replaced:
-			state = fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State))
-		}
-		view.Nodes = append(view.Nodes, node.labeled(state, level))
+	resolutions := githubstack.ResolveHeads(plan.Existing)
+	for index, node := range view.Nodes[1:] {
+		view.Nodes[index+1] = submitLabel(plan, resolutions, node, draft)
 	}
 
 	if template != "" {
@@ -77,14 +58,6 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)
 	}
 	return view
-}
-
-// submitted is what the preview draws: the branches submitted and those left
-// out, each hanging from what it sits on, so a fork is drawn as one.
-func submitted(plan submit.Plan) shape.Forest {
-	parents := plan.Snapshot.Shape().Parents
-	maps.Copy(parents, plan.Waiting)
-	return shape.Forest{Parents: parents}
 }
 
 // openAs names what a missing pull request will be opened as. The preview is
@@ -126,14 +99,25 @@ func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template 
 	return writeStackView(w, submitView(plan, template, draft, link, comments), p)
 }
 
-// existingNumber routes through the shared resolution rather than scanning for
-// the first open head, so the preview cannot disagree with the plan about
-// which pull request represents a branch.
-func existingNumber(plan submit.Plan, branch string) int {
-	if resolution := githubstack.ResolveHeads(plan.Existing)[branch]; resolution.Open != nil {
-		return resolution.Open.Number
+// submitLabel says what submitting does to one branch. Which pull request
+// represents it goes through the shared resolution rather than a scan for the
+// first open head, so the preview cannot disagree with the plan.
+func submitLabel(plan submit.Plan, resolutions map[string]githubstack.Resolution, node stackNode, draft bool) stackNode {
+	branch := node.Branch
+	if slices.Contains(plan.Waiting, branch) {
+		return node.labeled("left out · no commits of its own yet", severityNeutral)
 	}
-	return 0
+	previous, replaced := plan.Superseded[branch]
+	switch {
+	case plan.Issues[branch] != "":
+		return node.labeled("blocked: "+plan.Issues[branch], severityBad)
+	case resolutions[branch].Open != nil:
+		node.PRNumber = resolutions[branch].Open.Number
+		return node.labeled("existing", severityOK)
+	case replaced:
+		return node.labeled(fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State)), "")
+	}
+	return node.labeled("create "+openAs(draft), "")
 }
 
 // offStackNote names each pull request based on a branch the stack no longer

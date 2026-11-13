@@ -56,6 +56,7 @@ func submitPreview(t *testing.T, draft bool) string {
 		Parents:  map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower"},
 	}}
 	var out bytes.Buffer
+	plan.Selected = plan.Snapshot
 	if err := writeSubmitPreview(&out, plan, Presentation{}, "", draft, false, false); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +114,7 @@ func TestSubmitPreviewSaysAStackOfOneGetsNoComment(t *testing.T) {
 		}
 		plan := submit.Plan{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-trunk", Branches: test.branches, Parents: parents}}
 		var out bytes.Buffer
+		plan.Selected = plan.Snapshot
 		if err := writeSubmitPreview(&out, plan, Presentation{}, "", true, false, true); err != nil {
 			t.Fatal(err)
 		}

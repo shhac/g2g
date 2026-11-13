@@ -186,7 +186,7 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 		return Plan{}, fmt.Errorf("push service is not fully configured")
 	}
 	if len(snapshot.Branches) == 0 {
-		return Plan{}, fmt.Errorf("selected Graphite path has no non-trunk branches to push")
+		return Plan{}, fmt.Errorf("the selection has no branches to push, only its trunk")
 	}
 	tips, err := s.Git.RemoteTips(ctx, remote, snapshot.Branches)
 	if err != nil {

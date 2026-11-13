@@ -66,6 +66,7 @@ func TestSubmitNamesAPullRequestBasedOffTheStack(t *testing.T) {
 				Snapshot: stack.Snapshot{Target: "synthetic-b", TargetSource: test.source, Base: "synthetic-main", Branches: []string{"synthetic-b"}, Scope: shape.ScopeStack},
 				Existing: []githubstack.PullRequest{{Number: 7, Head: "synthetic-b", Base: "synthetic-deleted", State: "OPEN"}},
 			}
+			plan.Selected = plan.Snapshot
 			view := submitView(plan, "", false, false, false)
 			said := ""
 			for _, note := range view.Notes {
@@ -97,6 +98,7 @@ func TestSubmitSaysNothingOfABaseChosenInsideTheStack(t *testing.T) {
 	if plan.LinkBlocked() == "" {
 		t.Fatal("synthetic-b's pull request reads as based on its recorded parent")
 	}
+	plan.Selected = plan.Snapshot
 	for _, note := range submitView(plan, "", false, false, false).Notes {
 		if strings.Contains(note.Text, "retarget") {
 			t.Errorf("the preview flags a base inside the stack: %q", note.Text)

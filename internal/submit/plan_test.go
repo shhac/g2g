@@ -3,7 +3,6 @@ package submit
 import (
 	"context"
 	"errors"
-	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -271,6 +270,9 @@ func TestPlanEqualComparesEveryFactThatAffectsTheMutation(t *testing.T) {
 			p.Superseded = map[string]githubstack.PullRequest{"synthetic/lower": {Number: 9}}
 			return p
 		},
+		"waiting":  func(p Plan) Plan { p.Waiting = []string{"synthetic/top"}; return p },
+		"selected": func(p Plan) Plan { p.Selected.Branches = []string{"synthetic/lower", "synthetic/top"}; return p },
+		"push":     func(p Plan) Plan { p.Push.Snapshot.Branches = []string{"synthetic/other"}; return p },
 	} {
 		t.Run(name, func(t *testing.T) {
 			if base.Equal(mutate(base)) {
@@ -351,7 +353,7 @@ func TestBranchesWithNothingToSubmitAboveTheTargetAreLeftOut(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if waiting := slices.Sorted(maps.Keys(plan.Waiting)); !slices.Equal(waiting, test.waiting) {
+			if waiting := plan.Waiting; !slices.Equal(waiting, test.waiting) {
 				t.Fatalf("waiting = %v, want %v", waiting, test.waiting)
 			}
 			kept := len(snapshot().Branches) - len(test.waiting)

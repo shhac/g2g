@@ -150,9 +150,7 @@ func TestJourneySubmitAStackThatForks(t *testing.T) {
 	}
 	bases := map[string]string{}
 	for number := 43; number <= 45; number++ {
-		head, _ := os.ReadFile(filepath.Join(state, fmt.Sprintf("pr-%d.head", number)))
-		base, _ := os.ReadFile(filepath.Join(state, fmt.Sprintf("pr-%d.base", number)))
-		bases[strings.TrimSpace(string(head))] = strings.TrimSpace(string(base))
+		bases[readState(t, state, fmt.Sprintf("pr-%d.head", number))] = readState(t, state, fmt.Sprintf("pr-%d.base", number))
 	}
 	want := map[string]string{"synthetic-c": "synthetic-b", "synthetic-d": "synthetic-b", "synthetic-e": "synthetic-d"}
 	for branch, base := range want {

@@ -157,3 +157,45 @@ func TestBlockedPreviewsDoNotInviteAnApply(t *testing.T) {
 		})
 	}
 }
+
+// A fork is drawn as one, in the terminal and in --json, where each branch
+// names the parent it hangs from: the field a script reads the shape from.
+func TestSubmitAndRetargetDrawAFork(t *testing.T) {
+	for _, args := range [][]string{
+		{"github", "retarget", "--branch", "synthetic-lower"},
+		{"submit", "--branch", "synthetic-lower"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			g2gOwnedRepositoryWithPullRequests(t, forkedGraph, forkedPullRequests)
+
+			stdout, _, err := run(t, args...)
+			if err != nil {
+				t.Fatalf("%v: %v\n%s", args, err, stdout)
+			}
+			if !strings.Contains(stdout, "├─") || !strings.Contains(stdout, "└─") {
+				t.Errorf("%v does not draw the fork:\n%s", args, stdout)
+			}
+
+			stdout, _, err = run(t, append(args, "--json")...)
+			if err != nil {
+				t.Fatalf("%v --json: %v\n%s", args, err, stdout)
+			}
+			var document struct {
+				Branches []struct{ Branch, Parent string }
+			}
+			if err := json.Unmarshal([]byte(stdout), &document); err != nil {
+				t.Fatalf("%v --json: %v\n%s", args, err, stdout)
+			}
+			parents := map[string]string{}
+			for _, branch := range document.Branches {
+				parents[branch.Branch] = branch.Parent
+			}
+			want := map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower", "synthetic-side": "synthetic-lower"}
+			for branch, parent := range want {
+				if parents[branch] != parent {
+					t.Errorf("%v --json: %s's parent = %q, want %q (all: %v)", args, branch, parents[branch], parent, parents)
+				}
+			}
+		})
+	}
+}

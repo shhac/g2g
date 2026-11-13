@@ -164,7 +164,7 @@ func (f *fakeGit) PlanOf(_ context.Context, selected stack.Snapshot, remote stri
 	}
 	f.planned = selected
 	tips := testutil.RemoteTips(snapshot().Branches)
-	return push.Plan{Remote: remote, RemoteTips: tips, Upstream: upstream, Repair: repair.Note{Reason: f.pushBlocked}}, nil
+	return push.Plan{Snapshot: selected, Remote: remote, RemoteTips: tips, Upstream: upstream, Repair: repair.Note{Reason: f.pushBlocked}}, nil
 }
 
 func (f *fakeGit) Execute(_ context.Context, plan push.Plan) error {

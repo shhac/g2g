@@ -46,7 +46,7 @@ func landView(plan land.Plan) stackView {
 			view = view.note("This checkout will be detached at the merged commit before its branch is deleted.", severityNeutral)
 		}
 	}
-	view = worktreeNotes(view, plan.Worktrees, plan.Options.Worktrees, "", "")
+	view = worktreeNotes(view, plan.Worktrees, plan.Options.Worktrees, "g2g pull", "")
 	if plan.Detach && !plan.KeepTrunk {
 		view = view.note(fmt.Sprintf("This checkout will be detached at %s before a branch it stands on is deleted, since another worktree has %s checked out.", plan.Trunk, plan.Trunk), severityNeutral)
 	}

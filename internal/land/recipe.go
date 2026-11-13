@@ -159,7 +159,7 @@ func (p Plan) cleanupCommands(step Step) []Command {
 			Effect:  "fetch the merge without moving the local trunk",
 		}, Command{
 			Command: repair.Command([]string{"g2g", "untrack", "--branch", step.Branch, "--apply"}),
-			Effect:  "forget it, after checking its work is in the fetched trunk",
+			Effect:  "forget it, after checking its work is in the fetched trunk, recording what sat on it on the trunk",
 		})
 		if p.Detach {
 			commands = append(commands, Command{Command: repair.Command([]string{"git", "switch", "--detach", ref}), Effect: "move off the merged branch without checking out the held trunk"})

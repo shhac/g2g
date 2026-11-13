@@ -189,7 +189,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, options Op
 	if len(plan.Steps) != 0 {
 		last := plan.Steps[len(plan.Steps)-1].Branch
 		plan.Above = recorded.Children(last)
-		if plan.Republish, err = s.republishing(ctx, recorded, last, options.Remote); err != nil {
+		if plan.Republish, err = s.republishing(ctx, recorded, last, options.Remote, plan.Worktrees); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -220,7 +220,10 @@ func (p Plan) Blocked() string { return p.Repair.Sentence() }
 // is already on the remote: the subtree above it, which is what a sync of its
 // stack takes. A branch never published is left unpublished, as push would
 // leave it for anyone who had not asked.
-func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, remote string) ([]Republish, error) {
+//
+// A branch left where its worktree has it is not replayed, so there is
+// nothing new to publish for it, or for anything stacked on it.
+func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, remote string, worktrees worktree.Outcome) ([]Republish, error) {
 	above := recorded.Shape().Subtree(last)[1:]
 	if len(above) == 0 {
 		return nil, nil
@@ -237,7 +240,7 @@ func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, r
 	reachable := map[string]bool{last: true}
 	for _, branch := range above {
 		tip := tips[branch]
-		if tip == "" || !reachable[recorded.Edges[branch].Parent] {
+		if tip == "" || !reachable[recorded.Edges[branch].Parent] || worktrees.Leaves(branch) {
 			continue
 		}
 		reachable[branch] = true

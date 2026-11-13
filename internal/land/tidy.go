@@ -68,8 +68,8 @@ func (s Service) advance(ctx context.Context, plan Plan) (bool, error) {
 	}
 	// A worktree that picked up changes since the descent began: its branch
 	// would be left on a trunk that no longer exists upstream.
-	if len(synced.Worktrees.Leave) != 0 {
-		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", leftBehind(synced).Sentence())
+	if unplanned := plan.unplannedLeaves(synced); len(unplanned) != 0 {
+		return false, fmt.Errorf("cannot bring the rest of the stack up to date: %s", leftBehind(unplanned).Sentence())
 	}
 	if synced.Nothing() {
 		return false, nil
@@ -197,9 +197,6 @@ func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) er
 	if err != nil {
 		return err
 	}
-	if note := declaredRefusal(recorded, branch); note.Reason != "" {
-		return fmt.Errorf("%s", note.Sentence())
-	}
 	limit := recorded.Edges[branch].ForkPoint
 	upstream, err := landed.Into(ctx, s.Git, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk), branch, limit)
 	if err != nil {
@@ -208,9 +205,36 @@ func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) er
 	if !upstream {
 		return fmt.Errorf("%s merged, but its work is not in the fetched %s · rerun g2g land", branch, plan.Trunk)
 	}
+	// What sat on it was left where its worktree has it, unreplayed, and is
+	// recorded on the trunk with the fork point it already had, which keeps
+	// its replay to its own commits when that worktree is free. Only a
+	// branch the plan left is lifted: anything else recorded on it since the
+	// descent began is refused below, as it was.
+	if children := recorded.Children(branch); len(children) != 0 && allLeft(plan, children) {
+		if recorded, _, err = recorded.Lift(branch); err != nil {
+			return err
+		}
+		if err := s.Graph.Store.Save(ctx, recorded); err != nil {
+			return err
+		}
+	}
+	if note := declaredRefusal(recorded, branch); note.Reason != "" {
+		return fmt.Errorf("%s", note.Sentence())
+	}
 	untrack, err := s.Graph.PlanUntrack(ctx, graph.Selection{Branch: branch, Scope: graph.ScopeBranch})
 	if err != nil {
 		return err
 	}
 	return s.Graph.ApplyUntrack(ctx, untrack)
+}
+
+// allLeft reports branches every one of which the plan leaves where its
+// worktree has it.
+func allLeft(plan Plan, branches []string) bool {
+	for _, branch := range branches {
+		if !plan.Worktrees.Leaves(branch) {
+			return false
+		}
+	}
+	return true
 }

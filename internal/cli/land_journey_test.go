@@ -785,3 +785,67 @@ func TestJourneyLandSaysWhenItWouldMergeWorkThePullRequestNeverShowed(t *testing
 		}
 	}
 }
+
+// An agent is working on the branch above the one being landed, in its own
+// worktree, with changes not yet committed. Landing refused under every
+// policy: --worktrees skip counted the clean trunk checkout as a blocker too,
+// and follow could not bring the dirty child along. What lands does not
+// depend on the child, so the child is left where its worktree has it --
+// unreplayed, recorded on the trunk, its pull request aimed there -- and
+// finished by a pull in that worktree once it is free.
+func TestJourneyLandLeavesABranchAboveItWhereItsWorktreeHasIt(t *testing.T) {
+	for _, policy := range []string{"follow", "skip"} {
+		t.Run(policy, func(t *testing.T) {
+			w := newWorld(t)
+			w.branchOff("main", "synthetic-a", "a.txt")
+			w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+			mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+			mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+			w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b")
+			own := w.tip(w.Local, "synthetic-b")
+			root := filepath.Dir(w.Local)
+			trunk, agent := filepath.Join(root, "trunk"), filepath.Join(root, "agent")
+			w.git(w.Local, "switch", "-q", "--detach")
+			w.git(w.Local, "worktree", "add", "-q", trunk, "main")
+			w.git(w.Local, "worktree", "add", "-q", agent, "synthetic-b")
+			if err := os.WriteFile(filepath.Join(agent, "b.txt"), []byte("half done\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			state := landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b")
+
+			mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--worktrees", policy, "--apply")
+
+			if got := readState(t, state, "pr-41.state"); got != "MERGED" {
+				t.Fatalf("pull request #41 state = %q, want MERGED", got)
+			}
+			if got := readState(t, state, "pr-42.base"); got != "main" {
+				t.Errorf("synthetic-b's pull request is based on %q, want main before its base was deleted", got)
+			}
+			if w.tip(w.Local, "synthetic-b") != own {
+				t.Error("synthetic-b was replayed under its worktree's uncommitted changes")
+			}
+			if content, err := os.ReadFile(filepath.Join(agent, "b.txt")); err != nil || string(content) != "half done\n" {
+				t.Errorf("the agent's uncommitted change = %q, %v", content, err)
+			}
+			if got := w.readStructure()["synthetic-b"]; got != "main" {
+				t.Errorf("synthetic-b is recorded under %q, want main", got)
+			}
+			if strings.Contains(w.git(w.Local, "branch", "--format=%(refname:short)"), "synthetic-a") {
+				t.Error("synthetic-a survives locally")
+			}
+
+			// Once the agent commits, a pull in its worktree finishes the job.
+			w.git(agent, "commit", "-qam", "synthetic agent work")
+			t.Chdir(agent)
+			mustRun(t, "pull", "--apply")
+			w.assertClean(agent)
+			if !w.contains(agent, w.tip(w.Remote, "main"), "synthetic-b") {
+				t.Error("synthetic-b was not replayed onto the trunk the merge produced")
+			}
+			if got := w.git(agent, "rev-list", "--count", w.tip(w.Remote, "main")+"..synthetic-b"); got != "2" {
+				t.Errorf("synthetic-b carries %s commits over the trunk after its pull, want its own 2", got)
+			}
+			w.assertHas(agent, "synthetic-b", "a.txt")
+		})
+	}
+}

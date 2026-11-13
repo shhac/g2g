@@ -7,7 +7,6 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/githubstack"
-	"github.com/shhac/g2g/internal/shape"
 )
 
 // commentView draws the stack with what happens to each pull request's
@@ -55,12 +54,10 @@ func commentNodes(plan comment.Plan) []stackNode {
 			writes[write.Number] = write
 		}
 	}
-	forest := plan.Shape()
-	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), forest.Parent)
-	nodes := []stackNode{{Branch: plan.Base, Trunk: true}}
-	for _, branch := range plan.Branches {
-		parent, _ := forest.Parent(branch)
-		node := stackNode{Branch: branch, Target: branch == plan.Requested, Parent: parent, Depth: depths[branch], PRNumber: plan.Members[branch].Number}
+	nodes := treeNodes(plan.Base, plan.Requested, plan.Branches, plan.Shape().Parent)
+	for index, node := range nodes[1:] {
+		branch := node.Branch
+		node.PRNumber = plan.Members[branch].Number
 		write, written := writes[node.PRNumber]
 		switch {
 		case written && node.PRNumber != 0:
@@ -74,7 +71,7 @@ func commentNodes(plan comment.Plan) []stackNode {
 		default:
 			node = node.marked(stackMark{Detail: "no pull request", Severity: severityNeutral})
 		}
-		nodes = append(nodes, node)
+		nodes[index+1] = node
 	}
 	return nodes
 }

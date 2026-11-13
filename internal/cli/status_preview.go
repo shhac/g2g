@@ -6,7 +6,6 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
 )
@@ -118,16 +117,6 @@ func landingNotes(discovery graph.Discovery) []string {
 // their contents have drifted, so this says the first and stays silent on the
 // second rather than inventing an answer.
 func sourceGraphView(snapshot stack.Snapshot) stackView {
-	ordered := append([]string{snapshot.Base}, snapshot.Branches...)
-	depths := shape.Depths(ordered, snapshot.ParentOf)
-	nodes := []stackNode{{Branch: snapshot.Base, Trunk: true}}
-	for _, branch := range snapshot.Branches {
-		nodes = append(nodes, stackNode{
-			Branch: branch,
-			Target: branch == snapshot.Target,
-			Parent: snapshot.Parents[branch],
-			Depth:  depths[branch],
-		})
-	}
+	nodes := treeNodes(snapshot.Base, snapshot.Target, snapshot.Branches, snapshot.ParentOf)
 	return stackView{Operation: "status", Target: snapshot.Target, TargetSource: snapshot.TargetSource, Nodes: nodes}
 }

@@ -30,14 +30,11 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	}
 	native := githubstack.AssessMembership(plan.Branches, plan.PullRequests)
 
-	// The base is a node too, and it is the parent of every top-level branch, so
-	// it has to be in the ordered selection for depth to come out right.
-	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
 	view := stackView{
 		Operation:    operation,
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
-		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
+		Nodes:        treeNodes(plan.Base, plan.Target, plan.Branches, plan.ParentOf),
 	}
 	absent := map[string]bool{}
 	resolutions := githubstack.ResolveHeads(plan.PullRequests)
@@ -47,8 +44,8 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 	if absent[plan.Base] && plan.Source == stack.SourceG2G {
 		view.Nodes[0] = view.Nodes[0].marked(stackMark{Detail: "local branch missing", Severity: severityWarn})
 	}
-	for _, branch := range plan.Branches {
-		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
+	for index, branch := range plan.Branches {
+		node := view.Nodes[index+1]
 		// A branch this checkout does not have is structure and not a place to
 		// act, so it is marked as what it is rather than as a blocked branch:
 		// nothing here is wrong with it, and no command will touch it.
@@ -71,11 +68,11 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 			} else if pr != nil {
 				marks = append(marks, stackMark{Subject: "pr", OK: true, Detail: "open", Severity: severityNeutral})
 			}
-			view.Nodes = append(view.Nodes, node.marked(marks...))
+			view.Nodes[index+1] = node.marked(marks...)
 			continue
 		}
 		if issue, blocked := issues[branch]; blocked {
-			view.Nodes = append(view.Nodes, node.marked(issueMark(issue)))
+			view.Nodes[index+1] = node.marked(issueMark(issue))
 			continue
 		}
 		pr := native.Branches[branch]
@@ -95,7 +92,7 @@ func membershipView(plan link.Plan, operation string) (stackView, githubstack.Me
 		if marker, markerSeverity := membershipStyle(native, branch, plan.Forks()); marker != "" {
 			marks = append(marks, stackMark{Detail: marker, Severity: markerSeverity})
 		}
-		view.Nodes = append(view.Nodes, node.marked(marks...))
+		view.Nodes[index+1] = node.marked(marks...)
 	}
 	return view, native
 }

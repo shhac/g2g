@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/shape"
 )
 
 // stackView is the one semantic projection every command produces. It carries
@@ -117,11 +118,26 @@ type stackNode struct {
 	// Marks are the sole annotation record. Renderers derive the combined
 	// state and worst severity rather than keeping parallel cached fields.
 	Marks []stackMark
-	// Parent and Depth describe a forked graph. The linear commands leave both
-	// zero, so their rendering is unchanged: a stack whose every node has one
-	// child is a tree that happens to look like a list.
+	// Parent and Depth describe a forked graph, and treeNodes sets both. A
+	// view that leaves them zero renders as a list, as link's does: a stack
+	// whose every node has one child is a tree that happens to look like one.
 	Parent string
 	Depth  int
+}
+
+// treeNodes is the base and each branch of a selection placed in its tree,
+// unlabelled, with each branch's parent and depth read from the same edges.
+// The base is a node too, and it is the parent of every top-level branch, so
+// it has to be in the ordered selection for depth to come out right.
+func treeNodes(base, target string, branches []string, parentOf func(string) (string, bool)) []stackNode {
+	depths := shape.Depths(append([]string{base}, branches...), parentOf)
+	nodes := make([]stackNode, 0, len(branches)+1)
+	nodes = append(nodes, stackNode{Branch: base, Trunk: true})
+	for _, branch := range branches {
+		parent, _ := parentOf(branch)
+		nodes = append(nodes, stackNode{Branch: branch, Target: branch == target, Parent: parent, Depth: depths[branch]})
+	}
+	return nodes
 }
 
 // stackMark is one statement about a branch: which axis it is about, whether

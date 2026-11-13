@@ -7,7 +7,6 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
-	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
 )
@@ -17,16 +16,13 @@ func pushView(plan push.Plan) stackView {
 		Operation:    "push",
 		Target:       plan.Target,
 		TargetSource: plan.TargetSource,
-		Nodes:        []stackNode{{Branch: plan.Base, Trunk: true}},
+		Nodes:        treeNodes(plan.Base, plan.Target, plan.Branches, plan.ParentOf),
 		Action:       pushAction(plan),
 	}
-	depths := shape.Depths(append([]string{plan.Base}, plan.Branches...), plan.ParentOf)
-	for _, branch := range plan.Branches {
+	for index, node := range view.Nodes[1:] {
 		// A branch missing from the map reads as Uncompared, never as the
 		// reassuring answer.
-		state, level := publicationState(plan.Publishing[branch])
-		node := stackNode{Branch: branch, Target: branch == plan.Target, Parent: plan.Parents[branch], Depth: depths[branch]}
-		view.Nodes = append(view.Nodes, node.labeled(state, level))
+		view.Nodes[index+1] = node.labeled(publicationState(plan.Publishing[node.Branch]))
 	}
 	view = pushDropNotes(view, plan)
 	view.Commits = commitRecords(plan.Subjects, plan.Commits)

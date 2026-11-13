@@ -162,3 +162,29 @@ func TestATrunkRewoundByHandIsNotReadAsLagging(t *testing.T) {
 	w.assertHas(w.Local, "synthetic-rewound", "own.txt")
 	w.assertClean(w.Local)
 }
+
+// A recorded branch deleted with plain Git, on a trunk that lags its remote,
+// is doctor's to report. A status of another stack on that trunk never shows
+// it, and failed outright asking Git about it.
+func TestStatusOfAStackBesideADeletedRecordedBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-gone", "gone.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("main", "synthetic-kept", "kept.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.git(w.Local, "branch", "-q", "-D", "synthetic-gone")
+	w.commit(w.Other, "main", "upstream.txt", "upstream")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "fetch", "-q", "origin")
+
+	for _, args := range [][]string{{"status"}, {"status", "--scope", "path"}} {
+		stdout := mustRun(t, args...)
+		if !strings.Contains(stdout, "synthetic-kept") {
+			t.Errorf("g2g %s does not show the selected stack:\n%s", strings.Join(args, " "), stdout)
+		}
+	}
+	doctor, _, _ := run(t, "doctor")
+	if !strings.Contains(doctor, "synthetic-gone") {
+		t.Errorf("doctor no longer reports the deleted branch:\n%s", doctor)
+	}
+}

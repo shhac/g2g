@@ -74,9 +74,14 @@ func carried(ctx context.Context, published push.Known, discovery graph.Discover
 
 // carrierOf is the first branch stacked on this one that holds the remote's
 // tip for it, empty when none does.
+//
+// Only a child the read selected is asked, because only those have a state
+// saying whether they are still a local branch. A trunk's children include
+// every stack on it, and one deleted with plain Git outside the selection
+// failed the whole status over a branch it was never going to show.
 func carrierOf(ctx context.Context, published push.Known, discovery graph.Discovery, branch, tip string) (string, error) {
 	for _, child := range discovery.Graph.Children(branch) {
-		if discovery.States[child] == graph.StateBranchMissing {
+		if state, selected := discovery.States[child]; !selected || state == graph.StateBranchMissing {
 			continue
 		}
 		holds, err := published.Git.IsAncestor(ctx, tip, child)

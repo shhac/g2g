@@ -35,9 +35,17 @@ func TestJourneyARestackStoppedElsewhereLeavesOtherStacksFree(t *testing.T) {
 	mustRun(t, "create", "synthetic-above-free", "--apply")
 	w.assertClean(w.Local)
 
+	w.git(w.Local, "switch", "-qc", "synthetic-loose", "synthetic-free")
+	w.commit(w.Local, "synthetic-loose", "loose.txt", "loose")
+	mustRun(t, "track", "--branch", "synthetic-loose", "--parent", "synthetic-free", "--apply")
+	if got := w.readStructure()["synthetic-loose"]; got != "synthetic-free" {
+		t.Errorf("synthetic-loose is recorded under %q, want synthetic-free", got)
+	}
+
 	for _, args := range [][]string{
 		{"push", "--branch", "synthetic-busy", "--apply"},
 		{"create", "synthetic-above-busy", "--parent", "synthetic-busy", "--apply"},
+		{"track", "--branch", "synthetic-loose", "--parent", "synthetic-busy", "--apply"},
 	} {
 		_, stderr, err := run(t, args...)
 		if err == nil || !strings.Contains(stderr+err.Error(), "already in progress") {

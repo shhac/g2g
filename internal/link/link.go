@@ -167,7 +167,7 @@ func (s Service) discover(ctx context.Context, selection Selection) (Plan, error
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("link service is not fully configured")
 	}
-	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "gh stack link")
+	discovery, err := stack.Discover(ctx, s.Selector, s.GitHub, selection, "g2g github link")
 	if err != nil {
 		return Plan{}, err
 	}

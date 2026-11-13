@@ -159,7 +159,7 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 	service := Service{Git: git, Selector: graphiteSelector(git, fakeGraphite{paths: map[string]graphite.Stack{
 		"tip": {Path: []string{"main", "-synthetic-option", "tip"}, Trunks: []string{"main"}},
 	}})}
-	if _, err := service.Plan(context.Background(), link.Selection{Scope: shape.ScopePath}, "origin", localgit.SetUpstream); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to git push") {
+	if _, err := service.Plan(context.Background(), link.Selection{Scope: shape.ScopePath}, "origin", localgit.SetUpstream); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to g2g push") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if git.pushes != 0 {

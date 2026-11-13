@@ -148,7 +148,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	if err := s.Git.Remote(ctx, remote); err != nil {
 		return Plan{}, err
 	}
-	snapshot, err := s.Selector.Select(ctx, selection, "git push")
+	snapshot, err := s.Selector.Select(ctx, selection, "g2g push")
 	if err != nil {
 		return Plan{}, err
 	}

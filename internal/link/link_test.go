@@ -174,7 +174,7 @@ func TestPlanRejectsOptionLikeGraphiteBranch(t *testing.T) {
 		}}),
 		GitHub: github,
 	}
-	if _, err := service.Plan(context.Background(), Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to gh stack link") {
+	if _, err := service.Plan(context.Background(), Selection{Branch: ""}); err == nil || !strings.Contains(err.Error(), "cannot be passed safely to g2g github link") {
 		t.Fatalf("Plan() error = %v", err)
 	}
 	if github.links != 0 {

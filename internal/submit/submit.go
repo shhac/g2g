@@ -107,11 +107,9 @@ func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
 // LinkRepair is why the pull requests cannot be linked, and the ways out. A
 // GitHub native stack is one line, so a fork can be submitted and not linked.
 func (p Plan) LinkRepair() repair.Note {
-	if err := p.Snapshot.RequireLinear("linking"); err != nil {
-		return repair.Note{
-			Reason: err.Error(),
-			Ways:   []repair.Step{{Effect: "drop --link to publish the whole fork, with each pull request based on its own parent"}},
-		}
+	if note := p.Snapshot.LinearRepair("linking"); note.Reason != "" {
+		note.Ways = append(note.Ways, repair.Step{Effect: "drop --link to publish the whole fork, with each pull request based on its own parent"})
+		return note
 	}
 	misbased := p.misbased()
 	if len(misbased) == 0 {

@@ -48,4 +48,15 @@ func TestRequireLinearNamesTheLeavesToChooseFrom(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `"synthetic-b" has more than one branch above it · select a leaf with --branch (synthetic-c, synthetic-e)`) {
 		t.Fatalf("err = %v", err)
 	}
+	// The ways out are ways, not words inside the reason, so the column a
+	// person reads and the line a machine reads name the same remedies.
+	note := forked.LinearRepair("land")
+	if strings.Contains(note.Reason, "--branch") || len(note.Ways) != 2 {
+		t.Errorf("note = %+v, want the remedies as its two ways", note)
+	}
+	linear := forked
+	linear.Branches, linear.Parents = forked.Branches[:3], map[string]string{"synthetic-a": "main", "synthetic-b": "synthetic-a", "synthetic-c": "synthetic-b"}
+	if note := linear.LinearRepair("land"); note.Reason != "" || linear.RequireLinear("land") != nil {
+		t.Errorf("a line is refused: %+v", note)
+	}
 }

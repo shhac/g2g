@@ -106,8 +106,8 @@ func checkedTips(pushed push.Plan) map[string]string {
 // nothing asked of Git or the remote.
 func structuralRefusal(plan Plan, recorded graph.Graph) repair.Note {
 	discovery := plan.Discovery
-	if err := discovery.RequireLinear("land"); err != nil {
-		return repair.Note{Reason: err.Error()}
+	if note := discovery.LinearRepair("land"); note.Reason != "" {
+		return note
 	}
 	if err := discovery.RequireActionable("g2g land"); err != nil {
 		return repair.Note{Reason: err.Error()}

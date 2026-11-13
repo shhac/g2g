@@ -8,6 +8,7 @@ package stack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -213,64 +214,67 @@ func (s Snapshot) Steps(prs []githubstack.PullRequest) func(func(githubstack.Pat
 
 // Forks reports whether any selected branch has two selected children.
 //
-// A GitHub native stack is linear, so this is the question every projecting
+// A GitHub native stack is linear, so this is the question every linking
 // command has to ask before it can act. It is deliberately not asked during
 // selection: reading a fork is fine and is the ordinary case on a trunk, and
 // refusing it there was what made status unusable from one.
-func (s Snapshot) Forks() bool {
-	children := make(map[string]int, len(s.Parents))
-	for _, parent := range s.Parents {
-		children[parent]++
-		if children[parent] > 1 {
-			return true
-		}
-	}
-	return false
-}
+func (s Snapshot) Forks() bool { return len(s.forkPoints()) != 0 }
 
-// RequireLinear refuses a selection a linear projection cannot represent, and
-// names the remedy: a leaf has no descendants, so selecting one collapses the
-// scope to an ordered path without needing a different scope at all.
+// RequireLinear refuses a selection a linear projection cannot represent, as
+// an error, for a caller that refuses with one. LinearRepair is the refusal.
 func (s Snapshot) RequireLinear(what string) error {
-	if !s.Forks() {
-		return nil
+	if note := s.LinearRepair(what); note.Reason != "" {
+		return errors.New(note.Sentence())
 	}
-	return fmt.Errorf("%s needs one ordered path and %q has more than one branch above it · select a leaf with --branch (%s), or narrow with --scope path", what, s.forkedAt(), strings.Join(s.leaves(), ", "))
+	return nil
 }
 
-// leaves are the selected branches nothing selected sits on, in selection
-// order and quoted for pasting: each one is a --branch that collapses the
-// scope to a single line.
-func (s Snapshot) leaves() []string {
-	under := make(map[string]bool, len(s.Parents))
-	for _, parent := range s.Parents {
-		under[parent] = true
+// LinearRepair is why a linear projection cannot represent the selection, and
+// the ways out, or nothing when it can. A leaf has no descendants, so
+// selecting one collapses the scope to an ordered path without needing a
+// different scope at all, and the leaves are named so the way out is
+// something to paste rather than find.
+func (s Snapshot) LinearRepair(what string) repair.Note {
+	forks := s.forkPoints()
+	if len(forks) == 0 {
+		return repair.Note{}
 	}
-	leaves := make([]string, 0)
+	children, leaves := s.children(), make([]string, 0)
 	for _, branch := range s.Branches {
-		if !under[branch] {
+		if children[branch] == 0 {
 			leaves = append(leaves, repair.Quote(branch))
 		}
 	}
-	return leaves
+	return repair.Note{
+		Reason: fmt.Sprintf("%s needs one ordered path and %q has more than one branch above it", what, forks[0]),
+		Ways: []repair.Step{
+			{Effect: "select a leaf with --branch (" + strings.Join(leaves, ", ") + ")"},
+			{Effect: "narrow with --scope path"},
+		},
+	}
 }
 
-// forkedAt names a branch the selection divides at, so the message points at
-// something the reader can act on.
-func (s Snapshot) forkedAt() string {
-	children := make(map[string]int, len(s.Parents))
+// forkPoints are the branches the selection divides at, sorted.
+func (s Snapshot) forkPoints() []string {
 	forks := make([]string, 0)
-	for _, parent := range s.Parents {
-		children[parent]++
-		if children[parent] == 2 {
+	for parent, count := range s.children() {
+		if count > 1 {
 			forks = append(forks, parent)
 		}
 	}
 	sort.Strings(forks)
-	if len(forks) == 0 {
-		return s.Target
+	return forks
+}
+
+// children counts the selected branches recorded on each branch. It reads the
+// recorded edges rather than Shape, which hangs every unplaced branch from the
+// base and would read an all scope's further trunks as a fork.
+func (s Snapshot) children() map[string]int {
+	counts := make(map[string]int, len(s.Parents))
+	for _, parent := range s.Parents {
+		counts[parent]++
 	}
-	return forks[0]
+	return counts
 }
 
 // errNotConfigured is a selector asked to read without the clients it reads

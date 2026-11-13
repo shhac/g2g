@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/stack"
@@ -52,6 +53,9 @@ type Service struct {
 	Selector stack.PathSelector
 	GitHub   GitHub
 	Pusher   Pusher
+	// pause is the clock the wait after a push uses. Nil is the real one; a
+	// test replaces it so the wait costs nothing.
+	pause pause.Func
 }
 
 type Plan struct {

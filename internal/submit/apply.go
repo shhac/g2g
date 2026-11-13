@@ -44,6 +44,9 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 	if err != nil {
 		return stopped(pushed, opened, err)
 	}
+	if err := s.settleHeads(ctx, plan); err != nil {
+		return stopped(pushed, opened, err)
+	}
 	if !link || len(plan.Snapshot.Branches) < 2 {
 		return nil
 	}

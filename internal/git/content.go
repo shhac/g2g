@@ -135,17 +135,23 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 	// busy those files were before it. Counting every edit since the fork gave
 	// up on a branch whose files the trunk had touched often while it was in
 	// review, and land then replayed the branch it had just merged.
-	args := append([]string{"--literal-pathspecs", "rev-list", fmt.Sprintf("--max-count=%d", absorbedCandidates), since + ".." + base, "--"}, paths...)
+	//
+	// Each candidate comes with its tree, from the same process, which is what
+	// a clean merge is compared with: asking for it after each merge spawned a
+	// second process per candidate, and on a branch that conflicts with all
+	// of them that doubled the cost of the answer no.
+	args := append([]string{"--literal-pathspecs", "log", "--format=%H %T", fmt.Sprintf("--max-count=%d", absorbedCandidates), since + ".." + base, "--"}, paths...)
 	touched, err := c.run(ctx, args...)
 	if err != nil {
 		return false
 	}
-	for _, candidate := range outputLines(touched) {
-		merged, err := c.run(ctx, "merge-tree", "--write-tree", candidate, branch)
-		if err != nil {
+	for _, line := range outputLines(touched) {
+		candidate, tree, found := strings.Cut(line, " ")
+		if !found {
 			continue
 		}
-		if same, err := c.sameTree(ctx, merged, candidate); err == nil && same {
+		merged, err := c.run(ctx, "merge-tree", "--write-tree", candidate, branch)
+		if err == nil && strings.TrimSpace(string(merged)) == tree {
 			return true
 		}
 	}

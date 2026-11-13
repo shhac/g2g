@@ -49,6 +49,7 @@ var (
 	pruneCommand        = suggestable{command: "g2g prune", accepted: shape.ReadScopes, fallback: shape.ScopeStack}
 	pushCommand         = suggestable{command: "g2g push", accepted: shape.Scopes, fallback: shape.ScopeStack, remote: true}
 	pullCommand         = suggestable{command: "g2g pull", accepted: shape.SyncScopes, fallback: shape.ScopeStack, remote: true}
+	restackCommand      = suggestable{command: "g2g restack", accepted: shape.RewriteScopes, fallback: shape.ScopeSubtree}
 	githubStatusCommand = suggestable{command: "g2g github status", accepted: shape.Scopes, fallback: shape.ScopeStack}
 	retargetCommand     = suggestable{command: "g2g github retarget", accepted: shape.ProjectScopes, fallback: shape.ScopeStack}
 	// commentCommand takes no scope: it keeps the whole stack a branch is in.

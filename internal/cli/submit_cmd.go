@@ -112,7 +112,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	// metadata is missing. An apply still guards that first read: a detached,
 	// half-rewritten checkout may otherwise fail before identifying its owner.
 	if o.apply && o.guard != nil {
-		if err := o.guard(ctx, []string{}); err != nil {
+		if err := o.guard.RequireIdleFor(ctx, nil); err != nil {
 			return err
 		}
 	}

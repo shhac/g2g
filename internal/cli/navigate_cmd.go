@@ -98,7 +98,7 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		// Mid-restack the checkout is part-way through a rebase, and switching
 		// away from it is how that rebase's state gets stranded.
 		if guard != nil && !dryRun {
-			if err := guard(ctx, nil); err != nil {
+			if err := guard.RequireIdle(ctx); err != nil {
 				return err
 			}
 		}

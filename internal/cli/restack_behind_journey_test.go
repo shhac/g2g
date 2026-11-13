@@ -26,7 +26,7 @@ func TestJourneyARestackOntoATrunkBehindItsRemoteSaysSo(t *testing.T) {
 	for _, want := range []string{
 		"main is 1 commit behind origin/main as last fetched",
 		"g2g pull brings it up to date",
-		"g2g restack --branch synthetic-a --onto origin/main",
+		"g2g restack --onto origin/main",
 	} {
 		if !strings.Contains(preview, want) {
 			t.Errorf("the preview does not say %q:\n%s", want, preview)

@@ -29,10 +29,10 @@ func TestSubmitApplyGuardsBeforeInitialDiscoveryButPreviewCanRead(t *testing.T) 
 	for _, apply := range []bool{true, false} {
 		reads, guards := 0, 0
 		service := submit.Service{Git: submitGuardGit{}, Selector: submitGuardSelector{&reads}, GitHub: githubstack.Client{}, Pusher: &push.Service{}}
-		options := submitOptions{apply: apply, guard: func(context.Context, []string) error {
+		options := submitOptions{apply: apply, guard: guardFunc(func() error {
 			guards++
 			return errors.New("restack belongs to checkout synthetic-owner")
-		}}
+		})}
 		cmd := &cobra.Command{}
 		cmd.SetContext(context.Background())
 		cmd.SetOut(io.Discard)

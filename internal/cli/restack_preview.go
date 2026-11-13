@@ -52,10 +52,7 @@ func behindNote(view stackView, plan restack.Plan) stackView {
 	for _, trunk := range plan.Behind {
 		remote := localgit.DefaultRemote + "/" + trunk.Trunk
 		pull := selectedIn(plan.Discovery).next(pullCommand)
-		onto := repair.Command([]string{"g2g", "restack", "--onto", remote})
-		if plan.Discovery.Target != "" {
-			onto = repair.Command([]string{"g2g", "restack", "--branch", plan.Discovery.Target, "--onto", remote})
-		}
+		onto := selectedIn(plan.Discovery).next(restackCommand) + " --onto " + repair.Quote(remote)
 		view = view.note(fmt.Sprintf("%s is %s behind %s as last fetched, and this replays onto %s as it is here · %s brings it up to date and replays onto that instead, or %s if %s is held with changes in another worktree.",
 			trunk.Trunk, words.Count(trunk.Commits, "commit", "commits"), remote, trunk.Trunk, runnable(pull), runnable(onto), trunk.Trunk), severityWarn)
 	}
@@ -94,7 +91,7 @@ func strandedRoots(plan restack.Plan) []string {
 
 // strandedCommand is the restack that covers a root and everything on it.
 func strandedCommand(root string) string {
-	return repair.Command([]string{"g2g", "restack", "--branch", root, "--scope", "subtree"})
+	return selected{branch: root, named: true}.next(restackCommand)
 }
 
 // ontoEach says where each branch lands, grouped by the root it replays with.

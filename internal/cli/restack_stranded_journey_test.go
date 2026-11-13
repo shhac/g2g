@@ -21,7 +21,7 @@ func TestJourneyARestackSaysWhichBranchesItLeavesOnTheOldCommits(t *testing.T) {
 	w.commit(w.Local, "main", "trunk.txt", "the trunk moved")
 	w.git(w.Local, "switch", "-q", "synthetic-b")
 
-	const bringsAlong = "g2g restack --branch synthetic-a --scope subtree"
+	const bringsAlong = "g2g restack --branch synthetic-a"
 	preview := mustRun(t, "restack", "--scope", "stack")
 	if !strings.Contains(preview, "Leaves synthetic-sibling, outside this selection, on the commits synthetic-a had before this replay") || !strings.Contains(preview, bringsAlong) {
 		t.Errorf("the preview does not say what it leaves behind:\n%s", preview)

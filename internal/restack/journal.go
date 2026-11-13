@@ -102,6 +102,26 @@ func (r Record) Selection() graph.Selection {
 	return graph.Selection{Branch: r.Branch, Scope: graph.Scope(r.Scope)}
 }
 
+// moving is every branch the restack may move, whether or not it has yet.
+func (r Record) moving() map[string]bool {
+	moving := map[string]bool{}
+	add := func(branch string) {
+		if branch != "" {
+			moving[branch] = true
+		}
+	}
+	for branch := range r.Original {
+		add(branch)
+	}
+	for branch := range r.Reparent {
+		add(branch)
+	}
+	for branch := range r.Structure {
+		add(branch)
+	}
+	return moving
+}
+
 // Journal stores the record for an in-flight restack.
 type Journal interface {
 	Load(context.Context) (Record, bool, error)

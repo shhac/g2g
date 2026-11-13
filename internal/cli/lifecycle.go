@@ -211,32 +211,6 @@ func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error 
 	}
 }
 
-// guardBefore refuses, before anything is discovered, a command that cannot
-// say which branches it touches, and any command in the worktree an unfinished
-// restack belongs to: a half-rewritten checkout can fail discovery before the
-// refusal that names the restack is reached.
-func (f applyFlow[P]) guardBefore(ctx context.Context) error {
-	if f.guard == nil {
-		return nil
-	}
-	if f.touches == nil {
-		return f.guard(ctx, nil)
-	}
-	return f.guard(ctx, []string{})
-}
-
-// guardAfter refuses a plan touching a branch an unfinished restack moves.
-func (f applyFlow[P]) guardAfter(ctx context.Context, plan P) error {
-	if f.guard == nil || f.touches == nil {
-		return nil
-	}
-	touching := f.touches(plan)
-	if touching == nil {
-		touching = []string{}
-	}
-	return f.guard(ctx, touching)
-}
-
 // first is the plan a preview shows and an apply compares against.
 func (f applyFlow[P]) first(ctx context.Context) (P, error) {
 	if f.discovered != nil {

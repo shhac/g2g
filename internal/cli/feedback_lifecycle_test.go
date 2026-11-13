@@ -75,13 +75,13 @@ func TestRevalidationPrefersSpecificBlockerAndRepeatsGuard(t *testing.T) {
 	for _, guarded := range []bool{false, true} {
 		calls, guards := 0, 0
 		flow := applyFlow[interruptedPlan]{
-			guard: func(context.Context, []string) error {
+			guard: guardFunc(func() error {
 				guards++
 				if guarded && guards == 2 {
 					return errors.New("restack belongs to synthetic owner's worktree")
 				}
 				return nil
-			},
+			}),
 			plan: func(context.Context) (interruptedPlan, error) {
 				calls++
 				return interruptedPlan{name: strings.Repeat("x", calls)}, nil
@@ -173,3 +173,9 @@ func TestAnotherWorktreeStartingRestackBetweenPlansNamesItsCheckout(t *testing.T
 		t.Fatalf("read half-restacked graph %d times", calls)
 	}
 }
+
+// guardFunc is an idle guard that answers both questions the same way.
+type guardFunc func() error
+
+func (g guardFunc) RequireIdle(context.Context) error              { return g() }
+func (g guardFunc) RequireIdleFor(context.Context, []string) error { return g() }

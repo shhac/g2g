@@ -265,7 +265,12 @@ anything out, so it would strand that worktree. A clean one is brought along
 with its branch. One with changes keeps its branch where it is, the rest of
 the stack moves, and the report names the branch it left and the command that
 finishes it there. `--worktrees refuse` refuses instead, naming the branch and
-the worktree. See `design-docs/worktrees.md`.
+the worktree. `land` treats a branch above the descent the same way: an
+agent's dirty branch above the one being landed is left unreplayed, recorded
+on the trunk, and finished by a `pull` in its worktree, where it used to
+refuse the descent under every policy. A restack stopped on a conflict in
+that worktree no longer refuses `push`, `submit`, `create` or `track` from
+another one on a stack it is not moving. See `design-docs/worktrees.md`.
 
 **the trunk open in the main checkout.** The ordinary layout with agent
 worktrees: the main checkout sits on the trunk and the work is elsewhere.

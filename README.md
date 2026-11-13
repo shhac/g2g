@@ -451,6 +451,8 @@ you stack something on a branch it does not know, and `create` refuses to do
 that from anything but the default branch, so a second trunk — `staging`
 beside `main` — is said out loud first, with `track --as-trunk`. After that
 `create`, `pull`, `restack` and `land` treat it exactly as they treat `main`.
+`push` publishes stacks rather than trunks, so it refuses `staging` itself and
+names `git push origin staging`, which without `--force` only fast-forwards.
 
 A trunk can also say where it goes when it is finished. Small branches are
 reviewed and squash-merged into `synthetic-feature` one at a time, and
@@ -522,8 +524,14 @@ and names `adopt` instead. In a repository with no default branch
 recorded, start the first branch on the trunk by hand and record it with
 `track --parent`; `create` works from there on. On a detached HEAD, which is
 how a new worktree starts when its parent is checked out elsewhere, name the
-parent with `--parent`: `create` proceeds when HEAD is at that branch's tip,
-since leaving it loses nothing, and a failed recording detaches there again.
+parent with `--parent`, and a failed recording detaches there again. `create`
+refuses only when switching would lose work: HEAD has commits that no branch,
+tag, remote-tracking ref or ref `g2g pull` fetched reaches, and the start does
+not already have them by content, as a squash merge would. A HEAD detached at
+a landed stack's tip therefore creates from wherever `--parent` or `--at`
+says. The refusal offers `git branch <name> HEAD` to keep those commits, or
+`git switch --detach <parent>` and rerunning `g2g create <name> --parent
+<parent>` if they are not wanted.
 
 When the local trunk is stale and checked out in another worktree, name a newer
 known trunk revision explicitly:
@@ -536,8 +544,8 @@ g2g create synthetic-next --parent synthetic-main --at origin/synthetic-main --a
 `--at` starts at the pinned commit without moving the trunk. A newer start must
 be on an evidenced trunk's known local upstream, with the local trunk as an
 ancestor; an arbitrary feature revision is refused. No fetch is performed. A
-detached HEAD must be contained in the start commit, and a failed recording
-returns to the original HEAD. The recorded fork excludes the newer trunk
+detached HEAD is held to the same rule as without `--at`, measured against the
+start commit, and a failed recording returns to the original HEAD. The recorded fork excludes the newer trunk
 commits from the branch's own replay range.
 
 It switches, records, then commits. A recording that fails is undone — you are
@@ -618,6 +626,10 @@ g2g restack --branch main --scope stack --apply
 # Move a fragment onto a different base instead of its recorded parent.
 g2g restack --branch feature/login --scope subtree --onto main --apply
 
+# Replay onto the remote's copy of a trunk this checkout lags, recording the
+# local trunk as the parent, without moving the local trunk.
+g2g restack --branch synthetic-feature --onto origin/main --apply
+
 # Resume verbs, with the same meanings they have in git rebase.
 g2g restack --continue
 g2g restack --abort
@@ -651,12 +663,15 @@ that another worktree has since checked out; release that branch there and
 retry `g2g restack --abort`. A worktree the restack brought along is brought
 back with its branch, unless somebody has committed there since.
 
-This is g2g's only resumable operation, so **every other command that
-changes anything refuses while a restack is unfinished** — mid-restack a
-branch may already have moved while the graph still records where it used to
-be.
+This is g2g's only resumable operation, so **a command that changes anything
+refuses while a restack is unfinished** — mid-restack a branch may already
+have moved while the graph still records where it used to be. `push`,
+`submit`, `create` and `track` are the exception, because they can say which
+branches they touch: from another worktree they go ahead unless one of those
+branches, or a parent they measure one against, is a branch the restack may
+move. In the worktree the restack belongs to they refuse like everything else.
 
-Two things a restack reports rather than doing quietly:
+Four things a restack reports rather than doing quietly:
 
 - **A branch it empties.** If everything a branch carried is already upstream
   it collapses onto its base and its pull request would show no changes. The
@@ -671,6 +686,18 @@ Two things a restack reports rather than doing quietly:
   (`git branch -f A A~1`) so its tip commit belongs to the branch above is the
   same state: `status` names both restacks rather than advising a `pull`,
   which would put the commit back on the branch you moved.
+- **A branch it leaves behind.** A branch outside the selection stacked on one
+  the replay moves stays on its parent's old commits — `--scope stack` from one
+  child leaves its sibling. The preview names it, `Leaves synthetic-sibling,
+  outside this selection, on the commits synthetic-parent had before this
+  replay`, with the `g2g restack --branch <root>` that brings it along, and an
+  apply suggests that restack next.
+- **A trunk behind its remote.** A restack never fetches, so it replays onto
+  the trunk as it is here. When the remote's copy, as last fetched, is ahead
+  of it — after a squash merge upstream, the child would keep the parent's
+  original commits and its pull request would conflict — the preview says so
+  and names `g2g pull`, or `--onto origin/<trunk>` when the trunk is held with
+  changes in another worktree.
 
 A branch you rebased by hand is refused rather than replayed: its recorded
 fork point is no longer in its history, so the replay range would silently
@@ -998,10 +1025,20 @@ of their own yet and no open pull request are left out, and the preview marks
 them so: a branch just created to work in next has nothing to open a pull
 request for. The branch named, or the one you stand on, is never left out.
 
+After pushing, `submit` waits, up to a minute, until GitHub shows each
+existing pull request it pushed to at the pushed head. A push finishing is not
+GitHub having seen it, and `gh pr ready` straight after a submit that returned
+at once started a workflow on the commit from before the push. It cannot
+promise what an event GitHub raises later carries, and does not claim to. A
+pull request it opened was opened at that head, and one whose head GitHub
+never reported is not waited on.
+
 A failure after the push, or after a pull request opened, exits `3`: what was
 published and opened stays, and the report names both and the retry, which
-keeps the pull requests that exist and opens only the missing ones. A failure
-before anything changed is an ordinary one.
+keeps the pull requests that exist and opens only the missing ones. GitHub
+never catching up within the minute is one of these, naming the branches it
+still shows at the previous head. A failure before anything changed is an
+ordinary one.
 
 When every selected branch already has an open PR, `g2g submit --apply`
 publishes new commits without a spec. Existing PR bases are preserved even when
@@ -1255,6 +1292,14 @@ published once at the end, before the stack comments are kept, so its pull
 request shows the replayed version rather than one built on a deleted branch.
 A branch that was never published is left unpublished.
 
+Publishing a branch and merging it in the same run is the design, so a branch
+ahead of its pull request is ordinary. When it is ahead by work the pull
+request never showed — counted by content, so a replay of the same commits
+does not count — the preview warns before anything merges, as `synthetic-one
+has 2 commits #41 does not, which this publishes and merges in the same run`,
+and names `g2g push --branch synthetic-one --scope branch` to publish them
+for review first.
+
 If the replay above a merge conflicts, `land` stops there and exits `3`: the
 merge stays, and the replay is an ordinary stopped restack. The report names
 the files; resolve them, `git add` them, run `g2g restack --continue`, then
@@ -1314,6 +1359,16 @@ trunk stays at its old tip, and the preview says the checkout will be detached
 at the fetched merge. `--no-delete-local` keeps the checkout on that branch. A
 stack needing replay refuses a trunk it cannot move, and a branch the descent
 deletes is refused while another worktree has it checked out.
+
+A branch above the descent — one it would replay rather than land — checked
+out in another worktree with changes (or any, under `--worktrees skip`) is
+left where it is rather than refusing the descent, because what lands does
+not depend on it. It is not replayed, it is recorded on the trunk keeping the
+fork point it had, its pull request is aimed at the trunk before its base is
+deleted, and the preview says to finish it with `g2g pull` in that worktree
+once it is free. A single branch whose every branch above is left that way
+lands without moving a trunk it cannot move, as one with nothing above it
+does. A branch the descent itself lands is still refused.
 
 **Direct merges on a protected repository may need `--admin`.** Every branch above the
 first is force-pushed by its own replay, which restarts the required checks
@@ -1691,6 +1746,7 @@ and race flags.
 | `internal/words` | agreeing with a count and listing names as a subject |
 | `internal/parallel` | bounded concurrency for independent per-branch reads |
 | `internal/pause` | the one wait, which stops with its context and which tests replace |
+| `internal/settle` | waiting for GitHub to agree with a push or merge already made, for `land` and `submit` |
 | `internal/diagnostic` | opt-in, stderr-only `--debug` events and bounded, redacted output |
 | `internal/subprocess` | the boundary for `git`, `gt`, and `gh` invocations |
 | `internal/testutil` | fake executables installed on `PATH` during tests |

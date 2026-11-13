@@ -83,6 +83,20 @@ Each is pinned to the tip the plan saw, exactly as a step's own publish is, so
 a reviewer's push above stops the run part-way rather than being overwritten. A
 branch never published stays that way.
 
+**Work the pull request never showed is named before it merges.** Publishing
+a branch and merging it in the same run is the design, so a branch ahead of
+its pull request is ordinary — but "publish first" was the preview's only
+sign, whether that was the same work replayed or commits another worktree had
+added and nobody had reviewed. For every branch that merges, the plan counts
+by content (`Cherry`) the commits above the branch below whose work the
+remote's version lacks (`Step.Unpublished`); a restack's replay is the same
+work under new ids and counts none, and so is the descent's own replay of a
+branch above the first, which is why every merging branch is asked rather than
+the bottom one alone. Any it finds are a warning, "synthetic-a has 2 commits
+#41 does not, which this publishes and merges in the same run", naming
+`g2g push --branch synthetic-a --scope branch` to publish them for review
+first.
+
 ## Every branch is aimed at the trunk
 
 Not at the branch below it. `githubstack.Along` answers the stacked question —
@@ -161,8 +175,12 @@ unrelated push changes it too, and acting on that fetches a base that does not
 contain this merge and replays the branch above onto it. The merge commit comes
 back from the same query that reports the merge, so this costs nothing extra.
 
-This is the first polling anything in g2g does. It asks before it waits,
-because the ordinary case is that GitHub already agrees.
+This was the first polling anything in g2g did. It asks before it waits,
+because the ordinary case is that GitHub already agrees. The pacing, the
+rate-limit handling, the diagnostic event and the rerun command a wait that
+runs out names live in `internal/settle`, which `submit` shares for its own
+wait after a push; land names its event and its rerun command as a
+`settle.Question`.
 
 GitHub's explicit "Base branch was modified" refusal is retried twice at most.
 Each retry waits, asks GitHub to finish recomputing mergeability, and rechecks
@@ -271,9 +289,25 @@ the branch's own content there through `landed.Into`, and forgets it through
 the graph's untrack service. The checked-out trunk's ref, index and tree never
 move. Deleting the current branch detaches this checkout onto the fetched
 merge, which the preview says explicitly. Keeping the local branch leaves
-the checkout on it. Any descent with survivors still refuses the held trunk:
-those branches need the ordinary advance and replay, and skipping it would
-leave the stack carrying its parents' landed work.
+the checkout on it. Any descent with a survivor it would replay still refuses
+the held trunk: that branch needs the ordinary advance and replay, and skipping
+it would leave the stack carrying its parents' landed work. A survivor the
+policy leaves where its own worktree has it is not one of those (below), so a
+single branch every survivor of which is left lands without moving the trunk
+too — `--worktrees skip` with a clean trunk checkout and an agent's child
+branch in another — and what sat on it is recorded on the trunk before the
+branch is forgotten. A branch the descent itself lands is refused while the
+policy would leave it, whatever else.
+
+A survivor another worktree holds that the policy leaves — changes under
+`follow`, any under `skip` — is not part of the descent, because what lands
+does not depend on it. It used to refuse the descent under every policy. It is
+left unreplayed, recorded on the trunk with the fork point it already had,
+which keeps its later replay to its own commits; its pull request is aimed at
+the trunk before its base is deleted, as every survivor's is; nothing is
+republished for it or for what sits on it; and the preview names `g2g pull`,
+run in that worktree once it is free, as what finishes it. A pull partway down
+that would leave a branch the plan did not is still refused.
 
 ## Cleanup cannot fail a descent
 

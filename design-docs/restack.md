@@ -157,6 +157,58 @@ so the rule does not apply, and the dropped commits are listed as for any
 parent. That is per run on purpose: a stored per-trunk setting would outlive
 the rewind it was set for.
 
+`--onto` may also name a remote's copy of a local branch,
+`--onto origin/synthetic-trunk`, which is the way to replay onto a trunk this
+checkout lags without moving the local one — held with changes in another
+worktree, say. Where the commits land and what the graph records then differ:
+the replay is onto the commit that copy is at as this checkout knows it, the
+newer of `refs/remotes/<remote>/<branch>` and g2g's own
+`refs/g2g/remotes/<remote>/<branch>` (`KnownTips`), and the recorded parent is
+the local branch, forking at that commit, as `create --at` records one.
+Recording `origin/synthetic-trunk` itself left the branch reading "parent
+missing" on the next `status`, and resolving only the remote-tracking ref
+replayed onto a stale trunk after a `pull` had fetched further into g2g's own
+ref, so the next restack found nothing to do while the branch still lacked
+what the pull brought. The fork point is measured from the remote's copy on
+any remote, not only the default one `graph.UpstreamFork` asks of, or every
+commit the local trunk lags by would read as the branch's own and be replayed
+next time. `graph.UpstreamAhead` is the one rule for whether a remote's copy
+is the local trunk moved on — strictly ahead, never diverged, local refs only
+— and `UpstreamFork`, which `track` and restack's fork-point refresh share,
+and the behind note below all ask it. An `--onto` that names neither a local
+branch nor a remote's copy of one is refused before anything is replayed,
+because the graph records a parent by branch and there would be none to
+record. The journal keeps the commit (`ontoObject`) and the name it was given
+(`ontoNamed`), so a resumed restack replays onto the same commit and names it
+as the user did; `pull`'s replay onto its fetched ref claims no parent and is
+never journaled as somewhere else, because what a resumed pull replays onto is
+the trunk it has already brought up to date.
+
+### What a preview names that it does not do
+
+A selection narrower than the graph leaves what is outside it where it is,
+which is what a scope is for, but a branch outside it stacked directly on a
+branch the replay moves then sits on its parent's old commits: `--scope stack`
+from one child leaves its sibling behind, and the applied notice used to say
+the branch contents matched the structure. The preview names each such branch,
+grouped by the root of the replay it hangs from, as "Leaves
+synthetic-sibling, outside this selection, on the commits synthetic-parent
+had before this replay", with `g2g restack --branch <root>`, the one selection
+that covers it and everything this replay took; an apply suggests that restack
+next, and says only that the *selected* branches now match the recorded
+structure. Only a direct child is named, since what is stacked on it is
+brought along by whatever brings it.
+
+A restack never fetches, so a trunk whose remote has moved on is replayed onto
+as it is here — after a squash merge upstream, that keeps the parent's
+original commits under the child and leaves its pull request conflicting. When
+the trunk's remote's copy, as last fetched, is strictly ahead of it
+(`UpstreamAhead`, from local refs only), the preview warns, counts the commits,
+and names `g2g pull`, which brings the trunk up to date and replays onto that,
+and `--onto <remote>/<trunk>` for a trunk held with changes in another
+worktree. An `--onto` already says where the replay goes, so it gets no such
+note.
+
 ## Restack can empty a branch
 
 Rebase and replay both drop commits whose patch content is already upstream.
@@ -444,10 +496,21 @@ precedent.
 
 Restack is g2g's **first resumable operation**. Everything else is one-shot.
 
-- Every other command must refuse while a restack is in progress. Mid-restack a
-  branch's ref may have moved while the graph still records its old parent, so
-  `g2g status` would render nonsense and `g2g push` would publish a half-rebased
-  stack.
+- Every other mutating command must refuse while a restack is in progress.
+  Mid-restack a branch's ref may have moved while the graph still records its
+  old parent, so `g2g push` would publish a half-rebased stack. What is untrue
+  is confined to the branches the restack moves, though, and the journal is
+  shared by every worktree, so refusing everything let one restack stopped on a
+  conflict in an agent's worktree block every other worktree's work on stacks
+  with nothing in common with it. `push`, `submit`, `create` and `track`
+  therefore name the branches they touch, with the parents they measure them
+  against, and are refused only when one of them is a branch the journal
+  records moving (its original tips, reparents or structure), or when they run
+  in the worktree the restack belongs to, where Git's rebase owns the index and
+  the checkout, or the journal does not say which worktree that is. The
+  branches a restack replays onto are not among those it moves, so a stack
+  beside it on the same trunk is no conflict. A command that cannot say what it
+  touches still refuses while any restack is unfinished.
 - The clean-worktree precondition changes meaning: still required before apply,
   but the tool may now leave the tree dirty on purpose.
 - The graph edge update is applied only when the whole operation completes, and

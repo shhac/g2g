@@ -183,7 +183,8 @@ and `land` refuses one it cannot use, naming `track --as-trunk --by`.
 | `adopt`, `graphite adopt`, `github adopt` | a declared trunk is a conflict, never re-tracked |
 | `land` from above | lands into `feature`, unchanged: it is the base |
 | `land --branch feature` | a one-branch descent into `main`, by the recorded method |
-| `push`, `github link`, `submit` | one branch on `main`, so its pull request targets `main` |
+| `push`, `github link`, `submit` | one branch on `main`, so its pull request targets `main`; a wider scope is refused naming the same command with `--scope path`, which is why `push` and `github link` pass their own name to the selector |
+| `push` of one that lands nowhere | refused, naming `git push <remote> <trunk>`: publishing a trunk is not publishing a stack, Git does it safely (without `--force` it only fast-forwards), and starting a stack on it, the only advice there was, publishes nothing a branch such as `synthetic-staging` deploys from |
 | `doctor` | nothing about its own edge, because it has none |
 
 ### Landing the trunk itself

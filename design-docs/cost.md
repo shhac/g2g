@@ -91,7 +91,18 @@ once they have waited that long, counted in time waited so a test sees the
 same sequence. A request refused for coming too often is waited out at that
 slow pace rather than stopping a descent part-way, and named if the budget
 runs out first. A state a wait has just read is handed on rather than read
-again: `recheck` decides from the merge state `settlePush` settled on.
+again: `recheck` decides from the merge state `settlePush` settled on. The
+loop is `internal/settle`'s, so `submit`'s wait after its push paces itself
+the same way.
+
+**A wait asks about the whole selection at once.** `submit` waits, up to a
+minute, until each existing open pull request it pushed to reports the pushed
+head: one `ResolveAll` for the pushed tips before it starts, then one aliased
+`Inspect` per poll for every branch it waits on, read through
+`githubstack.ResolveHeads` so a branch's pull request is the one every other
+command would name. The ordinary case is one extra query, because the wait
+asks before it sleeps and GitHub usually already agrees. A pull request this
+run opened, or one whose head GitHub never reported, is not asked about.
 
 ## Still expensive
 
@@ -132,8 +143,23 @@ Known, measured, and left for a change of its own:
   (`for-each-ref`) and asks a second. Answering every stack root on a trunk
   from one `merge-base --independent`-style call would make it one process.
 - **A squash check that conflicts** walks back through the base looking for
-  where the branch was taken in, up to 32 merges, a process each. `merge-tree
-  --stdin` would take them all in one.
+  where the branch was taken in: the newest 32 trunk commits since the fork
+  that touch the branch's files, one `git log` to find them with their trees
+  and a merge each. The bound is the newest 32, not "give up past 32": it is
+  how deep the squash is buried that it limits, so a branch whose files the
+  trunk edited often while it was in review is still found landed. The price
+  is that a branch which genuinely conflicts with a busy trunk now always pays
+  the whole bound, where it used to give up after one `rev-list`: six such
+  branches on one status measured 396 merges. `merge-tree --stdin` would take
+  them all in one process, but needs input on standard input, which
+  `subprocess.Runner` does not carry.
+- **`status` asks a drifted branch whether it landed twice**: once for its
+  state (`graph` `drifted`, through `landedInATrunk`) and once for its
+  publication (`push` `Compare`'s landed standing), with the same trunk and
+  branch. Each is a full `landed.Into`, so the conflicting case above costs
+  double. Remembering the answer for a command needs it keyed by resolved
+  commits rather than names, because a command that moves a ref and asks
+  again must not get the answer from before.
 - **`ResolveAll` falls back to a process per revision** when one of them is
   missing, which a pull request head nobody fetched makes ordinary. `cat-file
   --batch-check` answers missing per line.

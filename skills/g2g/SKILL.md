@@ -121,10 +121,15 @@ description: |
   run in that worktree. `--worktrees skip` leaves every such branch;
   For a left `pull --above` boundary, rerun the same scoped pull once its
   worktree is free; a plain restack would replay the parent onto trunk.
-  `--worktrees refuse` refuses instead. `land` cannot leave part of a descent,
-  so a branch it would leave refuses it — except a lone branch with nothing
-  above it, which lands while the trunk stays — and a branch it deletes is
-  refused while another worktree has it.
+  `--worktrees refuse` refuses instead. `land` cannot leave part of a descent:
+  a branch it lands that the policy would leave refuses it, and so does one it
+  deletes while another worktree has it. A survivor above the descent is not
+  part of it, so one the policy leaves (changes under `follow`, any under
+  `skip`) stays unreplayed, is recorded on the trunk with the fork point it
+  had, gets its pull request aimed at the trunk before its base is deleted,
+  and the preview names `g2g pull` in that worktree to finish it. A trunk the
+  policy leaves is passed only by a lone branch every survivor of which is
+  left, or that has none: it lands while the trunk stays (`keepsTrunk`).
 - `land` retries GitHub's explicit base-change refusal at most twice, checking
   readiness again and pinning every merge with `--match-head-commit`. Other
   errors stop. A single branch with no children can land while the trunk is
@@ -199,7 +204,7 @@ description: |
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `pull` stopping mid-replay, `pull --prune`
   whose prune refused after the pull, `land` stopping after something merged
-  or was tidied, `github comment` stopping after writing some comments, `github retarget` stopping after moving some bases, `submit` failing after its push or after opening a pull request, `create -m` whose commit failed after the record, and
+  or was tidied, `github comment` stopping after writing some comments, `github retarget` stopping after moving some bases, `submit` failing after its push or after opening a pull request (GitHub never showing a pushed head included), `create -m` whose commit failed after the record, and
   a `delete`/`fold`/`rename` whose rollback could not finish are all this; a descent that changed nothing is an ordinary failure.
   `stoppedPartWay` marks it and nothing
   further is printed, because the report is already on stdout.
@@ -362,12 +367,33 @@ description: |
   ancestor; arbitrary feature descendants are refused. Parent-tip starts retain
   ordinary create behavior. Create at the pinned OID, verify PlanTrack's fork,
   and roll back to the original HEAD, never to a different start revision.
+- `create` from a detached HEAD refuses only when switching would lose work:
+  HEAD has commits no branch, tag, remote-tracking ref or `refs/g2g/remotes/`
+  ref reaches (`Unreferenced`) *and* the start does not already have them by
+  content (`landed.Into`, so a squash counts). Do not write a private ancestry
+  or squash check here; refusing any HEAD away from the parent's tip refused a
+  checkout detached at a landed stack's tip even with the `--at` the refusal
+  had suggested. The refusal offers `git branch <name> HEAD`, or detaching at
+  the parent and rerunning `g2g create <name> --parent <parent>`.
 - A branch whose fork point is past its trunk's local tip and on the trunk's
   known upstream (`graph.AheadOnUpstream`) sits on a trunk that lags; it is not
   stale and nothing moved back. `status` advises `pull`, and `restack` and a
   `pull` that leaves a held trunk give it no step while still replaying the
   rest of the stack. A deliberately rewound trunk is restacked onto by name,
   `restack --branch <b> --onto <trunk>`, per run and never stored.
+- `restack --onto <remote>/<branch>` names a remote's copy of a local branch:
+  it replays onto that copy's commit as this checkout knows it (`KnownTips`,
+  the newer of the remote-tracking and `refs/g2g/remotes/` refs), records the
+  local branch as the parent, and forks at that commit on any remote. The
+  journal keeps `ontoObject` and `ontoNamed` for it alone; pull's
+  `ToLocation` is never journaled as elsewhere. Any other `--onto` that names
+  no local branch is refused. Whether a remote's copy is the trunk moved on is
+  `graph.UpstreamAhead` only (strictly ahead, never diverged), shared by
+  `UpstreamFork` and the behind note. A restack preview names the branches
+  outside the selection it leaves on a moving parent's old commits, with
+  `g2g restack --branch <root>`, and warns when the trunk it replays onto is
+  behind its remote's copy as last fetched, naming `g2g pull` and
+  `--onto <remote>/<trunk>`.
 - `up`/`down`/`top`/`bottom` are the only commands that act without `--apply`,
   and that exception is deliberate: moving the checkout changes no ref, record
   or remote, and `git switch` refuses to clobber local changes. Do not add a
@@ -420,7 +446,11 @@ description: |
   own replay, and every range passed to an engine starts at that root's fork
   point, because an engine replays the union onto one base.
 - restack is the only resumable operation. Every other mutating command must
-  refuse while its journal exists, `--continue` recomputes from the refs rather
+  refuse while its journal exists, except that push, submit, create and track
+  name the branches they touch (and their parents) and refuse only when one is
+  a branch the restack may move or they run in the restack's own worktree
+  (`RequireIdleFor`; everything else asks `RequireIdle`), `--continue`
+  recomputes from the refs rather
   than resuming a stored queue, and `--abort` restores tips the journal
   recorded because git only rolls back the invocation it was running.
 - The store lives under the Git common directory and is located with
@@ -582,8 +612,13 @@ description: |
   `gt submit`, restack Graphite, or retarget an existing PR. Its `--apply`
   boundary validates/revalidates first, publishes through `push` (and so
   refuses a remote holding work this checkout lacks), creates only missing
-  draft PRs, links the eligible stack only when `--link` asks, then keeps the
-  stack comments unless `--no-comment`. It leaves out branches above the
+  draft PRs, waits up to a minute through `internal/settle` until each
+  existing open PR it pushed to reports the pushed head (`headRefOid`, batched:
+  one `ResolveAll`, one `Inspect` per poll, `ResolveHeads` for which PR is the
+  branch's) and stops part-way with exit `3` naming any that never did, links
+  the eligible stack only when `--link` asks, then keeps the stack comments
+  unless `--no-comment`. A PR whose head GitHub never reported is not waited
+  on. It leaves out branches above the
   target with no commits of their own and no open pull request, such as one
   just made with `create`, and marks them in the preview. Linking is opt-in because GitHub will
   not merge a linked pull request through `gh pr merge`; `land` refuses a

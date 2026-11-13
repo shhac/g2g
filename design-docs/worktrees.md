@@ -61,6 +61,11 @@ lay this branch's change over whatever it is on now.
   brought. A restack that dies in between is finished by `--continue`, and
   `--abort` brings each one back. A failure to bring one is reported as done,
   with the `git -C … read-tree` command that finishes it, and exits `3`.
+  The journal is shared by every worktree, but a restack stopped in one
+  refuses only what it makes untrue elsewhere: `push`, `submit`, `create` and
+  `track` go ahead from another worktree unless they touch a branch it may
+  move, and every other mutating command still refuses
+  ([restack](restack.md)).
 - **A rewrite that has to rebase** (one whose preview conflicts, or which
   cannot be previewed) checks each branch out here, and Git won't check out a
   branch another worktree has. Following can't help, so it refuses and offers
@@ -97,8 +102,10 @@ been taken. Three more rules follow from that:
 
 ## `land`
 
-A descent cannot leave part of itself behind. Every branch above the next merge
-has to end up on the trunk that merge produced. So for `land`:
+A descent cannot leave part of itself behind. Every branch it lands has to end
+up on the trunk the merge below it produced. A branch above the descent — a
+survivor, which it would replay rather than land — is not part of it: what
+lands does not depend on it. So for `land`:
 
 - A clean worktree under `follow` is no obstacle. Each step's pull brings it
   along. If the trunk is followed and the branch being deleted is the one
@@ -106,10 +113,22 @@ has to end up on the trunk that merge produced. So for `land`:
   can't be checked out here while another worktree has it.
 - A branch the descent deletes is always refused while another worktree has it
   checked out, because Git won't delete it.
-- Anything the policy would leave refuses the descent, except one case: a
-  single branch with nothing above it can land while the trunk stays behind.
-  The merge is checked against the fetched trunk, as before. `refuse` refuses
-  that case too.
+- A survivor the policy leaves — its worktree has changes under `follow`, or
+  any under `skip` — stays where it is, unreplayed. It is recorded on the
+  trunk with the fork point it already had, which keeps its later replay to
+  its own commits; its pull request is aimed at the trunk before its base is
+  deleted; and nothing is republished for it or for what sits on it. The
+  preview names `g2g pull`, run in that worktree once it is free, to finish
+  it. This used to refuse under every policy: `follow`
+  could not bring a dirty child along, and `skip` counted the clean trunk
+  checkout as a blocker as well.
+- A branch the descent lands that the policy would leave refuses the descent.
+  So does a trunk it would leave, except when a single branch lands and every
+  survivor above it is left, or it has none: it lands while the trunk stays
+  behind, the merge checked against the fetched trunk and what sat on it
+  recorded on the trunk. That is `--worktrees skip` with a clean trunk
+  checkout and an agent's child branch in another. `refuse` refuses every
+  such case.
 - A worktree that picks up changes partway down stops the descent at that
   step, with what has merged standing, and the command exits `3`.
 

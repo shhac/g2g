@@ -150,7 +150,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   because a lease must be pinned to what is there now; a report that needed a
   network would not be one to run before deciding whether to fetch. The default
   remote missing draws no marks; a `--remote` named on purpose that does not
-  exist is an error.
+  exist is an error. A branch behind its remote is asked whether a branch
+  stacked on it carries the remote's tip (`carrierOf`), and only the children
+  the read selected are asked: a trunk's children are every stack on it, and
+  one deleted with plain Git outside the selection failed the whole status
+  with a merge-base error over a branch it was never going to show, while
+  `doctor` reported it as an ordinary finding.
 - `doctor` is `status` narrowed to what is wrong, across every recorded stack,
   offline. Each finding carries the one command that puts it right, and it
   exits `1` when it finds anything (`foundError`), `0` when it finds nothing,
@@ -318,7 +323,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   saying "already in the trunk · run g2g prune to forget them" about branches
   it then found nothing to forget. without the second, a
   child's replay range starts below its parent's landed work and each of those
-  commits conflicts with the squashed version of itself.
+  commits conflicts with the squashed version of itself. When merging into the
+  base's tip conflicts — a squash and then a later edit to the same lines —
+  `Absorbed` asks again at the newest 32 trunk commits since the fork that
+  touch the branch's files (`absorbedCandidates`). The bound is how deep the
+  squash is buried, never how busy those files were before it: counting every
+  edit since the fork gave up on a branch whose files the trunk kept touching
+  while it was in review, so `land` replayed the branch it had just merged and
+  `prune` said nothing had landed.
 - `internal/restack` is the only package allowed to rewrite history. The replay
   range is `forkPoint..branch`; the fork point must be an ancestor of the
   branch before any rewrite, or the range silently widens to include the base's
@@ -369,7 +381,19 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   be, and that ref is a place, not a parent. Deriving the recorded parent from
   the replay target instead put `refs/g2g/remotes/origin/main` in the store on
   the ordinary sync path, so every synced stack reported "parent missing"
-  immediately after a sync that said it succeeded.
+  immediately after a sync that said it succeeded. A user's `--onto
+  <remote>/<branch>` naming a remote's copy of a local branch is the one
+  `--onto` where the two differ (`OntoNamed`): it replays onto the commit that
+  copy is at as this checkout knows it — the newer of the remote-tracking ref
+  and g2g's fetched one, through `KnownTips`, the same answer the behind note
+  counts from — and records the local branch, forking at that commit on any
+  remote. Only it is journaled as somewhere else (`ontoObject`, with
+  `ontoNamed`); `ToLocation` never is, since a resumed pull replays onto the
+  trunk it has already advanced. An `--onto` naming neither a local branch nor
+  a remote's copy of one is refused, because there is no branch to record.
+  Whether a trunk's remote's copy is the local one moved on is
+  `graph.UpstreamAhead` alone, shared by `UpstreamFork` (`track` and restack's
+  fork-point refresh) and the note; it answers nothing for a diverged one.
 - Which side wins a divergence is normally answered by which command runs:
   `pull` only moves toward this checkout, `push` only toward the remote. Keep
   that one-direction-per-command rule — it is what makes the model legible.
@@ -461,10 +485,23 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   refused to forget the parent for stranding it. `status` has the matching
   rule (`graph.belowLanded`), because a branch still on its parent's tip was
   never asked whether it had landed.
-- restack is the only resumable operation, so every other mutating command
-  refuses while its journal exists. `--continue` recomputes from the refs
-  rather than resuming a stored queue, which is what makes the user's own
-  `git rebase --continue`/`--abort` harmless.
+- restack is the only resumable operation, so a mutating command refuses
+  while its journal exists — but only as far as the journal makes anything
+  untrue. The journal is shared by every worktree, so refusing everything let
+  one restack stopped on a conflict in an agent's worktree refuse push, submit,
+  create and track in every other worktree, on stacks with nothing in common
+  with it. Those four name the branches they touch, with the parents they
+  measure them against (`applyFlow.touches`), and are refused only when one of
+  them is a branch the restack may move (`Record.moving`), or when they run in
+  the worktree the restack belongs to, or the journal names no owner. Every
+  other mutating command cannot say what it touches and still refuses while any
+  restack is unfinished. The two questions are `idleGuard`'s `RequireIdle` and
+  `RequireIdleFor` (`internal/cli/guard.go`, `internal/restack/idle.go`),
+  named rather than told apart by a nil or empty argument, which every layer
+  had to pass correctly and a `touches` answering nil turned into the strictest
+  one. `--continue` recomputes from the refs rather than resuming a stored
+  queue, which is what makes the user's own `git rebase --continue`/`--abort`
+  harmless.
 
 ## Source resolution
 
@@ -539,7 +576,7 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Fourteen things exist once and must not be reimplemented locally. Each was found as
+Fifteen things exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
@@ -583,6 +620,15 @@ property the original had.
   `pause.Func` a test replaces (`pause.Or` is the real one when unset). land
   had its own, keeping the stack comments copied it line for line, and only
   land's copy was tested for stopping with the context.
+- `internal/settle` — waiting for GitHub to agree with something already
+  done: `settle.Until` asks before it waits, widens the gap as the wait drags
+  on, waits out a rate-limit refusal at the slow pace rather than stopping,
+  reports each attempt as a diagnostic event, and names what it waited for
+  (`NotSettled`) or the command to rerun once the limit resets. The caller
+  names the event and the rerun in a `settle.Question`. It lived inside
+  `land`, and `submit` needed the same wait after its push, because a
+  `gh pr ready` straight after a submit read the previous head; each of those
+  choices was made once and a copy would make it again.
 - `internal/worktree` — what to do about a branch another worktree holds:
   sorting held branches into follow, leave and refuse (`Policy.Split`),
   reading the holders and whether each is clean (`Read`), the refusal and its

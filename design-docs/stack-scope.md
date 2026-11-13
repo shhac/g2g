@@ -105,6 +105,13 @@ A wider default is not a surprise here, because restack previews by default: the
 replay list is rendered and has to be approved with `--apply`. Widening the
 default widens what you read before agreeing to it.
 
+What a scope leaves out is left where it is, which is the point of choosing
+one — but a branch outside the selection stacked on a branch the replay moves
+is then on that branch's old commits, and `stack` excludes the siblings of the
+branch it starts from by design. So restack names what it leaves rather than
+widening the selection: each such branch, and the `g2g restack --branch
+<root>` whose subtree covers it ([restack](restack.md)).
+
 ## Projection is linear, and that is a capability, not a scope
 
 A GitHub native stack is linear. `github link`, `submit`, `land` and

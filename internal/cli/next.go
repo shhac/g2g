@@ -21,6 +21,8 @@ import (
 func replayNext(plan restack.Plan, remote string) string {
 	acted := selectedIn(plan.Discovery).from(remote)
 	switch {
+	case len(plan.Stranded) != 0:
+		return strandedCommand(plan.Stranded[0].Root)
 	case len(plan.Emptied()) != 0:
 		return acted.next(pruneCommand)
 	case len(plan.Replaying()) != 0:

@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
+	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/syncpoint"
 	"github.com/shhac/g2g/internal/words"
@@ -34,7 +38,62 @@ func restackView(plan restack.Plan) stackView {
 	}
 	view = orphanNote(view, plan)
 	view = emptiedNote(view, plan)
+	view = strandedNote(view, plan)
+	view = behindNote(view, plan)
 	return engineNote(view, plan)
+}
+
+// behindNote warns that the replay is onto a trunk its remote, as last
+// fetched, has moved on from. A parent squash-merged upstream is in the
+// remote's trunk and not this one, so the replay keeps the parent's original
+// commits and the pull request conflicts with the squash.
+func behindNote(view stackView, plan restack.Plan) stackView {
+	for _, trunk := range plan.Behind {
+		remote := localgit.DefaultRemote + "/" + trunk.Trunk
+		pull := selectedIn(plan.Discovery).next(pullCommand)
+		onto := repair.Command([]string{"g2g", "restack", "--onto", remote})
+		if plan.Discovery.Target != "" {
+			onto = repair.Command([]string{"g2g", "restack", "--branch", plan.Discovery.Target, "--onto", remote})
+		}
+		view = view.note(fmt.Sprintf("%s is %s behind %s as last fetched, and this replays onto %s as it is here · %s brings it up to date and replays onto that instead, or %s if %s is held with changes in another worktree.",
+			trunk.Trunk, words.Count(trunk.Commits, "commit", "commits"), remote, trunk.Trunk, runnable(pull), runnable(onto), trunk.Trunk), severityWarn)
+	}
+	return view
+}
+
+// strandedNote names the branches outside the selection left on the commits
+// a moving parent had, and the one restack that brings each along.
+func strandedNote(view stackView, plan restack.Plan) stackView {
+	for _, root := range strandedRoots(plan) {
+		branches, parents := []string{}, []string{}
+		for _, left := range plan.Stranded {
+			if left.Root != root {
+				continue
+			}
+			branches = append(branches, left.Branch)
+			if !slices.Contains(parents, left.Parent) {
+				parents = append(parents, left.Parent)
+			}
+		}
+		view = view.note("Leaves "+words.List(branches)+", outside this selection, on the commits "+words.List(parents)+" had before this replay · "+runnable(strandedCommand(root))+" brings "+words.Pick(len(branches), "it", "them")+" along once this is applied.", severityWarn)
+	}
+	return view
+}
+
+// strandedRoots is each rewrite root something was left on, in order.
+func strandedRoots(plan restack.Plan) []string {
+	roots := []string{}
+	for _, left := range plan.Stranded {
+		if !slices.Contains(roots, left.Root) {
+			roots = append(roots, left.Root)
+		}
+	}
+	return roots
+}
+
+// strandedCommand is the restack that covers a root and everything on it.
+func strandedCommand(root string) string {
+	return repair.Command([]string{"g2g", "restack", "--branch", root, "--scope", "subtree"})
 }
 
 // ontoEach says where each branch lands, grouped by the root it replays with.

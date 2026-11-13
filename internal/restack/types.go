@@ -222,10 +222,36 @@ type Plan struct {
 	// it is about to drop rather than count it. Derived from the orphans'
 	// ids, which Equal already compares.
 	Subjects map[string]string
+	// Stranded are branches outside the selection stacked directly on a
+	// branch this rewrite moves, each with the selection root it hangs from.
+	// They stay on the commits their parent had, which is what a narrower
+	// scope means, and is what a reader has to be told: the sibling of the
+	// branch someone is standing on was left behind by --scope stack, under
+	// a report that everything now matched.
+	Stranded []Stranded
+	// Behind are the trunks this replays onto as they are here, while the
+	// remote's copy, as last fetched, is ahead of them. A parent squash-merged
+	// on GitHub is in the remote's trunk and not yet in this one, so replaying
+	// onto this one keeps the parent's original commits under the child, and
+	// the pull request then conflicts with the squash.
+	Behind []TrunkBehind
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. Most of restack's refusals are states rather than
 	// choices and name no way out.
 	Repair repair.Note
+}
+
+// TrunkBehind is a trunk and how many commits its remote's copy has that it
+// does not.
+type TrunkBehind struct {
+	Trunk   string
+	Commits int
+}
+
+// Stranded is a branch left on a moving parent's old commits, and the root of
+// the rewrite it hangs from, whose subtree brings it along.
+type Stranded struct {
+	Branch, Parent, Root string
 }
 
 // Blocked is why an apply would refuse, as one sentence, empty when it would
@@ -298,6 +324,8 @@ func (p Plan) Equal(other Plan) bool {
 		p.Predicted == other.Predicted &&
 		p.Policy == other.Policy &&
 		p.Worktrees.Equal(other.Worktrees) &&
+		slices.Equal(p.Stranded, other.Stranded) &&
+		slices.Equal(p.Behind, other.Behind) &&
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
 			return left.Branch == right.Branch && left.Parent == right.Parent &&
 				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&

@@ -84,6 +84,12 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if len(steps) == 0 {
 		return plan, nil
 	}
+	if plan.Stranded, err = s.stranded(ctx, discovery, steps); err != nil {
+		return Plan{}, err
+	}
+	if onto.Object == "" {
+		plan.Behind = s.behind(ctx, discovery, steps)
+	}
 	if plan.Subjects, err = s.subjects(ctx, plan.Orphaned()); err != nil {
 		return Plan{}, err
 	}

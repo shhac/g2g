@@ -57,7 +57,7 @@ var navigations = []navigation{
 	},
 }
 
-func newNavigations(service navigate.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) []*cobra.Command {
+func newNavigations(service navigate.Service, completions stack.Completions, guard idleGuard, presentation Presentation) []*cobra.Command {
 	commands := make([]*cobra.Command, 0, len(navigations))
 	for _, each := range navigations {
 		commands = append(commands, newNavigate(each, service, completions, guard, presentation))
@@ -65,7 +65,7 @@ func newNavigations(service navigate.Service, completions stack.Completions, gua
 	return commands
 }
 
-func newNavigate(each navigation, service navigate.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newNavigate(each navigation, service navigate.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var dryRun bool
 	cmd := &cobra.Command{
@@ -98,7 +98,7 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		// Mid-restack the checkout is part-way through a rebase, and switching
 		// away from it is how that rebase's state gets stranded.
 		if guard != nil && !dryRun {
-			if err := guard(ctx); err != nil {
+			if err := guard(ctx, nil); err != nil {
 				return err
 			}
 		}

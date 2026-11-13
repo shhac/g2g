@@ -10,7 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/stack"
 )
 
-func newPush(service push.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newPush(service push.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var remote string
 	var selection stackOptions
 	var apply, noSetUpstream, strict bool
@@ -37,6 +37,7 @@ func newPush(service push.Service, completions stack.Completions, guard func(con
 				revalidation: revalidation{"push", "push plan"},
 				render:       writePushPlan,
 				guard:        guard,
+				touches:      func(plan push.Plan) []string { return snapshotTouches(plan.Snapshot) },
 				execute:      service.Execute,
 				branches:     func(plan push.Plan) int { return len(plan.Branches) },
 				// The lease rejects a push the remote has moved under, so this

@@ -75,7 +75,7 @@ func TestRevalidationPrefersSpecificBlockerAndRepeatsGuard(t *testing.T) {
 	for _, guarded := range []bool{false, true} {
 		calls, guards := 0, 0
 		flow := applyFlow[interruptedPlan]{
-			guard: func(context.Context) error {
+			guard: func(context.Context, []string) error {
 				guards++
 				if guarded && guards == 2 {
 					return errors.New("restack belongs to synthetic owner's worktree")

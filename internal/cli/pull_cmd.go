@@ -16,7 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/worktree"
 )
 
-func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard idleGuard, presentation Presentation) *cobra.Command {
 	options := pullOptions{}
 	cmd := &cobra.Command{
 		Use:     "pull",
@@ -122,7 +122,7 @@ func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 }
 
 // flow chooses the trunk or stack plan and the promise its preview makes.
-func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard func(context.Context) error, presentation Presentation) applyFlow[syncer.Plan] {
+func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syncer.Take, guard idleGuard, presentation Presentation) applyFlow[syncer.Plan] {
 	pull := pullFlow(cmd, service, o.selection.Selection(), o.remote, chosen, o.worktrees, guard, presentation, o.alsoPrune)
 	if o.above != "" {
 		pull.plan = func(ctx context.Context) (syncer.Plan, error) {
@@ -154,7 +154,7 @@ func (o pullOptions) flow(cmd *cobra.Command, service syncer.Service, chosen syn
 
 // pullFlow is pull's safety sequence over one selection. thenPrune says a
 // prune follows it, which changes what a preview promises and what comes next.
-func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Selection, remote string, chosen syncer.Take, worktrees worktree.Policy, guard func(context.Context) error, p Presentation, thenPrune bool) applyFlow[syncer.Plan] {
+func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Selection, remote string, chosen syncer.Take, worktrees worktree.Policy, guard idleGuard, p Presentation, thenPrune bool) applyFlow[syncer.Plan] {
 	notices := flowNotices{
 		preview:  "Rerun with --apply to bring the stack up to date.",
 		noOp:     "The stack is already up to date.",

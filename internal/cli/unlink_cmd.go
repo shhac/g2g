@@ -18,7 +18,7 @@ type Unstacker interface {
 	Unstack(context.Context, int) error
 }
 
-func newUnlink(service link.Service, unstacker Unstacker, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newUnlink(service link.Service, unstacker Unstacker, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	var number int

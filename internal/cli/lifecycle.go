@@ -97,7 +97,12 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// repository part-way through a rewrite. Mid-restack a branch may already
 	// have moved while the graph still records where it used to be, so any
 	// mutation would act on a structure that is currently untrue.
-	guard func(context.Context) error
+	guard idleGuard
+	// touches names the branches a plan moves, publishes or records, with the
+	// parents it measures them against, so the guard refuses only a command
+	// whose branches an unfinished restack is moving. Without it the guard
+	// runs before planning and refuses while any restack is unfinished.
+	touches func(P) []string
 
 	// suggest is an optional, success-only continuation for a human who has
 	// just completed a clear operation, named from the plan that was applied;
@@ -154,14 +159,15 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
 
-	if f.guard != nil {
-		if err := f.guard(ctx); err != nil {
-			return err
-		}
+	if err := f.guardBefore(ctx); err != nil {
+		return err
 	}
 	plan, err := f.first(ctx)
 	if err != nil {
 		return budgets.discoveryTimedOut(err)
+	}
+	if err := f.guardAfter(ctx, plan); err != nil {
+		return err
 	}
 	if !apply {
 		return f.preview(cmd, plan, p)
@@ -205,6 +211,32 @@ func (f applyFlow[P]) preview(cmd *cobra.Command, plan P, p Presentation) error 
 	}
 }
 
+// guardBefore refuses, before anything is discovered, a command that cannot
+// say which branches it touches, and any command in the worktree an unfinished
+// restack belongs to: a half-rewritten checkout can fail discovery before the
+// refusal that names the restack is reached.
+func (f applyFlow[P]) guardBefore(ctx context.Context) error {
+	if f.guard == nil {
+		return nil
+	}
+	if f.touches == nil {
+		return f.guard(ctx, nil)
+	}
+	return f.guard(ctx, []string{})
+}
+
+// guardAfter refuses a plan touching a branch an unfinished restack moves.
+func (f applyFlow[P]) guardAfter(ctx context.Context, plan P) error {
+	if f.guard == nil || f.touches == nil {
+		return nil
+	}
+	touching := f.touches(plan)
+	if touching == nil {
+		touching = []string{}
+	}
+	return f.guard(ctx, touching)
+}
+
 // first is the plan a preview shows and an apply compares against.
 func (f applyFlow[P]) first(ctx context.Context) (P, error) {
 	if f.discovered != nil {
@@ -217,10 +249,8 @@ func (f applyFlow[P]) first(ctx context.Context) (P, error) {
 // answer differs from the preview, then settles what was found.
 func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	var none P
-	if f.guard != nil {
-		if err := f.guard(ctx); err != nil {
-			return none, err
-		}
+	if err := f.guardBefore(ctx); err != nil {
+		return none, err
 	}
 	if f.precheck != nil {
 		if err := f.precheck(ctx); err != nil {
@@ -229,6 +259,9 @@ func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	}
 	current, err := f.plan(ctx)
 	if err != nil {
+		return none, err
+	}
+	if err := f.guardAfter(ctx, current); err != nil {
 		return none, err
 	}
 	if blocked := f.blockedReason(current); blocked != "" {

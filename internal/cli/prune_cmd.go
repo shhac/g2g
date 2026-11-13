@@ -14,7 +14,7 @@ import (
 	"github.com/shhac/g2g/internal/shape"
 )
 
-func newPrune(service prune.Service, published push.Known, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newPrune(service prune.Service, published push.Known, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
 	var cleanup prune.Options
@@ -46,7 +46,7 @@ func newPrune(service prune.Service, published push.Known, guard func(context.Co
 
 // pruneFlow is prune's safety sequence over one selection, which pull --prune
 // runs too once the base has moved.
-func pruneFlow(service prune.Service, published push.Known, remote string, selection graph.Selection, guard func(context.Context) error, cmd *cobra.Command, p Presentation, cleanup prune.Options) applyFlow[prunePlan] {
+func pruneFlow(service prune.Service, published push.Known, remote string, selection graph.Selection, guard idleGuard, cmd *cobra.Command, p Presentation, cleanup prune.Options) applyFlow[prunePlan] {
 	notices := flowNotices{
 		preview: "Rerun with --apply to forget them.", noOp: "Nothing has landed.", applied: "Forgotten.",
 		changed: "The graph no longer records them. No branch was deleted.",

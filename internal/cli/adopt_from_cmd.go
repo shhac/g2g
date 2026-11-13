@@ -13,7 +13,7 @@ import (
 
 // adoptFromFlow is the half of adopting from another record that does not
 // depend on which record: the graph write, the guard, and the view.
-func adoptFromFlow(service align.Service, guard func(context.Context) error) applyFlow[align.AdoptPlan] {
+func adoptFromFlow(service align.Service, guard idleGuard) applyFlow[align.AdoptPlan] {
 	return applyFlow[align.AdoptPlan]{
 		render: func(writer io.Writer, plan align.AdoptPlan, p Presentation) error {
 			return writeStackView(writer, adoptFromView(plan), p)
@@ -36,7 +36,7 @@ func adoptFromFlow(service align.Service, guard func(context.Context) error) app
 
 // newGraphiteAdopt records what Graphite declares. Graphite's record is read
 // whole, so it takes no selection at all.
-func newGraphiteAdopt(service align.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newGraphiteAdopt(service align.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "adopt",
@@ -68,7 +68,7 @@ func newGraphiteAdopt(service align.Service, guard func(context.Context) error, 
 
 // newGitHubAdopt records the stack a branch's open pull requests describe,
 // which is how a stack somebody else published is picked up.
-func newGitHubAdopt(service align.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newGitHubAdopt(service align.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection scopeOptions
 	var apply bool
 	cmd := &cobra.Command{

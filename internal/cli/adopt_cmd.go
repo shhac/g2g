@@ -14,7 +14,7 @@ import (
 // ancestry supplies the rest. It refuses rather than guessing wherever
 // ancestry cannot order two branches. Graphite's and GitHub's records have
 // their own adopt, under their own names.
-func newAdopt(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newAdopt(service graph.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var trunk string
 	var apply bool
@@ -49,7 +49,7 @@ func newAdopt(service graph.Service, guard func(context.Context) error, presenta
 
 // adoptFlow is the same safety sequence as every other mutating command,
 // over the whole-ancestry plan rather than a single edge.
-func adoptFlow(service graph.Service, selection graphOptions, trunk string, guard func(context.Context) error) applyFlow[graph.StackPlan] {
+func adoptFlow(service graph.Service, selection graphOptions, trunk string, guard idleGuard) applyFlow[graph.StackPlan] {
 	return applyFlow[graph.StackPlan]{
 		plan: func(ctx context.Context) (graph.StackPlan, error) {
 			return service.PlanStack(ctx, selection.Selection(), trunk)

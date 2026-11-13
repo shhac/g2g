@@ -19,7 +19,7 @@ import (
 // a single file check, which is the documented exception to reading none of
 // Graphite's paths. Asking Graphite what it records would run Graphite from a
 // path whose independence from it is the feature.
-func newTrack(service graph.Service, guard func(context.Context) error, describesElsewhere func(context.Context) (bool, error), presentation Presentation) *cobra.Command {
+func newTrack(service graph.Service, guard idleGuard, describesElsewhere func(context.Context) (bool, error), presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var parent string
 	var apply bool
@@ -54,7 +54,10 @@ func newTrack(service graph.Service, guard func(context.Context) error, describe
 			render: func(writer io.Writer, plan trackPlan, p Presentation) error {
 				return writeGraphView(writer, trackView(plan.TrackPlan, plan.elsewhere), plan.Discovery, p)
 			},
-			guard:    guard,
+			guard: guard,
+			touches: func(plan trackPlan) []string {
+				return append([]string{plan.Target, plan.Parent}, plan.Branches...)
+			},
 			execute:  func(ctx context.Context, plan trackPlan) error { return service.ApplyTrack(ctx, plan.TrackPlan) },
 			branches: func(plan trackPlan) int { return len(plan.Branches) },
 			noOp:     func(plan trackPlan) bool { return trackIsNoOp(plan.TrackPlan) },
@@ -139,7 +142,7 @@ func (f trunkFlags) declaration(parent string) (graph.Declaration, error) {
 // declareFlow is track's safety sequence over a declaration rather than an
 // edge. It is its own plan because it answers a different question: not which
 // parent, but that there is none.
-func declareFlow(service graph.Service, selection graphOptions, declaration graph.Declaration, guard func(context.Context) error) applyFlow[graph.DeclarePlan] {
+func declareFlow(service graph.Service, selection graphOptions, declaration graph.Declaration, guard idleGuard) applyFlow[graph.DeclarePlan] {
 	return applyFlow[graph.DeclarePlan]{
 		plan: func(ctx context.Context) (graph.DeclarePlan, error) {
 			return service.PlanDeclare(ctx, selection.Selection(), declaration)

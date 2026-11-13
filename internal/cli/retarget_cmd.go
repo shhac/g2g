@@ -11,7 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/words"
 )
 
-func newRetarget(service retarget.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newRetarget(service retarget.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{

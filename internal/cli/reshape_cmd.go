@@ -14,7 +14,7 @@ import (
 // newReshape builds the commands that change which branches a stack is made
 // of. They take the graph service only to complete --branch from the same
 // local branches track offers; everything they do goes through reshape.
-func newReshape(service reshape.Service, branches graph.Service, guard func(context.Context) error, presentation Presentation) []*cobra.Command {
+func newReshape(service reshape.Service, branches graph.Service, guard idleGuard, presentation Presentation) []*cobra.Command {
 	return []*cobra.Command{
 		newRemoval(reshape.Delete, service, branches, guard, presentation),
 		newRemoval(reshape.Fold, service, branches, guard, presentation),
@@ -59,7 +59,7 @@ var removals = map[reshape.Operation]removal{
 	},
 }
 
-func newRemoval(operation reshape.Operation, service reshape.Service, branches graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newRemoval(operation reshape.Operation, service reshape.Service, branches graph.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	words := removals[operation]
 	var branch string
 	var apply bool
@@ -95,7 +95,7 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 	return cmd
 }
 
-func newRename(service reshape.Service, branches graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newRename(service reshape.Service, branches graph.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var branch string
 	var apply bool
 	cmd := &cobra.Command{

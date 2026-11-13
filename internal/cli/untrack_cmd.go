@@ -9,7 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 )
 
-func newUntrack(service graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newUntrack(service graph.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
 	cmd := &cobra.Command{Use: "untrack", GroupID: groupShape, Short: "Remove a branch from the g2g-owned graph (preview by default)", Args: cobra.NoArgs}

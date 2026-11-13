@@ -11,7 +11,7 @@ import (
 
 // newCreate takes the graph service only to complete --parent from the same
 // local branches track offers; everything it does goes through create.
-func newCreate(service create.Service, branches graph.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newCreate(service create.Service, branches graph.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var parent, message, at string
 	var apply bool
 	cmd := &cobra.Command{
@@ -38,6 +38,7 @@ func newCreate(service create.Service, branches graph.Service, guard func(contex
 			revalidation: revalidation{"create", "the branch to create"},
 			render:       writeCreatePlan,
 			guard:        guard,
+			touches:      func(plan create.Plan) []string { return []string{plan.Name, plan.Parent} },
 			execute:      service.Apply,
 			branches:     func(create.Plan) int { return 1 },
 			blocked:      create.Plan.Blocked,

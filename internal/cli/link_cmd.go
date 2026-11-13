@@ -12,7 +12,7 @@ import (
 	"github.com/shhac/g2g/internal/stack"
 )
 
-func newLink(service link.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newLink(service link.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection stackOptions
 	var apply bool
 	cmd := &cobra.Command{

@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
 	"github.com/shhac/g2g/internal/worktree"
 )
@@ -254,12 +255,33 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)
 }
 
+// idleGuard refuses a mutation while a restack is unfinished. touching names
+// the branches the command moves, publishes or records, and the parents it
+// measures them against; nil is a command that cannot say, and is refused
+// while any restack is unfinished.
+type idleGuard func(ctx context.Context, touching []string) error
+
+// snapshotTouches is every branch a selection acts on and the parents it
+// measures them against.
+func snapshotTouches(snapshot stack.Snapshot) []string {
+	touching := append([]string{snapshot.Base}, snapshot.Branches...)
+	for _, parent := range snapshot.Parents {
+		touching = append(touching, parent)
+	}
+	return touching
+}
+
 // restackGuard refuses a mutation while a restack is unfinished. A service
 // that was never configured guards nothing, which is what keeps a root command
 // built without one working exactly as before.
-func restackGuard(service restack.Service) func(context.Context) error {
+func restackGuard(service restack.Service) idleGuard {
 	if service.Journal == nil {
 		return nil
 	}
-	return service.RequireIdle
+	return func(ctx context.Context, touching []string) error {
+		if touching == nil {
+			return service.RequireIdle(ctx)
+		}
+		return service.RequireIdleFor(ctx, touching)
+	}
 }

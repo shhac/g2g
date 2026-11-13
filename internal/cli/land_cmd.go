@@ -16,7 +16,7 @@ import (
 	"github.com/shhac/g2g/internal/words"
 )
 
-func newLand(service land.Service, comments comment.Service, replay replayState, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newLand(service land.Service, comments comment.Service, replay replayState, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	flags := landOptions{options: land.Defaults()}
 
 	cmd := &cobra.Command{
@@ -94,7 +94,7 @@ func (o landOptions) chosen(cmd *cobra.Command, comments comment.Service) (land.
 }
 
 // landFlow composes landing and comment upkeep through the shared apply sequence.
-func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service, replay replayState, selection stack.Selection, options land.Options, guard func(context.Context) error, presentation Presentation) applyFlow[land.Plan] {
+func landFlow(cmd *cobra.Command, service land.Service, comments comment.Service, replay replayState, selection stack.Selection, options land.Options, guard idleGuard, presentation Presentation) applyFlow[land.Plan] {
 	return applyFlow[land.Plan]{
 		plan: func(ctx context.Context) (land.Plan, error) {
 			return service.Plan(ctx, selection, options)

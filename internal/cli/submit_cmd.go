@@ -17,7 +17,7 @@ import (
 	"github.com/shhac/g2g/internal/words"
 )
 
-func newSubmit(service submit.Service, comments comment.Service, completions stack.Completions, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newSubmit(service submit.Service, comments comment.Service, completions stack.Completions, guard idleGuard, presentation Presentation) *cobra.Command {
 	options := submitOptions{guard: guard, comments: comments}
 	cmd := &cobra.Command{Use: "submit", GroupID: groupPublish, Short: "Publish a stack and create missing draft PRs (preview by default)", Args: cobra.NoArgs}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -71,7 +71,7 @@ type submitOptions struct {
 	strict bool
 	// guard refuses the command while another operation has left the
 	// repository part-way through a rewrite.
-	guard      func(context.Context) error
+	guard      idleGuard
 	selection  stackOptions
 	remote     string
 	specPath   string
@@ -112,7 +112,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	// metadata is missing. An apply still guards that first read: a detached,
 	// half-rewritten checkout may otherwise fail before identifying its owner.
 	if o.apply && o.guard != nil {
-		if err := o.guard(ctx); err != nil {
+		if err := o.guard(ctx, []string{}); err != nil {
 			return err
 		}
 	}
@@ -264,6 +264,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 	// submit's has always been readable while a rewrite is part-way.
 	if o.apply {
 		flow.guard = o.guard
+		flow.touches = func(plan submit.Plan) []string { return snapshotTouches(plan.Snapshot) }
 	}
 	return flow
 }

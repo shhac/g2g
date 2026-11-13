@@ -9,7 +9,7 @@ import (
 	"github.com/shhac/g2g/internal/align"
 )
 
-func newMirror(service align.Service, guard func(context.Context) error, presentation Presentation) *cobra.Command {
+func newMirror(service align.Service, guard idleGuard, presentation Presentation) *cobra.Command {
 	var prune bool
 	var apply bool
 	cmd := &cobra.Command{

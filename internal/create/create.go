@@ -85,6 +85,10 @@ type Plan struct {
 	// NewTrunk names a parent that recording this edge makes a root of the
 	// graph, which only the repository's default branch may become here.
 	NewTrunk string
+	// HeadAhead is how many commits a detached HEAD is ahead of the trunk
+	// this starts at, on that trunk's known upstream: a worktree made at the
+	// trunk's remote copy, which starting at the trunk's tip moves back from.
+	HeadAhead int
 	// Discovery is the graph read from the parent's side: the path down to
 	// it, and where the store lives.
 	Discovery graph.Discovery
@@ -110,6 +114,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Commit == other.Commit &&
 		p.Message == other.Message &&
 		p.NewTrunk == other.NewTrunk &&
+		p.HeadAhead == other.HeadAhead &&
 		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Staged, other.Staged) &&
 		p.Discovery.Equal(other.Discovery)
@@ -131,17 +136,14 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	// the commit a detached HEAD is at, which detaching again restores.
 	current, err := s.Git.CurrentBranch(ctx)
 	detached := err != nil
-	if detached && plan.Parent == "" {
-		return plan.refuse(repair.Note{
-			Reason: "HEAD is detached, so there is no branch to build on",
-			Ways:   []repair.Step{{Effect: "pass --parent with the branch to build on"}},
-		}), nil
-	}
 	head := ""
 	if detached {
 		if head, err = s.Git.Resolve(ctx, "HEAD"); err != nil {
 			return Plan{}, err
 		}
+	}
+	if detached && plan.Parent == "" {
+		return s.detachedWithoutParent(ctx, plan, head)
 	}
 	plan.Return, plan.ReturnTip = current, head
 	if plan.Parent == "" {
@@ -180,6 +182,11 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	}
 	if plan.Blocked() != "" {
 		return plan, nil
+	}
+	if detached && request.At == "" && evidencedTrunk(plan) {
+		if plan.HeadAhead, err = s.headAhead(ctx, plan.Parent, plan.ParentAt, head); err != nil {
+			return Plan{}, err
+		}
 	}
 	if blocked, refused := refuseRecord(plan, discovery); refused {
 		return blocked, nil

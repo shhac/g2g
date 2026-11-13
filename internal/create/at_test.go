@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +109,64 @@ func TestExplicitStartPreservesReadFailuresAndCancellation(t *testing.T) {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("read failure became a product refusal: %v", err)
 		}
+	}
+}
+
+// aheadGit is a reader that can also say the remote's default branch and how
+// far apart two commits are.
+type aheadGit struct{ upstreamGit }
+
+func (g aheadGit) DefaultBranch(context.Context, string) (string, error) { return "synthetic-main", nil }
+
+// Unreferenced reports nothing left behind: the trunk's remote copy reaches
+// HEAD wherever these fixtures put it.
+func (g aheadGit) Unreferenced(context.Context, string) (bool, error) { return false, nil }
+func (g aheadGit) Divergence(context.Context, string, string) (int, int, error) {
+	return 0, 2, nil
+}
+
+// A worktree made at the trunk's remote copy is detached ahead of the trunk
+// here. create offers starting there when nothing names a parent, and when
+// --parent names the trunk it says that starting at its tip moves the
+// checkout back. HEAD anywhere else is offered nothing: a start past the
+// trunk's tip is only ever on its known upstream.
+func TestADetachedHeadOnTheTrunksUpstreamIsOfferedAsTheStart(t *testing.T) {
+	for _, test := range []struct {
+		name, head string
+		offered    bool
+	}{
+		{"on the known upstream", "upstream-tip", true},
+		{"somewhere else", "elsewhere-tip", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			g, f := fixture()
+			g.detached = true
+			g.tips["HEAD"], g.tips["known"] = test.head, "newer-upstream-tip"
+			service := Service{Git: aheadGit{upstreamGit{g}}, Graph: f}
+
+			refused, err := service.Plan(context.Background(), Request{Name: "synthetic-new"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			offered := strings.Contains(refused.Blocked(), "g2g create synthetic-new --parent synthetic-main --at HEAD")
+			if offered != test.offered || !strings.Contains(refused.Blocked(), "pass --parent") {
+				t.Errorf("refusal %q offers starting at HEAD: %t, want %t", refused.Blocked(), offered, test.offered)
+			}
+
+			behind, err := service.Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-main"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := map[bool]int{true: 2, false: 0}[test.offered]; behind.HeadAhead != want {
+				t.Errorf("HeadAhead = %d, want %d", behind.HeadAhead, want)
+			}
+			atHead, err := service.Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-main", At: "HEAD"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if atHead.HeadAhead != 0 {
+				t.Errorf("starting at HEAD still warns that HEAD is ahead: %d", atHead.HeadAhead)
+			}
+		})
 	}
 }

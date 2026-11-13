@@ -45,6 +45,12 @@ func createView(plan create.Plan) stackView {
 	}
 	view = view.note(fmt.Sprintf("Creates %s at %s (%s), and switches to it.", plan.Name, localgit.Short(plan.At), start), severityOK)
 	view = view.note(fmt.Sprintf("Records %s under %s.", plan.Name, plan.Parent), severityNeutral)
+	if plan.HeadAhead != 0 {
+		// The checkout moves back to start here, from a HEAD on the trunk's
+		// remote copy, and nothing else in the preview says so.
+		view = view.note(fmt.Sprintf("HEAD is %s ahead of %s, where %s's remote copy is, and this starts at %s's older tip · %s starts at HEAD instead.",
+			words.Count(plan.HeadAhead, "commit", "commits"), plan.Parent, plan.Parent, plan.Parent, runnable(plan.StartAtHead())), severityWarn)
+	}
 	if plan.NewTrunk != "" {
 		view = view.note(fmt.Sprintf("%s becomes a root of the graph, as the repository's default branch.", plan.NewTrunk), severityNeutral)
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/subprocess"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // Where a new branch starts, and what switching to it from a detached HEAD
@@ -103,14 +104,92 @@ func startName(plan Plan) string {
 	return plan.Parent
 }
 
+// evidencedTrunk reports a parent that is a trunk somebody named or the
+// repository's default branch: the only parent a start past its tip may be.
+func evidencedTrunk(plan Plan) bool {
+	graph := plan.Discovery.Graph
+	return !graph.Tracked(plan.Parent) && (graph.IsTrunk(plan.Parent) || plan.Discovery.DefaultTrunk == plan.Parent)
+}
+
+// StartAtHead is the create that starts at a detached HEAD instead of the
+// parent's tip, recorded under the same parent.
+func (p Plan) StartAtHead() string {
+	return repair.Command([]string{"g2g", "create", p.Name, "--parent", p.Parent, "--at", "HEAD"})
+}
+
+// detachedWithoutParent refuses a create with nothing to build on. A worktree
+// made at the trunk's remote copy is the usual way to be here, and starting
+// there is a create away, so it is offered: never chosen, because a trunk is
+// evidenced, never guessed, and naming the parent is the reader's to do.
+func (s Service) detachedWithoutParent(ctx context.Context, plan Plan, head string) (Plan, error) {
+	note := repair.Note{
+		Reason: "HEAD is detached, so there is no branch to build on",
+		Ways:   []repair.Step{{Effect: "pass --parent with the branch to build on"}},
+	}
+	git, ok := s.Git.(interface {
+		DefaultBranch(ctx context.Context, remote string) (string, error)
+	})
+	if !ok {
+		return plan.refuse(note), nil
+	}
+	trunk, err := git.DefaultBranch(ctx, "")
+	if err != nil || trunk == "" {
+		return plan.refuse(note), err
+	}
+	tip, err := s.Git.Resolve(ctx, trunk)
+	if err != nil {
+		// The default branch has no local copy here to record anything under.
+		return plan.refuse(note), nil
+	}
+	if tip == head {
+		note.Ways = append([]repair.Step{{Command: repair.Command([]string{"g2g", "create", plan.Name, "--parent", trunk}), Effect: "start at " + trunk + ", where HEAD is, and record it there"}}, note.Ways...)
+		return plan.refuse(note), nil
+	}
+	ahead, err := s.headAhead(ctx, trunk, tip, head)
+	if err != nil {
+		return Plan{}, err
+	}
+	if ahead != 0 {
+		onTrunk := plan
+		onTrunk.Parent = trunk
+		note.Ways = append([]repair.Step{{Command: onTrunk.StartAtHead(), Effect: fmt.Sprintf("start at HEAD, %s ahead of %s where its remote copy is, and record it under %s", words.Count(ahead, "commit", "commits"), trunk, trunk)}}, note.Ways...)
+	}
+	return plan.refuse(note), nil
+}
+
+// headAhead is how many commits a detached HEAD is ahead of a trunk's tip
+// here while still on that trunk's known upstream -- where a worktree made at
+// the trunk's remote copy stands -- or zero when it is anywhere else.
+func (s Service) headAhead(ctx context.Context, trunk, tip, head string) (int, error) {
+	git, ok := s.Git.(interface {
+		graph.Upstream
+		IsAncestor(context.Context, string, string) (bool, error)
+		Divergence(ctx context.Context, other, target string) (int, int, error)
+	})
+	if !ok || head == "" || head == tip {
+		return 0, nil
+	}
+	known, err := git.KnownParent(ctx, trunk)
+	if err != nil || known == "" {
+		return 0, err
+	}
+	for _, pair := range [][2]string{{tip, head}, {head, known}} {
+		ancestor, err := git.IsAncestor(ctx, pair[0], pair[1])
+		if err != nil || !ancestor {
+			return 0, err
+		}
+	}
+	_, ahead, err := git.Divergence(ctx, tip, head)
+	return ahead, err
+}
+
 // startAt accepts a newer start only when local upstream evidence proves that
 // all inherited work belongs to the trunk. Feature starts remain at their tip.
 func (s Service) startAt(ctx context.Context, plan Plan) (repair.Note, error) {
 	if plan.At == plan.ParentAt {
 		return repair.Note{}, nil
 	}
-	if plan.Discovery.Graph.Tracked(plan.Parent) ||
-		(!plan.Discovery.Graph.IsTrunk(plan.Parent) && plan.Discovery.DefaultTrunk != plan.Parent) {
+	if !evidencedTrunk(plan) {
 		return repair.Note{Reason: "--at away from the parent tip requires an evidenced trunk parent",
 			Ways: []repair.Step{{Effect: "omit --at to start at the parent tip"}}}, nil
 	}

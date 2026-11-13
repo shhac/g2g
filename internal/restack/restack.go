@@ -106,6 +106,7 @@ func (s Service) record(plan Plan, standing checkout, recorded graph.Graph) Reco
 	record := Record{
 		Above:          plan.Above,
 		OntoParent:     plan.Onto.Parent,
+		OntoObject:     plan.Onto.recordedObject(),
 		Absorb:         plan.Absorb,
 		Worktrees:      plan.Policy,
 		Branch:         plan.Target,

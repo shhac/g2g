@@ -214,7 +214,11 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 	flow := applyFlow[restack.Plan]{
 		guard: restackGuard(service),
 		plan: func(ctx context.Context) (restack.Plan, error) {
-			return service.Plan(ctx, selection, restack.ToBranch(options.onto), options.absorb, restack.Pending{}, options.worktrees)
+			onto, err := service.OntoNamed(ctx, options.onto)
+			if err != nil {
+				return restack.Plan{}, err
+			}
+			return service.Plan(ctx, selection, onto, options.absorb, restack.Pending{}, options.worktrees)
 		},
 		revalidation: revalidation{"restack", "restack plan"},
 		precheck:     service.RequireClean,

@@ -81,6 +81,15 @@ func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, bra
 		if err != nil {
 			return err
 		}
+		if !updated.Tracked(edge.Parent) {
+			// A branch replayed onto the remote's copy of its trunk forks
+			// there. Measured from the local trunk, every commit it lags by
+			// would read as the branch's own and be replayed next time.
+			forks, _ := s.Git.(graph.MergeBases)
+			if forkPoint, err = graph.UpstreamFork(ctx, s.Git, forks, edge.Parent, branch, forkPoint); err != nil {
+				return err
+			}
+		}
 		edge.ForkPoint = forkPoint
 		updated.Edges[branch] = edge
 		if err := s.Git.PinForkPoint(ctx, branch, forkPoint); err != nil {

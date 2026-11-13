@@ -200,7 +200,7 @@ func (s Service) trackFork(ctx context.Context, parent, target string, origin Or
 	if err != nil || !trunk || forks == nil {
 		return fork, err
 	}
-	return s.upstreamFork(ctx, forks, parent, target, fork)
+	return UpstreamFork(ctx, s.Git, forks, parent, target, fork)
 }
 
 // initialFork is where target leaves parent: parent's tip when target is built
@@ -213,28 +213,6 @@ func (s Service) initialFork(ctx context.Context, forks MergeBases, parent, targ
 		return "", fmt.Errorf("cannot determine where %s leaves %s: Git reader does not support merge bases", target, parent)
 	}
 	return forks.MergeBase(ctx, parent, target)
-}
-
-// upstreamFork moves fork past trunk commits target already contains when the
-// remote's copy of the trunk is the local one moved on, which is a local trunk
-// that was stale when the branch was tracked.
-func (s Service) upstreamFork(ctx context.Context, forks MergeBases, parent, target, fork string) (string, error) {
-	known, ok := s.Git.(Upstream)
-	if !ok {
-		return fork, nil
-	}
-	// Local knowledge only: tracking must never fetch or need a network.
-	tip, err := known.KnownParent(ctx, parent)
-	if err != nil || tip == "" {
-		return fork, err
-	}
-	// A rewritten or divergent upstream is not evidence that the local
-	// trunk merely lagged. Never replace a boundary on that basis.
-	forward, err := s.Git.IsAncestor(ctx, parent, tip)
-	if err != nil || !forward {
-		return fork, err
-	}
-	return LaterFork(ctx, s.Git, forks, tip, target, fork)
 }
 
 // originOf records whether Git already agrees with the edge. A parent that is

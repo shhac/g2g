@@ -72,9 +72,18 @@ func ontoEach(plan restack.Plan, branches []string) string {
 	}
 	said := make([]string, 0, len(order))
 	for _, onto := range order {
-		said = append(said, words.List(grouped[onto])+" onto "+onto)
+		said = append(said, words.List(grouped[onto])+" onto "+replayedOnto(plan, onto))
 	}
 	return strings.Join(said, "; ")
+}
+
+// replayedOnto names where the commits land when that is a remote's copy of
+// the parent the graph will record, rather than the parent itself.
+func replayedOnto(plan restack.Plan, parent string) string {
+	if object := plan.Onto.Object; parent == plan.Onto.Parent && object != "" && object != parent {
+		return object + ", recorded under " + parent
+	}
+	return parent
 }
 
 // orphanNote names commits a rewritten parent dropped that a child still

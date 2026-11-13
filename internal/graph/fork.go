@@ -42,6 +42,32 @@ func AheadOnUpstream(ctx context.Context, git ordering, g Graph, parent, tip, fo
 	return git.IsAncestor(ctx, fork, known)
 }
 
+// UpstreamFork moves fork past trunk commits target already contains when the
+// remote's copy of the trunk is the local one moved on: a local trunk that was
+// stale when the branch was built on the remote's. track records a branch so,
+// and restack records one it replayed onto the remote's copy, which is what
+// --onto origin/main asks for.
+//
+// Local knowledge only: recording structure must never fetch or need a
+// network. A reader that cannot say where the upstream is keeps fork.
+func UpstreamFork(ctx context.Context, git ordering, forks MergeBases, parent, target, fork string) (string, error) {
+	known, ok := git.(Upstream)
+	if !ok || forks == nil {
+		return fork, nil
+	}
+	tip, err := known.KnownParent(ctx, parent)
+	if err != nil || tip == "" {
+		return fork, err
+	}
+	// A rewritten or divergent upstream is not evidence that the local
+	// trunk merely lagged. Never replace a boundary on that basis.
+	forward, err := git.IsAncestor(ctx, parent, tip)
+	if err != nil || !forward {
+		return fork, err
+	}
+	return LaterFork(ctx, git, forks, tip, target, fork)
+}
+
 // ordering answers whether one commit is an ancestor of another.
 type ordering interface {
 	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)

@@ -169,6 +169,24 @@ func ToBranch(branch string) Onto {
 	return Onto{Object: branch, Parent: branch}
 }
 
+// recordedObject is the object a journal keeps for a resume, empty when it is
+// the parent itself.
+func (o Onto) recordedObject() string {
+	if o.Object == o.Parent {
+		return ""
+	}
+	return o.Object
+}
+
+// resumed is the --onto a journal recorded.
+func resumed(record Record) Onto {
+	onto := ToBranch(record.OntoParent)
+	if record.OntoObject != "" {
+		onto.Object = record.OntoObject
+	}
+	return onto
+}
+
 // ToLocation replays onto an object without claiming it as a parent.
 func ToLocation(object string) Onto { return Onto{Object: object} }
 

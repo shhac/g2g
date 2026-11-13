@@ -308,6 +308,11 @@ case "$1 $2" in
   git -C "$work" push -q origin "$base"
   git -C "$work" rev-parse HEAD > "$state_dir/pr-$number.merge"
   printf 'MERGED\n' > "$state_dir/pr-$number.state"
+  # Somebody else's pull request merging right behind this one, arranged by a
+  # script file naming it, which runs with the remote in GH_REMOTE.
+  if [ -f "$state_dir/after-merge-$number" ]; then
+    sh "$state_dir/after-merge-$number"
+  fi
   # A reviewer pushing a fix onto another branch of the stack while this merge
   # happens, from a clone of their own, arranged by a flag file naming it.
   if [ -f "$state_dir/review-on-merge-$number" ]; then
@@ -699,6 +704,51 @@ func TestJourneyLandingBranchReachesMainByItsDeclaredMethod(t *testing.T) {
 	}
 	if w.tip(w.Local, "synthetic-other") != other {
 		t.Error("landing the trunk replayed another stack on main")
+	}
+	w.assertClean(w.Local)
+}
+
+// A branch whose files the trunk kept touching while it was in review, merged
+// and then edited over by the next pull request to land.
+//
+// Merging the branch into the trunk as it is now conflicts, so whether it has
+// landed rests on finding the trunk as it was at the squash -- and that look
+// was bounded by every edit to those files since the fork rather than by the
+// ones after the squash. Past the bound it answered no, and land replayed the
+// branch it had just merged onto the squash of itself, and stopped on the
+// conflict.
+func TestJourneyLandABranchWhoseFilesTheTrunkKeptTouching(t *testing.T) {
+	lines := func(second, tail string) string {
+		return "one\n" + second + "\nthree\nfour\nfive\nsix\nseven\neight\n" + tail
+	}
+	w := newWorld(t)
+	w.commit(w.Local, "main", "shared.txt", lines("two", ""))
+	w.git(w.Local, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-qc", "synthetic-a")
+	w.commit(w.Local, "synthetic-a", "shared.txt", lines("TWO", ""))
+	w.commit(w.Local, "synthetic-a", "shared.txt", lines("TWO!", ""))
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a")
+	w.git(w.Other, "pull", "-q")
+	for i := range 40 {
+		w.commit(w.Other, "main", "shared.txt", lines("two", strings.Repeat("x", i+1)))
+	}
+	w.git(w.Other, "push", "-q", "origin", "main")
+	state := landingGitHub(t, w.Remote)
+	// The next pull request to land edits the very line this one changed.
+	next := fmt.Sprintf("set -e\nwork=\"$GH_STATE/next\"\ngit clone -q \"$GH_REMOTE\" \"$work\"\ncd \"$work\"\nprintf '%%s' %q > shared.txt\ngit -c user.name=synthetic -c user.email=synthetic@example.test commit -qam 'synthetic next'\ngit push -q origin main\n",
+		lines("TWO?", strings.Repeat("x", 40)))
+	if err := os.WriteFile(filepath.Join(state, "after-merge-41"), []byte(next), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path", "--apply")
+
+	if got := readState(t, state, "pr-41.state"); got != "MERGED" {
+		t.Fatalf("pull request #41 state = %q, want MERGED", got)
+	}
+	if local := w.git(w.Local, "branch", "--format=%(refname:short)"); strings.Contains(local, "synthetic-a") {
+		t.Errorf("synthetic-a survives locally:\n%s", local)
 	}
 	w.assertClean(w.Local)
 }

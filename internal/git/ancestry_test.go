@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,5 +375,33 @@ func TestABranchWithWorkOfItsOwnIsNotAbsorbed(t *testing.T) {
 	}
 	if absorbed {
 		t.Error("a branch carrying work the trunk lacks was reported as absorbed")
+	}
+}
+
+// What bounds the earlier look is how deep the squash is buried, not how often
+// the trunk touched the same files before it. A branch whose files the trunk
+// edited many times while it was in review, squashed and then edited over, was
+// read as not landed, and land replayed the branch it had just merged.
+func TestAbsorbedSeesASquashAfterManyEarlierEditsToItsFiles(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "work.txt", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic first", "work.txt", "one\nTWO\nthree\nfour\nfive\nsix\nseven\neight\n")
+	repo.Commit("synthetic second", "work.txt", "one\nTWO!\nthree\nfour\nfive\nsix\nseven\neight\n")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	for i := range absorbedCandidates + 8 {
+		repo.Commit(fmt.Sprintf("synthetic busy %d", i), "work.txt", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n"+strings.Repeat("x", i+1)+"\n")
+	}
+	repo.Run("merge", "-q", "--squash", "synthetic-a")
+	repo.Run("commit", "-qm", "synthetic squash")
+	repo.Commit("synthetic follow-up", "work.txt", "one\nTWO?\nthree\nfour\nfive\nsix\nseven\neight\n"+strings.Repeat("x", absorbedCandidates+8)+"\n")
+
+	inRepo(t, repo.Dir)
+	absorbed, err := Client{Runner: subprocess.ExecRunner{}}.Absorbed(context.Background(), "synthetic-trunk", "synthetic-a")
+	if err != nil {
+		t.Fatalf("Absorbed() error = %v", err)
+	}
+	if !absorbed {
+		t.Error("a squash after many earlier edits to the branch's files was not seen as absorbed")
 	}
 }

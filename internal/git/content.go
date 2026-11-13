@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -89,9 +90,10 @@ func (c Client) Absorbed(ctx context.Context, base, branch string) (bool, error)
 	return c.sameTree(ctx, merged, base)
 }
 
-// absorbedCandidates bounds how far back absorbedEarlier looks. Past it the
-// answer is no, which costs only the case where the squash is buried under
-// that many later edits to the same files.
+// absorbedCandidates bounds how far back absorbedEarlier looks: the newest
+// that many trunk commits touching the branch's files. Past it the answer is
+// no, which costs only the case where the squash is buried under that many
+// later edits to the same files.
 const absorbedCandidates = 32
 
 // absorbedPaths bounds how many files a branch may touch for the earlier look
@@ -128,17 +130,17 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 		return false
 	}
 	// Literal, because a file name is not a pattern: one called "*" would
-	// otherwise select every commit in the range.
-	args := append([]string{"--literal-pathspecs", "rev-list", "--reverse", since + ".." + base, "--"}, paths...)
+	// otherwise select every commit in the range. Newest first, and only that
+	// many: what bounds the look is how deep the squash is buried, not how
+	// busy those files were before it. Counting every edit since the fork gave
+	// up on a branch whose files the trunk had touched often while it was in
+	// review, and land then replayed the branch it had just merged.
+	args := append([]string{"--literal-pathspecs", "rev-list", fmt.Sprintf("--max-count=%d", absorbedCandidates), since + ".." + base, "--"}, paths...)
 	touched, err := c.run(ctx, args...)
 	if err != nil {
 		return false
 	}
-	candidates := outputLines(touched)
-	if len(candidates) > absorbedCandidates {
-		return false
-	}
-	for _, candidate := range candidates {
+	for _, candidate := range outputLines(touched) {
 		merged, err := c.run(ctx, "merge-tree", "--write-tree", candidate, branch)
 		if err != nil {
 			continue

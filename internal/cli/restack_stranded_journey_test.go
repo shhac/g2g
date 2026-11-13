@@ -46,3 +46,27 @@ func TestJourneyARestackSaysWhichBranchesItLeavesOnTheOldCommits(t *testing.T) {
 		t.Errorf("the sibling carries %s commits of its own after the replay, want 1", got)
 	}
 }
+
+// Each branch left behind is named with the replay it hangs from, and one
+// restack per replay brings those along.
+func TestJourneyARestackNamesWhatItLeavesAtEachHeight(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--parent", "synthetic-a", "--apply")
+	w.branchOff("synthetic-b", "synthetic-c", "c.txt")
+	mustRun(t, "track", "--parent", "synthetic-b", "--apply")
+	w.branchOff("synthetic-a", "synthetic-beside-b", "beside-b.txt")
+	mustRun(t, "track", "--parent", "synthetic-a", "--apply")
+	w.branchOff("synthetic-b", "synthetic-beside-c", "beside-c.txt")
+	mustRun(t, "track", "--parent", "synthetic-b", "--apply")
+	w.commit(w.Local, "main", "trunk.txt", "the trunk moved")
+	w.git(w.Local, "switch", "-q", "synthetic-c")
+
+	preview := mustRun(t, "restack", "--scope", "stack")
+	want := "Leaves synthetic-beside-b and synthetic-beside-c, outside this selection, on the commits synthetic-a and synthetic-b had before this replay"
+	if !strings.Contains(preview, want) || !strings.Contains(preview, "g2g restack --branch synthetic-a") {
+		t.Errorf("the preview does not group what it leaves under its replay:\n%s", preview)
+	}
+}

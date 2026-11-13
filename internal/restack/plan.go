@@ -84,13 +84,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if len(steps) == 0 {
 		return plan, nil
 	}
-	if plan.Stranded, err = s.stranded(ctx, discovery, steps); err != nil {
-		return Plan{}, err
-	}
-	if onto.Object == "" {
-		plan.Behind = s.behind(ctx, discovery, steps)
-	}
-	if plan.Subjects, err = s.subjects(ctx, plan.Orphaned()); err != nil {
+	if plan, err = s.annotate(ctx, plan); err != nil {
 		return Plan{}, err
 	}
 	if plan.Absorb && !plan.Absorbable() {
@@ -243,4 +237,23 @@ func (s Service) subjects(ctx context.Context, ids []string) (map[string]string,
 		return nil, nil
 	}
 	return describer.Subjects(ctx, ids)
+}
+
+// annotate adds what a preview says about the replay besides the replay
+// itself: the branches it leaves on their parent's old commits, the trunks it
+// replays onto while their remote's copy is ahead, and the subject of every
+// commit it drops.
+func (s Service) annotate(ctx context.Context, plan Plan) (Plan, error) {
+	stranded, err := s.stranded(ctx, plan.Discovery, plan.Steps)
+	if err != nil {
+		return Plan{}, err
+	}
+	plan.Stranded = stranded
+	// An --onto already says where the replay goes, so whether the recorded
+	// trunk is behind its remote is not the question.
+	if plan.Onto.Object == "" {
+		plan.TrunksBehind = s.trunksBehind(ctx, plan.Discovery, plan.Steps)
+	}
+	plan.Subjects, err = s.subjects(ctx, plan.Orphaned())
+	return plan, err
 }

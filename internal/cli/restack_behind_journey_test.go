@@ -41,3 +41,21 @@ func TestJourneyARestackOntoATrunkBehindItsRemoteSaysSo(t *testing.T) {
 		t.Errorf("a trunk level with its remote was reported behind:\n%s", level)
 	}
 }
+
+// A trunk that moved here and upstream both is not one this checkout lags:
+// rewritten or diverged, the remote's copy is no evidence about it, and the
+// note says nothing rather than send someone to replay onto it.
+func TestJourneyARestackOntoADivergedTrunkSaysNothingOfItsRemote(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.commit(w.Other, "main", "upstream.txt", "upstream")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "fetch", "-q", "origin")
+	w.commit(w.Local, "main", "local.txt", "only here")
+	w.git(w.Local, "switch", "-q", "synthetic-a")
+
+	if preview := mustRun(t, "restack"); strings.Contains(preview, "behind") {
+		t.Errorf("a diverged trunk was reported behind its remote:\n%s", preview)
+	}
+}

@@ -51,21 +51,36 @@ func AheadOnUpstream(ctx context.Context, git ordering, g Graph, parent, tip, fo
 // Local knowledge only: recording structure must never fetch or need a
 // network. A reader that cannot say where the upstream is keeps fork.
 func UpstreamFork(ctx context.Context, git ordering, forks MergeBases, parent, target, fork string) (string, error) {
-	known, ok := git.(Upstream)
-	if !ok || forks == nil {
+	if forks == nil {
 		return fork, nil
 	}
-	tip, err := known.KnownParent(ctx, parent)
+	tip, err := UpstreamAhead(ctx, git, parent)
 	if err != nil || tip == "" {
 		return fork, err
 	}
-	// A rewritten or divergent upstream is not evidence that the local
-	// trunk merely lagged. Never replace a boundary on that basis.
-	forward, err := git.IsAncestor(ctx, parent, tip)
-	if err != nil || !forward {
-		return fork, err
-	}
 	return LaterFork(ctx, git, forks, tip, target, fork)
+}
+
+// UpstreamAhead is where a trunk's remote's copy is, as last fetched or
+// pushed, when that is the local trunk moved on, and empty otherwise. A
+// rewritten or divergent upstream is not evidence that the local trunk merely
+// lags, so it answers nothing for one: never replace a boundary, or say a
+// trunk is behind, on that basis. Local knowledge only; a reader that cannot
+// say where the upstream is answers nothing too.
+func UpstreamAhead(ctx context.Context, git ordering, trunk string) (string, error) {
+	known, ok := git.(Upstream)
+	if !ok {
+		return "", nil
+	}
+	tip, err := known.KnownParent(ctx, trunk)
+	if err != nil || tip == "" {
+		return "", err
+	}
+	forward, err := git.IsAncestor(ctx, trunk, tip)
+	if err != nil || !forward {
+		return "", err
+	}
+	return tip, nil
 }
 
 // ordering answers whether one commit is an ancestor of another.

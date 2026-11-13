@@ -15,7 +15,9 @@ import (
 func TestSortHeldByWhatEachBranchIsToTheDescent(t *testing.T) {
 	plan := Plan{Trunk: "main", Options: Options{DeleteLocal: true}}
 	plan.Discovery = stack.Discovery{Snapshot: stack.Snapshot{Branches: []string{"synthetic-landing"}}}
-	holder := func(branch string) worktree.Holder { return worktree.Holder{Branch: branch, Path: "/synthetic/" + branch} }
+	holder := func(branch string) worktree.Holder {
+		return worktree.Holder{Branch: branch, Path: "/synthetic/" + branch}
+	}
 	sorted := plan.sortHeld(worktree.Split{
 		Leave:  []worktree.Holder{holder("synthetic-above"), holder("main"), holder("synthetic-landing")},
 		Follow: []worktree.Holder{holder("synthetic-landing"), holder("synthetic-other")},

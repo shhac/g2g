@@ -49,7 +49,7 @@ func restackView(plan restack.Plan) stackView {
 // remote's trunk and not this one, so the replay keeps the parent's original
 // commits and the pull request conflicts with the squash.
 func behindNote(view stackView, plan restack.Plan) stackView {
-	for _, trunk := range plan.Behind {
+	for _, trunk := range plan.TrunksBehind {
 		remote := localgit.DefaultRemote + "/" + trunk.Trunk
 		pull := selectedIn(plan.Discovery).next(pullCommand)
 		onto := selectedIn(plan.Discovery).next(restackCommand) + " --onto " + repair.Quote(remote)

@@ -236,7 +236,7 @@ type Plan struct {
 	// on GitHub is in the remote's trunk and not yet in this one, so replaying
 	// onto this one keeps the parent's original commits under the child, and
 	// the pull request then conflicts with the squash.
-	Behind []TrunkBehind
+	TrunksBehind []TrunkBehind
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed. Most of restack's refusals are states rather than
 	// choices and name no way out.
@@ -327,7 +327,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Policy == other.Policy &&
 		p.Worktrees.Equal(other.Worktrees) &&
 		slices.Equal(p.Stranded, other.Stranded) &&
-		slices.Equal(p.Behind, other.Behind) &&
+		slices.Equal(p.TrunksBehind, other.TrunksBehind) &&
 		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
 			return left.Branch == right.Branch && left.Parent == right.Parent &&
 				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&

@@ -405,3 +405,28 @@ func TestAbsorbedSeesASquashAfterManyEarlierEditsToItsFiles(t *testing.T) {
 		t.Error("a squash after many earlier edits to the branch's files was not seen as absorbed")
 	}
 }
+
+// Leaving a detached HEAD loses only what no ref reaches. Every kind of ref
+// counts: a branch, a tag, a remote's copy, and g2g's own fetched copies,
+// however deep their names.
+func TestUnreferencedCountsEveryKindOfRef(t *testing.T) {
+	for _, ref := range []string{"", "refs/heads/synthetic-kept", "refs/tags/synthetic-tag", "refs/remotes/origin/synthetic-x", "refs/g2g/remotes/origin/synthetic/deep"} {
+		t.Run(ref, func(t *testing.T) {
+			repo := testutil.NewGitRepo(t, "synthetic-trunk")
+			repo.Commit("synthetic base", "base.txt", "base")
+			repo.Run("checkout", "-q", "--detach")
+			repo.Commit("synthetic only here", "here.txt", "here")
+			if ref != "" {
+				repo.Run("update-ref", ref, "HEAD")
+			}
+			inRepo(t, repo.Dir)
+			unreferenced, err := Client{Runner: subprocess.ExecRunner{}}.Unreferenced(context.Background(), "HEAD")
+			if err != nil {
+				t.Fatalf("Unreferenced() error = %v", err)
+			}
+			if want := ref == ""; unreferenced != want {
+				t.Errorf("Unreferenced() = %t with %q pointing at HEAD, want %t", unreferenced, ref, want)
+			}
+		})
+	}
+}

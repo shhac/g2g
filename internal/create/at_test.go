@@ -16,6 +16,21 @@ func (g upstreamGit) IsAncestor(_ context.Context, from, to string) (bool, error
 	return from == to || from == "main-tip" && (to == "upstream-tip" || to == "newer-upstream-tip") || from == "upstream-tip" && to == "newer-upstream-tip", nil
 }
 
+// Unreferenced reports a revision no local branch is at, which is all these
+// fixtures ever put HEAD on.
+func (g upstreamGit) Unreferenced(_ context.Context, revision string) (bool, error) {
+	for _, branch := range g.local {
+		if g.tips[branch] == revision {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+func (g upstreamGit) Cherry(context.Context, string, string, string) ([]string, []string, error) {
+	return []string{"synthetic-own"}, nil, nil
+}
+func (g upstreamGit) Absorbed(context.Context, string, string) (bool, error) { return false, nil }
+
 func TestExplicitStartPinsBothEndsAndRestoresOriginalDetachedHead(t *testing.T) {
 	g, f := fixture()
 	g.detached = true

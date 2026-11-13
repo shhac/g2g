@@ -198,82 +198,6 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	return refuseCommit(plan), nil
 }
 
-// resolveStart chooses the pinned start and proves that switching to it keeps
-// the original detached HEAD reachable, independently of the rollback target.
-func (s Service) resolveStart(ctx context.Context, plan Plan, requested string) (Plan, error) {
-	at, err := s.Git.Resolve(ctx, plan.Parent)
-	if err != nil {
-		return Plan{}, err
-	}
-	plan.At, plan.ParentAt, plan.AtSource = at, at, requested
-	if requested != "" {
-		if err := subprocess.CheckArgument("git", "starting revision", requested); err != nil {
-			return plan.refuse(repair.Note{Reason: err.Error()}), nil
-		}
-		plan.At, err = s.Git.Resolve(ctx, requested)
-		if err != nil {
-			return Plan{}, err
-		}
-		note, err := s.startAt(ctx, plan)
-		if err != nil {
-			return Plan{}, err
-		}
-		if note.Reason != "" {
-			return plan.refuse(note), nil
-		}
-	}
-	lost, err := s.leavesBehind(ctx, plan)
-	if err != nil {
-		return Plan{}, err
-	}
-	if lost {
-		protected, _ := refuseDetachedAway(plan, plan.ReturnTip)
-		return protected, nil
-	}
-	return plan, nil
-}
-
-// leavesBehind reports a detached HEAD whose commits switching to the new
-// branch would leave to the reflog alone.
-//
-// The start itself is the one commit known to lose nothing. Past that, a HEAD
-// some branch, tag or remote's copy still reaches loses nothing either, nor
-// does one whose work the start already has by content, which is what a stack
-// squash-merged into the trunk leaves. Refusing those sent people detached at
-// a landed stack's tip to detach somewhere else first, when the --at they had
-// already passed said where to start.
-func (s Service) leavesBehind(ctx context.Context, plan Plan) (bool, error) {
-	head := plan.ReturnTip
-	if head == "" || head == plan.At {
-		return false, nil
-	}
-	if ancestry, ok := s.Git.(interface {
-		IsAncestor(context.Context, string, string) (bool, error)
-	}); ok {
-		contained, err := ancestry.IsAncestor(ctx, head, plan.At)
-		if err != nil || contained {
-			return !contained, err
-		}
-	}
-	if references, ok := s.Git.(interface {
-		Unreferenced(context.Context, string) (bool, error)
-	}); ok {
-		unreferenced, err := references.Unreferenced(ctx, head)
-		if err != nil || !unreferenced {
-			return unreferenced, err
-		}
-	}
-	if absorbs, ok := s.Git.(interface {
-		Absorbed(context.Context, string, string) (bool, error)
-	}); ok {
-		absorbed, err := absorbs.Absorbed(ctx, plan.At, head)
-		if err != nil || absorbed {
-			return !absorbed, err
-		}
-	}
-	return true, nil
-}
-
 // refuseName turns away a name before it reaches anything that could misread
 // it: one that is option-like would be read by git as a flag, so it is refused
 // before git is asked whether it is valid.
@@ -285,31 +209,6 @@ func (s Service) refuseName(ctx context.Context, plan Plan) (Plan, bool) {
 		return plan.refuse(repair.Note{Reason: err.Error(), Ways: []repair.Step{{Effect: "choose another name"}}}), true
 	}
 	return plan, false
-}
-
-// refuseDetachedAway refuses switching away from a detached HEAD anywhere but
-// the parent's tip. Switching leaves behind whatever only HEAD reaches, and
-// the parent's tip is the one commit known to lose nothing. head is empty for
-// a HEAD on a branch.
-func refuseDetachedAway(plan Plan, head string) (Plan, bool) {
-	if head == "" || head == plan.At {
-		return plan, false
-	}
-	return plan.refuse(repair.Note{
-		Reason: fmt.Sprintf("HEAD is detached at commits no branch, tag or remote's copy reaches, and %s does not already have, so switching to %s would leave them behind", startName(plan), plan.Name),
-		Ways: []repair.Step{
-			{Command: "git branch <name> HEAD", Effect: "keep them on a branch of their own, then rerun"},
-			{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip if they are not wanted, then rerun " + repair.Command([]string{"g2g", "create", plan.Name, "--parent", plan.Parent})},
-		},
-	}), true
-}
-
-// startName names where the new branch would start, for a sentence.
-func startName(plan Plan) string {
-	if plan.AtSource != "" {
-		return plan.AtSource
-	}
-	return plan.Parent
 }
 
 // refuseRecord is the rule create adds over track.
@@ -370,47 +269,4 @@ func refuseCommit(plan Plan) Plan {
 		})
 	}
 	return plan
-}
-
-// startAt accepts a newer start only when local upstream evidence proves that
-// all inherited work belongs to the trunk. Feature starts remain at their tip.
-func (s Service) startAt(ctx context.Context, plan Plan) (repair.Note, error) {
-	if plan.At == plan.ParentAt {
-		return repair.Note{}, nil
-	}
-	if plan.Discovery.Graph.Tracked(plan.Parent) ||
-		(!plan.Discovery.Graph.IsTrunk(plan.Parent) && plan.Discovery.DefaultTrunk != plan.Parent) {
-		return repair.Note{Reason: "--at away from the parent tip requires an evidenced trunk parent",
-			Ways: []repair.Step{{Effect: "omit --at to start at the parent tip"}}}, nil
-	}
-	refuse := func(reason string) (repair.Note, error) {
-		return repair.Note{Reason: reason, Ways: []repair.Step{
-			{Command: repair.Command([]string{"g2g", "pull", "--branch", plan.Parent, "--trunk-only"}), Effect: "preview updating the trunk and its local upstream evidence, then retry creation"},
-			{Effect: "omit --at to start at the parent tip, or choose a revision contained in the known upstream"},
-		}}, nil
-	}
-	git, ok := s.Git.(interface {
-		graph.Upstream
-		IsAncestor(context.Context, string, string) (bool, error)
-	})
-	if !ok {
-		return refuse("cannot verify --at against the trunk's known local upstream")
-	}
-	known, err := git.KnownParent(ctx, plan.Parent)
-	if err != nil {
-		return repair.Note{}, err
-	}
-	if known == "" {
-		return refuse("--at requires a known local upstream tip for " + plan.Parent)
-	}
-	for _, pair := range [][2]string{{plan.ParentAt, plan.At}, {plan.At, known}} {
-		ancestor, err := git.IsAncestor(ctx, pair[0], pair[1])
-		if err != nil {
-			return repair.Note{}, err
-		}
-		if !ancestor {
-			return refuse("--at must descend from the parent and be contained in its known local upstream")
-		}
-	}
-	return repair.Note{}, nil
 }

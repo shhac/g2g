@@ -63,7 +63,7 @@ func (s Service) rewriteInPlace(ctx context.Context, plan Plan, standing checkou
 	if err := s.resettle(ctx, standing); err != nil {
 		return err
 	}
-	if err := s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting()); err != nil {
+	if err := s.recordStructure(ctx, plan.Discovery.Branches, plan.structure()); err != nil {
 		return err
 	}
 	// Other worktrees last, once the rewrite is recorded: failing to bring

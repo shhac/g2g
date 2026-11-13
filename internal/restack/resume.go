@@ -117,7 +117,7 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 	if len(plan.Steps) == 0 {
 		// Reparenting is held by the durable record: after a rewrite, the fresh
 		// plan cannot recover where an edge used to point.
-		if err := s.recordStructure(ctx, plan.Discovery.Branches, record.Reparent); err != nil {
+		if err := s.recordStructure(ctx, plan.Discovery.Branches, record.structure()); err != nil {
 			return finishComplete, err
 		}
 		return finishComplete, nil
@@ -169,7 +169,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	if missing := discovery.InState(graph.StateBranchMissing); len(missing) > 0 {
 		return Plan{}, fmt.Errorf("the restack cannot carry on: %s", deletedMidway(missing).Sentence())
 	}
-	if err := s.recordStructure(ctx, discovery.Branches, record.Reparent); err != nil {
+	if err := s.recordStructure(ctx, discovery.Branches, record.structure()); err != nil {
 		return Plan{}, err
 	}
 	// No pending: a resume runs after whatever the caller was going to

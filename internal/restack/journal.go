@@ -43,9 +43,11 @@ type Record struct {
 	// empty when the structure already says
 	// where each branch belongs.
 	OntoParent string `json:"onto,omitempty"`
-	// OntoObject is where that --onto replays, when it is not the branch it
-	// records: a remote's copy of it. Empty replays onto OntoParent.
+	// OntoObject is the commit that --onto replays onto, when it is not the
+	// branch it records: a remote's copy of it, and OntoNamed what it was
+	// called. Empty replays onto OntoParent.
 	OntoObject string `json:"ontoObject,omitempty"`
+	OntoNamed  string `json:"ontoNamed,omitempty"`
 	// Absorb records whether the user chose to keep commits their parent
 	// dropped, so continuing does not silently change that decision.
 	Absorb bool `json:"absorb,omitempty"`

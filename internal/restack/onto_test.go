@@ -201,3 +201,26 @@ func TestOntoOnAPathSelectionMovesTheBranchAboveTheTrunk(t *testing.T) {
 		t.Fatalf("reparenting() = %v, want only synthetic-a moved", moves)
 	}
 }
+
+// pull replays onto a ref it fetched and records no parent. Journaling that
+// ref changed what a resumed pull replayed onto; only a user's --onto onto a
+// remote's copy is somewhere else to remember.
+func TestOnlyAnOntoThatRecordsAParentIsJournaledAsElsewhere(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		onto Onto
+		want string
+	}{
+		{"pull's fetched ref", ToLocation("refs/g2g/remotes/origin/main"), ""},
+		{"a local branch", ToBranch("synthetic-main"), ""},
+		{"a remote's copy", Onto{Object: "synthetic-commit", Parent: "synthetic-main", Named: "origin/synthetic-main"}, "synthetic-commit"},
+	} {
+		if got := test.onto.Elsewhere(); got != test.want {
+			t.Errorf("%s: Elsewhere() = %q, want %q", test.name, got, test.want)
+		}
+		record := Record{OntoParent: test.onto.Parent, OntoObject: test.onto.Elsewhere(), OntoNamed: test.onto.Named}
+		if back := resumed(record); test.onto.Parent != "" && back != test.onto {
+			t.Errorf("%s: resumed %+v, want %+v", test.name, back, test.onto)
+		}
+	}
+}

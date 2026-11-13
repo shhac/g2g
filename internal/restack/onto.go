@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -30,10 +31,38 @@ func (s Service) OntoNamed(ctx context.Context, name string) (Onto, error) {
 	if slices.Contains(local, name) {
 		return ToBranch(name), nil
 	}
-	if remote, branch, found := strings.Cut(name, "/"); found && remote != "" && slices.Contains(local, branch) {
-		if _, err := s.Git.Resolve(ctx, "refs/remotes/"+name); err == nil {
-			return Onto{Object: name, Parent: branch}, nil
+	remote, branch, found := strings.Cut(name, "/")
+	if found && remote != "" && slices.Contains(local, branch) {
+		if tip := s.remoteCopy(ctx, remote, branch); tip != "" {
+			return Onto{Object: tip, Parent: branch, Named: name}, nil
 		}
 	}
 	return Onto{}, fmt.Errorf("--onto %s names no local branch, and the graph records a parent by branch · name a local branch, or a remote's copy of one", repair.Quote(name))
+}
+
+// knownTips is the optional part of a reader that says where a remote's copy
+// of a branch is from every local record of it: the remote-tracking ref and
+// the one g2g fetches into, whichever is further along.
+type knownTips interface {
+	KnownTips(ctx context.Context, remote string, branches []string) (map[string]string, error)
+}
+
+// remoteCopy is the commit a remote's copy of branch is at as this checkout
+// knows it, empty when there is none.
+//
+// The same answer the note saying a trunk is behind its remote counts from.
+// Resolving only the remote-tracking ref replayed onto it after a pull had
+// fetched further into g2g's own, and the next restack then found nothing to
+// do while the branch still lacked what the pull had brought.
+func (s Service) remoteCopy(ctx context.Context, remote, branch string) string {
+	if known, ok := s.Git.(knownTips); ok {
+		if tips, err := known.KnownTips(ctx, remote, []string{branch}); err == nil {
+			return tips[branch]
+		}
+	}
+	tip, err := s.Git.Resolve(ctx, localgit.TrackingRef(remote, branch))
+	if err != nil {
+		return ""
+	}
+	return tip
 }

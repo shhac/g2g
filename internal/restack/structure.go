@@ -24,16 +24,16 @@ import (
 //
 // A branch that is not actually built on its parent is skipped: writing its
 // parent's tip as a fork point would assert a range that does not exist.
-func (s Service) recordStructure(ctx context.Context, branches []string, reparent map[string]string) error {
+func (s Service) recordStructure(ctx context.Context, branches []string, moves structureMoves) error {
 	adopted, err := s.Graph.Store.Load(ctx)
 	if err != nil {
 		return err
 	}
-	updated, err := reparentStructure(adopted, reparent)
+	updated, err := reparentStructure(adopted, moves.reparent)
 	if err != nil {
 		return err
 	}
-	if err := s.refreshForkPoints(ctx, updated, branches); err != nil {
+	if err := s.refreshForkPoints(ctx, updated, branches, moves.onto); err != nil {
 		return err
 	}
 	return s.Graph.Store.Save(ctx, updated)
@@ -63,8 +63,18 @@ func reparentStructure(adopted graph.Graph, reparent map[string]string) (graph.G
 	return updated, nil
 }
 
+// structureMoves is what a rewrite changes about the structure beyond the
+// fork points every branch gets: the branches it reparents, and the commit a
+// user's --onto replayed onto when that is a remote's copy of the parent
+// rather than the parent itself.
+type structureMoves struct {
+	reparent map[string]string
+	onto     string
+}
+
 // refreshForkPoints records the parent tips that describe each replay range.
-func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, branches []string) error {
+func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, branches []string, onto string) error {
+	forks, _ := s.Git.(graph.MergeBases)
 	for _, branch := range branches {
 		edge, tracked := updated.Edges[branch]
 		if !tracked {
@@ -85,8 +95,10 @@ func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, bra
 			// A branch replayed onto the remote's copy of its trunk forks
 			// there. Measured from the local trunk, every commit it lags by
 			// would read as the branch's own and be replayed next time.
-			forks, _ := s.Git.(graph.MergeBases)
 			if forkPoint, err = graph.UpstreamFork(ctx, s.Git, forks, edge.Parent, branch, forkPoint); err != nil {
+				return err
+			}
+			if forkPoint, err = s.forkAtOnto(ctx, forks, onto, branch, forkPoint); err != nil {
 				return err
 			}
 		}
@@ -97,4 +109,18 @@ func (s Service) refreshForkPoints(ctx context.Context, updated graph.Graph, bra
 		}
 	}
 	return nil
+}
+
+// forkAtOnto moves a fork point up to the commit a --onto replayed onto, for
+// a branch built on it. The upstream graph.UpstreamFork asks of is the
+// default remote's, and --onto may name another remote's copy.
+func (s Service) forkAtOnto(ctx context.Context, forks graph.MergeBases, onto, branch, fork string) (string, error) {
+	if onto == "" || forks == nil {
+		return fork, nil
+	}
+	built, err := s.Git.IsAncestor(ctx, onto, branch)
+	if err != nil || !built {
+		return fork, err
+	}
+	return graph.LaterFork(ctx, s.Git, forks, onto, branch, fork)
 }

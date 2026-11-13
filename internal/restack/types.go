@@ -10,6 +10,7 @@ package restack
 // operation.
 
 import (
+	"cmp"
 	"context"
 	"slices"
 
@@ -155,6 +156,9 @@ type Onto struct {
 	// Empty keeps the recorded parent, which is what a rewrite that moves
 	// contents rather than structure wants.
 	Parent string
+	// Named is what the user called Object when that is not Parent, such as
+	// origin/main, so a preview names it as they did rather than by commit.
+	Named string
 }
 
 // Reparents reports a rewrite that changes what the graph records.
@@ -169,10 +173,12 @@ func ToBranch(branch string) Onto {
 	return Onto{Object: branch, Parent: branch}
 }
 
-// recordedObject is the object a journal keeps for a resume, empty when it is
-// the parent itself.
-func (o Onto) recordedObject() string {
-	if o.Object == o.Parent {
+// Elsewhere is the commit a user's --onto replays onto when that is not the
+// branch it records -- a remote's copy of it -- and empty otherwise. pull's
+// ToLocation records no parent, so it is never one: what a resumed pull
+// replays onto is the trunk it has already brought up to date.
+func (o Onto) Elsewhere() string {
+	if o.Parent == "" || o.Object == o.Parent {
 		return ""
 	}
 	return o.Object
@@ -180,11 +186,7 @@ func (o Onto) recordedObject() string {
 
 // resumed is the --onto a journal recorded.
 func resumed(record Record) Onto {
-	onto := ToBranch(record.OntoParent)
-	if record.OntoObject != "" {
-		onto.Object = record.OntoObject
-	}
-	return onto
+	return Onto{Object: cmp.Or(record.OntoObject, record.OntoParent), Parent: record.OntoParent, Named: record.OntoNamed}
 }
 
 // ToLocation replays onto an object without claiming it as a parent.

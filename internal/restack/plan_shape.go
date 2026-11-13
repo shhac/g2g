@@ -32,6 +32,17 @@ func (p Plan) collapsing() []Step {
 	return steps
 }
 
+// structure is what this plan changes about the structure.
+func (p Plan) structure() structureMoves {
+	return structureMoves{reparent: p.reparenting(), onto: p.Onto.Elsewhere()}
+}
+
+// structure is what the restack this journal records changes about the
+// structure.
+func (r Record) structure() structureMoves {
+	return structureMoves{reparent: r.Reparent, onto: resumed(r).Elsewhere()}
+}
+
 // reparenting is the branches this plan moves to a different parent, which is
 // only ever the result of an explicit --onto.
 func (p Plan) reparenting() map[string]string {

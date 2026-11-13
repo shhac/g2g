@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -139,10 +140,10 @@ func ontoEach(plan restack.Plan, branches []string) string {
 // replayedOnto names where the commits land when that is a remote's copy of
 // the parent the graph will record, rather than the parent itself.
 func replayedOnto(plan restack.Plan, parent string) string {
-	if object := plan.Onto.Object; parent == plan.Onto.Parent && object != "" && object != parent {
-		return object + ", recorded under " + parent
+	if parent != plan.Onto.Parent || plan.Onto.Elsewhere() == "" {
+		return parent
 	}
-	return parent
+	return cmp.Or(plan.Onto.Named, localgit.Short(plan.Onto.Object)) + ", recorded under " + parent
 }
 
 // orphanNote names commits a rewritten parent dropped that a child still

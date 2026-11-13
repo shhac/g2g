@@ -41,7 +41,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		// branch already sitting on the --onto target has no commits to move
 		// and a recorded parent that still names where it used to be.
 		if moves := plan.reparenting(); len(moves) != 0 {
-			return s.recordStructure(ctx, plan.Discovery.Branches, moves)
+			return s.recordStructure(ctx, plan.Discovery.Branches, plan.structure())
 		}
 		return nil
 	}
@@ -106,7 +106,8 @@ func (s Service) record(plan Plan, standing checkout, recorded graph.Graph) Reco
 	record := Record{
 		Above:          plan.Above,
 		OntoParent:     plan.Onto.Parent,
-		OntoObject:     plan.Onto.recordedObject(),
+		OntoObject:     plan.Onto.Elsewhere(),
+		OntoNamed:      plan.Onto.Named,
 		Absorb:         plan.Absorb,
 		Worktrees:      plan.Policy,
 		Branch:         plan.Target,
@@ -206,7 +207,7 @@ func (s Service) collapseAfter(ctx context.Context, plan Plan, replayed []string
 // ancestor of the branch.
 func (s Service) absorb(ctx context.Context, plan Plan) error {
 	diagnostic.Event(ctx, "restack.absorb", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
-	return s.recordStructure(ctx, plan.Discovery.Branches, plan.reparenting())
+	return s.recordStructure(ctx, plan.Discovery.Branches, plan.structure())
 }
 
 // inPlace reports a plan that needs no working tree: everything it replays

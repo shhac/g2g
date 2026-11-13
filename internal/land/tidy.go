@@ -189,9 +189,11 @@ func (s Service) remove(ctx context.Context, plan Plan, step Step, head string) 
 }
 
 // forgetFetched uses the shared landed check against the fetched trunk before
-// untracking a leaf. The local trunk is held elsewhere and deliberately stale;
-// the ordinary prune would therefore find nothing in it. The structural check
-// is repeated in case somebody recorded a child during the descent.
+// untracking the branch, with the survivors left on it moved onto the trunk
+// first. The local trunk is held elsewhere and deliberately stale; the
+// ordinary prune would therefore find nothing in it. The structural check is
+// repeated, of the record as it would be saved and before anything is, in
+// case somebody recorded a child during the descent.
 func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) error {
 	recorded, err := s.Graph.Store.Load(ctx)
 	if err != nil {
@@ -205,21 +207,17 @@ func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) er
 	if !upstream {
 		return fmt.Errorf("%s merged, but its work is not in the fetched %s · rerun g2g land", branch, plan.Trunk)
 	}
-	// What sat on it was left where its worktree has it, unreplayed, and is
-	// recorded on the trunk with the fork point it already had, which keeps
-	// its replay to its own commits when that worktree is free. Only a
-	// branch the plan left is lifted: anything else recorded on it since the
-	// descent began is refused below, as it was.
-	if children := recorded.Children(branch); len(children) != 0 && allLeft(plan, children) {
-		if recorded, _, err = recorded.Lift(branch); err != nil {
-			return err
-		}
-		if err := s.Graph.Store.Save(ctx, recorded); err != nil {
-			return err
-		}
+	lifted, err := liftLeft(recorded, plan, branch)
+	if err != nil {
+		return err
 	}
-	if note := declaredRefusal(recorded, branch); note.Reason != "" {
+	if note := declaredRefusal(lifted, branch); note.Reason != "" {
 		return fmt.Errorf("%s", note.Sentence())
+	}
+	if len(lifted.Children(branch)) != len(recorded.Children(branch)) {
+		if err := s.Graph.Store.Save(ctx, lifted); err != nil {
+			return err
+		}
 	}
 	untrack, err := s.Graph.PlanUntrack(ctx, graph.Selection{Branch: branch, Scope: graph.ScopeBranch})
 	if err != nil {
@@ -228,13 +226,16 @@ func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) er
 	return s.Graph.ApplyUntrack(ctx, untrack)
 }
 
-// allLeft reports branches every one of which the plan leaves where its
-// worktree has it.
-func allLeft(plan Plan, branches []string) bool {
-	for _, branch := range branches {
-		if !plan.Worktrees.Leaves(branch) {
-			return false
-		}
+// liftLeft is the record with what sat on branch moved onto the trunk, when
+// every one of those was left where its worktree has it: unreplayed, so it
+// keeps the fork point it already had, which keeps its replay to its own
+// commits once that worktree is free. Anything else recorded on the branch
+// since the descent began leaves the record as it was, for the refusal after.
+func liftLeft(recorded graph.Graph, plan Plan, branch string) (graph.Graph, error) {
+	children := recorded.Children(branch)
+	if len(children) == 0 || !plan.Worktrees.LeavesAll(children) {
+		return recorded, nil
 	}
-	return true
+	lifted, _, err := recorded.Lift(branch)
+	return lifted, err
 }

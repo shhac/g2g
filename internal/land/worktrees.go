@@ -41,40 +41,67 @@ func (s Service) heldElsewhere(ctx context.Context, recorded graph.Graph, plan P
 	if err != nil {
 		return keeping{}, cannotTell(err)
 	}
-	split := plan.Options.Worktrees.Split(held, branches)
-	blocked, follow, left := slices.Clone(split.Refuse), make([]worktree.Holder, 0, len(split.Follow)), make([]worktree.Holder, 0, len(split.Leave))
-	for _, holder := range split.Leave {
-		if plan.survives(holder.Branch) {
-			left = append(left, holder)
-			continue
-		}
-		blocked = append(blocked, holder)
-	}
-	for _, holder := range split.Follow {
-		if plan.deletes(holder.Branch) {
-			blocked = append(blocked, holder)
-			continue
-		}
-		follow = append(follow, holder)
-	}
-	if len(blocked) == 0 {
+	sorted := plan.sortHeld(plan.Options.Worktrees.Split(held, branches))
+	outcome := worktree.NewOutcome(sorted.follow, sorted.left)
+	if len(sorted.blocked) == 0 && sorted.trunkLeft == nil {
 		// A branch the descent deletes is stepped off first, and the trunk
 		// cannot be checked out here while another worktree has it.
-		trunkThere := slices.ContainsFunc(follow, func(holder worktree.Holder) bool { return holder.Branch == plan.Trunk })
-		return keeping{follow: worktree.NewOutcome(follow, left), detach: trunkThere && plan.Options.DeleteLocal}, repair.Note{}
+		_, trunkThere := outcome.Follows(plan.Trunk)
+		return keeping{follow: outcome, detach: trunkThere && plan.Options.DeleteLocal}, repair.Note{}
 	}
-	kept, err := s.keepsTrunk(ctx, recorded, plan, blocked, left)
-	if err != nil {
-		return keeping{}, cannotTell(err)
-	}
-	if kept.trunk {
-		kept.follow = worktree.NewOutcome(follow, left)
-		return kept, repair.Note{}
+	if len(sorted.blocked) == 0 && keepsTrunk(recorded, plan, outcome) {
+		// A detached checkout stands on no branch the descent deletes.
+		current, _ := s.Git.CurrentBranch(ctx)
+		return keeping{trunk: true, detach: plan.Options.DeleteLocal && current == plan.Target, follow: outcome}, repair.Note{}
 	}
 	// Narrowing the selection is no way out here: a descent moves the whole
 	// stack whatever was selected, because the replay after each merge takes
 	// everything above it.
-	return keeping{}, heldRefusal(plan, blocked)
+	return keeping{}, heldRefusal(plan, sorted.refused())
+}
+
+// heldSort is what a descent makes of the branches other worktrees hold:
+// those it brings along, the survivors it leaves, the trunk if the policy
+// leaves that, and those in its way.
+type heldSort struct {
+	follow, left, blocked []worktree.Holder
+	trunkLeft             *worktree.Holder
+}
+
+// refused is every holder in the descent's way, the trunk left included,
+// for when nothing lets the descent past it.
+func (h heldSort) refused() []worktree.Holder {
+	if h.trunkLeft == nil {
+		return h.blocked
+	}
+	return append(slices.Clone(h.blocked), *h.trunkLeft)
+}
+
+// sortHeld sorts what the policy decided by what each branch is to the
+// descent. A survivor may be left; the trunk may be, by the one path that
+// does not move it; a branch the descent lands may not be, and one it deletes
+// may not be followed, because Git will not delete a branch checked out
+// anywhere.
+func (p Plan) sortHeld(split worktree.Split) heldSort {
+	sorted := heldSort{blocked: slices.Clone(split.Refuse)}
+	for _, holder := range split.Leave {
+		switch {
+		case p.survives(holder.Branch):
+			sorted.left = append(sorted.left, holder)
+		case holder.Branch == p.Trunk:
+			sorted.trunkLeft = &holder
+		default:
+			sorted.blocked = append(sorted.blocked, holder)
+		}
+	}
+	for _, holder := range split.Follow {
+		if p.deletes(holder.Branch) {
+			sorted.blocked = append(sorted.blocked, holder)
+			continue
+		}
+		sorted.follow = append(sorted.follow, holder)
+	}
+	return sorted
 }
 
 // survives reports a branch above the descent: one it replays rather than
@@ -121,27 +148,13 @@ type keeping struct {
 	follow        worktree.Outcome
 }
 
-// keepsTrunk is the one way past a trunk that cannot be moved. A single branch
-// can merge without advancing the trunk here, provided no survivor would need
-// replaying afterwards -- it has none, or every one is left where its own
-// worktree has it -- and nothing but the trunk is in the way, and the policy
-// would leave the trunk rather than refuse it. That is --worktrees skip with
-// a clean trunk checkout and an agent's child branch in another.
-func (s Service) keepsTrunk(ctx context.Context, recorded graph.Graph, plan Plan, blocked, left []worktree.Holder) (keeping, error) {
-	if len(plan.Branches) != 1 {
-		return keeping{}, nil
-	}
-	for _, child := range recorded.Children(plan.Target) {
-		if !slices.ContainsFunc(left, func(holder worktree.Holder) bool { return holder.Branch == child }) {
-			return keeping{}, nil
-		}
-	}
-	if len(blocked) != 1 || blocked[0].Branch != plan.Trunk || !plan.Options.Worktrees.Leaves(blocked[0]) {
-		return keeping{}, nil
-	}
-	// A detached checkout stands on no branch the descent deletes.
-	current, _ := s.Git.CurrentBranch(ctx)
-	return keeping{trunk: true, detach: plan.Options.DeleteLocal && current == plan.Target}, nil
+// keepsTrunk is the one way past a trunk that cannot be moved, once the
+// policy has left it. A single branch can merge without advancing the trunk
+// here, provided no survivor would need replaying afterwards -- it has none,
+// or every one is left where its own worktree has it. That is --worktrees
+// skip with a clean trunk checkout and an agent's child branch in another.
+func keepsTrunk(recorded graph.Graph, plan Plan, outcome worktree.Outcome) bool {
+	return len(plan.Branches) == 1 && outcome.LeavesAll(recorded.Children(plan.Target))
 }
 
 // unplannedLeaves is what a pull would leave that the descent did not plan

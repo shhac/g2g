@@ -69,8 +69,8 @@ func (s Service) blockedBefore(ctx context.Context, plan *Plan, recorded graph.G
 	if err == nil && synced.Blocked() != "" {
 		return synced.Repair, nil
 	}
-	if err == nil && len(plan.unplannedLeaves(synced)) != 0 {
-		return leftBehind(plan.unplannedLeaves(synced)), nil
+	if unplanned := plan.unplannedLeaves(synced); err == nil && len(unplanned) != 0 {
+		return leftBehind(unplanned), nil
 	}
 	if err == nil && options.Strict && synced.Strict.Reason != "" {
 		return synced.Strict, nil

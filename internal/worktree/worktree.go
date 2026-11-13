@@ -267,6 +267,17 @@ func (o Outcome) Leaves(branch string) bool {
 	return slices.ContainsFunc(o.Leave, func(holder Holder) bool { return holder.Branch == branch })
 }
 
+// LeavesAll reports branches every one of which this outcome leaves where it
+// is.
+func (o Outcome) LeavesAll(branches []string) bool {
+	for _, branch := range branches {
+		if !o.Leaves(branch) {
+			return false
+		}
+	}
+	return true
+}
+
 func sorted(holders []Holder) []Holder {
 	if len(holders) == 0 {
 		return nil

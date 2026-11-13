@@ -33,7 +33,7 @@ func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ct
 func (s Service) Apply(ctx context.Context, plan Plan) error {
 	// Another worktree's restack holds only what it moves and replays onto,
 	// so a stack apart from it restacks beside it.
-	if err := s.requireApart(ctx, plan.footprint()); err != nil {
+	if err := s.RequireApart(ctx, plan.Footprint()); err != nil {
 		return err
 	}
 	if plan.Blocked() != "" {
@@ -85,28 +85,18 @@ func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Recor
 			return Record{}, err
 		}
 	}
-	if starter, ok := s.Journal.(interface {
-		Start(context.Context, Record) error
-	}); ok {
-		if err := starter.Start(ctx, record); err != nil {
-			return record, err
-		}
-	} else if err := s.Journal.Save(ctx, record); err != nil {
-		return record, err
-	}
-	return record, s.stillApart(ctx, record)
+	return record, s.publish(ctx, record)
 }
 
-// stillApart is the check Apply made, made again once this restack's own
-// journal is published. Two worktrees starting restacks that overlap at the
-// same moment both pass the first; each sees the other's journal here, and
-// steps back before anything moves. Both may, which is the safe way round.
-func (s Service) stillApart(ctx context.Context, record Record) error {
-	journal, ok := s.Journal.(othersJournal)
-	if !ok {
-		return nil
+// publish starts this restack's journal, and makes the check Apply made
+// again once it is there. Two worktrees starting restacks that overlap at
+// the same moment both pass the first; each sees the other's journal here,
+// and steps back before anything moves. Both may, which is the safe way round.
+func (s Service) publish(ctx context.Context, record Record) error {
+	if err := s.Journal.Start(ctx, record); err != nil {
+		return err
 	}
-	others, err := journal.Others(ctx)
+	_, others, err := s.unfinished(ctx)
 	if err == nil {
 		err = apart(record.footprint(), others)
 	}

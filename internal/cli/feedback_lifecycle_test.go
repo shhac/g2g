@@ -177,5 +177,6 @@ func TestAnotherWorktreeStartingRestackBetweenPlansNamesItsCheckout(t *testing.T
 // guardFunc is an idle guard that answers both questions the same way.
 type guardFunc func() error
 
-func (g guardFunc) RequireIdle(context.Context) error              { return g() }
-func (g guardFunc) RequireIdleFor(context.Context, []string) error { return g() }
+func (g guardFunc) RequireIdle(context.Context) error                     { return g() }
+func (g guardFunc) RequireIdleHere(context.Context) error                 { return g() }
+func (g guardFunc) RequireApart(context.Context, restack.Footprint) error { return g() }

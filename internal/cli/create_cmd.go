@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/create"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // newCreate takes the graph service only to complete --parent from the same
@@ -38,7 +39,7 @@ func newCreate(service create.Service, branches graph.Service, guard idleGuard, 
 			revalidation: revalidation{"create", "the branch to create"},
 			render:       writeCreatePlan,
 			guard:        guard,
-			touches:      func(plan create.Plan) []string { return []string{plan.Name, plan.Parent} },
+			touches:      func(plan create.Plan) restack.Footprint { return reads(plan.Name, plan.Parent) },
 			execute:      service.Apply,
 			branches:     func(create.Plan) int { return 1 },
 			blocked:      create.Plan.Blocked,

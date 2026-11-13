@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // applyFlow is the preview/apply sequence every mutating command performs:
@@ -98,11 +99,12 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// have moved while the graph still records where it used to be, so any
 	// mutation would act on a structure that is currently untrue.
 	guard idleGuard
-	// touches names the branches a plan moves, publishes or records, with the
-	// parents it measures them against, so the guard refuses only a command
-	// whose branches an unfinished restack is moving. Without it the guard
-	// runs before planning and refuses while any restack is unfinished.
-	touches func(P) []string
+	// touches is what a plan moves and reads: the branches it moves,
+	// publishes or records, with the parents it measures them against, so the
+	// guard refuses only a command another worktree's unfinished restack
+	// overlaps. Without it the guard runs before planning and refuses while
+	// any restack is unfinished.
+	touches func(P) restack.Footprint
 
 	// suggest is an optional, success-only continuation for a human who has
 	// just completed a clear operation, named from the plan that was applied;

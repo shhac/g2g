@@ -211,8 +211,9 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 	flow := applyFlow[restack.Plan]{
 		guard: restackGuard(service),
 		// Each worktree journals its own restack, so one stopped elsewhere
-		// refuses this one only over what both touch.
-		touches: restack.Plan.Touches,
+		// refuses this one only over what either moves that the other reads,
+		// which the preview asks exactly as the apply does.
+		touches: restack.Plan.Footprint,
 		plan: func(ctx context.Context) (restack.Plan, error) {
 			onto, err := service.OntoNamed(ctx, options.onto)
 			if err != nil {

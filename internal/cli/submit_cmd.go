@@ -11,6 +11,7 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
@@ -112,7 +113,7 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	// metadata is missing. An apply still guards that first read: a detached,
 	// half-rewritten checkout may otherwise fail before identifying its owner.
 	if o.apply && o.guard != nil {
-		if err := o.guard.RequireIdleFor(ctx, nil); err != nil {
+		if err := o.guard.RequireIdleHere(ctx); err != nil {
 			return err
 		}
 	}
@@ -264,7 +265,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 	// submit's has always been readable while a rewrite is part-way.
 	if o.apply {
 		flow.guard = o.guard
-		flow.touches = func(plan submit.Plan) []string { return snapshotTouches(plan.Snapshot) }
+		flow.touches = func(plan submit.Plan) restack.Footprint { return snapshotTouches(plan.Snapshot) }
 	}
 	return flow
 }

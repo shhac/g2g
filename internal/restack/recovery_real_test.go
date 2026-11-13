@@ -3,6 +3,7 @@ package restack
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -23,8 +24,8 @@ func TestRecoveryRefusesAnotherWorktreeBeforeTouchingAnything(t *testing.T) {
 			r.Run("worktree", "add", "-q", "--detach", other, "synthetic-main")
 			t.Chdir(other)
 			methods := map[string]func(context.Context) error{"continue": r.service.Continue, "skip": r.service.Skip, "abort": r.service.Abort}
-			if err := methods[verb](ctx); err == nil || !strings.Contains(err.Error(), "another worktree") {
-				t.Fatalf("%s error = %v, want owner refusal", verb, err)
+			if err := methods[verb](ctx); err == nil || !strings.Contains(err.Error(), "no restack is in progress in this worktree") || !strings.Contains(err.Error(), "unfinished in checkout "+strconv.Quote(resolved(t, r.Dir))) {
+				t.Fatalf("%s error = %v, want the refusal naming the checkout it belongs to", verb, err)
 			}
 			if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
 				t.Fatalf("other worktree changed: %s", status)
@@ -209,7 +210,7 @@ func TestAnUnrelatedStackRestacksBesideAnotherWorktreesUnfinishedOne(t *testing.
 		t.Fatalf("other worktree changed: %s", status)
 	}
 	// What the other restack moves is still refused from here.
-	if err := r.service.RequireIdleFor(ctx, []string{"synthetic-b"}); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
+	if err := r.service.RequireApart(ctx, Footprint{Reads: []string{"synthetic-b"}}); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
 		t.Fatalf("restacking what the other restack moves = %v, want it refused", err)
 	}
 	t.Chdir(r.Dir)
@@ -439,6 +440,60 @@ func TestAResumeWhosePlanIsBlockedKeepsTheJournalForAbort(t *testing.T) {
 		if after.Edges[branch] != edge {
 			t.Errorf("%s is recorded as %+v after abort, want %+v", branch, after.Edges[branch], edge)
 		}
+	}
+	r.assertClean()
+}
+
+// resolved is dir with its symbolic links resolved, as Git reports paths.
+func resolved(t *testing.T, dir string) string {
+	t.Helper()
+	path, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A restack paused part-way through replaying a child onto its parent is
+// undone by another moving that parent, though neither moves what the other
+// moves. So a restack of the parent from another worktree is refused, and
+// moves nothing, while the paused one can still be finished.
+func TestARestackOfTheParentAPausedOneReplaysOntoIsRefusedElsewhere(t *testing.T) {
+	r := newRealStack(t)
+	ctx := context.Background()
+	r.Commit("synthetic shared", "c.txt", "base")
+	r.branch("synthetic-parent", "synthetic-main", "p.txt", "synthetic parent")
+	r.branch("synthetic-child", "synthetic-parent", "c.txt", "from the child")
+	r.amend("synthetic-parent", "c.txt", "from the parent")
+	r.Run("switch", "-q", "synthetic-child")
+	r.stopOnConflict(graph.Selection{Branch: "synthetic-child", Scope: graph.ScopeBranch})
+
+	other := filepath.Join(t.TempDir(), "synthetic-other")
+	r.Run("worktree", "add", "-q", other, "synthetic-main")
+	r.Run("-C", other, "commit", "-q", "--allow-empty", "-m", "synthetic trunk moves on")
+	t.Chdir(other)
+	before := r.Revision("synthetic-parent")
+	plan := r.plan(graph.Selection{Branch: "synthetic-parent", Scope: graph.ScopeBranch})
+	if len(plan.Steps) == 0 {
+		t.Fatal("the parent has nothing to replay")
+	}
+	err := r.service.Apply(ctx, plan)
+	if err == nil || !strings.Contains(err.Error(), "which holds synthetic-parent") {
+		t.Fatalf("Apply error = %v, want it refused over the parent the paused restack replays onto", err)
+	}
+	if r.Revision("synthetic-parent") != before {
+		t.Fatal("the refused restack moved the parent")
+	}
+	if found, _ := r.service.InProgress(ctx); found {
+		t.Fatal("the refused restack left a journal of its own")
+	}
+
+	t.Chdir(r.Dir)
+	if active, err := r.client.RebaseInProgress(ctx); err != nil || !active {
+		t.Fatalf("the paused rebase changed: %v, %v", active, err)
+	}
+	if err := r.service.Abort(ctx); err != nil {
+		t.Fatal(err)
 	}
 	r.assertClean()
 }

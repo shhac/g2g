@@ -17,6 +17,9 @@ type finding struct {
 	Problem  string
 	Command  string
 	Severity severity
+	// Note, when set, is the finding in full: its reason and its ways out,
+	// worded where the problem is decided rather than here.
+	Note repair.Note
 }
 
 // diagnose names every finding, in the order the stacks are drawn.
@@ -80,6 +83,10 @@ func doctorView(discovery graph.Discovery, findings []finding) stackView {
 		}
 	}
 	for _, found := range findings {
+		if found.Note.Reason != "" {
+			view = view.note(found.Note.SentenceWith(runnable)+".", found.Severity)
+			continue
+		}
 		subject := found.Problem
 		if found.Branch != "" {
 			subject = found.Branch + ": " + found.Problem
@@ -100,35 +107,16 @@ type unfinished struct {
 	elsewhere []restack.Elsewhere
 }
 
-// findings is one finding per unfinished restack, each with what finishes
-// it: --continue here, the same in the checkout another belongs to, and for
-// one whose checkout is gone, forgetting its journal.
+// findings is one finding per unfinished restack, each with the way past it:
+// --continue here, and for another worktree's the note its refusal carries,
+// so doctor and the guards cannot name different ways for the same journal.
 func (u unfinished) findings() []finding {
 	findings := make([]finding, 0, len(u.elsewhere)+1)
 	if u.here {
 		findings = append(findings, finding{Problem: "a restack stopped part-way", Command: "g2g restack --continue", Severity: severityBad})
 	}
 	for _, other := range u.elsewhere {
-		of := ""
-		if branch := other.Started(); branch != "" {
-			of = " of " + branch
-		}
-		if checkout := other.Checkout(); checkout != "" {
-			findings = append(findings, finding{
-				Problem:  "a restack" + of + " stopped part-way in " + checkout,
-				Command:  "cd " + repair.Quote(checkout) + " && g2g restack --continue",
-				Severity: severityBad,
-			})
-			continue
-		}
-		if other.Path == "" {
-			continue
-		}
-		findings = append(findings, finding{
-			Problem:  "a restack" + of + " stopped part-way in a worktree that no longer exists",
-			Command:  repair.Command([]string{"rm", other.Path}),
-			Severity: severityBad,
-		})
+		findings = append(findings, finding{Note: other.Repair(nil), Severity: severityBad})
 	}
 	return findings
 }

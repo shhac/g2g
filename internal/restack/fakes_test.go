@@ -251,6 +251,23 @@ type memoryJournal struct {
 	record  Record
 	present bool
 	cleared int
+	// others are the unfinished restacks other worktrees have.
+	others []Elsewhere
+}
+
+func (j *memoryJournal) Start(ctx context.Context, record Record) error {
+	if j.present {
+		return errors.New("a restack is already in progress")
+	}
+	return j.Save(ctx, record)
+}
+
+func (j *memoryJournal) Unfinished(context.Context) (*Record, []Elsewhere, error) {
+	if !j.present {
+		return nil, j.others, nil
+	}
+	record := j.record
+	return &record, j.others, nil
 }
 
 func (j *memoryJournal) Load(context.Context) (Record, bool, error) {

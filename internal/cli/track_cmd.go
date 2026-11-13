@@ -9,6 +9,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
+	"github.com/shhac/g2g/internal/restack"
 )
 
 // newTrack takes describesElsewhere so a blocked adoption can name the command
@@ -55,8 +56,8 @@ func newTrack(service graph.Service, guard idleGuard, describesElsewhere func(co
 				return writeGraphView(writer, trackView(plan.TrackPlan, plan.elsewhere), plan.Discovery, p)
 			},
 			guard: guard,
-			touches: func(plan trackPlan) []string {
-				return append([]string{plan.Target, plan.Parent}, plan.Branches...)
+			touches: func(plan trackPlan) restack.Footprint {
+				return reads(append([]string{plan.Target, plan.Parent}, plan.Branches...)...)
 			},
 			execute:  func(ctx context.Context, plan trackPlan) error { return service.ApplyTrack(ctx, plan.TrackPlan) },
 			branches: func(plan trackPlan) int { return len(plan.Branches) },

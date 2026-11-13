@@ -7,6 +7,7 @@ import (
 
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -37,7 +38,7 @@ func newPush(service push.Service, completions stack.Completions, guard idleGuar
 				revalidation: revalidation{"push", "push plan"},
 				render:       writePushPlan,
 				guard:        guard,
-				touches:      func(plan push.Plan) []string { return snapshotTouches(plan.Snapshot) },
+				touches:      func(plan push.Plan) restack.Footprint { return snapshotTouches(plan.Snapshot) },
 				execute:      service.Execute,
 				branches:     func(plan push.Plan) int { return len(plan.Branches) },
 				// The lease rejects a push the remote has moved under, so this

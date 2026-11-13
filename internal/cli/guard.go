@@ -9,14 +9,16 @@ import (
 
 // idleGuard refuses a mutation while a restack is unfinished.
 //
-// Two questions, named, rather than one function told apart by its argument:
-// RequireIdle refuses while any restack is unfinished, which is every command
-// that cannot say what it touches; RequireIdleFor refuses one touching a
-// branch an unfinished restack moves, or running in the worktree it belongs
-// to, and with nothing touched asks only the second.
+// Three questions, named, rather than one function told apart by its
+// argument: RequireIdle refuses while any worktree has an unfinished restack,
+// which is every command that cannot say what it touches; RequireIdleHere
+// refuses while this worktree has one, which is what a command that can say
+// asks before it has discovered what; RequireApart refuses one whose
+// footprint another worktree's restack moves or reads, once it has.
 type idleGuard interface {
 	RequireIdle(ctx context.Context) error
-	RequireIdleFor(ctx context.Context, touching []string) error
+	RequireIdleHere(ctx context.Context) error
+	RequireApart(ctx context.Context, touching restack.Footprint) error
 }
 
 var _ idleGuard = restack.Service{}
@@ -42,7 +44,7 @@ func (f applyFlow[P]) guardBefore(ctx context.Context) error {
 	if f.touches == nil {
 		return f.guard.RequireIdle(ctx)
 	}
-	return f.guard.RequireIdleFor(ctx, nil)
+	return f.guard.RequireIdleHere(ctx)
 }
 
 // guardAfter refuses a plan touching a branch an unfinished restack moves.
@@ -50,15 +52,22 @@ func (f applyFlow[P]) guardAfter(ctx context.Context, plan P) error {
 	if f.guard == nil || f.touches == nil {
 		return nil
 	}
-	return f.guard.RequireIdleFor(ctx, f.touches(plan))
+	return f.guard.RequireApart(ctx, f.touches(plan))
 }
 
 // snapshotTouches is every branch a selection acts on and the parents it
-// measures them against.
-func snapshotTouches(snapshot stack.Snapshot) []string {
+// measures them against. Publishing moves nothing a restack replays onto, so
+// they are what it reads.
+func snapshotTouches(snapshot stack.Snapshot) restack.Footprint {
 	touching := append([]string{snapshot.Base}, snapshot.Branches...)
 	for _, parent := range snapshot.Parents {
 		touching = append(touching, parent)
 	}
-	return touching
+	return reads(touching...)
+}
+
+// reads is a footprint that moves nothing a restack replays onto and reads
+// branches.
+func reads(branches ...string) restack.Footprint {
+	return restack.Footprint{Reads: branches}
 }

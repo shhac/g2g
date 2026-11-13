@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -10,23 +11,40 @@ type WorktreeLocator interface {
 	WorktreeDir(context.Context) (string, error)
 }
 
-func (s Service) requireOwner(ctx context.Context, record Record) error {
-	// Older journals did not record ownership; retain their recovery path.
-	if record.Worktree == "" {
-		return nil
-	}
-	locator, ok := s.Git.(WorktreeLocator)
-	if !ok {
-		return fmt.Errorf("cannot identify the worktree owning this restack")
-	}
-	here, err := locator.WorktreeDir(ctx)
+// InProgress reports an unfinished restack in this worktree, which every
+// other command here has to refuse while it lasts: a branch may already have
+// moved while the graph still records where it used to be. Another
+// worktree's restack is its own, and the guards ask about it separately.
+func (s Service) InProgress(ctx context.Context) (bool, error) {
+	here, _, err := s.unfinished(ctx)
+	return here != nil, err
+}
+
+// ownedRecord is the common gate before any recovery command touches Git:
+// this worktree's record, which is the journal's to tell apart from every
+// other worktree's.
+func (s Service) ownedRecord(ctx context.Context) (Record, error) {
+	record, found, err := s.Journal.Load(ctx)
 	if err != nil {
-		return err
+		return Record{}, err
 	}
-	if here != record.Worktree {
-		return fmt.Errorf("this restack belongs to another worktree · run g2g restack --continue, --skip, or --abort there (Git directory: %s)", record.Worktree)
+	if !found {
+		return Record{}, s.noneHere(ctx)
 	}
-	return nil
+	return record, nil
+}
+
+// noneHere is the refusal of a recovery verb in a worktree with no restack
+// of its own, naming the one another worktree has, since that is the restack
+// the reader most likely meant.
+func (s Service) noneHere(ctx context.Context) error {
+	_, others, err := s.unfinished(ctx)
+	if err != nil || len(others) == 0 {
+		return errors.Join(err, fmt.Errorf("no restack is in progress"))
+	}
+	note := others[0].Repair(nil)
+	note.Reason = "no restack is in progress in this worktree; " + note.Reason
+	return errors.New(note.Sentence())
 }
 
 func (s Service) checkpoint(ctx context.Context, record *Record, standing checkout) error {

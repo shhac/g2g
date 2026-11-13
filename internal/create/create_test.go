@@ -204,7 +204,7 @@ func TestPlanDecidesWhetherABranchCanBeCreatedAndRecorded(t *testing.T) {
 			name:    "a detached HEAD away from the parent's tip",
 			request: Request{Name: "synthetic-new", Parent: "synthetic-main"},
 			arrange: detachedAt("stray-tip"),
-			blocked: "could leave commits behind", way: "git switch --detach synthetic-main",
+			blocked: "would leave them behind", way: "git switch --detach synthetic-main",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

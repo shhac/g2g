@@ -176,6 +176,20 @@ func (c Client) supportsMergeTree(ctx context.Context) (bool, error) {
 	return major > 2 || (major == 2 && minor >= absorbedMinorVersion), nil
 }
 
+// Unreferenced reports a revision with commits that no branch, tag or
+// remote's copy reaches -- g2g's own fetched copies included -- which is what
+// switching away from a detached HEAD there would leave to the reflog alone.
+func (c Client) Unreferenced(ctx context.Context, revision string) (bool, error) {
+	if err := safeRef(revision); err != nil {
+		return false, err
+	}
+	output, err := c.run(ctx, "rev-list", "-n", "1", revision, "--not", "--branches", "--tags", "--remotes", "--glob="+strings.TrimSuffix(isolatedRemotePrefix, "/"))
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(output)) != "", nil
+}
+
 // Commits lists the commits reachable from tip and from none of excluded, by
 // id. Membership by id is the question when what matters is whether this
 // exact commit was there: a rewritten copy of it is a different commit, and

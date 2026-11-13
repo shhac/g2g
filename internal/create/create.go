@@ -222,22 +222,56 @@ func (s Service) resolveStart(ctx context.Context, plan Plan, requested string) 
 			return plan.refuse(note), nil
 		}
 	}
-	protectHead := plan.ReturnTip
-	if plan.ReturnTip != "" && requested != "" {
-		if ancestry, ok := s.Git.(interface {
-			IsAncestor(context.Context, string, string) (bool, error)
-		}); ok {
-			contained, err := ancestry.IsAncestor(ctx, plan.ReturnTip, plan.At)
-			if err != nil {
-				return Plan{}, err
-			}
-			if contained {
-				protectHead = ""
-			}
+	lost, err := s.leavesBehind(ctx, plan)
+	if err != nil {
+		return Plan{}, err
+	}
+	if lost {
+		protected, _ := refuseDetachedAway(plan, plan.ReturnTip)
+		return protected, nil
+	}
+	return plan, nil
+}
+
+// leavesBehind reports a detached HEAD whose commits switching to the new
+// branch would leave to the reflog alone.
+//
+// The start itself is the one commit known to lose nothing. Past that, a HEAD
+// some branch, tag or remote's copy still reaches loses nothing either, nor
+// does one whose work the start already has by content, which is what a stack
+// squash-merged into the trunk leaves. Refusing those sent people detached at
+// a landed stack's tip to detach somewhere else first, when the --at they had
+// already passed said where to start.
+func (s Service) leavesBehind(ctx context.Context, plan Plan) (bool, error) {
+	head := plan.ReturnTip
+	if head == "" || head == plan.At {
+		return false, nil
+	}
+	if ancestry, ok := s.Git.(interface {
+		IsAncestor(context.Context, string, string) (bool, error)
+	}); ok {
+		contained, err := ancestry.IsAncestor(ctx, head, plan.At)
+		if err != nil || contained {
+			return !contained, err
 		}
 	}
-	protected, _ := refuseDetachedAway(plan, protectHead)
-	return protected, nil
+	if references, ok := s.Git.(interface {
+		Unreferenced(context.Context, string) (bool, error)
+	}); ok {
+		unreferenced, err := references.Unreferenced(ctx, head)
+		if err != nil || !unreferenced {
+			return unreferenced, err
+		}
+	}
+	if absorbs, ok := s.Git.(interface {
+		Absorbed(context.Context, string, string) (bool, error)
+	}); ok {
+		absorbed, err := absorbs.Absorbed(ctx, plan.At, head)
+		if err != nil || absorbed {
+			return !absorbed, err
+		}
+	}
+	return true, nil
 }
 
 // refuseName turns away a name before it reaches anything that could misread
@@ -262,13 +296,20 @@ func refuseDetachedAway(plan Plan, head string) (Plan, bool) {
 		return plan, false
 	}
 	return plan.refuse(repair.Note{
-		Reason: fmt.Sprintf("HEAD is detached somewhere other than %s's tip, so switching to %s could leave commits behind", plan.Parent, plan.Name),
+		Reason: fmt.Sprintf("HEAD is detached at commits no branch, tag or remote's copy reaches, and %s does not already have, so switching to %s would leave them behind", startName(plan), plan.Name),
 		Ways: []repair.Step{
-			{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip, then rerun"},
-			{Effect: "switch to a branch first"},
-			{Effect: "to start at a newer known upstream trunk, pass --at with that revision"},
+			{Command: "git branch <name> HEAD", Effect: "keep them on a branch of their own, then rerun"},
+			{Command: "git switch --detach " + repair.Quote(plan.Parent), Effect: "detach at " + plan.Parent + "'s tip if they are not wanted, then rerun " + repair.Command([]string{"g2g", "create", plan.Name, "--parent", plan.Parent})},
 		},
 	}), true
+}
+
+// startName names where the new branch would start, for a sentence.
+func startName(plan Plan) string {
+	if plan.AtSource != "" {
+		return plan.AtSource
+	}
+	return plan.Parent
 }
 
 // refuseRecord is the rule create adds over track.

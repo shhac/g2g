@@ -63,11 +63,5 @@ func snapshotTouches(snapshot stack.Snapshot) restack.Footprint {
 	for _, parent := range snapshot.Parents {
 		touching = append(touching, parent)
 	}
-	return reads(touching...)
-}
-
-// reads is a footprint that moves nothing a restack replays onto and reads
-// branches.
-func reads(branches ...string) restack.Footprint {
-	return restack.Footprint{Reads: branches}
+	return restack.Reads(touching...)
 }

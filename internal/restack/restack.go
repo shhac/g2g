@@ -96,7 +96,7 @@ func (s Service) publish(ctx context.Context, record Record) error {
 	if err := s.Journal.Start(ctx, record); err != nil {
 		return err
 	}
-	_, others, err := s.unfinished(ctx)
+	others, err := s.elsewhere(ctx)
 	if err == nil {
 		err = apart(record.footprint(), others)
 	}

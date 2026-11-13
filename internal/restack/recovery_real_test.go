@@ -2,6 +2,7 @@ package restack
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -210,7 +211,7 @@ func TestAnUnrelatedStackRestacksBesideAnotherWorktreesUnfinishedOne(t *testing.
 		t.Fatalf("other worktree changed: %s", status)
 	}
 	// What the other restack moves is still refused from here.
-	if err := r.service.RequireApart(ctx, Footprint{Reads: []string{"synthetic-b"}}); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
+	if err := r.service.RequireApart(ctx, Reads("synthetic-b")); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
 		t.Fatalf("restacking what the other restack moves = %v, want it refused", err)
 	}
 	t.Chdir(r.Dir)
@@ -496,4 +497,67 @@ func TestARestackOfTheParentAPausedOneReplaysOntoIsRefusedElsewhere(t *testing.T
 		t.Fatal(err)
 	}
 	r.assertClean()
+}
+
+// A restack an older g2g journaled in the shared file, for a linked worktree,
+// stays that worktree's to finish or undo after the upgrade, and the main
+// worktree, whose file it is in, cannot take it.
+func TestALinkedWorktreeFinishesARestackJournaledInTheSharedFile(t *testing.T) {
+	for _, verb := range []string{"abort", "continue"} {
+		t.Run(verb, func(t *testing.T) {
+			r := conflictingStack(t)
+			ctx := context.Background()
+			other := filepath.Join(t.TempDir(), "synthetic-other")
+			r.Run("worktree", "add", "-q", other, "synthetic-b")
+			t.Chdir(other)
+			r.stopOnConflict(graph.Selection{Branch: "synthetic-b", Scope: graph.ScopeStack})
+			common := strings.TrimSpace(r.Run("rev-parse", "--path-format=absolute", "--git-common-dir"))
+			private := strings.TrimSpace(r.Run("-C", other, "rev-parse", "--absolute-git-dir"))
+			own := filepath.Join(common, "g2g", "restack", "worktrees", filepath.Base(private)+".json")
+			shared := filepath.Join(common, "g2g", "restack.json")
+			if err := os.Rename(own, shared); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Chdir(r.Dir)
+			if err := r.service.Abort(ctx); err == nil {
+				t.Fatal("the main worktree aborted the linked worktree's restack")
+			}
+			t.Chdir(other)
+			switch verb {
+			case "abort":
+				if err := r.service.Abort(ctx); err != nil {
+					t.Fatalf("abort: %v", err)
+				}
+			case "continue":
+				finished := false
+				for range 4 {
+					for _, file := range []string{"a.txt", "b.txt"} {
+						if err := os.WriteFile(filepath.Join(other, file), []byte("synthetic resolved\n"), 0o600); err != nil {
+							t.Fatal(err)
+						}
+						r.Run("-C", other, "add", file)
+					}
+					if err := r.service.Continue(ctx); err == nil {
+						finished = true
+						break
+					}
+				}
+				if !finished {
+					t.Fatal("continue never finished")
+				}
+			}
+			for _, path := range []string{shared, own} {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Errorf("%s left after %s: %v", path, verb, err)
+				}
+			}
+			if active, _ := r.client.RebaseInProgress(ctx); active {
+				t.Errorf("rebase still in progress after %s", verb)
+			}
+			if status := strings.TrimSpace(r.Run("-C", other, "status", "--porcelain")); status != "" {
+				t.Errorf("the linked worktree is not clean after %s:\n%s", verb, status)
+			}
+		})
+	}
 }

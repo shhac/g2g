@@ -103,7 +103,7 @@ func doctorView(discovery graph.Discovery, findings []finding) stackView {
 // and every other worktree's. Each worktree journals its own, and a doctor
 // that looked only here said nothing of one an agent left in another.
 type unfinished struct {
-	here      bool
+	here      repair.Note
 	elsewhere []restack.Elsewhere
 }
 
@@ -112,8 +112,8 @@ type unfinished struct {
 // so doctor and the guards cannot name different ways for the same journal.
 func (u unfinished) findings() []finding {
 	findings := make([]finding, 0, len(u.elsewhere)+1)
-	if u.here {
-		findings = append(findings, finding{Problem: "a restack stopped part-way", Command: "g2g restack --continue", Severity: severityBad})
+	if u.here.Reason != "" {
+		findings = append(findings, finding{Note: u.here, Severity: severityBad})
 	}
 	for _, other := range u.elsewhere {
 		findings = append(findings, finding{Note: other.Repair(nil), Severity: severityBad})

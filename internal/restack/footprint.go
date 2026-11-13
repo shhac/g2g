@@ -8,10 +8,23 @@ import (
 // Footprint is what an operation moves and what it reads: the branches it may
 // rewrite or record, and those with the parents they are measured against or
 // replayed onto. Two restacks in different worktrees run beside each other
-// unless either moves what the other reads. A command other than a restack
-// moves nothing a restack replays onto, so it states only what it reads.
+// unless either moves what the other reads. Only a restack declares what it
+// moves; every other command reads (Reads).
 type Footprint struct {
-	Moves, Reads []string
+	moves, reads map[string]bool
+}
+
+// Reads is the footprint of a command that moves nothing a restack replays
+// onto, and reads branches: the ones it publishes or records, with the
+// parents it measures them against.
+func Reads(branches ...string) Footprint {
+	reads := make(map[string]bool, len(branches))
+	for _, branch := range branches {
+		if branch != "" {
+			reads[branch] = true
+		}
+	}
+	return Footprint{reads: reads}
 }
 
 // footprintOf is a footprint from what a restack moves, the parent each of
@@ -28,7 +41,7 @@ func footprintOf(moves map[string]bool, parents, reparent map[string]string, ont
 	}
 	reads[onto] = true
 	delete(reads, "")
-	return Footprint{Moves: slices.Sorted(maps.Keys(moves)), Reads: slices.Sorted(maps.Keys(reads))}
+	return Footprint{moves: moves, reads: reads}
 }
 
 // Footprint is what applying the plan moves and reads: every selected branch
@@ -58,30 +71,31 @@ func (r Record) footprint() Footprint {
 // moving is every branch the restack may move, whether or not it has yet.
 func (r Record) moving() map[string]bool {
 	moving := map[string]bool{}
-	for _, branches := range []map[string]bool{keys(r.Original), keys(r.Reparent), keys(r.Structure)} {
-		maps.Copy(moving, branches)
+	for branch := range r.Original {
+		moving[branch] = true
+	}
+	for branch := range r.Reparent {
+		moving[branch] = true
+	}
+	for branch := range r.Structure {
+		moving[branch] = true
 	}
 	delete(moving, "")
 	return moving
-}
-
-func keys[V any](values map[string]V) map[string]bool {
-	set := make(map[string]bool, len(values))
-	for key := range values {
-		set[key] = true
-	}
-	return set
 }
 
 // meets is every branch one footprint moves that the other reads, either way
 // round, sorted.
 func (f Footprint) meets(other Footprint) []string {
 	shared := map[string]bool{}
-	for _, pair := range [][2][]string{{f.Moves, other.Reads}, {other.Moves, f.Reads}} {
-		for _, branch := range pair[0] {
-			if slices.Contains(pair[1], branch) {
-				shared[branch] = true
-			}
+	for branch := range f.moves {
+		if other.reads[branch] {
+			shared[branch] = true
+		}
+	}
+	for branch := range other.moves {
+		if f.reads[branch] {
+			shared[branch] = true
 		}
 	}
 	return slices.Sorted(maps.Keys(shared))

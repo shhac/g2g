@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // Another worktree's restack is that worktree's to finish, so the way past it
@@ -49,12 +51,12 @@ func TestApartRefusesOnlyTheBranchesARestackIsMoving(t *testing.T) {
 	}, Checkout: "/synthetic/agent"}
 	elsewhere := Service{Journal: &memoryJournal{others: []Elsewhere{other}}}
 	for _, reads := range [][]string{{}, {"synthetic-other", "main"}} {
-		if err := elsewhere.RequireApart(context.Background(), Footprint{Reads: reads}); err != nil {
+		if err := elsewhere.RequireApart(context.Background(), Reads(reads...)); err != nil {
 			t.Errorf("reading %v beside another worktree's restack refused: %v", reads, err)
 		}
 	}
 	for _, reads := range [][]string{{"synthetic-b"}, {"synthetic-child", "synthetic-a"}} {
-		if err := elsewhere.RequireApart(context.Background(), Footprint{Reads: reads}); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
+		if err := elsewhere.RequireApart(context.Background(), Reads(reads...)); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
 			t.Errorf("reading %v while the restack moves it = %v, want the refusal", reads, err)
 		}
 	}
@@ -63,7 +65,7 @@ func TestApartRefusesOnlyTheBranchesARestackIsMoving(t *testing.T) {
 	}
 
 	here := Service{Journal: &memoryJournal{present: true, record: other.Record}}
-	if err := here.RequireApart(context.Background(), Footprint{Reads: []string{"synthetic-other"}}); err == nil || !strings.Contains(err.Error(), "already in progress") {
+	if err := here.RequireApart(context.Background(), Reads("synthetic-other")); err == nil || !strings.Contains(err.Error(), "already in progress") {
 		t.Errorf("this worktree's own restack let another mutation go ahead: %v", err)
 	}
 	if err := here.RequireIdleHere(context.Background()); err == nil {
@@ -77,17 +79,19 @@ func TestApartRefusesOnlyTheBranchesARestackIsMoving(t *testing.T) {
 // on the same trunk overlap in neither direction, since a trunk never moves.
 func TestRestacksOverlapWhenEitherMovesWhatTheOtherReads(t *testing.T) {
 	paused := Record{
-		Original:  map[string]string{"synthetic-child": "1"},
-		Structure: map[string]RecordedEdge{"synthetic-child": {Parent: "synthetic-parent"}},
+		Original:   map[string]string{"synthetic-child": "1"},
+		Structure:  map[string]RecordedEdge{"synthetic-child": {Parent: "synthetic-parent"}},
+		OntoParent: "synthetic-target",
 	}.footprint()
 	for _, test := range []struct {
 		name string
 		mine Footprint
 		want []string
 	}{
-		{"moving the paused one's parent", Footprint{Moves: []string{"synthetic-parent"}, Reads: []string{"synthetic-parent", "main"}}, []string{"synthetic-parent"}},
-		{"building on what it moves", Footprint{Moves: []string{"synthetic-above"}, Reads: []string{"synthetic-above", "synthetic-child"}}, []string{"synthetic-child"}},
-		{"another stack on the same trunk", Footprint{Moves: []string{"synthetic-free"}, Reads: []string{"synthetic-free", "main"}}, nil},
+		{"moving the paused one's parent", footprintOf(set("synthetic-parent"), nil, nil, "").with("synthetic-parent", "main"), []string{"synthetic-parent"}},
+		{"building on what it moves", footprintOf(set("synthetic-above"), nil, nil, "").with("synthetic-above", "synthetic-child"), []string{"synthetic-child"}},
+		{"another stack on the same trunk", footprintOf(set("synthetic-free"), nil, nil, "").with("synthetic-free", "main"), nil},
+		{"moving what it replays onto with --onto", footprintOf(set("synthetic-target"), nil, nil, ""), []string{"synthetic-target"}},
 	} {
 		if got := test.mine.meets(paused); !slices.Equal(got, test.want) {
 			t.Errorf("%s: meets = %v, want %v", test.name, got, test.want)
@@ -120,4 +124,40 @@ type racingJournal struct {
 func (j *racingJournal) Start(ctx context.Context, record Record) error {
 	j.others = append(j.others, j.arrives)
 	return j.memoryJournal.Start(ctx, record)
+}
+
+func set(branches ...string) map[string]bool {
+	members := map[string]bool{}
+	for _, branch := range branches {
+		members[branch] = true
+	}
+	return members
+}
+
+// with is the footprint also reading branches.
+func (f Footprint) with(branches ...string) Footprint {
+	for _, branch := range branches {
+		f.reads[branch] = true
+	}
+	return f
+}
+
+// A plan reads where it reparents and what its --onto names, as the record
+// it journals does, so what admits a restack and what the others weigh it by
+// are the same set.
+func TestAPlanAndItsRecordReadTheOntoTargetAlike(t *testing.T) {
+	plan := Plan{
+		Discovery: graph.Discovery{
+			Branches: []string{"synthetic-a"},
+			Graph:    graph.Graph{Edges: map[string]graph.Edge{"synthetic-a": {Parent: "main"}}, Trunks: []string{"main"}},
+		},
+		Onto: ToBranch("synthetic-target"),
+	}
+	record := Record{Original: map[string]string{"synthetic-a": "1"}, Structure: map[string]RecordedEdge{"synthetic-a": {Parent: "main"}}, OntoParent: "synthetic-target"}
+	mover := footprintOf(set("synthetic-target"), nil, nil, "")
+	for name, footprint := range map[string]Footprint{"plan": plan.Footprint(), "record": record.footprint()} {
+		if got := mover.meets(footprint); !slices.Equal(got, []string{"synthetic-target"}) {
+			t.Errorf("%s: meets = %v, want the --onto target", name, got)
+		}
+	}
 }

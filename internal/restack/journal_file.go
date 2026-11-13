@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/shhac/g2g/internal/graph"
 )
@@ -37,119 +36,6 @@ type FileJournal struct {
 	Git graph.Locator
 }
 
-// journalFiles is where every journal is, and which worktree is asking.
-type journalFiles struct {
-	common, shared, linked string
-	// name is the asking worktree's, as Git names its private directory:
-	// empty for the main worktree. located is false for a Git that cannot
-	// say which worktree it is, which shares one file among all of them.
-	name    string
-	located bool
-}
-
-// journalEntry is one journal file and the record in it.
-type journalEntry struct {
-	path   string
-	record Record
-}
-
-func (j FileJournal) locate(ctx context.Context) (journalFiles, error) {
-	if j.Git == nil {
-		return journalFiles{}, fmt.Errorf("restack journal is not configured")
-	}
-	common, err := j.Git.CommonDir(ctx)
-	if err != nil {
-		return journalFiles{}, err
-	}
-	files := journalFiles{
-		common: common,
-		shared: filepath.Join(common, "g2g", journalFileName),
-		linked: filepath.Join(common, "g2g", "restack", "worktrees"),
-	}
-	locator, ok := j.Git.(WorktreeLocator)
-	if !ok {
-		return files, nil
-	}
-	dir, err := locator.WorktreeDir(ctx)
-	if err != nil {
-		return journalFiles{}, err
-	}
-	files.located = true
-	if filepath.Clean(dir) != filepath.Clean(common) {
-		files.name = filepath.Base(dir)
-	}
-	return files, nil
-}
-
-// own is where the asking worktree's journal goes when it has none yet.
-func (f journalFiles) own() string {
-	if f.name == "" {
-		return f.shared
-	}
-	return filepath.Join(f.linked, f.name+".json")
-}
-
-// owner is the worktree whose record an entry is, by the file it is in, or
-// anyone's for a record in the shared file that names no worktree.
-func (f journalFiles) owner(entry journalEntry) (name string, anyone bool) {
-	if entry.path != f.shared {
-		return strings.TrimSuffix(filepath.Base(entry.path), ".json"), false
-	}
-	if entry.record.Worktree == "" {
-		return "", true
-	}
-	return linkedName(entry.record.Worktree), false
-}
-
-// linkedName is the name of the linked worktree a private Git directory
-// belongs to, which Git keeps under <common>/worktrees/, or empty for the
-// main worktree's.
-func linkedName(gitDir string) string {
-	if filepath.Base(filepath.Dir(filepath.Clean(gitDir))) != "worktrees" {
-		return ""
-	}
-	return filepath.Base(gitDir)
-}
-
-// mine reports an entry that is the asking worktree's.
-func (f journalFiles) mine(entry journalEntry) bool {
-	name, anyone := f.owner(entry)
-	return !f.located || anyone || name == f.name
-}
-
-// read is the entries among paths that exist. A record that does not parse
-// is an error: it is somebody's rollback state, and guessing past it could
-// move what it was about to put back.
-func read(paths ...string) ([]journalEntry, error) {
-	entries := make([]journalEntry, 0, len(paths))
-	for _, path := range paths {
-		record, found, err := readJournal(path)
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			entries = append(entries, journalEntry{path: path, record: record})
-		}
-	}
-	return entries, nil
-}
-
-// asking is the asking worktree's entry, if it has one. Only the files that
-// can hold it are read, so another worktree's damaged journal stops nobody
-// but the guards that would have weighed it.
-func (f journalFiles) asking() (journalEntry, bool, error) {
-	entries, err := read(f.own(), f.shared)
-	if err != nil {
-		return journalEntry{}, false, err
-	}
-	for _, entry := range entries {
-		if f.mine(entry) {
-			return entry, true, nil
-		}
-	}
-	return journalEntry{}, false, nil
-}
-
 // Load returns this worktree's in-flight record. Absent is the ordinary
 // state and not an error.
 func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
@@ -161,79 +47,15 @@ func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
 	return entry.record, found, err
 }
 
-// Unfinished is this worktree's in-flight record and every other worktree's,
-// whether or not that worktree still exists: a record outlives its checkout,
-// because the refs it moved are shared.
-func (j FileJournal) Unfinished(ctx context.Context) (*Record, []Elsewhere, error) {
+// Elsewhere is every unfinished restack another worktree owns, whether or
+// not that worktree still exists: a record outlives its checkout, because the
+// refs it moved are shared.
+func (j FileJournal) Elsewhere(ctx context.Context) ([]Elsewhere, error) {
 	files, err := j.locate(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	linked, err := filepath.Glob(filepath.Join(files.linked, "*.json"))
-	if err != nil {
-		return nil, nil, err
-	}
-	entries, err := read(append([]string{files.shared}, linked...)...)
-	if err != nil {
-		return nil, nil, err
-	}
-	var here *Record
-	others := make([]Elsewhere, 0)
-	for _, entry := range entries {
-		if files.mine(entry) {
-			record := entry.record
-			here = &record
-			continue
-		}
-		others = append(others, files.elsewhere(entry))
-	}
-	return here, others, nil
-}
-
-// elsewhere is another worktree's entry, with where that worktree is now.
-// It is gone only when Git no longer has its private directory, which is
-// what removing a worktree takes; a checkout that cannot be found is not
-// evidence that nobody is in the middle of it.
-func (f journalFiles) elsewhere(entry journalEntry) Elsewhere {
-	found := Elsewhere{Record: entry.record, Path: entry.path}
-	name, anyone := f.owner(entry)
-	switch {
-	case anyone:
-	case name == "":
-		found.GitDir = f.common
-		if filepath.Base(f.common) == ".git" {
-			found.Checkout = filepath.Dir(f.common)
-		}
-	default:
-		found.GitDir = filepath.Join(f.common, "worktrees", name)
-		if _, err := os.Stat(found.GitDir); errors.Is(err, fs.ErrNotExist) {
-			found.Gone = true
-			break
-		}
-		found.Checkout = backlinkedCheckout(found.GitDir)
-	}
-	return found
-}
-
-// backlinkedCheckout is the checkout a linked worktree's private directory
-// names in its gitdir file, absolute or relative to that directory as Git
-// may write it, or empty when it names none that exists.
-func backlinkedCheckout(gitDir string) string {
-	data, err := os.ReadFile(filepath.Join(gitDir, "gitdir"))
-	if err != nil {
-		return ""
-	}
-	path := strings.TrimSpace(string(data))
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(gitDir, path)
-	}
-	if filepath.Base(path) != ".git" {
-		return ""
-	}
-	if _, err := os.Stat(path); err != nil {
-		return ""
-	}
-	return filepath.Dir(filepath.Clean(path))
+	return files.others()
 }
 
 // holding is the file this worktree's record is in, or the one a new record
@@ -287,12 +109,27 @@ func (j FileJournal) Save(ctx context.Context, record Record) error {
 // Start publishes a new journal only if none exists. Linking a complete
 // temporary file is atomic and exclusive, unlike check-then-rename; two
 // restacks starting at once cannot replace each other's recovery state.
+//
+// The file can be taken by another worktree's restack only where every
+// worktree shared one: a restack an older g2g started in a linked worktree.
+// That refusal names it, as every other refusal over another worktree does.
 func (j FileJournal) Start(ctx context.Context, record Record) error {
 	files, err := j.locate(ctx)
 	if err != nil {
 		return err
 	}
-	return write(files.own(), record, true)
+	err = write(files.own(), record, true)
+	if !errors.Is(err, fs.ErrExist) {
+		return err
+	}
+	entries, readErr := read(files.own())
+	if readErr != nil || len(entries) == 0 {
+		return errors.Join(err, readErr)
+	}
+	if files.mine(entries[0]) {
+		return busy(entries[0].record)
+	}
+	return busyElsewhere(files.elsewhere(entries[0]), nil)
 }
 
 func write(path string, record Record, exclusive bool) error {
@@ -337,7 +174,7 @@ func write(path string, record Record, exclusive bool) error {
 	if err := install(name, path); err != nil {
 		os.Remove(name)
 		if exclusive && errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("a restack is already in progress · run g2g restack --continue or g2g restack --abort in the worktree that started it")
+			return fs.ErrExist
 		}
 		return fmt.Errorf("replace restack journal: %w", err)
 	}
@@ -353,16 +190,16 @@ func write(path string, record Record, exclusive bool) error {
 // worktree's to clear. A record that does not parse is cleared from where
 // this worktree's would be, since nothing else can.
 func (j FileJournal) Clear(ctx context.Context) error {
-	path, found, err := j.holding(ctx)
+	files, err := j.locate(ctx)
 	if err != nil {
-		files, locateErr := j.locate(ctx)
-		if locateErr != nil {
-			return locateErr
-		}
-		path, found = files.own(), true
+		return err
 	}
-	if !found {
-		return nil
+	path := files.own()
+	if entry, found, err := files.asking(); err == nil {
+		if !found {
+			return nil
+		}
+		path = entry.path
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("remove restack journal: %w", err)

@@ -66,12 +66,6 @@ func (r Record) started() string {
 	return fmt.Sprintf(" for branch %q", branch)
 }
 
-// busy is the refusal while this worktree's own restack is unfinished, or a
-// restack recorded before any said which worktree it belongs to.
-func busy(record Record) error {
-	return fmt.Errorf("a restack is already in progress%s · finish it with g2g restack --continue in the worktree that started it, or undo it there with g2g restack --abort", record.started())
-}
-
 // busyElsewhere is the refusal while another worktree's restack holds what
 // this command touches.
 func busyElsewhere(other Elsewhere, holds []string) error {

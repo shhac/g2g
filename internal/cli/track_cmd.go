@@ -57,7 +57,7 @@ func newTrack(service graph.Service, guard idleGuard, describesElsewhere func(co
 			},
 			guard: guard,
 			touches: func(plan trackPlan) restack.Footprint {
-				return reads(append([]string{plan.Target, plan.Parent}, plan.Branches...)...)
+				return restack.Reads(append([]string{plan.Target, plan.Parent}, plan.Branches...)...)
 			},
 			execute:  func(ctx context.Context, plan trackPlan) error { return service.ApplyTrack(ctx, plan.TrackPlan) },
 			branches: func(plan trackPlan) int { return len(plan.Branches) },

@@ -219,7 +219,7 @@ func TestEachWorktreeJournalsItsOwnRestack(t *testing.T) {
 		if err != nil || !found || record.Branch != test.mine {
 			t.Errorf("own journal = %+v, %v, %v, want %s", record, found, err, test.mine)
 		}
-		_, others, err := test.journal.Unfinished(ctx)
+		others, err := test.journal.Elsewhere(ctx)
 		if err != nil || len(others) != 1 || others[0].Branch != test.other {
 			t.Errorf("others = %+v, %v, want only %s", others, err, test.other)
 		}
@@ -252,7 +252,7 @@ func TestASharedJournalFromBeforeStaysItsWorktrees(t *testing.T) {
 	if _, found, err := main.Load(ctx); err != nil || found {
 		t.Fatalf("the main worktree took the linked one's restack for its own: %v, %v", found, err)
 	}
-	if _, others, err := main.Unfinished(ctx); err != nil || len(others) != 1 || others[0].Branch != "synthetic-busy" {
+	if others, err := main.Elsewhere(ctx); err != nil || len(others) != 1 || others[0].Branch != "synthetic-busy" {
 		t.Fatalf("the main worktree does not see the linked one's restack: %+v, %v", others, err)
 	}
 	if err := main.Clear(ctx); err != nil {
@@ -275,7 +275,7 @@ func TestASharedJournalFromBeforeStaysItsWorktrees(t *testing.T) {
 	if _, found, _ := main.Load(ctx); found {
 		t.Error("the shared file outlived its restack")
 	}
-	if _, others, _ := main.Unfinished(ctx); len(others) != 0 {
+	if others, _ := main.Elsewhere(ctx); len(others) != 0 {
 		t.Errorf("others after the restack finished = %+v", others)
 	}
 }
@@ -300,7 +300,7 @@ func TestARecordIsTheWorktreesWhoseFileItIsIn(t *testing.T) {
 	if err := os.MkdirAll(linkedDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, others, err := linked.Unfinished(ctx)
+	others, err := linked.Elsewhere(ctx)
 	if err != nil || len(others) != 1 || others[0].Gone || others[0].GitDir != common {
 		t.Fatalf("from a linked worktree the main worktree's restack = %+v, %v, want it there and not gone", others, err)
 	}
@@ -317,9 +317,10 @@ func TestARecordNamingNoWorktreeIsAnyonesAsBefore(t *testing.T) {
 	}
 	for _, dir := range []string{common, filepath.Join(common, "worktrees", "synthetic-agent")} {
 		journal := FileJournal{Git: worktreeLocator{common: common, dir: dir}}
-		here, others, err := journal.Unfinished(ctx)
-		if err != nil || here == nil || here.Branch != "synthetic-old" || len(others) != 0 {
-			t.Errorf("from %s: here = %+v, others = %+v, %v, want it as this worktree's own", dir, here, others, err)
+		here, found, err := journal.Load(ctx)
+		others, othersErr := journal.Elsewhere(ctx)
+		if err != nil || othersErr != nil || !found || here.Branch != "synthetic-old" || len(others) != 0 {
+			t.Errorf("from %s: here = %+v (%t), others = %+v, %v %v, want it as this worktree's own", dir, here, found, others, err, othersErr)
 		}
 	}
 }
@@ -368,7 +369,7 @@ func TestAnotherWorktreeIsGoneOnlyWithoutItsPrivateDirectory(t *testing.T) {
 		start(name)
 	}
 
-	_, others, err := main.Unfinished(ctx)
+	others, err := main.Elsewhere(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,5 +389,95 @@ func TestAnotherWorktreeIsGoneOnlyWithoutItsPrivateDirectory(t *testing.T) {
 		if got[name].Checkout != want.checkout || got[name].Gone != want.gone {
 			t.Errorf("%s: checkout %q gone %t, want %q %t", name, got[name].Checkout, got[name].Gone, want.checkout, want.gone)
 		}
+	}
+}
+
+// A main worktree whose checkout is itself named worktrees keeps its own
+// restack: its private directory is the common one, never a linked
+// worktree's called .git, which read as gone and offered to delete the
+// journal its --abort needs.
+func TestAMainWorktreeInADirectoryNamedWorktreesKeepsItsRestack(t *testing.T) {
+	ctx := context.Background()
+	common := filepath.Join(t.TempDir(), "worktrees", ".git")
+	main := FileJournal{Git: worktreeLocator{common: common, dir: common}}
+	if err := main.Start(ctx, Record{Branch: "synthetic-main-work", Worktree: common}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := main.Load(ctx); err != nil || !found {
+		t.Fatalf("the main worktree lost its own restack: %v, %v", found, err)
+	}
+	linked := FileJournal{Git: worktreeLocator{common: common, dir: filepath.Join(common, "worktrees", "synthetic-agent")}}
+	others, err := linked.Elsewhere(ctx)
+	if err != nil || len(others) != 1 || others[0].Gone {
+		t.Fatalf("from a linked worktree the main worktree's restack = %+v, %v, want it there and not gone", others, err)
+	}
+}
+
+// A repository whose path has a bracket in it lists its worktrees' journals
+// all the same. They were found with a pattern built from that path, which
+// read the bracket as a pattern and saw none, or refused to parse it.
+func TestAnotherWorktreesJournalIsFoundWhateverTheRepositoryIsCalled(t *testing.T) {
+	ctx := context.Background()
+	for _, name := range []string{"synthetic [old]", "synthetic[1]", "synthetic[open"} {
+		t.Run(name, func(t *testing.T) {
+			common := filepath.Join(t.TempDir(), name, ".git")
+			linkedDir := filepath.Join(common, "worktrees", "synthetic-agent")
+			linked := FileJournal{Git: worktreeLocator{common: common, dir: linkedDir}}
+			if err := linked.Start(ctx, Record{Branch: "synthetic-busy", Worktree: linkedDir}); err != nil {
+				t.Fatal(err)
+			}
+			main := FileJournal{Git: worktreeLocator{common: common, dir: common}}
+			others, err := main.Elsewhere(ctx)
+			if err != nil || len(others) != 1 || others[0].Branch != "synthetic-busy" {
+				t.Errorf("others = %+v, %v, want the linked worktree's restack", others, err)
+			}
+		})
+	}
+}
+
+// Another worktree's damaged journal stops only the guards that weigh it,
+// never this worktree's own restack.
+func TestAnotherWorktreesDamagedJournalLeavesThisOnesAlone(t *testing.T) {
+	ctx := context.Background()
+	common := t.TempDir()
+	linkedDir := filepath.Join(common, "worktrees", "synthetic-agent")
+	linked := FileJournal{Git: worktreeLocator{common: common, dir: linkedDir}}
+	if err := linked.Start(ctx, Record{Branch: "synthetic-own", Worktree: linkedDir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(common, "g2g", journalFileName), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if record, found, err := linked.Load(ctx); err != nil || !found || record.Branch != "synthetic-own" {
+		t.Errorf("the linked worktree's own restack = %+v, %v, %v", record, found, err)
+	}
+	if _, err := linked.Elsewhere(ctx); err == nil {
+		t.Error("the damaged journal was weighed as nothing")
+	}
+}
+
+// Clearing from a linked worktree when the shared file is damaged removes
+// that worktree's own journal and nothing else: the damaged file is the main
+// worktree's rollback state.
+func TestClearingBesideADamagedSharedJournalRemovesOnlyThisWorktreesOwn(t *testing.T) {
+	ctx := context.Background()
+	common := t.TempDir()
+	linkedDir := filepath.Join(common, "worktrees", "synthetic-agent")
+	linked := FileJournal{Git: worktreeLocator{common: common, dir: linkedDir}}
+	if err := linked.Start(ctx, Record{Branch: "synthetic-mine", Worktree: linkedDir}); err != nil {
+		t.Fatal(err)
+	}
+	shared := filepath.Join(common, "g2g", journalFileName)
+	if err := os.WriteFile(shared, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := linked.Clear(ctx); err != nil {
+		t.Fatalf("Clear = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(common, "g2g", "restack", "worktrees", "synthetic-agent.json")); !os.IsNotExist(err) {
+		t.Errorf("the linked worktree's own journal survived: %v", err)
+	}
+	if _, err := os.Stat(shared); err != nil {
+		t.Errorf("the damaged shared journal was removed by another worktree: %v", err)
 	}
 }

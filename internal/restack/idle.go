@@ -1,6 +1,11 @@
 package restack
 
-import "context"
+import (
+	"context"
+	"errors"
+
+	"github.com/shhac/g2g/internal/repair"
+)
 
 // Each worktree journals its own restack. The guards ask two questions of
 // them: is one unfinished here, and does one elsewhere move what a command
@@ -9,16 +14,14 @@ import "context"
 // RequireIdle refuses other work while any worktree has an unfinished
 // restack. It is for a command that cannot say what it touches.
 func (s Service) RequireIdle(ctx context.Context) error {
-	here, others, err := s.unfinished(ctx)
-	switch {
-	case err != nil:
+	if err := s.RequireIdleHere(ctx); err != nil {
 		return err
-	case here != nil:
-		return busy(*here)
-	case len(others) != 0:
-		return busyElsewhere(others[0], nil)
 	}
-	return nil
+	others, err := s.elsewhere(ctx)
+	if err != nil || len(others) == 0 {
+		return err
+	}
+	return busyElsewhere(others[0], nil)
 }
 
 // RequireIdleHere refuses while this worktree has an unfinished restack,
@@ -26,11 +29,14 @@ func (s Service) RequireIdle(ctx context.Context) error {
 // checkout. It is what a command asks before it has discovered what it will
 // touch, and asks RequireApart afterwards.
 func (s Service) RequireIdleHere(ctx context.Context) error {
-	here, _, err := s.unfinished(ctx)
-	if err != nil || here == nil {
+	if s.Journal == nil {
+		return nil
+	}
+	record, found, err := s.Journal.Load(ctx)
+	if err != nil || !found {
 		return err
 	}
-	return busy(*here)
+	return busy(record)
 }
 
 // RequireApart refuses work while this worktree has an unfinished restack, or
@@ -46,12 +52,12 @@ func (s Service) RequireIdleHere(ctx context.Context) error {
 // though neither moves what the other moves. The branches a restack replays
 // onto it never moves, so a stack beside it on the same trunk is no conflict.
 func (s Service) RequireApart(ctx context.Context, mine Footprint) error {
-	here, others, err := s.unfinished(ctx)
-	if err != nil {
+	if err := s.RequireIdleHere(ctx); err != nil {
 		return err
 	}
-	if here != nil {
-		return busy(*here)
+	others, err := s.elsewhere(ctx)
+	if err != nil {
+		return err
 	}
 	return apart(mine, others)
 }
@@ -67,17 +73,60 @@ func apart(mine Footprint, others []Elsewhere) error {
 	return nil
 }
 
-// unfinished is this worktree's unfinished restack and every other's.
-func (s Service) unfinished(ctx context.Context) (*Record, []Elsewhere, error) {
+// InProgress reports an unfinished restack in this worktree, which every
+// other command here has to refuse while it lasts: a branch may already have
+// moved while the graph still records where it used to be. Another
+// worktree's restack is its own, and the guards ask about it separately.
+func (s Service) InProgress(ctx context.Context) (bool, error) {
 	if s.Journal == nil {
-		return nil, nil, nil
+		return false, nil
 	}
-	return s.Journal.Unfinished(ctx)
+	_, found, err := s.Journal.Load(ctx)
+	return found, err
 }
 
-// Unfinished is whether this worktree has an unfinished restack, and every
-// other worktree's, for a report that covers the whole repository.
-func (s Service) Unfinished(ctx context.Context) (bool, []Elsewhere, error) {
-	here, others, err := s.unfinished(ctx)
-	return here != nil, others, err
+// Unfinished is this worktree's unfinished restack, as the way past it, and
+// every other worktree's, for a report that covers the whole repository.
+func (s Service) Unfinished(ctx context.Context) (repair.Note, []Elsewhere, error) {
+	if s.Journal == nil {
+		return repair.Note{}, nil, nil
+	}
+	record, found, err := s.Journal.Load(ctx)
+	if err != nil {
+		return repair.Note{}, nil, err
+	}
+	here := repair.Note{}
+	if found {
+		here = record.Repair()
+	}
+	others, err := s.elsewhere(ctx)
+	return here, others, err
+}
+
+// elsewhere is every other worktree's unfinished restack.
+func (s Service) elsewhere(ctx context.Context) ([]Elsewhere, error) {
+	if s.Journal == nil {
+		return nil, nil
+	}
+	return s.Journal.Elsewhere(ctx)
+}
+
+// Repair is the way past this worktree's own unfinished restack: finish it,
+// or undo it.
+func (r Record) Repair() repair.Note {
+	return repair.Note{
+		Reason: "a restack" + r.started() + " stopped part-way",
+		Ways: []repair.Step{
+			{Command: "g2g restack --continue", Effect: "finish it once its conflicts are resolved"},
+			{Command: "g2g restack --abort", Effect: "undo it"},
+		},
+	}
+}
+
+// busy is the refusal while this worktree's own restack is unfinished, or a
+// restack recorded before any said which worktree it belongs to.
+func busy(record Record) error {
+	note := record.Repair()
+	note.Reason = "a restack" + record.started() + " is already in progress"
+	return errors.New(note.Sentence())
 }

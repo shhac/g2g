@@ -6,20 +6,6 @@ import (
 	"fmt"
 )
 
-// WorktreeLocator identifies the private Git directory owning rebase state.
-type WorktreeLocator interface {
-	WorktreeDir(context.Context) (string, error)
-}
-
-// InProgress reports an unfinished restack in this worktree, which every
-// other command here has to refuse while it lasts: a branch may already have
-// moved while the graph still records where it used to be. Another
-// worktree's restack is its own, and the guards ask about it separately.
-func (s Service) InProgress(ctx context.Context) (bool, error) {
-	here, _, err := s.unfinished(ctx)
-	return here != nil, err
-}
-
 // ownedRecord is the common gate before any recovery command touches Git:
 // this worktree's record, which is the journal's to tell apart from every
 // other worktree's.
@@ -38,7 +24,7 @@ func (s Service) ownedRecord(ctx context.Context) (Record, error) {
 // of its own, naming the one another worktree has, since that is the restack
 // the reader most likely meant.
 func (s Service) noneHere(ctx context.Context) error {
-	_, others, err := s.unfinished(ctx)
+	others, err := s.elsewhere(ctx)
 	if err != nil || len(others) == 0 {
 		return errors.Join(err, fmt.Errorf("no restack is in progress"))
 	}

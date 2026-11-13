@@ -262,12 +262,8 @@ func (j *memoryJournal) Start(ctx context.Context, record Record) error {
 	return j.Save(ctx, record)
 }
 
-func (j *memoryJournal) Unfinished(context.Context) (*Record, []Elsewhere, error) {
-	if !j.present {
-		return nil, j.others, nil
-	}
-	record := j.record
-	return &record, j.others, nil
+func (j *memoryJournal) Elsewhere(context.Context) ([]Elsewhere, error) {
+	return j.others, nil
 }
 
 func (j *memoryJournal) Load(context.Context) (Record, bool, error) {

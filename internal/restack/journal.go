@@ -98,12 +98,13 @@ func (r Record) Selection() graph.Selection {
 }
 
 // Journal stores each worktree's record of its in-flight restack. Load,
-// Start, Save and Clear act on the record of the worktree asking; Unfinished
-// is every worktree's, for the guards that decide what may run beside them.
+// Start, Save and Clear act on the record of the worktree asking; Elsewhere
+// is every other worktree's, for the guards that decide what may run beside
+// them.
 type Journal interface {
 	Load(context.Context) (Record, bool, error)
 	Start(context.Context, Record) error
 	Save(context.Context, Record) error
 	Clear(context.Context) error
-	Unfinished(context.Context) (*Record, []Elsewhere, error)
+	Elsewhere(context.Context) ([]Elsewhere, error)
 }

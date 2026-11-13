@@ -28,9 +28,8 @@ const settleBudget = time.Minute
 // does not claim to.
 //
 // Only an existing pull request is asked: one this run opened was opened at
-// the head just pushed. A reader that cannot say where a branch is, or a
-// pull request whose head was never reported, waits for nothing, as submit
-// did before.
+// the head just pushed. A pull request whose head was never reported waits
+// for nothing, as submit did before.
 func (s Service) settleHeads(ctx context.Context, plan Plan) error {
 	want, err := s.pushedHeads(ctx, plan)
 	if err != nil || len(want) == 0 {
@@ -62,41 +61,41 @@ func (s Service) settleHeads(ctx context.Context, plan Plan) error {
 // pushedHeads is each branch with an existing open pull request that this
 // submission published, at the tip it published.
 func (s Service) pushedHeads(ctx context.Context, plan Plan) (map[string]string, error) {
-	resolver, ok := s.Git.(interface {
-		Resolve(context.Context, string) (string, error)
-	})
-	if !ok {
-		return nil, nil
-	}
-	want := map[string]string{}
+	reported := map[string]string{}
 	for step := range githubstack.Along(plan.Snapshot.Base, plan.Snapshot.Branches, plan.Existing) {
 		// A head GitHub did not report is one there is nothing to compare
 		// with, which is no reason to wait.
 		if step.Resolution.Open == nil || step.Resolution.Open.HeadOID == "" || plan.Push.Publishing[step.Branch].UpToDate() {
 			continue
 		}
-		tip, err := resolver.Resolve(ctx, step.Branch)
-		if err != nil {
-			return nil, err
-		}
-		if step.Resolution.Open.HeadOID != tip {
-			want[step.Branch] = tip
+		reported[step.Branch] = step.Resolution.Open.HeadOID
+	}
+	if len(reported) == 0 {
+		return nil, nil
+	}
+	tips, err := s.Git.ResolveAll(ctx, slices.Sorted(maps.Keys(reported)))
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]string{}
+	for branch, head := range reported {
+		if tip := tips[branch]; tip != "" && tip != head {
+			want[branch] = tip
 		}
 	}
 	return want, nil
 }
 
-// behindOn is the branches whose open pull request does not yet report the
-// head wanted for it, in order.
+// behindOn is the branches whose pull request does not yet report the head
+// wanted for it, in order, by the same rule that says which pull request a
+// branch has.
 func behindOn(prs []githubstack.PullRequest, want map[string]string) []string {
+	resolutions := githubstack.ResolveHeads(prs)
 	behind := []string{}
-	for branch, tip := range want {
-		if !slices.ContainsFunc(prs, func(pr githubstack.PullRequest) bool {
-			return pr.Head == branch && pr.State == "OPEN" && pr.HeadOID == tip
-		}) {
+	for _, branch := range slices.Sorted(maps.Keys(want)) {
+		if open := resolutions[branch].Open; open == nil || open.HeadOID != want[branch] {
 			behind = append(behind, branch)
 		}
 	}
-	slices.Sort(behind)
 	return behind
 }

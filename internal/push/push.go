@@ -3,6 +3,7 @@ package push
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -141,6 +142,22 @@ func (p Plan) Leases() []localgit.Lease {
 	return leases
 }
 
+// publishingTrunk is a refusal to push a declared trunk with the push that
+// does publish it. Publishing the trunk itself is a different act from
+// publishing a stack, and one Git already does safely: without --force it
+// only fast-forwards. Starting a stack on it, the only advice there was,
+// publishes nothing a branch such as staging deploys from.
+func publishingTrunk(err error, remote string) error {
+	var undescribed stack.Undescribed
+	if !errors.As(err, &undescribed) || !undescribed.Declared {
+		return err
+	}
+	return undescribed.Offering(repair.Step{
+		Command: repair.Command([]string{"git", "push", remote, undescribed.Branch}),
+		Effect:  "publish the trunk itself, which g2g push leaves to Git; without --force it only fast-forwards",
+	})
+}
+
 func (s Service) Plan(ctx context.Context, selection stack.Selection, remote string, upstream localgit.Upstream) (Plan, error) {
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("push service is not fully configured")
@@ -150,7 +167,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	}
 	snapshot, err := s.Selector.Select(ctx, selection, "g2g push")
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, publishingTrunk(err, remote)
 	}
 	// A fork is published whole: one atomic push has no order to keep, and
 	// each branch's lease and comparison are its own. The linear projections

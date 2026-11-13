@@ -849,3 +849,27 @@ func TestJourneyLandLeavesABranchAboveItWhereItsWorktreeHasIt(t *testing.T) {
 		})
 	}
 }
+
+// A branch above the first is replayed by the descent before its turn, and a
+// replay keeps its work: commits its pull request never showed are published
+// and merged just the same, so it is asked as the bottom branch is.
+func TestJourneyLandSaysWhenABranchAboveTheFirstHasUnseenWork(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	w.branchOff("synthetic-a", "synthetic-b", "b.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-b", "--parent", "synthetic-a", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a", "synthetic-b")
+	w.commit(w.Local, "synthetic-b", "unseen.txt", "never on the pull request")
+	landingGitHubStack(t, w.Remote, "synthetic-a", "synthetic-b")
+
+	preview := mustRun(t, "land")
+	for _, want := range []string{"synthetic-b has 1 commit #42 does not", "g2g push --branch synthetic-b --scope branch"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("the preview does not say %q:\n%s", want, preview)
+		}
+	}
+	if strings.Contains(preview, "synthetic-a has") {
+		t.Errorf("synthetic-a, published as it is, was said to have unseen work:\n%s", preview)
+	}
+}

@@ -141,6 +141,10 @@ type Undescribed struct {
 	// branch missing its parent. Nothing sits under a trunk by definition, so
 	// having no recorded parent is its ordinary state and not a gap to fill.
 	Trunk bool
+	// Declared reports a trunk somebody named with track --as-trunk that
+	// lands nowhere: a branch such as staging, published by pushing it
+	// rather than by landing into it.
+	Declared bool
 	// remedy is why and what to do, in the shape a caller can lay out. Error
 	// renders the same values as one line, so the sentence a machine or stderr
 	// reads and the column a person reads cannot name different commands.
@@ -150,6 +154,13 @@ type Undescribed struct {
 // Remedy is what to do about this branch, for a caller with somewhere to put
 // it. Error says the same thing in one line.
 func (e Undescribed) Remedy() repair.Note { return e.remedy }
+
+// Offering is the same answer with way offered before the others: a caller
+// knowing more about what was being attempted than the selector does.
+func (e Undescribed) Offering(way repair.Step) Undescribed {
+	e.remedy.Ways = append([]repair.Step{way}, e.remedy.Ways...)
+	return e
+}
 
 func (e Undescribed) Error() string { return e.Sentence(nil) }
 

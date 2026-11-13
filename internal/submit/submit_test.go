@@ -144,6 +144,11 @@ func (*fakeGit) CurrentBranch(context.Context) (string, error) { return "synthet
 func (*fakeGit) LocalBranches(context.Context) ([]string, error) {
 	return []string{"main", "synthetic/lower", "synthetic/middle", "synthetic/top"}, nil
 }
+
+// ResolveAll knows no branch, so a submission it serves waits for nothing.
+func (f *fakeGit) ResolveAll(context.Context, []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
 func (f *fakeGit) Clean(context.Context) error          { return f.cleanErr }
 func (f *fakeGit) Remote(context.Context, string) error { return f.remoteErr }
 func (f *fakeGit) IsAncestor(_ context.Context, ancestor, _ string) (bool, error) {

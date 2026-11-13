@@ -19,8 +19,8 @@ type resolvingGit struct {
 	tips map[string]string
 }
 
-func (g resolvingGit) Resolve(_ context.Context, branch string) (string, error) {
-	return g.tips[branch], nil
+func (g resolvingGit) ResolveAll(context.Context, []string) (map[string]string, error) {
+	return g.tips, nil
 }
 
 // laggingGitHub reports a pull request at its previous head for a number of
@@ -101,5 +101,17 @@ func TestApplyDoesNotWaitWhenNothingWasPushedToAPullRequest(t *testing.T) {
 	}
 	if github.reads != 0 {
 		t.Errorf("GitHub was read %d times with nothing pushed to a pull request", github.reads)
+	}
+}
+
+// Which pull request a branch has is one rule: two open ones are no answer.
+// A wait that took any open one at the pushed head called that settled.
+func TestTwoOpenPullRequestsForABranchAreNotSettled(t *testing.T) {
+	prs := []githubstack.PullRequest{
+		{Head: "synthetic/lower", State: "OPEN", Number: 11, HeadOID: "synthetic-pushed"},
+		{Head: "synthetic/lower", State: "OPEN", Number: 12, HeadOID: "synthetic-previous"},
+	}
+	if got := behindOn(prs, map[string]string{"synthetic/lower": "synthetic-pushed"}); len(got) != 1 {
+		t.Errorf("behindOn() = %v, want synthetic/lower still waited on", got)
 	}
 }

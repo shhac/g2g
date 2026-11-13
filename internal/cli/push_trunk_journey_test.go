@@ -23,4 +23,11 @@ func TestJourneyPushingADeclaredTrunkNamesThePushThatPublishesIt(t *testing.T) {
 	if w.tip(w.Remote, "synthetic-staging") == w.tip(w.Local, "synthetic-staging") {
 		t.Error("the refusal published the trunk")
 	}
+
+	// The push it names is to the remote this one was asked about.
+	w.git(w.Local, "remote", "add", "synthetic-upstream", w.Remote)
+	_, _, err = run(t, "push", "--branch", "synthetic-staging", "--remote", "synthetic-upstream")
+	if err == nil || !strings.Contains(err.Error(), "git push synthetic-upstream synthetic-staging") {
+		t.Errorf("pushing a declared trunk to another remote = %v, want git push to that remote", err)
+	}
 }

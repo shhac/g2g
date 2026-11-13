@@ -149,20 +149,13 @@ func trunkUndescribed(branch string, declaration graph.Declaration, command stri
 		Reason: "it is a trunk, so its stacks sit above it and nothing below",
 		Ways:   []repair.Step{{Command: "g2g create <name> --parent " + repair.Quote(branch), Effect: "start a stack on it"}},
 	}
-	if command == "g2g push" {
-		// Publishing the trunk itself is a different act from publishing a
-		// stack, and one Git already does safely: without --force it only
-		// fast-forwards. Starting a stack on it, the only advice there was,
-		// publishes nothing that deploys from the branch.
-		note.Ways = append([]repair.Step{{Command: "git push origin " + repair.Quote(branch), Effect: "publish the trunk itself, which g2g push leaves to Git; without --force it only fast-forwards"}}, note.Ways...)
-	}
 	if declaration.Lands() {
 		note = repair.Note{
 			Reason: fmt.Sprintf("it is a trunk that lands into %s, so its stacks sit above it and nothing below", declaration.Into),
 			Ways:   []repair.Step{{Command: command + " --branch " + branch + " --scope path", Effect: fmt.Sprintf("act on it alone, as one branch on %s", declaration.Into)}},
 		}
 	}
-	return Undescribed{Branch: branch, Trunk: true, remedy: note}
+	return Undescribed{Branch: branch, Trunk: true, Declared: !declaration.Lands(), remedy: note}
 }
 
 // localSelection keeps absent branches for an explicit read, and refuses

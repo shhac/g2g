@@ -1,6 +1,7 @@
 package land
 
 import (
+	"cmp"
 	"context"
 	"slices"
 
@@ -51,8 +52,9 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 			decided.LandedHead = deletableHead(tip, checked[step.Branch])
 		}
 		decided.Queue = mergeability.Queue != nil
-		if len(steps) == 0 && decided.Push && !decided.Landed && decided.RemoteTip != "" {
-			if decided.Unpublished, err = s.unpublished(ctx, decided.RemoteTip, tip, discovery.Base); err != nil {
+		if decided.Merges() && decided.Push && decided.RemoteTip != "" {
+			below := cmp.Or(discovery.Parents[step.Branch], discovery.Base)
+			if decided.Unpublished, err = s.unpublished(ctx, decided.RemoteTip, tip, below); err != nil {
 				return nil, repair.Note{}, err
 			}
 		}

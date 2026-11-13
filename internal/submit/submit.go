@@ -25,6 +25,9 @@ type Git interface {
 	// local read.
 	Remote(context.Context, string) error
 	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
+	// ResolveAll says where each branch is, in one process: what the pull
+	// requests a push updated are waited on to report.
+	ResolveAll(ctx context.Context, revisions []string) (map[string]string, error)
 }
 
 // Pusher publishes the stack, and refuses a remote that holds work the stack

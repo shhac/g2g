@@ -51,6 +51,11 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 			decided.LandedHead = deletableHead(tip, checked[step.Branch])
 		}
 		decided.Queue = mergeability.Queue != nil
+		if len(steps) == 0 && decided.Push && !decided.Landed && decided.RemoteTip != "" {
+			if decided.Unpublished, err = s.unpublished(ctx, decided.RemoteTip, tip, discovery.Base); err != nil {
+				return nil, repair.Note{}, err
+			}
+		}
 		// Everything above the bottom branch is replayed onto the advanced
 		// trunk before its turn, which rewrites it, so it will need publishing
 		// however current it looks now.
@@ -123,4 +128,11 @@ func allowedWays(allowed githubstack.Allowed) []repair.Step {
 		ways = append(ways, repair.Step{Effect: "allow a merge method in the repository's settings"})
 	}
 	return ways
+}
+
+// unpublished counts the commits on the branch, above its base, whose content
+// the remote's version of it lacks.
+func (s Service) unpublished(ctx context.Context, remote, tip, base string) (int, error) {
+	absent, _, err := s.Git.Cherry(ctx, remote, tip, base)
+	return len(absent), err
 }

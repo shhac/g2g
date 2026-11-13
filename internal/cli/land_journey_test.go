@@ -752,3 +752,36 @@ func TestJourneyLandABranchWhoseFilesTheTrunkKeptTouching(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// Landing publishes the bottom branch and merges it in one run. When another
+// worktree had moved the branch here, the preview's only sign was "publish
+// first", whether that was the same work replayed or commits the pull request
+// had never shown. The second is said in full, with the push that lets them be
+// reviewed first; the first is the ordinary state after a restack and says
+// nothing more.
+func TestJourneyLandSaysWhenItWouldMergeWorkThePullRequestNeverShowed(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-a")
+	w.commit(w.Other, "main", "upstream.txt", "the trunk moved")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "main")
+	w.git(w.Local, "pull", "-q")
+	mustRun(t, "restack", "--branch", "synthetic-a", "--apply")
+	landingGitHub(t, w.Remote)
+
+	const unseen = "which this publishes and merges in the same run"
+	replayed := mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path")
+	if !strings.Contains(replayed, "publish first") || strings.Contains(replayed, unseen) {
+		t.Errorf("a replay of the reviewed work read as unseen work:\n%s", replayed)
+	}
+
+	w.commit(w.Local, "synthetic-a", "unseen.txt", "never on the pull request")
+	unreviewed := mustRun(t, "land", "--branch", "synthetic-a", "--scope", "path")
+	for _, want := range []string{"synthetic-a has 1 commit #41 does not, " + unseen, "g2g push --branch synthetic-a --scope branch"} {
+		if !strings.Contains(unreviewed, want) {
+			t.Errorf("the preview does not say %q:\n%s", want, unreviewed)
+		}
+	}
+}

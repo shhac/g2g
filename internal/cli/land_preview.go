@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/shhac/g2g/internal/land"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -52,6 +53,14 @@ func landView(plan land.Plan) stackView {
 	if note := declaredMethodNote(plan); note != "" {
 		view = view.note(note, severityNeutral)
 	}
+	if bottom := firstMerge(plan); bottom.Unpublished != 0 {
+		// The descent publishes the bottom branch and merges it in the same
+		// run, and that is the design. What a reader has to know first is
+		// whether that is work the pull request has never shown.
+		view = view.note(fmt.Sprintf("%s has %s %s does not, which this publishes and merges in the same run, before anyone sees %s on it · %s publishes %s first, to be reviewed before landing.",
+			bottom.Branch, words.Count(bottom.Unpublished, "commit", "commits"), pullRequestName(bottom), words.Pick(bottom.Unpublished, "it", "them"),
+			runnable(repair.Command([]string{"g2g", "push", "--branch", bottom.Branch, "--scope", "branch"})), words.Pick(bottom.Unpublished, "it", "them")), severityWarn)
+	}
 	if len(plan.Protected) != 0 {
 		// Said before the first merge rather than discovered at the second.
 		// Every branch above the bottom is force-pushed by its own replay,
@@ -61,6 +70,24 @@ func landView(plan land.Plan) stackView {
 			words.List(plan.Protected), runnable("--admin")), severityWarn)
 	}
 	return view
+}
+
+// firstMerge is the first step that merges, empty when none does.
+func firstMerge(plan land.Plan) land.Step {
+	for _, step := range plan.Steps {
+		if !step.Landed {
+			return step
+		}
+	}
+	return land.Step{}
+}
+
+// pullRequestName is how a sentence names a step's pull request.
+func pullRequestName(step land.Step) string {
+	if step.Number == 0 {
+		return "its pull request"
+	}
+	return fmt.Sprintf("#%d", step.Number)
 }
 
 // landNodes draws every selected branch, whether or not a step was decided for

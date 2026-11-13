@@ -30,6 +30,13 @@ type Step struct {
 	// Push is set when the remote does not already have this branch exactly
 	// as it is here.
 	Push bool
+	// Unpublished counts, for the bottom branch, the commits here whose work
+	// the remote's version does not have by content: what the descent would
+	// publish and merge before anyone has seen it on the pull request. A
+	// restack's replay is the same work under new ids and counts none. Only
+	// the bottom branch is asked, because every branch above it is replayed
+	// by the descent itself before its turn.
+	Unpublished int
 	// Admin is set when merging needs branch protection bypassed.
 	Admin   bool
 	Queue   bool

@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/graph"
 )
 
 type upstreamGit struct{ *fakeGit }
@@ -116,7 +118,9 @@ func TestExplicitStartPreservesReadFailuresAndCancellation(t *testing.T) {
 // far apart two commits are.
 type aheadGit struct{ upstreamGit }
 
-func (g aheadGit) DefaultBranch(context.Context, string) (string, error) { return "synthetic-main", nil }
+func (g aheadGit) DefaultBranch(context.Context, string) (string, error) {
+	return "synthetic-main", nil
+}
 
 // Unreferenced reports nothing left behind: the trunk's remote copy reaches
 // HEAD wherever these fixtures put it.
@@ -142,7 +146,8 @@ func TestADetachedHeadOnTheTrunksUpstreamIsOfferedAsTheStart(t *testing.T) {
 			g, f := fixture()
 			g.detached = true
 			g.tips["HEAD"], g.tips["known"] = test.head, "newer-upstream-tip"
-			service := Service{Git: aheadGit{upstreamGit{g}}, Graph: f}
+			git := aheadGit{upstreamGit{g}}
+			service := Service{Git: git, Graph: f, Trunks: git}
 
 			refused, err := service.Plan(context.Background(), Request{Name: "synthetic-new"})
 			if err != nil {
@@ -169,4 +174,92 @@ func TestADetachedHeadOnTheTrunksUpstreamIsOfferedAsTheStart(t *testing.T) {
 			}
 		})
 	}
+}
+
+// What a refusal offers is what create would accept. A default branch
+// recorded with a parent of its own takes no start past its tip, so nothing
+// is offered for it; and a create asked to commit is offered committing too.
+func TestTheOfferedStartIsOneCreateAccepts(t *testing.T) {
+	g, f := fixture()
+	g.detached = true
+	g.tips["HEAD"], g.tips["known"] = "upstream-tip", "newer-upstream-tip"
+	git := aheadGit{upstreamGit{g}}
+	service := Service{Git: git, Graph: f, Trunks: git}
+
+	committing, err := service.Plan(context.Background(), Request{Name: "synthetic-new", Commit: true, Message: "synthetic message"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "g2g create synthetic-new --parent synthetic-main --at HEAD --message 'synthetic message'"; !strings.Contains(committing.Blocked(), want) {
+		t.Errorf("refusal %q does not offer %q", committing.Blocked(), want)
+	}
+
+	f.adopted.Edges["synthetic-main"] = graph.Edge{Parent: "synthetic-stray"}
+	recorded, err := service.Plan(context.Background(), Request{Name: "synthetic-new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(recorded.Blocked(), "--at HEAD") {
+		t.Errorf("a start create would refuse is offered: %q", recorded.Blocked())
+	}
+}
+
+// localAheadGit is a reader where HEAD carries a commit above the trunk's tip
+// that the trunk's known upstream does not have: work of the reader's own.
+type localAheadGit struct{ aheadGit }
+
+func (g localAheadGit) IsAncestor(_ context.Context, from, to string) (bool, error) {
+	return from == to || from == "main-tip" && (to == "local-tip" || to == "newer-upstream-tip"), nil
+}
+
+// Only a start create would accept is offered or warned of: HEAD at the
+// trunk's tip is offered that tip; HEAD carrying work the remote does not
+// have is offered nothing; and a feature parent, which takes no start past
+// its tip, is never warned that HEAD is ahead of it.
+func TestOnlyAStartCreateAcceptsIsOfferedOrWarnedOf(t *testing.T) {
+	t.Run("HEAD at the trunk's tip", func(t *testing.T) {
+		g, f := fixture()
+		g.detached = true
+		g.tips["HEAD"] = "main-tip"
+		git := aheadGit{upstreamGit{g}}
+		refused, err := (Service{Git: git, Graph: f, Trunks: git}).Plan(context.Background(), Request{Name: "synthetic-new"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(refused.Blocked(), "g2g create synthetic-new --parent synthetic-main") || strings.Contains(refused.Blocked(), "--at HEAD") {
+			t.Errorf("refusal = %q, want the trunk's tip offered", refused.Blocked())
+		}
+	})
+	t.Run("HEAD with work of its own", func(t *testing.T) {
+		g, f := fixture()
+		g.detached = true
+		g.tips["HEAD"], g.tips["known"] = "local-tip", "newer-upstream-tip"
+		git := localAheadGit{aheadGit{upstreamGit{g}}}
+		service := Service{Git: git, Graph: f, Trunks: git}
+		if refused, _ := service.Plan(context.Background(), Request{Name: "synthetic-new"}); strings.Contains(refused.Blocked(), "--at HEAD") {
+			t.Errorf("offered --at HEAD for work the remote does not have: %q", refused.Blocked())
+		}
+		if behind, _ := service.Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-main"}); behind.HeadAhead != 0 {
+			t.Errorf("HeadAhead = %d for work the remote does not have", behind.HeadAhead)
+		}
+	})
+	t.Run("a feature parent", func(t *testing.T) {
+		g, f := fixture()
+		g.detached = true
+		g.tips["synthetic-lower"] = "main-tip"
+		g.tips["HEAD"], g.tips["known"] = "upstream-tip", "newer-upstream-tip"
+		git := aheadGit{upstreamGit{g}}
+		plan, err := (Service{Git: git, Graph: f, Trunks: git}).Plan(context.Background(), Request{Name: "synthetic-new", Parent: "synthetic-lower"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.HeadAhead != 0 {
+			t.Errorf("HeadAhead = %d under a feature parent, where --at HEAD is refused", plan.HeadAhead)
+		}
+	})
+	t.Run("revalidation sees the warning change", func(t *testing.T) {
+		if (Plan{HeadAhead: 1}).Equal(Plan{HeadAhead: 2}) {
+			t.Error("plans differing only in how far HEAD is ahead compare equal")
+		}
+	})
 }

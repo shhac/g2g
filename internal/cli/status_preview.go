@@ -59,7 +59,7 @@ func hiddenDescendants(discovery graph.Discovery) int {
 // isTrunk reports a target nothing should be asked to hang under: the graph
 // already treats it as a root, or the remote calls it the default branch.
 func isTrunk(discovery graph.Discovery) bool {
-	return discovery.Graph.IsTrunk(discovery.Target) || discovery.Target == discovery.DefaultTrunk
+	return discovery.EvidencedTrunk(discovery.Target)
 }
 
 // untrackedNote says the one true thing about a target the graph does not

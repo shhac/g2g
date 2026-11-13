@@ -159,7 +159,7 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	if !built && !plan.Graph.IsTrunk(recorded.Parent) && plan.DefaultTrunk != recorded.Parent {
+	if !built && !plan.EvidencedTrunk(recorded.Parent) {
 		plan.Repair = repair.Note{Reason: fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)}
 		return plan, nil
 	}

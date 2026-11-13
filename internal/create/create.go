@@ -43,6 +43,10 @@ type Graph interface {
 type Service struct {
 	Git   Git
 	Graph Graph
+	// Trunks says which branch the remote calls its default, for advice
+	// alone: a create from a detached HEAD on that trunk's remote copy is
+	// offered, never chosen. A service without it offers nothing.
+	Trunks graph.TrunkEvidence
 }
 
 // Ready reports a service with everything it needs, and is the rule the
@@ -143,7 +147,7 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 		}
 	}
 	if detached && plan.Parent == "" {
-		return s.detachedWithoutParent(ctx, plan, head)
+		return s.detachedWithoutParent(ctx, plan, request, head)
 	}
 	plan.Return, plan.ReturnTip = current, head
 	if plan.Parent == "" {
@@ -183,8 +187,8 @@ func (s Service) Plan(ctx context.Context, request Request) (Plan, error) {
 	if plan.Blocked() != "" {
 		return plan, nil
 	}
-	if detached && request.At == "" && evidencedTrunk(plan) {
-		if plan.HeadAhead, err = s.headAhead(ctx, plan.Parent, plan.ParentAt, head); err != nil {
+	if detached && request.At == "" {
+		if plan.HeadAhead, err = s.headAhead(ctx, plan, head); err != nil {
 			return Plan{}, err
 		}
 	}

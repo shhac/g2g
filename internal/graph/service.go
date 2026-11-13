@@ -69,6 +69,13 @@ type Discovery struct {
 }
 
 // Equal compares every fact that can change what a graph command does.
+// EvidencedTrunk reports a branch that is a trunk by evidence: a root the
+// graph records, or the branch the remote calls its default. It never says a
+// branch nobody named is one; the evidence only confirms.
+func (d Discovery) EvidencedTrunk(branch string) bool {
+	return d.Graph.IsTrunk(branch) || branch == d.DefaultTrunk
+}
+
 func (d Discovery) Equal(other Discovery) bool {
 	return d.Target == other.Target &&
 		d.TargetSource == other.TargetSource &&

@@ -170,7 +170,7 @@ func NewNamed(version, commandName string, stdout, stderr io.Writer) *cobra.Comm
 		},
 		Published:          push.Known{Git: gitClient},
 		Observations:       observations,
-		Create:             create.Service{Git: gitClient, Graph: graphService},
+		Create:             create.Service{Git: gitClient, Graph: graphService, Trunks: gitClient},
 		Reshape:            reshape.Service{Git: gitClient, Graph: graphService},
 		Navigate:           navigate.Service{Selector: selector, Git: gitClient, Trunks: recordedChildren{service: graphService}},
 		Unstacker:          githubClient,

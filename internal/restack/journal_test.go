@@ -182,3 +182,100 @@ func TestReplayBoundaryRequiresVersionTwoButOrdinaryJournalsStayCompatible(t *te
 		}
 	}
 }
+
+// worktreeLocator answers which private Git directory a worktree runs in.
+type worktreeLocator struct{ common, dir string }
+
+func (l worktreeLocator) CommonDir(context.Context) (string, error)   { return l.common, nil }
+func (l worktreeLocator) WorktreeDir(context.Context) (string, error) { return l.dir, nil }
+
+// Each worktree journals its own restack, so one stopped in a linked worktree
+// is that worktree's and the main worktree's is the main worktree's, and each
+// sees the other's as somebody else's.
+func TestEachWorktreeJournalsItsOwnRestack(t *testing.T) {
+	ctx := context.Background()
+	common := t.TempDir()
+	linkedDir := filepath.Join(common, "worktrees", "synthetic-agent")
+	main := FileJournal{Git: worktreeLocator{common: common, dir: common}}
+	linked := FileJournal{Git: worktreeLocator{common: common, dir: linkedDir}}
+
+	if err := linked.Start(ctx, Record{Branch: "synthetic-busy", Worktree: linkedDir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := main.Start(ctx, Record{Branch: "synthetic-free", Worktree: common}); err != nil {
+		t.Fatalf("the main worktree could not start a restack beside the linked one's: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(common, "g2g", "restack", "worktrees", "synthetic-agent.json")); err != nil {
+		t.Fatalf("the linked worktree's journal is not where it belongs: %v", err)
+	}
+	for _, test := range []struct {
+		journal     FileJournal
+		mine, other string
+	}{
+		{main, "synthetic-free", "synthetic-busy"},
+		{linked, "synthetic-busy", "synthetic-free"},
+	} {
+		record, found, err := test.journal.Load(ctx)
+		if err != nil || !found || record.Branch != test.mine {
+			t.Errorf("own journal = %+v, %v, %v, want %s", record, found, err, test.mine)
+		}
+		others, err := test.journal.Others(ctx)
+		if err != nil || len(others) != 1 || others[0].Branch != test.other {
+			t.Errorf("others = %+v, %v, want only %s", others, err, test.other)
+		}
+	}
+	if err := linked.Clear(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := main.Load(ctx); !found {
+		t.Error("clearing the linked worktree's journal cleared the main worktree's")
+	}
+}
+
+// A restack an older g2g journaled for a linked worktree is in the shared
+// file. It stays that worktree's to finish there, and the main worktree,
+// whose file it is in, sees it as another's and never clears it.
+func TestASharedJournalFromBeforeStaysItsWorktrees(t *testing.T) {
+	ctx := context.Background()
+	common := t.TempDir()
+	linkedDir := filepath.Join(common, "worktrees", "synthetic-agent")
+	legacy := FileJournal{Git: fakeLocator{dir: common}}
+	if err := legacy.Start(ctx, Record{Branch: "synthetic-busy", Worktree: linkedDir}); err != nil {
+		t.Fatal(err)
+	}
+	main := FileJournal{Git: worktreeLocator{common: common, dir: common}}
+	linked := FileJournal{Git: worktreeLocator{common: common, dir: linkedDir}}
+
+	if record, found, err := linked.Load(ctx); err != nil || !found || record.Branch != "synthetic-busy" {
+		t.Fatalf("the linked worktree lost its restack: %+v, %v, %v", record, found, err)
+	}
+	if _, found, err := main.Load(ctx); err != nil || found {
+		t.Fatalf("the main worktree took the linked one's restack for its own: %v, %v", found, err)
+	}
+	if others, err := main.Others(ctx); err != nil || len(others) != 1 || others[0].Branch != "synthetic-busy" {
+		t.Fatalf("the main worktree does not see the linked one's restack: %+v, %v", others, err)
+	}
+	if err := main.Clear(ctx); err != nil {
+		t.Fatal(err)
+	}
+	record, found, err := linked.Load(ctx)
+	if err != nil || !found {
+		t.Fatalf("the main worktree cleared the linked one's restack: %+v, %v, %v", record, found, err)
+	}
+	record.ReturnTo = "synthetic-busy"
+	if err := linked.Save(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(common, "g2g", "restack", "worktrees", "synthetic-agent.json")); !os.IsNotExist(err) {
+		t.Errorf("a save moved the restack out of the file it was started in: %v", err)
+	}
+	if err := linked.Clear(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := main.Load(ctx); found {
+		t.Error("the shared file outlived its restack")
+	}
+	if others, _ := main.Others(ctx); len(others) != 0 {
+		t.Errorf("others after the restack finished = %+v", others)
+	}
+}

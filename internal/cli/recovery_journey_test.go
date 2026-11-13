@@ -34,8 +34,14 @@ func TestJourneyPullConflictAtTheBottomKeepsTheWholeStackResumable(t *testing.T)
 			if !cli.StoppedPartWayForTest(err) {
 				t.Fatalf("pull error = %v, want status 3:\n%s", err, out)
 			}
+			// Each worktree journals its own restack: the main worktree in the
+			// shared file, a linked one in a file named for it.
 			common := w.git(checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")
 			journal := filepath.Join(common, "g2g", "restack.json")
+			if linked {
+				private := w.git(checkout, "rev-parse", "--absolute-git-dir")
+				journal = filepath.Join(common, "g2g", "restack", "worktrees", filepath.Base(private)+".json")
+			}
 			if _, err := os.Stat(journal); err != nil {
 				t.Fatalf("stopped pull lost journal: %v", err)
 			}

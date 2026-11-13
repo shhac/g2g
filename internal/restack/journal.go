@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -33,7 +34,9 @@ type Record struct {
 	// Above is a durable replay boundary; version 1 readers must refuse it.
 	Above         string `json:"above,omitempty"`
 	SchemaVersion int    `json:"schemaVersion"`
-	// Worktree owns Git's private rebase state. The journal itself is shared.
+	// Worktree owns Git's private rebase state, and the journal: each
+	// worktree keeps its own, so one stopped on a conflict holds only what it
+	// is moving.
 	Worktree string `json:"worktree,omitempty"`
 	// Checkout records the index's baseline before a bare ref move. A process
 	// may die after moving the ref but before bringing the index along.
@@ -122,37 +125,164 @@ func (r Record) moving() map[string]bool {
 	return moving
 }
 
-// Journal stores the record for an in-flight restack.
+// footprint is what this restack moves and reads, for telling whether
+// another may run beside it: every branch it may move, and those with the
+// parents they are measured against and the branch an --onto names.
+func (r Record) footprint() footprint {
+	moves := r.moving()
+	reads := maps.Clone(moves)
+	for _, edge := range r.Structure {
+		reads[edge.Parent] = true
+	}
+	for _, parent := range r.Reparent {
+		reads[parent] = true
+	}
+	reads[r.OntoParent] = true
+	delete(reads, "")
+	return footprint{moves: moves, reads: reads}
+}
+
+// Journal stores the record for this worktree's in-flight restack.
 type Journal interface {
 	Load(context.Context) (Record, bool, error)
 	Save(context.Context, Record) error
 	Clear(context.Context) error
 }
 
-// FileJournal keeps the record beside the graph, under the Git common
-// directory, so linked worktrees see the same in-flight operation.
+// Elsewhere is an unfinished restack another worktree owns, and the file
+// that records it.
+type Elsewhere struct {
+	Record
+	Path string
+}
+
+// othersJournal is a journal that can see the other worktrees' restacks. One
+// that cannot has no others, which is a journal shared by every worktree.
+type othersJournal interface {
+	Others(context.Context) ([]Elsewhere, error)
+}
+
+// FileJournal keeps each worktree's record beside the graph, under the Git
+// common directory: the main worktree's in g2g/restack.json, and a linked
+// worktree's in g2g/restack/worktrees/<name>.json, after the name Git gives
+// its private directory.
+//
+// One file for every worktree made one restack stopped on a conflict refuse
+// every other restack in every other worktree, on stacks with nothing in
+// common with it, and named a --continue and an --abort that belonged to
+// whoever started it. Each record still lives under the common directory
+// rather than in the worktree's own private directory, because it is how the
+// shared refs it moved are put back: removing a worktree must not quietly
+// take its rollback record with it.
 type FileJournal struct {
 	Git graph.Locator
 }
 
-func (j FileJournal) path(ctx context.Context) (string, error) {
+// paths is where this worktree's journal is, where every journal is, and the
+// file shared by every worktree before each had its own.
+type journalPaths struct {
+	own, legacy, linked string
+	worktree            string
+}
+
+func (j FileJournal) paths(ctx context.Context) (journalPaths, error) {
 	if j.Git == nil {
-		return "", fmt.Errorf("restack journal is not configured")
+		return journalPaths{}, fmt.Errorf("restack journal is not configured")
 	}
 	common, err := j.Git.CommonDir(ctx)
 	if err != nil {
-		return "", err
+		return journalPaths{}, err
 	}
-	return filepath.Join(common, "g2g", journalFileName), nil
+	paths := journalPaths{legacy: filepath.Join(common, "g2g", journalFileName), linked: filepath.Join(common, "g2g", "restack", "worktrees")}
+	paths.own = paths.legacy
+	locator, ok := j.Git.(WorktreeLocator)
+	if !ok {
+		return paths, nil
+	}
+	if paths.worktree, err = locator.WorktreeDir(ctx); err != nil {
+		return journalPaths{}, err
+	}
+	if filepath.Clean(paths.worktree) != filepath.Clean(common) {
+		paths.own = filepath.Join(paths.linked, filepath.Base(paths.worktree)+".json")
+	}
+	return paths, nil
 }
 
-// Load returns the in-flight record. Absent is the ordinary state and not an
-// error.
+// path is this worktree's journal. A linked worktree whose restack was
+// journaled before each worktree had its own finds it in the shared file,
+// which names it, and keeps using that file until the restack is finished.
+func (j FileJournal) path(ctx context.Context) (string, error) {
+	paths, err := j.paths(ctx)
+	if err != nil || paths.own == paths.legacy {
+		return paths.own, err
+	}
+	if _, err := os.Stat(paths.own); err == nil || !errors.Is(err, fs.ErrNotExist) {
+		return paths.own, nil
+	}
+	if legacy, found, err := readJournal(paths.legacy); err == nil && found && legacy.Worktree == paths.worktree {
+		return paths.legacy, nil
+	}
+	return paths.own, nil
+}
+
+// Load returns this worktree's in-flight record. Absent is the ordinary
+// state and not an error. The shared file, in the main worktree, may hold a
+// record an older g2g wrote for a linked one; that is the linked one's.
 func (j FileJournal) Load(ctx context.Context) (Record, bool, error) {
+	paths, err := j.paths(ctx)
+	if err != nil {
+		return Record{}, false, err
+	}
 	path, err := j.path(ctx)
 	if err != nil {
 		return Record{}, false, err
 	}
+	record, found, err := readJournal(path)
+	if err != nil || !found {
+		return Record{}, false, err
+	}
+	if path == paths.legacy && record.Worktree != "" && paths.worktree != "" && record.Worktree != paths.worktree {
+		return Record{}, false, nil
+	}
+	return record, true, nil
+}
+
+// Others is every unfinished restack another worktree owns, whether or not
+// that worktree still exists: a record outlives its checkout, because the
+// refs it moved are shared.
+func (j FileJournal) Others(ctx context.Context) ([]Elsewhere, error) {
+	paths, err := j.paths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	own, err := j.path(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidates := []string{paths.legacy}
+	linked, err := filepath.Glob(filepath.Join(paths.linked, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	candidates = append(candidates, linked...)
+	others := make([]Elsewhere, 0)
+	for _, path := range candidates {
+		record, found, err := readJournal(path)
+		if err != nil {
+			return nil, err
+		}
+		// This worktree's own file is another's only when it names another:
+		// the shared file an older g2g wrote a linked worktree's restack to.
+		mine := path == own && (record.Worktree == "" || paths.worktree == "" || record.Worktree == paths.worktree)
+		if found && !mine {
+			others = append(others, Elsewhere{Record: record, Path: path})
+		}
+	}
+	return others, nil
+}
+
+// readJournal reads one journal file. Absent is not an error.
+func readJournal(path string) (Record, bool, error) {
 	contents, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Record{}, false, nil
@@ -248,6 +378,13 @@ func (j FileJournal) Clear(ctx context.Context) error {
 	path, err := j.path(ctx)
 	if err != nil {
 		return err
+	}
+	// The shared file may hold another worktree's restack, written before
+	// each had its own; that is not this worktree's to forget.
+	if _, mine, err := j.Load(ctx); err == nil && !mine {
+		if _, found, _ := readJournal(path); found {
+			return nil
+		}
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("remove restack journal: %w", err)

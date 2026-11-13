@@ -15,6 +15,7 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -30,7 +31,9 @@ func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ct
 // replayed without touching the checkout; anything else takes the resumable
 // engine, which needs the user's working tree and says so first.
 func (s Service) Apply(ctx context.Context, plan Plan) error {
-	if err := s.RequireIdle(ctx); err != nil {
+	// Another worktree's restack holds only what it moves and replays onto,
+	// so a stack apart from it restacks beside it.
+	if err := s.requireApart(ctx, plan.footprint()); err != nil {
 		return err
 	}
 	if plan.Blocked() != "" {
@@ -85,9 +88,32 @@ func (s Service) begin(ctx context.Context, plan Plan, standing checkout) (Recor
 	if starter, ok := s.Journal.(interface {
 		Start(context.Context, Record) error
 	}); ok {
-		return record, starter.Start(ctx, record)
+		if err := starter.Start(ctx, record); err != nil {
+			return record, err
+		}
+	} else if err := s.Journal.Save(ctx, record); err != nil {
+		return record, err
 	}
-	return record, s.Journal.Save(ctx, record)
+	return record, s.stillApart(ctx, record)
+}
+
+// stillApart is the check Apply made, made again once this restack's own
+// journal is published. Two worktrees starting restacks that overlap at the
+// same moment both pass the first; each sees the other's journal here, and
+// steps back before anything moves. Both may, which is the safe way round.
+func (s Service) stillApart(ctx context.Context, record Record) error {
+	journal, ok := s.Journal.(othersJournal)
+	if !ok {
+		return nil
+	}
+	others, err := journal.Others(ctx)
+	if err == nil {
+		err = apart(record.footprint(), others)
+	}
+	if err != nil {
+		return errors.Join(err, s.Journal.Clear(ctx))
+	}
+	return nil
 }
 
 // record is what survives an interrupted rewrite. ReturnTo is where the

@@ -46,7 +46,7 @@ func newDoctor(service graph.Service, restacker restack.Service, published push.
 		if err != nil {
 			return err
 		}
-		interrupted, err := restacker.InProgress(ctx)
+		here, elsewhere, err := restacker.Unfinished(ctx)
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func newDoctor(service graph.Service, restacker restack.Service, published push.
 		if err != nil {
 			return err
 		}
-		findings := diagnose(discovery, interrupted, publishing, remote)
+		findings := diagnose(discovery, unfinished{here: here, elsewhere: elsewhere}, publishing, remote)
 		if err := writeStackView(cmd.OutOrStdout(), doctorView(discovery, findings), presentation); err != nil {
 			return err
 		}

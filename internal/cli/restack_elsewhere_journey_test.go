@@ -48,8 +48,53 @@ func TestJourneyARestackStoppedElsewhereLeavesOtherStacksFree(t *testing.T) {
 		{"track", "--branch", "synthetic-loose", "--parent", "synthetic-busy", "--apply"},
 	} {
 		_, stderr, err := run(t, args...)
-		if err == nil || !strings.Contains(stderr+err.Error(), "already in progress") {
+		if err == nil || !strings.Contains(stderr+err.Error(), "unfinished in checkout") {
 			t.Errorf("g2g %s went ahead while the restack moves its branch: %v", strings.Join(args, " "), err)
 		}
 	}
+}
+
+// Two sessions restacking two stacks at once is the ordinary case once
+// agents each have a worktree. One stopped on its conflict used to refuse the
+// other's restack outright, naming a --continue and an --abort that belonged
+// to somebody else, so the only way through was to wait for them.
+func TestJourneyARestackStoppedElsewhereLeavesAnotherStacksRestackFree(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-busy", "shared.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("main", "synthetic-free", "free.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("synthetic-free", "synthetic-free-top", "free-top.txt")
+	mustRun(t, "track", "--parent", "synthetic-free", "--apply")
+	w.commit(w.Local, "main", "shared.txt", "the trunk's own version")
+	w.commit(w.Local, "synthetic-free", "free.txt", "a reviewer's fix below the top")
+
+	agent := filepath.Join(filepath.Dir(w.Local), "agent")
+	w.git(w.Local, "worktree", "add", "-q", agent, "synthetic-busy")
+	t.Chdir(agent)
+	if stdout, stderr, err := run(t, "restack", "--apply"); err == nil {
+		t.Fatalf("the agent's restack did not stop on its conflict:\n%s%s", stdout, stderr)
+	}
+
+	t.Chdir(w.Local)
+	w.git(w.Local, "switch", "-q", "synthetic-free")
+	stdout, stderr, err := run(t, "restack", "--apply")
+	if err != nil {
+		t.Fatalf("restacking an unrelated stack was refused: %v\n%s%s", err, stdout, stderr)
+	}
+	if !w.contains(w.Local, "synthetic-free", "synthetic-free-top") {
+		t.Error("synthetic-free-top was not replayed onto synthetic-free")
+	}
+	w.assertClean(w.Local)
+
+	// The agent's restack is still theirs to finish, and still refuses a
+	// restack of what it is moving from here.
+	if _, stderr, err := run(t, "restack", "--branch", "synthetic-busy", "--apply"); err == nil || !strings.Contains(stderr+err.Error(), "unfinished in checkout") {
+		t.Errorf("restacking the branch the agent's restack is moving went ahead: %v", err)
+	}
+	t.Chdir(agent)
+	if _, _, err := run(t, "restack", "--abort"); err != nil {
+		t.Fatalf("the agent could not abort its own restack: %v", err)
+	}
+	w.assertClean(agent)
 }

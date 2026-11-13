@@ -33,6 +33,9 @@ func publishedRepository(t *testing.T, local []string, pullRequests string) (*te
 	recorder := testutil.FakeCLIs(t, map[string][]testutil.Route{
 		"git": {
 			{Prefix: "rev-parse --path-format=absolute --git-common-dir", Output: common},
+			// The main worktree's private directory is the common one, so
+			// its restack journal is the shared file.
+			{Prefix: "rev-parse --absolute-git-dir", Output: common},
 			{Prefix: "branch --show-current", Output: "synthetic-top"},
 			{Prefix: "branch --format", Lines: local},
 			{Prefix: "symbolic-ref --quiet refs/remotes/origin/HEAD", Output: "refs/remotes/origin/synthetic-trunk"},

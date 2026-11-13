@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,9 @@ func TestIdleRefusalNamesOwnerWithoutTreatingGitDirAsCheckout(t *testing.T) {
 func TestIdleRefusalMapsLinkedWorktreeBacklink(t *testing.T) {
 	privateDir := t.TempDir()
 	checkout := filepath.Join(t.TempDir(), "synthetic-owner")
+	if err := os.MkdirAll(filepath.Join(checkout, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(privateDir, "gitdir"), []byte(filepath.Join(checkout, ".git")+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -72,5 +76,29 @@ func TestIdleForRefusesOnlyTheBranchesARestackIsMoving(t *testing.T) {
 	anonymous := Service{Journal: &memoryJournal{present: true, record: unowned}, Git: locatedGit{&fakeGit{}, "/synthetic/repo/.git"}}
 	if err := anonymous.RequireIdleFor(context.Background(), []string{"synthetic-other"}); err == nil {
 		t.Error("a journal that does not say which worktree owns it was treated as somebody else's")
+	}
+}
+
+// Two restacks overlap when either moves what the other reads. One paused
+// part-way through replaying a child onto its parent is undone by another
+// moving that parent, though neither moves what the other moves; two stacks
+// on the same trunk overlap in neither direction, since a trunk never moves.
+func TestRestacksOverlapWhenEitherMovesWhatTheOtherReads(t *testing.T) {
+	paused := Record{
+		Original:  map[string]string{"synthetic-child": "1"},
+		Structure: map[string]RecordedEdge{"synthetic-child": {Parent: "synthetic-parent"}},
+	}.footprint()
+	for _, test := range []struct {
+		name string
+		mine footprint
+		want []string
+	}{
+		{"moving the paused one's parent", footprint{moves: set([]string{"synthetic-parent"}), reads: set([]string{"synthetic-parent", "main"})}, []string{"synthetic-parent"}},
+		{"building on what it moves", footprint{moves: set([]string{"synthetic-above"}), reads: set([]string{"synthetic-above", "synthetic-child"})}, []string{"synthetic-child"}},
+		{"another stack on the same trunk", footprint{moves: set([]string{"synthetic-free"}), reads: set([]string{"synthetic-free", "main"})}, nil},
+	} {
+		if got := test.mine.meets(paused); !slices.Equal(got, test.want) {
+			t.Errorf("%s: meets = %v, want %v", test.name, got, test.want)
+		}
 	}
 }

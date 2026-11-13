@@ -26,14 +26,14 @@ func TestRecoveryRefusesAnotherWorktreeBeforeTouchingAnything(t *testing.T) {
 			if err := methods[verb](ctx); err == nil || !strings.Contains(err.Error(), "another worktree") {
 				t.Fatalf("%s error = %v, want owner refusal", verb, err)
 			}
-			after, found, err := r.service.Journal.Load(ctx)
-			if err != nil || !found || after.Worktree != before.Worktree {
-				t.Fatalf("journal lost or changed: %+v, %v, %v", after, found, err)
-			}
 			if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
 				t.Fatalf("other worktree changed: %s", status)
 			}
 			t.Chdir(r.Dir)
+			after, found, err := r.service.Journal.Load(ctx)
+			if err != nil || !found || after.Worktree != before.Worktree {
+				t.Fatalf("journal lost or changed: %+v, %v, %v", after, found, err)
+			}
 			if active, err := r.client.RebaseInProgress(ctx); err != nil || !active {
 				t.Fatalf("original rebase changed: %v, %v", active, err)
 			}
@@ -182,7 +182,7 @@ func TestSkipAfterASecondConflictFinishesTheDescendant(t *testing.T) {
 	r.assertClean()
 }
 
-func TestAFreshRestackCannotReplaceAnotherWorktreesJournal(t *testing.T) {
+func TestAnUnrelatedStackRestacksBesideAnotherWorktreesUnfinishedOne(t *testing.T) {
 	r := conflictingStack(t)
 	ctx := context.Background()
 	r.branch("synthetic-x", "synthetic-main", "x.txt", "synthetic x")
@@ -199,17 +199,24 @@ func TestAFreshRestackCannotReplaceAnotherWorktreesJournal(t *testing.T) {
 	if len(plan.Steps) == 0 {
 		t.Fatal("unrelated stack has nothing to replay")
 	}
-	if err := r.service.Apply(ctx, plan); err == nil || !strings.Contains(err.Error(), "already in progress") {
-		t.Fatalf("Apply error = %v, want existing-operation refusal", err)
+	if err := r.service.Apply(ctx, plan); err != nil {
+		t.Fatalf("an unrelated stack was refused beside another worktree's restack: %v", err)
 	}
-	after, found, err := r.service.Journal.Load(ctx)
-	if err != nil || !found || after.Branch != before.Branch || after.Worktree != before.Worktree {
-		t.Fatalf("existing journal replaced: %+v, %v, %v", after, found, err)
+	if r.Try("merge-base", "--is-ancestor", "synthetic-main", "synthetic-x") != nil {
+		t.Fatal("synthetic-x was not replayed onto the amended trunk")
 	}
 	if status := r.Run("-C", other, "status", "--porcelain"); status != "" {
 		t.Fatalf("other worktree changed: %s", status)
 	}
+	// What the other restack moves is still refused from here.
+	if err := r.service.RequireIdleFor(ctx, []string{"synthetic-b"}); err == nil || !strings.Contains(err.Error(), "unfinished in checkout") {
+		t.Fatalf("restacking what the other restack moves = %v, want it refused", err)
+	}
 	t.Chdir(r.Dir)
+	after, found, err := r.service.Journal.Load(ctx)
+	if err != nil || !found || after.Branch != before.Branch || after.Worktree != before.Worktree {
+		t.Fatalf("existing journal replaced: %+v, %v, %v", after, found, err)
+	}
 	if active, _ := r.client.RebaseInProgress(ctx); !active {
 		t.Fatal("original rebase lost")
 	}

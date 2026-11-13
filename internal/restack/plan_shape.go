@@ -1,5 +1,10 @@
 package restack
 
+import (
+	"maps"
+	"slices"
+)
+
 // Replaying lists the branches whose commits are actually replayed, which is
 // not every branch in the plan: one that collapses only has its ref moved.
 func (p Plan) Replaying() []string {
@@ -45,6 +50,34 @@ func (r Record) structure() structureMoves {
 
 // reparenting is the branches this plan moves to a different parent, which is
 // only ever the result of an explicit --onto.
+// footprint is what applying the plan moves and reads: every selected
+// branch, since recording walks the whole selection, and with them their
+// parents, where the plan reparents them, and the branch an --onto names.
+//
+// A trunk in the selection is not among what it moves: a restack never
+// moves one, so two stacks on the same trunk restack beside each other.
+func (p Plan) footprint() footprint {
+	moves, reads := map[string]bool{}, map[string]bool{}
+	for _, branch := range p.Discovery.Branches {
+		reads[branch] = true
+		if edge, tracked := p.Discovery.Graph.Edges[branch]; tracked {
+			moves[branch], reads[edge.Parent] = true, true
+		}
+	}
+	for _, parent := range p.reparenting() {
+		reads[parent] = true
+	}
+	reads[p.Onto.Parent] = true
+	delete(reads, "")
+	return footprint{moves: moves, reads: reads}
+}
+
+// Touches is every branch applying the plan moves or reads, sorted: what a
+// restack in another worktree must not be moving for this one to go ahead.
+func (p Plan) Touches() []string {
+	return slices.Sorted(maps.Keys(p.footprint().reads))
+}
+
 func (p Plan) reparenting() map[string]string {
 	moves := map[string]string{}
 	if !p.Onto.Reparents() {

@@ -317,15 +317,13 @@ func (s Service) Conflicted(ctx context.Context) ([]string, error) {
 	return s.Git.ConflictedPaths(ctx)
 }
 
-// InProgress reports an unfinished restack, which every other command has to
-// refuse while it lasts: a branch may already have moved while the graph still
-// records where it used to be.
+// InProgress reports an unfinished restack in this worktree, which every
+// other command here has to refuse while it lasts: a branch may already have
+// moved while the graph still records where it used to be. Another
+// worktree's restack is its own, and the guards ask about it separately.
 func (s Service) InProgress(ctx context.Context) (bool, error) {
-	if s.Journal == nil {
-		return false, nil
-	}
-	_, found, err := s.Journal.Load(ctx)
-	return found, err
+	here, _, err := s.journals(ctx)
+	return here != nil, err
 }
 
 // ownedRecord is the common gate before any recovery command touches Git.
@@ -335,10 +333,26 @@ func (s Service) ownedRecord(ctx context.Context) (Record, error) {
 		return Record{}, err
 	}
 	if !found {
-		return Record{}, fmt.Errorf("no restack is in progress")
+		return Record{}, s.noneHere(ctx)
 	}
 	if err := s.requireOwner(ctx, record); err != nil {
 		return Record{}, err
 	}
 	return record, nil
+}
+
+// noneHere is the refusal of a recovery verb in a worktree with no restack
+// of its own, naming the one another worktree has, since that is the restack
+// the reader most likely meant.
+func (s Service) noneHere(ctx context.Context) error {
+	_, others, err := s.journals(ctx)
+	if err != nil || len(others) == 0 {
+		return errors.Join(err, fmt.Errorf("no restack is in progress"))
+	}
+	other := others[0]
+	where := fmt.Sprintf("Git directory: %s", other.Worktree)
+	if checkout := journalCheckout(other.Worktree); checkout != "" {
+		where = fmt.Sprintf("checkout %q", checkout)
+	}
+	return fmt.Errorf("no restack is in progress in this worktree · the one%s belongs to another worktree (%s); run g2g restack --continue, --skip, or --abort there", restackOf(other.Record), where)
 }

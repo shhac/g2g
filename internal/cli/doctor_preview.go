@@ -6,6 +6,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -23,15 +24,8 @@ type finding struct {
 // A branch with no commits of its own is not one: it is as likely to be a
 // branch nobody has started as one that is finished, and saying either would
 // be a guess.
-func diagnose(discovery graph.Discovery, interrupted bool, publishing map[string]push.Publication, remote string) []finding {
-	findings := make([]finding, 0)
-	if interrupted {
-		findings = append(findings, finding{
-			Problem:  "a restack stopped part-way",
-			Command:  "g2g restack --continue",
-			Severity: severityBad,
-		})
-	}
+func diagnose(discovery graph.Discovery, restacks unfinished, publishing map[string]push.Publication, remote string) []finding {
+	findings := restacks.findings()
 	orphans := make(map[string]bool)
 	for _, branch := range discovery.Orphans() {
 		orphans[branch] = true
@@ -96,4 +90,45 @@ func doctorView(discovery graph.Discovery, findings []finding) stackView {
 		return view.note(fmt.Sprintf("Nothing needs putting right across %s.", words.Count(len(discovery.Graph.Edges), "recorded branch", "recorded branches")), severityOK)
 	}
 	return view
+}
+
+// unfinished is every restack left part-way: whether this worktree has one,
+// and every other worktree's. Each worktree journals its own, and a doctor
+// that looked only here said nothing of one an agent left in another.
+type unfinished struct {
+	here      bool
+	elsewhere []restack.Elsewhere
+}
+
+// findings is one finding per unfinished restack, each with what finishes
+// it: --continue here, the same in the checkout another belongs to, and for
+// one whose checkout is gone, forgetting its journal.
+func (u unfinished) findings() []finding {
+	findings := make([]finding, 0, len(u.elsewhere)+1)
+	if u.here {
+		findings = append(findings, finding{Problem: "a restack stopped part-way", Command: "g2g restack --continue", Severity: severityBad})
+	}
+	for _, other := range u.elsewhere {
+		of := ""
+		if branch := other.Started(); branch != "" {
+			of = " of " + branch
+		}
+		if checkout := other.Checkout(); checkout != "" {
+			findings = append(findings, finding{
+				Problem:  "a restack" + of + " stopped part-way in " + checkout,
+				Command:  "cd " + repair.Quote(checkout) + " && g2g restack --continue",
+				Severity: severityBad,
+			})
+			continue
+		}
+		if other.Path == "" {
+			continue
+		}
+		findings = append(findings, finding{
+			Problem:  "a restack" + of + " stopped part-way in a worktree that no longer exists",
+			Command:  repair.Command([]string{"rm", other.Path}),
+			Severity: severityBad,
+		})
+	}
+	return findings
 }

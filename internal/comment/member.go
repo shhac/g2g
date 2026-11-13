@@ -42,7 +42,7 @@ func (m Member) listedNumber() int {
 // rule exists once, there; this only names the answer in the comment's terms.
 func classify(discovery stack.Discovery) map[string]Member {
 	members := make(map[string]Member, len(discovery.Branches))
-	for step := range githubstack.Across(discovery.Shape().Parents, discovery.Branches, discovery.PullRequests) {
+	for step := range discovery.Steps(discovery.PullRequests) {
 		switch step.Classify() {
 		case githubstack.StepAmbiguous:
 			members[step.Branch] = Member{State: StateAmbiguous}

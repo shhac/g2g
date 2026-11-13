@@ -232,7 +232,7 @@ func (s Service) recheck(ctx context.Context, plan Plan, step Step, expectedTip 
 		return Step{}, fmt.Errorf("%s changed locally before merging · rerun g2g land", step.Branch)
 	}
 	decided := step
-	for path := range githubstack.Along(step.Base, []string{step.Branch}, prs) {
+	for path := range githubstack.Across(intoTrunk(step.Base, []string{step.Branch}), []string{step.Branch}, prs) {
 		now, note := classify(facts{Step: path, State: state, Current: true, Tip: tip, Admin: plan.Options.Admin, Queue: plan.Queue != nil, QueueAutoMerge: plan.Queue != nil && plan.Queue.AutoMergeAllowed})
 		if note.Reason != "" {
 			return Step{}, fmt.Errorf("%s", note.Sentence())

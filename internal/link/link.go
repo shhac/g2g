@@ -252,7 +252,7 @@ func (left Plan) Equal(right Plan) bool {
 
 func assessPRs(prs []githubstack.PullRequest, snapshot stack.Snapshot) []Issue {
 	issues := make([]Issue, 0)
-	for step := range githubstack.Across(snapshot.Shape().Parents, snapshot.Branches, prs) {
+	for step := range snapshot.Steps(prs) {
 		// link can only project what exists, so a missing pull request blocks
 		// here where it would be ordinary for submit.
 		switch step.Classify() {

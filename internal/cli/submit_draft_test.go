@@ -53,6 +53,7 @@ func submitPreview(t *testing.T, draft bool) string {
 	plan := submit.Plan{Snapshot: stack.Snapshot{
 		Target: "synthetic-top", Base: "synthetic-trunk",
 		Branches: []string{"synthetic-lower", "synthetic-top"},
+		Parents:  map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower"},
 	}}
 	var out bytes.Buffer
 	if err := writeSubmitPreview(&out, plan, Presentation{}, "", draft, false, false); err != nil {
@@ -103,7 +104,14 @@ func TestSubmitPreviewSaysAStackOfOneGetsNoComment(t *testing.T) {
 		{[]string{"synthetic-top"}, "which a stack listing only one pull request does not get"},
 		{[]string{"synthetic-lower", "synthetic-top"}, "Then keeps the stack comment on each pull request"},
 	} {
-		plan := submit.Plan{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-trunk", Branches: test.branches}}
+		parents := map[string]string{}
+		for index, branch := range test.branches {
+			parents[branch] = "synthetic-trunk"
+			if index > 0 {
+				parents[branch] = test.branches[index-1]
+			}
+		}
+		plan := submit.Plan{Snapshot: stack.Snapshot{Target: "synthetic-top", Base: "synthetic-trunk", Branches: test.branches, Parents: parents}}
 		var out bytes.Buffer
 		if err := writeSubmitPreview(&out, plan, Presentation{}, "", true, false, true); err != nil {
 			t.Fatal(err)

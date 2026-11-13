@@ -99,9 +99,9 @@ first.
 
 ## Every branch is aimed at the trunk
 
-Not at the branch below it. `githubstack.Along` answers the stacked question —
-where should this pull request sit in a stack — which is right for
-`github status` and wrong here, because by the time a branch's turn comes the branch below has
+Not at the branch below it. `stack.Snapshot.Steps` answers the stacked
+question — where should this pull request sit in a stack — which is right for
+`github status` and wrong here, so land names its own edges (`intoTrunk`), because by the time a branch's turn comes the branch below has
 merged and been deleted. A pull request still pointing at it merges into
 nothing and `gh` reports success.
 

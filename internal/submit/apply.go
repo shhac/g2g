@@ -116,7 +116,7 @@ func preparePulls(plan Plan, spec Spec) ([]creation, error) {
 		pulls[pull.Branch] = pull
 	}
 	requests := make([]creation, 0, len(spec.Pulls))
-	for step := range plan.steps() {
+	for step := range plan.Snapshot.Steps(plan.Existing) {
 		if step.Resolution.Open != nil {
 			continue
 		}

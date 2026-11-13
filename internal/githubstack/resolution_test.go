@@ -186,20 +186,22 @@ func TestPullRequestNodeValidation(t *testing.T) {
 	}
 }
 
-// The rolling base is the stacking rule every command shares: the bottom
-// branch sits on the trunk, each one above on its predecessor.
-func TestAlongRollsTheBaseUpTheStack(t *testing.T) {
+// Each branch is assessed against the parent its edge names, so the siblings
+// of a fork are both measured against the branch they share, never against
+// each other.
+func TestAcrossAssessesEachBranchAgainstItsOwnParent(t *testing.T) {
 	prs := []PullRequest{
 		{Number: 1, Head: "synthetic-lower", Base: "synthetic-main", State: "OPEN"},
 		{Number: 2, Head: "synthetic-top", Base: "synthetic-lower", State: "CLOSED"},
 	}
 
 	var got []string
-	for step := range Along("synthetic-main", []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, prs) {
+	parents := map[string]string{"synthetic-lower": "synthetic-main", "synthetic-middle": "synthetic-lower", "synthetic-top": "synthetic-lower"}
+	for step := range Across(parents, []string{"synthetic-lower", "synthetic-middle", "synthetic-top"}, prs) {
 		got = append(got, step.Branch+"<-"+step.ExpectedBase)
 	}
 
-	want := "synthetic-lower<-synthetic-main,synthetic-middle<-synthetic-lower,synthetic-top<-synthetic-middle"
+	want := "synthetic-lower<-synthetic-main,synthetic-middle<-synthetic-lower,synthetic-top<-synthetic-lower"
 	if strings.Join(got, ",") != want {
 		t.Errorf("path = %q, want %q", strings.Join(got, ","), want)
 	}
@@ -207,14 +209,15 @@ func TestAlongRollsTheBaseUpTheStack(t *testing.T) {
 
 // Each step carries the same resolution the rest of the tool uses, so a
 // consumer cannot reach a different verdict about which PR represents a branch.
-func TestAlongCarriesTheSharedResolution(t *testing.T) {
+func TestAcrossCarriesTheSharedResolution(t *testing.T) {
 	prs := []PullRequest{
 		{Number: 1, Head: "synthetic-lower", Base: "synthetic-main", State: "OPEN"},
 		{Number: 9, Head: "synthetic-top", Base: "synthetic-lower", State: "CLOSED"},
 	}
 
 	states := map[string]string{}
-	for step := range Along("synthetic-main", []string{"synthetic-lower", "synthetic-top", "synthetic-absent"}, prs) {
+	parents := map[string]string{"synthetic-lower": "synthetic-main", "synthetic-top": "synthetic-lower", "synthetic-absent": "synthetic-top"}
+	for step := range Across(parents, []string{"synthetic-lower", "synthetic-top", "synthetic-absent"}, prs) {
 		switch {
 		case step.Resolution.Open != nil:
 			states[step.Branch] = "open"
@@ -232,9 +235,9 @@ func TestAlongCarriesTheSharedResolution(t *testing.T) {
 	}
 }
 
-func TestAlongStopsWhenTheConsumerStops(t *testing.T) {
+func TestAcrossStopsWhenTheConsumerStops(t *testing.T) {
 	visited := 0
-	for range Along("main", []string{"a", "b", "c"}, nil) {
+	for range Across(map[string]string{"a": "main", "b": "a", "c": "b"}, []string{"a", "b", "c"}, nil) {
 		visited++
 		break
 	}
@@ -266,7 +269,7 @@ func TestClassifyAnswersWhatAStepIs(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var got StepState
 			var gotMerged bool
-			for step := range Along("synthetic-lower", []string{"synthetic-top"}, test.prs) {
+			for step := range Across(map[string]string{"synthetic-top": "synthetic-lower"}, []string{"synthetic-top"}, test.prs) {
 				got, gotMerged = step.Classify(), step.Merged()
 			}
 			if got != test.want {

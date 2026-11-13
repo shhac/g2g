@@ -25,13 +25,7 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 		return nil, repair.Note{}, err
 	}
 	steps := make([]Step, 0, len(discovery.Branches))
-	for step := range githubstack.Along(discovery.Base, discovery.Branches, discovery.PullRequests) {
-		// Landing merges every branch into the trunk, in turn, so that is what
-		// each pull request's base has to be by the time its turn comes -- not
-		// the branch below it, which is where it correctly sits now and which
-		// will not exist by then. Along answers the stacked question, which is
-		// the right one for status and the wrong one for this.
-		step.ExpectedBase = discovery.Base
+	for step := range githubstack.Across(intoTrunk(discovery.Base, discovery.Branches), discovery.Branches, discovery.PullRequests) {
 		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
 			Step:           step,
@@ -137,4 +131,16 @@ func allowedWays(allowed githubstack.Allowed) []repair.Step {
 func (s Service) unpublished(ctx context.Context, remote, tip, base string) (int, error) {
 	absent, _, err := s.Git.Cherry(ctx, remote, tip, base)
 	return len(absent), err
+}
+
+// intoTrunk aims every branch at the trunk. Landing merges each into the
+// trunk in turn, so that is what each pull request's base has to be by the
+// time its turn comes -- not the branch below it, which is where it correctly
+// sits now and which will not exist by then.
+func intoTrunk(trunk string, branches []string) map[string]string {
+	aimed := make(map[string]string, len(branches))
+	for _, branch := range branches {
+		aimed[branch] = trunk
+	}
+	return aimed
 }

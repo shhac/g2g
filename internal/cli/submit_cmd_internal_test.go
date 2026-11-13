@@ -84,11 +84,18 @@ func TestSubmitNamesAPullRequestBasedOffTheStack(t *testing.T) {
 // trunk -- is preserved without comment, as it always was.
 func TestSubmitSaysNothingOfABaseChosenInsideTheStack(t *testing.T) {
 	plan := submit.Plan{
-		Snapshot: stack.Snapshot{Target: "synthetic-b", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"}},
+		Snapshot: stack.Snapshot{Target: "synthetic-b", Base: "synthetic-main", Branches: []string{"synthetic-a", "synthetic-b"},
+			Parents: map[string]string{"synthetic-a": "synthetic-main", "synthetic-b": "synthetic-a"}},
 		Existing: []githubstack.PullRequest{
 			{Number: 6, Head: "synthetic-a", Base: "synthetic-main", State: "OPEN"},
 			{Number: 7, Head: "synthetic-b", Base: "synthetic-main", State: "OPEN"},
 		},
+	}
+	// The base differs from the recorded parent, which is what the preview
+	// has to stay quiet about; without the edge there would be nothing to
+	// stay quiet about, and the test would pass for no reason.
+	if plan.LinkBlocked() == "" {
+		t.Fatal("synthetic-b's pull request reads as based on its recorded parent")
 	}
 	for _, note := range submitView(plan, "", false, false, false).Notes {
 		if strings.Contains(note.Text, "retarget") {

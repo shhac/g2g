@@ -61,38 +61,18 @@ type PathStep struct {
 	Resolution   Resolution
 }
 
-// Along yields each branch of an ordered path with its expected base and
-// resolved pull request.
+// Across yields each branch with the base its parent edge names and its
+// resolved pull request, for a selection that need not be a path.
 //
-// The base rolls: the bottom branch sits on the trunk and every branch above
-// sits on its predecessor. link, sync and submit each derive that same chain
-// before applying their own policy, and deriving it three times is what let a
-// fourth caller drift into scanning for the first open pull request instead of
-// going through the open-is-identity rule.
-func Along(base string, branches []string, prs []PullRequest) func(func(PathStep) bool) {
-	return Across(rollingParents(base, branches), branches, prs)
-}
-
-// rollingParents is what "the base rolls" means, written down: on a path, a
-// branch's parent is simply the one before it.
-func rollingParents(base string, branches []string) map[string]string {
-	parents := make(map[string]string, len(branches))
-	for _, branch := range branches {
-		parents[branch] = base
-		base = branch
-	}
-	return parents
-}
-
-// Across yields each branch with the base its recorded parent implies, for a
-// selection that need not be a path.
-//
-// A fork has no "branch before this one", so the rolling base that Along
-// derives is not merely inconvenient there, it is wrong: it would compare a
-// pull request against whichever sibling happened to sort first. Passing the
-// parent edges explicitly is the only thing that makes the question meaningful
-// once a selection can fork, and Along is now the special case where those
-// edges form a chain.
+// There used to be a rolling form beside it, Along, in which every branch sat
+// on the one before it. A fork has no "branch before this one", so on a fork
+// that compared a pull request against whichever sibling happened to sort
+// first, and submit opened pull requests on siblings until it stopped using
+// it. Every caller now names its edges: stack.Snapshot.Steps the recorded
+// ones, land the trunk each branch is merged into. Deriving the chain in each
+// command separately is also what once let a caller drift into scanning for
+// the first open pull request instead of going through the open-is-identity
+// rule, which is why the resolution is applied here and nowhere else.
 //
 // A branch whose parent is outside the selection yields an empty expected base.
 // It is a root of the selection, and a root is not assessed against anything.

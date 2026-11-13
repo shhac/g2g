@@ -98,7 +98,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection) (Plan, err
 	// for a pull request left on a base the stack no longer has, so refusing
 	// one here refused the advice.
 	plan := Plan{Discovery: discovery, Changes: []Change{}, Ambiguous: []string{}}
-	for step := range githubstack.Across(discovery.Shape().Parents, discovery.Branches, discovery.PullRequests) {
+	for step := range discovery.Steps(discovery.PullRequests) {
 		switch step.Classify() {
 		case githubstack.StepAmbiguous:
 			plan.Ambiguous = append(plan.Ambiguous, step.Branch)

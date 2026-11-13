@@ -202,6 +202,15 @@ func (s Snapshot) Shape() Forest {
 	return Forest{Parents: parents}
 }
 
+// Steps is each selected branch with its pull request and the base that pull
+// request should have: the branch it sits on, recorded or the base. It is the
+// one way a command measures pull requests against the stack, so a fork is
+// measured edge by edge rather than as a line, where a branch's base would be
+// whichever sibling came before it.
+func (s Snapshot) Steps(prs []githubstack.PullRequest) func(func(githubstack.PathStep) bool) {
+	return githubstack.Across(s.Shape().Parents, s.Branches, prs)
+}
+
 // Forks reports whether any selected branch has two selected children.
 //
 // A GitHub native stack is linear, so this is the question every projecting

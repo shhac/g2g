@@ -131,7 +131,7 @@ func (p Plan) LinkRepair() repair.Note {
 // other than where the stack records it -- the branch it sits on, or the base.
 func (p Plan) misbased() []githubstack.PathStep {
 	misbased := make([]githubstack.PathStep, 0)
-	for step := range p.steps() {
+	for step := range p.Snapshot.Steps(p.Existing) {
 		if step.Classify() == githubstack.StepBaseMismatch {
 			misbased = append(misbased, step)
 		}
@@ -153,13 +153,6 @@ func (p Plan) OffStack() []githubstack.PathStep {
 		}
 	}
 	return off
-}
-
-// steps is each selected branch with the base its recorded parent implies.
-// A fork has no "branch before this one", so a rolling base would open a
-// pull request on its sibling.
-func (p Plan) steps() func(func(githubstack.PathStep) bool) {
-	return githubstack.Across(p.Snapshot.Shape().Parents, p.Snapshot.Branches, p.Existing)
 }
 
 // retarget is the command that moves every misbased pull request of this
@@ -328,7 +321,7 @@ func (p Plan) Equal(other Plan) bool {
 func assessExisting(snapshot stack.Snapshot, prs []githubstack.PullRequest) (map[string]string, map[string]githubstack.PullRequest) {
 	issues := map[string]string{}
 	superseded := map[string]githubstack.PullRequest{}
-	for step := range (Plan{Snapshot: snapshot, Existing: prs}).steps() {
+	for step := range snapshot.Steps(prs) {
 		// A missing pull request is not an issue for submit: creating it is the
 		// job. That is the whole of submit's policy difference from link.
 		switch step.Classify() {

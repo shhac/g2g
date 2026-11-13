@@ -104,6 +104,13 @@ command would name. The ordinary case is one extra query, because the wait
 asks before it sleeps and GitHub usually already agrees. A pull request this
 run opened, or one whose head GitHub never reported, is not asked about.
 
+**What a submission leaves out is asked from the top of each arm down.**
+`submit` asks one `merge-base --is-ancestor` of a branch above the target
+only once everything above that branch has been left out (`leftOut`), so the
+ordinary stack, whose tops have work, costs one question per leaf and no
+more. On a line that is the single question it always was; a fork adds one
+per extra arm, never one per branch.
+
 ## Still expensive
 
 Known, measured, and left for a change of its own:

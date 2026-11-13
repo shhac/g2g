@@ -7,6 +7,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/pause"
+	"github.com/shhac/g2g/internal/settle"
 )
 
 // mergeReady retries only the explicit base-change refusal, at most twice.
@@ -35,7 +36,7 @@ func (s Service) mergeReady(ctx context.Context, plan Plan, step Step, tip strin
 		if attempt == 3 {
 			return fmt.Errorf("the base of #%d kept changing after three merge attempts · rerun g2g land: %w", step.Number, err)
 		}
-		if err := wait(ctx, settleFirst); err != nil {
+		if err := wait(ctx, settle.First); err != nil {
 			return err
 		}
 		if state, err = s.settlePush(ctx, step, tip, plan.Options.Remote); err != nil {

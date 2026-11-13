@@ -241,7 +241,7 @@ func (s Service) observeQueue(ctx context.Context, plan Plan, step Step, tip str
 		return false, &Pending{Branch: step.Branch, Number: step.Number, State: pendingState(state), Cause: cause}
 	}
 	if !settled {
-		err = settle(ctx, s.pause, fmt.Sprintf("#%d to merge through the queue", step.Number), func(ctx context.Context) (bool, error) {
+		err = s.until(ctx, fmt.Sprintf("#%d to merge through the queue", step.Number), func(ctx context.Context) (bool, error) {
 			readiness, err := s.GitHub.Mergeability(ctx, []int{step.Number}, plan.Trunk)
 			if err != nil {
 				return false, err

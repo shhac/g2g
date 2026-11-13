@@ -1,4 +1,4 @@
-package land
+package settle
 
 import (
 	"bytes"
@@ -35,13 +35,13 @@ func TestSettleAsksBeforeItWaits(t *testing.T) {
 	clock := &recordingPauser{}
 	asked := 0
 
-	err := settle(context.Background(), clock.wait, "the push", func(context.Context) (bool, error) {
+	err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the push", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		return true, nil
 	})
 
 	if err != nil {
-		t.Fatalf("settle() error = %v", err)
+		t.Fatalf("Until() error = %v", err)
 	}
 	if asked != 1 {
 		t.Errorf("asked %d times, want once", asked)
@@ -55,21 +55,21 @@ func TestSettleKeepsAskingUntilTheAnswerIsYes(t *testing.T) {
 	clock := &recordingPauser{}
 	asked := 0
 
-	err := settle(context.Background(), clock.wait, "the push", func(context.Context) (bool, error) {
+	err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the push", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		return asked == 3, nil
 	})
 
 	if err != nil {
-		t.Fatalf("settle() error = %v", err)
+		t.Fatalf("Until() error = %v", err)
 	}
 	if asked != 3 {
 		t.Errorf("asked %d times, want three", asked)
 	}
 	// Backing off matters: GitHub computing mergeability is not helped by
 	// being asked twice a second.
-	if len(clock.waited) != 2 || clock.waited[0] != settleFirst || clock.waited[1] != settleFirst*2 {
-		t.Errorf("waited %v, want a widening gap from %v", clock.waited, settleFirst)
+	if len(clock.waited) != 2 || clock.waited[0] != First || clock.waited[1] != First*2 {
+		t.Errorf("waited %v, want a widening gap from %v", clock.waited, First)
 	}
 }
 
@@ -77,20 +77,20 @@ func TestSettleBacksOffNoFurtherThanItsCeiling(t *testing.T) {
 	clock := &recordingPauser{}
 	asked := 0
 
-	if err := settle(context.Background(), clock.wait, "the merge", func(context.Context) (bool, error) {
+	if err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the merge", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		return asked == 8, nil
 	}); err != nil {
-		t.Fatalf("settle() error = %v", err)
+		t.Fatalf("Until() error = %v", err)
 	}
 
 	for _, waited := range clock.waited {
-		if waited > settleMost {
-			t.Fatalf("waited %v, want nothing above %v", clock.waited, settleMost)
+		if waited > most {
+			t.Fatalf("waited %v, want nothing above %v", clock.waited, most)
 		}
 	}
-	if last := clock.waited[len(clock.waited)-1]; last != settleMost {
-		t.Errorf("final wait = %v, want the ceiling %v", last, settleMost)
+	if last := clock.waited[len(clock.waited)-1]; last != most {
+		t.Errorf("final wait = %v, want the ceiling %v", last, most)
 	}
 }
 
@@ -100,13 +100,13 @@ func TestSettleBacksOffNoFurtherThanItsCeiling(t *testing.T) {
 func TestSettleNamesWhatItGaveUpWaitingFor(t *testing.T) {
 	clock := &recordingPauser{giveUp: 3}
 
-	err := settle(context.Background(), clock.wait, "the merge to reach synthetic-main", func(context.Context) (bool, error) {
+	err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the merge to reach synthetic-main", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		return false, nil
 	})
 
 	var notSettled *NotSettled
 	if !errors.As(err, &notSettled) {
-		t.Fatalf("settle() error = %v, want a *NotSettled", err)
+		t.Fatalf("Until() error = %v, want a *NotSettled", err)
 	}
 	if notSettled.What != "the merge to reach synthetic-main" {
 		t.Errorf("What = %q", notSettled.What)
@@ -126,12 +126,12 @@ func TestSettleReturnsTheAskFailureUnchanged(t *testing.T) {
 	clock := &recordingPauser{}
 	refused := errors.New("synthetic gh failure")
 
-	err := settle(context.Background(), clock.wait, "the push", func(context.Context) (bool, error) {
+	err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the push", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		return false, refused
 	})
 
 	if !errors.Is(err, refused) {
-		t.Fatalf("settle() error = %v, want the ask's own failure", err)
+		t.Fatalf("Until() error = %v, want the ask's own failure", err)
 	}
 	var notSettled *NotSettled
 	if errors.As(err, &notSettled) {
@@ -145,7 +145,7 @@ func TestSettleReportsEachAttemptUnderDebug(t *testing.T) {
 	clock := &recordingPauser{}
 	asked := 0
 
-	if err := settle(ctx, clock.wait, "the push", func(context.Context) (bool, error) {
+	if err := Until(ctx, clock.wait, Question{Event: "test.settle", What: "the push", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		return asked == 2, nil
 	}); err != nil {
@@ -153,7 +153,7 @@ func TestSettleReportsEachAttemptUnderDebug(t *testing.T) {
 	}
 
 	got := diagnostics.String()
-	for _, want := range []string{"event=land.settle", `what="the push"`, `attempt="1"`, `settled="false"`, `attempt="2"`, `settled="true"`} {
+	for _, want := range []string{"event=test.settle", `what="the push"`, `attempt="1"`, `settled="false"`, `attempt="2"`, `settled="true"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("diagnostics missing %q: %q", want, got)
 		}
@@ -165,24 +165,24 @@ func TestSettleReportsEachAttemptUnderDebug(t *testing.T) {
 func TestSettleSlowsDownOnceAWaitHasGoneOnAMinute(t *testing.T) {
 	clock := &recordingPauser{}
 	asked := 0
-	if err := settle(context.Background(), clock.wait, "the merge", func(context.Context) (bool, error) {
+	if err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the merge", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		return asked == 20, nil
 	}); err != nil {
-		t.Fatalf("settle() error = %v", err)
+		t.Fatalf("Until() error = %v", err)
 	}
 	var total time.Duration
 	for _, waited := range clock.waited {
-		if total < settleSlow && waited > settleMost {
-			t.Fatalf("waited %v, want nothing above %v in the first %v", clock.waited, settleMost, settleSlow)
+		if total < slow && waited > most {
+			t.Fatalf("waited %v, want nothing above %v in the first %v", clock.waited, most, slow)
 		}
-		if waited > settleLate {
-			t.Fatalf("waited %v, want nothing above %v", clock.waited, settleLate)
+		if waited > late {
+			t.Fatalf("waited %v, want nothing above %v", clock.waited, late)
 		}
 		total += waited
 	}
-	if last := clock.waited[len(clock.waited)-1]; last != settleLate {
-		t.Errorf("final wait = %v, want the slow ceiling %v", last, settleLate)
+	if last := clock.waited[len(clock.waited)-1]; last != late {
+		t.Errorf("final wait = %v, want the slow ceiling %v", last, late)
 	}
 }
 
@@ -192,22 +192,22 @@ func TestSettleWaitsOutARateLimit(t *testing.T) {
 	limited := &githubstack.CommandError{Command: "gh api graphql", Cause: errors.New("synthetic exit 1"), Output: `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}`}
 	clock := &recordingPauser{}
 	asked := 0
-	if err := settle(context.Background(), clock.wait, "the merge", func(context.Context) (bool, error) {
+	if err := Until(context.Background(), clock.wait, Question{Event: "test.settle", What: "the merge", Rerun: "g2g land"}, func(context.Context) (bool, error) {
 		asked++
 		if asked == 1 {
 			return false, limited
 		}
 		return true, nil
 	}); err != nil {
-		t.Fatalf("settle() error = %v, want the limit waited out", err)
+		t.Fatalf("Until() error = %v, want the limit waited out", err)
 	}
-	if len(clock.waited) != 1 || clock.waited[0] != settleLate {
-		t.Errorf("waited %v, want one wait at %v", clock.waited, settleLate)
+	if len(clock.waited) != 1 || clock.waited[0] != late {
+		t.Errorf("waited %v, want one wait at %v", clock.waited, late)
 	}
 
 	gaveUp := &recordingPauser{giveUp: 1}
-	err := settle(context.Background(), gaveUp.wait, "the merge", func(context.Context) (bool, error) { return false, limited })
+	err := Until(context.Background(), gaveUp.wait, Question{Event: "test.settle", What: "the merge", Rerun: "g2g land"}, func(context.Context) (bool, error) { return false, limited })
 	if err == nil || !strings.Contains(err.Error(), "too often") || !errors.Is(err, limited) {
-		t.Errorf("settle() error = %v, want the rate limit named", err)
+		t.Errorf("Until() error = %v, want the rate limit named", err)
 	}
 }

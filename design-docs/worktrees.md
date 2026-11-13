@@ -61,10 +61,10 @@ lay this branch's change over whatever it is on now.
   brought. A restack that dies in between is finished by `--continue`, and
   `--abort` brings each one back. A failure to bring one is reported as done,
   with the `git -C … read-tree` command that finishes it, and exits `3`.
-  The journal is shared by every worktree, but a restack stopped in one
-  refuses only what it makes untrue elsewhere: `push`, `submit`, `create` and
-  `track` go ahead from another worktree unless they touch a branch it may
-  move, and every other mutating command still refuses
+  Each worktree journals its own restack, so a restack stopped in one
+  refuses only what it makes untrue elsewhere. `restack`, `push`, `submit`,
+  `create` and `track` go ahead from another worktree unless either side moves
+  what the other reads. Every other mutating command still refuses
   ([restack](restack.md)).
 - **A rewrite that has to rebase** (one whose preview conflicts, or which
   cannot be previewed) checks each branch out here, and Git won't check out a

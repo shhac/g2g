@@ -111,6 +111,13 @@ ordinary stack, whose tops have work, costs one question per leaf and no
 more. On a line that is the single question it always was; a fork adds one
 per extra arm, never one per branch.
 
+**A restack guard reads every worktree's journal at once.** Each guard
+check resolves the common and private Git directories, which costs two
+`rev-parse` calls. It then reads the shared journal file and globs the linked
+worktrees' files. That is one pass whatever the number of worktrees. It
+never asks Git per worktree: a linked worktree's checkout comes from the
+`gitdir` backlink in its private directory.
+
 ## Still expensive
 
 Known, measured, and left for a change of its own:

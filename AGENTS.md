@@ -486,22 +486,62 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   rule (`graph.belowLanded`), because a branch still on its parent's tip was
   never asked whether it had landed.
 - restack is the only resumable operation, so a mutating command refuses
-  while its journal exists — but only as far as the journal makes anything
-  untrue. The journal is shared by every worktree, so refusing everything let
-  one restack stopped on a conflict in an agent's worktree refuse push, submit,
-  create and track in every other worktree, on stacks with nothing in common
-  with it. Those four name the branches they touch, with the parents they
-  measure them against (`applyFlow.touches`), and are refused only when one of
-  them is a branch the restack may move (`Record.moving`), or when they run in
-  the worktree the restack belongs to, or the journal names no owner. Every
-  other mutating command cannot say what it touches and still refuses while any
-  restack is unfinished. The two questions are `idleGuard`'s `RequireIdle` and
-  `RequireIdleFor` (`internal/cli/guard.go`, `internal/restack/idle.go`),
-  named rather than told apart by a nil or empty argument, which every layer
-  had to pass correctly and a `touches` answering nil turned into the strictest
-  one. `--continue` recomputes from the refs rather than resuming a stored
-  queue, which is what makes the user's own `git rebase --continue`/`--abort`
-  harmless.
+  while a journal exists, but only as far as that journal makes anything
+  untrue.
+  - **One journal per worktree.** Each worktree journals its own restack
+    (`internal/restack/journal_file.go`, with whose each is in
+    `journal_owner.go`): the main worktree in
+    `g2g/restack.json`, a linked one in `g2g/restack/worktrees/<name>.json`,
+    all under the common directory so that removing a worktree does not take
+    its rollback record with it. One shared journal let a restack stopped on a
+    conflict in an agent's worktree refuse every restack in every other
+    worktree. The refusal also named a `--continue` and an `--abort` that
+    belonged to someone else, so waiting was the only way through.
+  - **Ownership by file.** Whose a record is depends on the file it is in.
+    The shared file is the main worktree's, unless its record names a linked
+    worktree (an older g2g wrote it that way); a record that names no
+    worktree is anyone's, as it was then. The common directory is the main
+    worktree's whatever its checkout is called. Never decide ownership from
+    the absolute path inside a record. Deciding it in five places that way read a
+    moved repository, a `--separate-git-dir` main worktree, or an ownerless
+    record as another worktree's that "no longer exists". The refusal then
+    offered to delete the journal that worktree's `--abort` needs.
+  - **Gone means Git dropped the worktree.** Another worktree counts as gone
+    only when Git has no private directory for it, and only then does
+    `Elsewhere.Repair` offer `rm` on the journal. The guards, the recovery
+    verbs and `doctor` all render that one note; `Record.Repair` is the
+    matching note for this worktree's own restack.
+  - **Listing journals.** The linked journals are listed with `os.ReadDir`,
+    never a glob built from the repository's path: a bracket in that path
+    hid every other worktree's restack.
+  - **This worktree's questions.** "Is a restack unfinished here" reads only
+    this worktree's files (`Journal.Load`), and the other worktrees' journals
+    come from `Journal.Elsewhere`, so another worktree's damaged journal
+    stops only the guards that weigh it.
+  - **What may go ahead.** restack, push, submit, create and track pass a
+    `restack.Footprint` (`applyFlow.touches`): what they move and what they
+    read. They are refused only in the restack's own worktree, or when either
+    side moves what the other reads (`RequireApart`). Both directions matter:
+    a restack paused while replaying a child onto its parent is undone by
+    another moving that parent. A plan and the record it journals derive their
+    footprints through one function, `footprintOf`. A restack checks again
+    after it publishes its journal, so two that start at once both step back.
+    Every other mutating command cannot say what it touches and refuses while
+    any worktree's restack is unfinished. pull is one of these, because it
+    advances a trunk another restack replays onto.
+  - **The guard questions.** The three questions are `idleGuard`'s
+    `RequireIdle`, `RequireIdleHere` and `RequireApart`
+    (`internal/cli/guard.go`, `internal/restack/idle.go`). They are named
+    rather than told apart by an empty argument, which every layer had to pass
+    correctly.
+  - **No lock on the graph store.** Two restacks finishing at the same moment
+    could lose one edge update, because the store is last-writer-wins
+    (`graph.FileStore.Save`). The window is the store's own load-modify-save,
+    which already existed between worktrees. A lock was deliberately not
+    added.
+  - **Resuming.** `--continue` recomputes from the refs rather than resuming a
+    stored queue, which is what makes the user's own
+    `git rebase --continue`/`--abort` harmless.
 
 ## Source resolution
 

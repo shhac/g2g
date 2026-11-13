@@ -393,12 +393,32 @@ branch that invocation was rebasing**, verified. Another process sees the interr
 through `git status`.
 
 So g2g's journal only needs what spans *several* invocations, which is a tree
-(one rebase per branch). At `$GIT_COMMON_DIR/g2g/restack.json`:
+(one rebase per branch). Each worktree keeps its own:
+`$GIT_COMMON_DIR/g2g/restack.json` for the main worktree, and
+`$GIT_COMMON_DIR/g2g/restack/worktrees/<name>.json` for a linked one, after
+the name Git gives its private directory. They live under the common
+directory rather than in each private one, because the refs a restack moves
+are shared and its record of them must outlive a removed worktree. Whose a
+record is depends on the file it is in.
+
+The main worktree's file is also where every worktree's restack went before
+each had its own. A record there that names a linked worktree is that
+worktree's, and it keeps using that file until the restack finishes. A
+record that names none is anyone's, as it was then.
+
+Two restacks in different worktrees run side by side unless either moves a
+branch the other reads: its own branches, their parents, and an `--onto`
+target. Each checks again once its own journal is published, so two that
+start at the same moment both step back. A refusal over another worktree's
+restack names its checkout and says to wait. It offers to delete that
+journal only when Git no longer has the worktree.
+
+Each record holds:
 
 - the `--onto` for the in-flight rebase
 - the branch the user was on, to restore afterwards
-- the private Git directory owning the rebase: linked worktrees share this
-  journal, but cannot continue, skip, or abort another worktree's operation
+- the private Git directory owning the rebase, which names the owner of a
+  record left in the shared file by an older g2g
 - the checkout's branch and tip before each bare ref move, so recovery can
   reconcile its index after interruption between the ref move and read-tree
 - **every branch's tip at operation start**, so `--abort` can roll back paths

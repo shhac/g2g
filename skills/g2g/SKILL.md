@@ -375,6 +375,15 @@ description: |
   checkout detached at a landed stack's tip even with the `--at` the refusal
   had suggested. The refusal offers `git branch <name> HEAD`, or detaching at
   the parent and rerunning `g2g create <name> --parent <parent>`.
+- A detached HEAD on the default branch's known upstream is a worktree made
+  at the trunk's remote copy. Without `--parent`, the refusal offers
+  `g2g create <name> --parent <trunk> --at HEAD` as a way out. It never
+  chooses the trunk. The offer is planned first and made only if create would
+  accept it. The "past the tip, on the known upstream" test is
+  `graph.AheadOnUpstream`, shared with `--at` and with status's reading of a
+  branch started there. With `--parent <trunk>`, `Plan.HeadAhead` counts how far
+  the trunk's tip is behind HEAD, and the preview warns and names the same
+  command.
 - A branch whose fork point is past its trunk's local tip and on the trunk's
   known upstream (`graph.AheadOnUpstream`) sits on a trunk that lags; it is not
   stale and nothing moved back. `status` advises `pull`, and `restack` and a
@@ -445,14 +454,19 @@ description: |
   still sits exactly where its fork point says. Each independent root is its
   own replay, and every range passed to an engine starts at that root's fork
   point, because an engine replays the union onto one base.
-- restack is the only resumable operation. Every other mutating command must
-  refuse while its journal exists, except that push, submit, create and track
-  name the branches they touch (and their parents) and refuse only when one is
-  a branch the restack may move or they run in the restack's own worktree
-  (`RequireIdleFor`; everything else asks `RequireIdle`), `--continue`
-  recomputes from the refs rather
-  than resuming a stored queue, and `--abort` restores tips the journal
-  recorded because git only rolls back the invocation it was running.
+- restack is the only resumable operation, and each worktree journals its own
+  (`FileJournal`: `g2g/restack.json` for the main worktree,
+  `g2g/restack/worktrees/<name>.json` for a linked one, all under the common
+  directory). Which worktree a record belongs to depends on the file it is in,
+  never on the absolute path inside it. Every other mutating command refuses
+  while any worktree's restack is unfinished (`RequireIdle`). The exceptions
+  are restack, push, submit, create and track: they pass a
+  `restack.Footprint` and are refused only in the restack's own worktree, or
+  when either side moves what the other reads (`RequireApart`). A restack
+  checks again after publishing its journal, so two that start at once both
+  step back. `--continue` recomputes from the refs rather than resuming a
+  stored queue. `--abort` restores the tips the journal recorded, because git
+  only rolls back the invocation it was running.
 - The store lives under the Git common directory and is located with
   `git rev-parse --path-format=absolute --git-common-dir`. The bare form is
   relative to the working directory and silently wrong from a subdirectory.

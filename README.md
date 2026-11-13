@@ -536,6 +536,13 @@ says. The refusal offers `git branch <name> HEAD` to keep those commits, or
 `git switch --detach <parent>` and rerunning `g2g create <name> --parent
 <parent>` if they are not wanted.
 
+A worktree made at the trunk's remote copy (`git worktree add <path>
+origin/main`) is detached at a commit the local trunk has not caught up to.
+Without `--parent`, the refusal offers `g2g create <name> --parent main --at
+HEAD`, which starts there. It offers it rather than choosing it, because a
+trunk is named, never guessed. With `--parent main` alone, the preview says
+how many commits the start is behind HEAD and names the same command.
+
 When the local trunk is stale and checked out in another worktree, name a newer
 known trunk revision explicitly:
 
@@ -660,19 +667,27 @@ conflict on one line of descent, and `--continue` (or `--skip`) goes on to the
 other line, stopping there too if it conflicts.
 
 A stopped restack exits `3`, including when `--continue` hits another conflict.
-Run recovery from the worktree that started it: linked worktrees share the
-journal but not Git's rebase state. Abort refuses to rewind a completed branch
+Run recovery from the worktree that started it: each worktree keeps its own
+journal, beside Git's own rebase state there, and `--continue` elsewhere says
+which checkout the restack belongs to. Abort refuses to rewind a completed branch
 that another worktree has since checked out; release that branch there and
 retry `g2g restack --abort`. A worktree the restack brought along is brought
 back with its branch, unless somebody has committed there since.
 
 This is g2g's only resumable operation, so **a command that changes anything
 refuses while a restack is unfinished** — mid-restack a branch may already
-have moved while the graph still records where it used to be. `push`,
-`submit`, `create` and `track` are the exception, because they can say which
-branches they touch: from another worktree they go ahead unless one of those
-branches, or a parent they measure one against, is a branch the restack may
-move. In the worktree the restack belongs to they refuse like everything else.
+have moved while the graph still records where it used to be. `restack`,
+`push`, `submit`, `create` and `track` are the exception, because they can
+say which branches they touch: from another worktree they go ahead unless
+another worktree's restack moves one of those branches, or a parent they
+measure one against. A restack is also refused when it would move a branch
+the other restack replays onto. Two sessions can therefore restack two
+stacks at once, each in its own worktree. In the worktree the restack belongs
+to, those commands refuse like everything else. A refusal over another
+worktree's restack names its checkout and says to wait, because its
+`--continue` and `--abort` are for whoever started it. If that worktree has
+been removed, the refusal names the journal file to delete. `doctor`
+reports every worktree's unfinished restack.
 
 Four things a restack reports rather than doing quietly:
 

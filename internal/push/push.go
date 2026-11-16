@@ -208,6 +208,9 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 		return Plan{}, err
 	}
 	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, syncpoint.Of(plan.Commits, syncpoint.Restoring))
+	if err := s.explainDifference(ctx, &plan); err != nil {
+		return Plan{}, err
+	}
 	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, syncpoint.Of(plan.Commits, syncpoint.Dropped))
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},

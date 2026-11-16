@@ -95,6 +95,12 @@ func TestJourneyPushStillRefusesOverAReviewersAmend(t *testing.T) {
 	if s.tip(s.Remote, "synthetic-b") != amended {
 		t.Error("Bob's amend is gone from the remote")
 	}
+	preview := mustRun(t, "push", "--branch", "synthetic-b", "--scope", "branch")
+	for _, want := range []string{amended[:12], "synthetic y.txt", "g2g pull --branch synthetic-b", "--take published"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("refusal does not identify the difference and previewable repair (%q):\n%s", want, preview)
+		}
+	}
 }
 
 // Bob resolved the conflicts and published. Every commit of B changed, which

@@ -1,9 +1,42 @@
 package push
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/stack"
 )
+
+func TestDifferenceRepairPreviewsTakingOnlyThroughTheTarget(t *testing.T) {
+	for _, scope := range []shape.Scope{shape.ScopeBranch, shape.ScopePath, shape.ScopeStack, shape.ScopeTrunk} {
+		t.Run(string(scope), func(t *testing.T) {
+			branches := []string{"synthetic-$target"}
+			publishing := map[string]Publication{branches[0]: {Standing: Unknown}}
+			plan := Plan{
+				Snapshot: stack.Snapshot{Target: branches[0], Scope: scope, Branches: branches},
+				Remote:   "synthetic-remote", Publishing: publishing,
+				Repair: blockedBy("synthetic-remote", branches, publishing, nil, nil),
+			}
+			if err := (Service{}).explainDifference(context.Background(), &plan); err != nil {
+				t.Fatal(err)
+			}
+			want := "g2g pull --branch 'synthetic-$target'"
+			if scope == shape.ScopeTrunk {
+				want += " --scope trunk"
+			}
+			want += " --remote synthetic-remote"
+			if plan.Repair.Ways[0].Command != want {
+				t.Errorf("pull = %q, want %q", plan.Repair.Ways[0].Command, want)
+			}
+			take := plan.Repair.Ways[len(plan.Repair.Ways)-1]
+			if take.Command != want+" --take published --through 'synthetic-$target'" || !strings.Contains(take.Effect, "discard") {
+				t.Errorf("take hides its boundary or destructive effect: %+v", take)
+			}
+		})
+	}
+}
 
 func TestReplacementAdvicePinsOnlyRejectedBranchesToObservedTips(t *testing.T) {
 	note := blockedBy("synthetic-remote", []string{"synthetic-a", "synthetic-b", "synthetic-c"},

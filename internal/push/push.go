@@ -208,6 +208,7 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 		return Plan{}, err
 	}
 	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, syncpoint.Of(plan.Commits, syncpoint.Restoring))
+	plan.explainMissingAgreement(changed)
 	if err := s.explainDifference(ctx, &plan); err != nil {
 		return Plan{}, err
 	}

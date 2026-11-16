@@ -1,5 +1,5 @@
-// This file decides what a restack would do. Nothing in it changes the
-// repository: every function here reads, measures, and reports.
+// This file decides what a restack would do. It moves no branches, but records
+// exact agreement with locally known remote tips before a replay can lose it.
 package restack
 
 import (
@@ -25,7 +25,7 @@ func (s Service) Ready() bool {
 	return s.Git != nil && s.Journal != nil
 }
 
-// Plan works out what has to be replayed, without changing anything.
+// Plan works out what has to be replayed, recording any exact agreement first.
 //
 // worktrees is what to do about a branch that would move while another
 // worktree has it checked out; the zero value refuses, as every rewrite did
@@ -100,6 +100,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Held = true
 		return plan.refused(note), nil
 	}
+	s.recordLevel(ctx, plan)
 	diagnostic.Event(ctx, "restack.plan",
 		diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")},
 		diagnostic.Field{Key: "clean", Value: fmt.Sprintf("%t", clean)},

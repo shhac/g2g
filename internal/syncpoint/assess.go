@@ -33,6 +33,8 @@ type Assessor interface {
 //
 // It is the one place a sync point is read for a decision, so pull and push
 // cannot come to mean different things by having one.
+// With no Remote tip, it checks only whether the agreement is usable: a push
+// can explain missing evidence even before it has the published objects.
 func Assess(ctx context.Context, git Assessor, latest Latest, branch string, sides Branch) (Changes, error) {
 	point, synced, err := describing(ctx, git, latest, branch)
 	if err != nil {
@@ -40,6 +42,9 @@ func Assess(ctx context.Context, git Assessor, latest Latest, branch string, sid
 	}
 	if !synced {
 		return Changes{Unsynced: true}, nil
+	}
+	if sides.Remote == "" {
+		return Changes{}, nil
 	}
 	sides.Sync, sides.Synced = point, true
 	droppable, err := mayHaveDropped(ctx, git, sides)

@@ -203,7 +203,15 @@ func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, bran
 		return Publication{Standing: Current}, syncpoint.Changes{}, nil
 	}
 	if _, err := git.Resolve(ctx, tip); err != nil {
-		return Publication{Standing: Unknown}, syncpoint.Changes{}, nil
+		changes := syncpoint.Changes{Unsynced: true}
+		if assessor, ok := git.(syncpoint.Assessor); ok {
+			var err error
+			changes, err = syncpoint.Assess(ctx, assessor, latest, branch, syncpoint.Branch{})
+			if err != nil {
+				return Publication{}, syncpoint.Changes{}, err
+			}
+		}
+		return Publication{Standing: Unknown}, changes, nil
 	}
 	// Where the remote's own work on the branch begins is asked at most once,
 	// and only by whichever of the two comparisons below needs it.

@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
+	"github.com/shhac/g2g/internal/syncpoint"
 )
 
 func TestDifferenceRepairPreviewsTakingOnlyThroughTheTarget(t *testing.T) {
@@ -48,5 +49,30 @@ func TestReplacementAdvicePinsOnlyRejectedBranchesToObservedTips(t *testing.T) {
 	}
 	if !strings.Contains(note.Ways[1].Effect, "dropping what the remote has") {
 		t.Fatal("replacement advice hid its destructive effect")
+	}
+}
+
+func TestMissingAgreementExplainedOnlyForRejectedUnsyncedBranches(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		standing       Standing
+		unsynced, want bool
+	}{
+		{"diverged without agreement", Diverged, true, true},
+		{"behind without agreement", Behind, true, true},
+		{"unavailable objects without agreement", Unknown, true, true},
+		{"usable agreement", Diverged, false, false},
+		{"safe unpublished work", Ahead, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			branches := []string{"synthetic-top"}
+			publishing := map[string]Publication{branches[0]: {Standing: test.standing}}
+			p := Plan{Snapshot: stack.Snapshot{Branches: branches}, Publishing: publishing, Repair: blockedBy("origin", branches, publishing, nil, nil)}
+			p.explainMissingAgreement(map[string]syncpoint.Changes{branches[0]: {Unsynced: test.unsynced}})
+			got := strings.Contains(p.Repair.Reason, "g2g has no record that this checkout and the remote agreed on synthetic-top")
+			if got != test.want {
+				t.Fatalf("reason=%s, want missing agreement=%t", p.Repair.Reason, test.want)
+			}
+		})
 	}
 }

@@ -11,6 +11,21 @@ import (
 	"github.com/shhac/g2g/internal/syncpoint"
 )
 
+// explainMissingAgreement uses the assessment already made by Compare. An
+// absent or unusable sync point explains why a replay cannot be distinguished
+// from somebody else's work; it never makes replacing that work safe.
+func (p *Plan) explainMissingAgreement(changed map[string]syncpoint.Changes) {
+	missing := make([]string, 0)
+	for _, branch := range p.Branches {
+		if p.Publishing[branch].Rejected() && changed[branch].Unsynced {
+			missing = append(missing, branch)
+		}
+	}
+	if p.Repair.Reason != "" && len(missing) != 0 {
+		p.Repair.Reason += "; g2g has no record that this checkout and the remote agreed on " + strings.Join(missing, ", ") + "; it may have been first pushed outside g2g"
+	}
+}
+
 // explainDifference names the published work a refused push would overwrite.
 // Only refused branches pay for this read; unknown objects remain unnamed
 // until pull fetches them. No classification or permission to push changes.

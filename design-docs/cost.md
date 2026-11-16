@@ -132,6 +132,19 @@ content say “merged into <base>, not landed” and offer `g2g submit`; unavail
 feature content stays “landing unconfirmed”. Cached lifecycle observations
 remain dated history and never evidence for deletion. No GitHub call is added.
 
+A merged PR into the branch’s recorded feature parent has a separate outcome:
+`landed.AssessParent` checks that parent by content and, when necessary, its
+locally known published copy from `KnownTips`. Candidate parents are read in
+one batch through `landed.KnownParents`, before concurrent content checks. A
+confirmed child is “merged into synthetic-parent; absorbed”, excluded from
+submission metadata and publication. It is not asserted landed in the trunk.
+`github status` offers the source’s cleanup command. For g2g, `prune` already
+checks parent absorption; when only the known published parent contains the
+work, collect it first with `pull --above synthetic-parent`, then prune.
+A merge into another feature base, or absent/unreadable parent content, grants
+no exclusion. Followup child work still needs a replacement. These advisory
+reads neither fetch nor authorize deletion from cached PR lifecycle state.
+
 **Preserved PR bases use projected publication.** Only mismatched open PRs
 whose heads are in `Push.Leases()` need ancestry checks. Bases in those leases
 use their local proposed tips. Untouched bases reuse push's observed remote

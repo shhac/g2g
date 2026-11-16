@@ -180,3 +180,12 @@ dropped upstream, listing every commit; `push` publishes what was dropped here,
 listing every commit; a commit replaced by a replay that resolved a conflict
 publishes and pulls as the rewrite it is; `--keep <commit>` on `pull` keeps
 either kind; `--strict` refuses any drop at all.
+
+A sequence of conflict recovery followed by further restacks keeps the original
+agreement: pairing compares the final replay directly with that agreed commit,
+not just with the immediately preceding replay. The real-Git journey
+`TestJourneySubmitAfterThreeRestacksAndAConflictResolution` covers conflict
+resolution keeping both sides, a lower-branch fix and two further replays.
+A refused publication names the differing published commits when available and
+offers a pull preview, including an explicit `--take published --through` choice
+that lists local losses. It never authorizes overwriting a reviewer’s commit.

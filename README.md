@@ -738,7 +738,10 @@ with the command that finishes one later; a leave the preview named exits
 `0`. A replay that has moved a branch and then cannot bring its worktree
 along reports the `git -C … read-tree` command that finishes it and exits
 `3`; `pull`'s own moves bring the worktree first, so one that will not come
-along stops that move instead. See
+along stops that move instead. With `restack --onto`, a held descendant may
+stay too: it keeps its parent and fork point, and branches above it are
+measured against its unchanged tip. A held selection root that `--onto` must
+move still refuses, because leaving it would omit the requested move. See
 [design-docs/worktrees.md](design-docs/worktrees.md).
 
 #### Pull
@@ -953,7 +956,7 @@ hand.
 A branch is identified by its single open pull request. Closed and merged pull
 requests left on a reused branch name are treated as history: they never block
 `github link`, `github retarget`, or `github status`, and `submit` creates a
-replacement rather than skipping the branch. Two or more open pull requests for
+replacement unless the recorded parent already contains a merged branch’s work. Two or more open pull requests for
 one branch is the only ambiguity, and it fails closed.
 
 #### push
@@ -1014,9 +1017,12 @@ A commit somebody added or amended on the remote since is not one you agreed
 on, so `push` still refuses over it. Without a sync point — a branch last
 pushed by plain `git push`, say — nothing proves the remote holds only what you
 had, so the refusal says the published version differs, explains this
-possibility, and offers an atomic replacement command with leases pinned to the
-observed tips. Inspect the differences before choosing that replacement; it can
-drop work.
+possibility, names the differing published commits by branch, short id and
+subject when their objects are available, and offers `g2g pull` to reconcile.
+`g2g pull --take published --through synthetic-top` previews taking the remote
+versions through that branch, listing the local commits it would discard; review
+that list before adding `--apply`. The refusal also retains the manual atomic
+replacement command with pinned leases. That replacement can drop remote work.
 
 A branch's own commits are measured from its parent as the remote holds it,
 when the remote's version is built on that: a commit somebody published on the
@@ -1094,6 +1100,16 @@ remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
 existing-PR, then push refusals, in that order; preview, CLI blocking and apply
 all consume it. Missing-spec requirements remain in the CLI. The check adds no
 GitHub reads, and `push` stays Git-only.
+
+A child squash-merged into its recorded feature parent is left out when Git
+confirms the parent already has its work. Its preview says “merged into
+synthetic-parent; absorbed”, asks for no spec entry and does not push it.
+Locally known remote parent copies count too, without fetching. When only that
+copy contains the work, first collect it with
+`g2g pull --branch synthetic-child --above synthetic-parent`, then preview
+`g2g prune --branch synthetic-child --scope branch` to forget the record.
+A merge into a different feature base, or child work the parent does not have,
+still needs a replacement. No PR lifecycle alone proves absorption.
 
 Generate a reusable spec outside the repository, fill in the missing PRs' titles, validate,
 then apply it:
@@ -1246,9 +1262,12 @@ request is not on the commit the branch is, and only ever appears when that is
 true, so a current one stays unannotated and the stale ones stand out. `pr✗`
 is a pull request that is missing, closed, or ambiguous — not a statement about
 a base, because a branch with no pull request has no base to be wrong about.
-`pr✓` is a merged one whose work the local trunk contains, checked by content.
-A PR merged into a feature base whose work is absent from the trunk reads
-“merged into <base>, not landed” and is offered `g2g submit` for a replacement.
+`pr✓` confirms a merge by content, either in the local trunk or absorbed into
+its recorded feature parent. Parent absorption reads “merged into
+synthetic-parent; absorbed” and offers pruning, after collecting the parent
+first if only its known remote copy contains the work. Other feature-base
+merges whose work is absent from the trunk read “merged into <base>, not
+landed” and offer `g2g submit` for a replacement.
 Unreadable or absent local feature content says “landing unconfirmed”. A PR
 merged into the landing trunk whose content is not confirmed locally says to
 refresh that trunk and reassess, with `g2g pull` aimed at the selection. Submit's
@@ -1581,12 +1600,13 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 |---|---|
 | A pull request has merged and its content is in the local trunk | `g2g pull` for a stack g2g records, `gt sync` for one Graphite declares; none for one read from pull request bases, which nothing here records |
 | A PR merged into the landing trunk, with local content absent or unconfirmed | `g2g pull` to refresh the trunk and reassess |
-| A PR merged into a feature base, with work still outside the trunk | `g2g submit` for a replacement |
+| A PR merged into its recorded feature parent, which contains its work | `g2g prune`; collect the parent with `g2g pull --above synthetic-parent` first when only its known remote copy contains it |
+| Other feature-base merges, with work still outside the trunk | `g2g submit` for a replacement |
 | A branch's work has already landed | `g2g prune`, or `gt sync` for a Graphite-declared stack |
 | A branch has no pull request, or one closed without merging | `g2g submit` |
 | A pull request is open on the wrong base | `g2g github retarget` |
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
-| The remote has moved on a branch `push` would publish | fetch and reconcile first, or use the printed atomic push with explicit tip-pinned leases to replace what is published, dropping remote-only work |
+| The remote has moved on a branch `push` would publish | `g2g pull` to reconcile, or preview `g2g pull --take published --through synthetic-top` and review its listed local losses; the manual pinned replacement can drop remote-only work |
 | A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
 | `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |

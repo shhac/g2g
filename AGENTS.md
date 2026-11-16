@@ -248,6 +248,12 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   trunk content are `IssueMergedUnlanded` and need replacement through `submit`.
   Merges into the landing trunk with absent or unknown local content are
   `IssueMergedStale`: advise `g2g pull` through `selected.aim`, then reassess.
+  A merged PR into its recorded feature parent is separately absorbed when
+  `landed.AssessParent` confirms content locally or in its known published copy.
+  Submit excludes it from metadata and pushes; status names source-appropriate
+  cleanup. `landed.KnownParents` batches candidate-parent reads before concurrent
+  probes. Collect a parent known only remotely with `pull --above` before
+  pruning; prune still checks local content, never PR lifecycle alone.
   Absent or unreadable feature content stays unconfirmed. This preserves the
   reading the offline view (`status`, once `graph`) has always taken of an
   already-landed branch. They used to be one string under one colour, which is
@@ -391,10 +397,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   worktree is clean and brings that worktree along through `SwitchTreeIn`
   (`read-tree -m -u` there), and leaves one whose worktree has changes; `skip`
   leaves every held branch; `refuse` is the old refusal. A left branch gets no
-  step, so what sits on it is measured against where it is. `pull` collects
-  again with left branches fixed, records no sync point for them — recording
-  the remote's tip as agreed for a branch it never reconciled would read a
-  reviewer's commit as dropped here, and push would erase it — and a trunk left
+  step, so what sits on it is measured against where it is. A restack onto a
+  named base may leave held descendants, preserving their edges and fork
+  points. Only a held selection root that `--onto` must move refuses. Use
+  `selectionRoots` for that distinction; the shared worktree policy still
+  decides who is left.
+  `pull` collects again with left branches fixed, records no sync point for
+  them — recording the remote's tip as agreed for a branch it never reconciled
+  would read a reviewer's commit as dropped here, and push would erase it — and
+  a trunk left
   behind fixes every branch. Followed worktrees are journaled before anything
   moves so `--continue` and `--abort` can settle them; `pull` moves the tree
   before the ref, as `moveBranch` does. A branch a worktree is rebasing or
@@ -442,7 +453,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   author, author date and subject; old in the sync point, new not; new
   committed no earlier) and read as replaced: that is what lets a
   conflict-resolved replay publish through `push`, and every one of those
-  conditions is what keeps a reviewer's amend from pairing. Record
+  conditions is what keeps a reviewer's amend from pairing. Repeated restacks
+  compare the final replay against the same agreement. Publication refusals
+  name differing remote commits when available and offer a previewable pull,
+  with an explicit bounded take naming local losses; never silently replace
+  remote work. Record
   the tip the plan saw, never one read again at write time; record at plan time
   only for a branch exactly level with the remote, because a branch ahead of it
   is also what a remote-dropped commit looks like; and a recording that fails
@@ -651,6 +666,8 @@ The following decisions exist once and must not be reimplemented locally. Each w
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
+- `landed.AssessParent` / `landed.KnownParents` — shared advisory parent
+  absorption and one batched local read of known published parent copies.
 - `landed.Assess` — present, absent or unknown content evidence for advisory
   merged-history reads in link and submit, sharing `landed.Into` underneath.
   `link.Service.assessLanded` owns per-issue policy; its scheduler only assigns

@@ -93,6 +93,9 @@ description: |
   `--strict` on `pull`, `push`, `submit` and `land` refuses any drop, and any
   branch differing with no sync point. Membership in a sync point is by commit
   id, never content.
+  Repeated restacks keep that agreement. A refused publication names differing
+  published commits when available and offers a pull preview; the explicit
+  `--take published --through <branch>` choice lists local commits it discards.
 - `adopt --scope path` and `github adopt --scope path` record one chain — the
   trunk up to `--branch` — for taking up one line of somebody else's stack.
 - `pull --trunk-only` advances only the selected branch's evidenced trunk,
@@ -119,6 +122,10 @@ description: |
   is when the worktree has changes — the preview names both, and a left branch
   is finished later by `g2g restack` (or `g2g pull --trunk-only` for a trunk)
   run in that worktree. `--worktrees skip` leaves every such branch;
+  `restack --onto` can leave a held descendant too, keeping its parent and
+  fork point and measuring its children against its actual tip. Only a held
+  selection root that `--onto` must move refuses; do not make the presence of
+  `--onto` refuse every left descendant.
   For a left `pull --above` boundary, rerun the same scoped pull once its
   worktree is free; a plain restack would replay the parent onto trunk.
   `--worktrees refuse` refuses instead. `land` cannot leave part of a descent:
@@ -730,6 +737,12 @@ description: |
   content say “merged into <base>, not landed” and offer `g2g submit`; unavailable
   feature content stays “landing unconfirmed”. Cached lifecycle observations
   remain dated history and never evidence for deletion. No GitHub call is added.
+  Exception to replacement: a merged PR into its recorded feature parent is
+  absorbed when `landed.AssessParent` confirms content locally or in its known
+  remote copy. Read candidate parents once through `landed.KnownParents` before
+  parallel probes. Submit excludes it from specs and pushes; status names
+  pruning. If only the known remote parent has the work, collect that parent
+  with `pull --above` first. Prune still verifies local content independently.
 - `github status` is the read-only triage entry point for pull requests. It
   renders one selected path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

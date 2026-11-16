@@ -80,6 +80,18 @@ restacked onto B's current tip only if it is behind it. A later `g2g restack`
 from B's worktree moves B and C together. Leaving a branch can only shrink the
 set that moves, so one replan is enough.
 
+An explicit `restack --onto` follows the same rule for descendants. In
+`synthetic-trunk < synthetic-a < synthetic-b < synthetic-top (held)`, moving
+synthetic-a onto `origin/synthetic-trunk` can leave synthetic-top: only the
+selection root is asked to change parents, and synthetic-top keeps its parent
+and fork point. The ordinary left-branch note names the holder and
+`g2g restack` there once it is free. A held middle branch also stays, with its
+children measured against its actual tip. Refuse only when the policy would
+leave the selection root that `--onto` needs to move: recording that root on
+the new parent without moving it would claim a move that never happened.
+This is the same distinction as a held survivor above a land descent: work
+below a left descendant does not depend on moving it.
+
 Each command decides only the branches it moves itself. `pull` decides its own
 moves first -- the trunk it advances, the branches it takes -- and the replay
 after it takes those decisions as given rather than asking again, bringing a

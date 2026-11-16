@@ -515,6 +515,15 @@ g2g restack --continue | --abort | --skip
 boundary. Plain `restack` means "the edge is right, put the branch on its
 recorded parent".
 
+Only the selection root changes parents under `--onto`. A descendant held by
+another worktree may be left by `--worktrees skip`, or by `follow` when that
+worktree has changes: it gets no step and retains its edge and fork point.
+Branches above it are measured against its actual tip, as in an ordinary
+restack. The preview names what stays and the later `g2g restack` in the
+holder's worktree. A held root that must move still refuses, since leaving
+that root would skip the move the user explicitly asked for. See
+[worktrees](worktrees.md).
+
 A later `--interactive` is a natural extension rather than a bolt-on, because
 `git rebase -i --update-refs` already writes branch updates into the todo list
 as `update-ref refs/heads/<branch>` lines. Reordering commits and moving a
@@ -551,6 +560,11 @@ a `restack.Reads` footprint over its branches and parents. They change only
 GitHub. Comment history widens its GitHub reads, never its local branch reads;
 its footprint is the full stack selected by comment planning. Both still refuse
 in the journal owner’s worktree or when another journal moves what they read.
+
+Repeated restacks do not record a new agreement with the remote. After a
+conflict-resolved `--continue`, subsequent replays still publish against the
+original sync point; the final commit keeps the author, author date and subject
+used by replay pairing. See [sync-points.md](sync-points.md).
 
 ## Remote interaction
 

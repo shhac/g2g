@@ -118,6 +118,17 @@ worktrees' files. That is one pass whatever the number of worktrees. It
 never asks Git per worktree: a linked worktree's checkout comes from the
 `gitdir` backlink in its private directory.
 
+**Merged PR history needs local evidence.** A GitHub `MERGED` lifecycle is
+not proof of landing in the trunk. Live
+`github status` checks merged branches through `landed.Into`; submit checks
+only merged predecessors and qualifies their history in its preview. Both
+compare against the local trunk, bounded above that trunk rather than a
+feature parent that may already contain the head. Cherry and whole-branch
+absorption remain the shared decision. A negative answer says “merged into
+<base>, not landed” and offers a replacement through `g2g submit`; unavailable
+content stays “landing unconfirmed”. Cached lifecycle observations remain
+dated history and never evidence for deletion. No GitHub call is added.
+
 ## Still expensive
 
 Known, measured, and left for a change of its own:

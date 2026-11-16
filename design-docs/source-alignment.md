@@ -349,6 +349,18 @@ just added in `gt`". It would also be the first stored cross-tool state in a
 design that has deliberately avoided any. g2g wins, the preview names every
 edge it will overwrite, and that is enough.
 
+## Publishing preserves safe bases
+
+Submit refuses before pushing when an open PR base differs from its recorded
+stack parent and would contain the proposed head by local ancestry, including
+a local base outside the selection. It names `g2g github retarget` over the
+selection to run first: publishing that ancestry would let GitHub mark the PR
+merged irreversibly. A correctly based PR is never refused by this check,
+because retargeting would change nothing. With `--link`, linking refusals
+take precedence over publication refusals, so a fork still names narrowing
+the selection or dropping `--link`. The check uses the existing PR read and
+local tips only; `push` still never reads GitHub.
+
 ## Deferred
 
 **Handing a stack back to Graphite.** That is `untrack --scope subtree` from

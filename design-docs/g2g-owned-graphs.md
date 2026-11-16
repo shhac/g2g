@@ -166,7 +166,7 @@ selection, or landed classification. Offline status can display that dated
 knowledge; see [PR observations](pr-observations.md).
 
 The **fork point** is stored, and the distinction matters. An edge records the
-merge base of the branch and its named parent at the moment the edge was written.
+merge base of the branch and its named parent when first recorded.
 When the parent is already an ancestor, this is its tip. A trunk's local tip
 can lag the upstream commit the branch was created from. For trunks, `track`
 also reads origin's locally known tip (remote-tracking and g2g isolated refs)
@@ -232,6 +232,20 @@ the local upstream evidence above; without that evidence a valid boundary is
 preserved. A rewritten feature parent still requires its tip in the child
 before refreshing, because a merge base cannot separate its old work from
 the child's.
+
+Changing an already recorded parent preserves its verified fork point rather
+than deriving a wider range from the new parent. If `synthetic-b` forks from a
+newer trunk than sibling `synthetic-a`, their merge base lies below trunk
+commits `synthetic-b` already contains; using it would turn those trunk commits
+into branch work. `graph.LaterFork` may advance the boundary on shared ancestry
+with the new parent, but never move it backwards or onto another line. The old
+fork point must resolve and be an ancestor of the branch. Without that evidence
+(including a legacy edge with no fork point), only a verified new parent tip in
+the branch permits a new boundary; otherwise the plan refuses with a
+`repair.Note` asking the user to record the parent it is actually built on.
+Initial tracking of an unrecorded branch retains the explicit asserted-parent
+contract above. The reparent preview names the range being recorded, and
+restack names each actual range it will replay.
 
 Recording a branch under a parent that is not itself tracked also records that
 parent as a root. Without it the next branch up the stack could not find the

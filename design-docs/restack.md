@@ -48,6 +48,15 @@ it is an ancestor) — see the storage note in
 stored rather than derived: after a merged parent is deleted there is nothing
 left to derive it from.
 
+`track --parent` changing an existing edge preserves the branch's verified
+range. A sibling on an older trunk is a new destination, not evidence that the
+intervening trunk commits belong to the branch. Shared ancestry may narrow the
+range through `graph.LaterFork`, never widen it. An invalid recorded boundary
+requires a verified new parent tip in the branch or tracking refuses before
+writing. Track's reparent preview names the boundary; restack's preview names
+each actual `forkPoint..head` range, including a pinned incoming head when a
+caller supplies one.
+
 A recorded boundary can be reachable but too early. A branch created from a
 newer upstream trunk was tracked against a stale local trunk, or a child
 created empty was fast-forwarded along its parent (`git merge --ff-only`) to
@@ -501,9 +510,10 @@ g2g restack [--branch <b>] [--scope branch|path|subtree|stack|trunk] [--onto <re
 g2g restack --continue | --abort | --skip
 ```
 
-`--onto` reparents and rewrites together. They cannot be separated: retargeting
-the edge first discards the fork point the rewrite needs. Plain `restack` means
-"the edge is right, the parent moved".
+`--onto` reparents and rewrites together. `track --parent` followed by plain
+`restack` separates those operations while preserving the verified replay
+boundary. Plain `restack` means "the edge is right, put the branch on its
+recorded parent".
 
 A later `--interactive` is a natural extension rather than a bolt-on, because
 `git rebase -i --update-refs` already writes branch updates into the todo list
@@ -522,9 +532,9 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
   is confined to the branches the restack moves, though, and the journal is
   shared by every worktree, so refusing everything let one restack stopped on a
   conflict in an agent's worktree block every other worktree's work on stacks
-  with nothing in common with it. `push`, `submit`, `create` and `track`
-  therefore name the branches they touch, with the parents they measure them
-  against, and are refused only when one of them is a branch the journal
+  with nothing in common with it. `push`, `submit`, `create`, `track`,
+  `github retarget` and `github comment` therefore name the branches they
+  touch, with the parents they measure them against, and are refused only when one of them is a branch the journal
   records moving (its original tips, reparents or structure), or when they run
   in the worktree the restack belongs to, where Git's rebase owns the index and
   the checkout, or the journal does not say which worktree that is. The
@@ -535,6 +545,12 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
   but the tool may now leave the tree dirty on purpose.
 - The graph edge update is applied only when the whole operation completes, and
   is rolled back by `--abort`.
+
+Retarget and comment pass the selected snapshot through `snapshotTouches`,
+a `restack.Reads` footprint over its branches and parents. They change only
+GitHub. Comment history widens its GitHub reads, never its local branch reads;
+its footprint is the full stack selected by comment planning. Both still refuse
+in the journal owner’s worktree or when another journal moves what they read.
 
 ## Remote interaction
 

@@ -436,6 +436,14 @@ A parent you name that is *not* an ancestor is recorded on request rather than
 refused, since that is how a stack looks before a restack, but `track` says so
 first, because it explains why the branch will then read as needing one.
 
+Changing a recorded parent preserves the branch's verified replay boundary.
+Reparenting `synthetic-b` onto `synthetic-a`, which left the trunk earlier,
+does not make the intervening trunk commits part of `synthetic-b`'s work.
+Shared ancestry may narrow the range, never widen it. If the old boundary is
+missing or no longer in the branch, the new parent's tip must be in the branch
+or tracking refuses and asks you to record its actual parent first. The track
+preview names the resulting range; restack previews the exact range it replays.
+
 A trunk that has moved on is no longer an ancestor of the branches built from
 it, so recorded roots are always offered as candidates. Adopting the very first
 branch into an empty graph has neither, so it falls back to measuring from the
@@ -677,8 +685,8 @@ back with its branch, unless somebody has committed there since.
 This is g2g's only resumable operation, so **a command that changes anything
 refuses while a restack is unfinished** — mid-restack a branch may already
 have moved while the graph still records where it used to be. `restack`,
-`push`, `submit`, `create` and `track` are the exception, because they can
-say which branches they touch: from another worktree they go ahead unless
+`push`, `submit`, `create`, `track`, `github retarget` and `github comment`
+are the exceptions, because they can say which branches they touch: from another worktree they go ahead unless
 another worktree's restack moves one of those branches, or a parent they
 measure one against. A restack is also refused when it would move a branch
 the other restack replays onto. Two sessions can therefore restack two
@@ -1075,6 +1083,16 @@ that moves it. Explicit `--link` requires matching bases and otherwise names
 still require a completed spec; `--apply` without one fails with the command
 to create it.
 
+Submit refuses before pushing when an open PR base differs from its recorded
+stack parent and would contain the proposed head by local ancestry, including
+a local base outside the selection. It names `g2g github retarget` over the
+selection to run first: publishing that ancestry would let GitHub mark the PR
+merged irreversibly. A correctly based PR is never refused by this check,
+because retargeting would change nothing. With `--link`, linking refusals
+take precedence over publication refusals, so a fork still names narrowing
+the selection or dropping `--link`. The check uses the existing PR read and
+local tips only; `push` still never reads GitHub.
+
 Generate a reusable spec outside the repository, fill in the missing PRs' titles, validate,
 then apply it:
 
@@ -1141,6 +1159,10 @@ It touches only the pull requests whose base disagrees with the resolved stack,
 leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
+
+Retarget and comment can run beside an unrelated restack in another worktree.
+They read the selected branches and parents and change only GitHub; a restack
+moving any of those branches still refuses them, as does one in this worktree.
 
 It moves the bases bottom-up. GitHub applies every move in a request whatever
 happened to the one before, so a refusal no longer stops the run: it moves
@@ -1222,7 +1244,10 @@ request is not on the commit the branch is, and only ever appears when that is
 true, so a current one stays unannotated and the stale ones stand out. `pr✗`
 is a pull request that is missing, closed, or ambiguous — not a statement about
 a base, because a branch with no pull request has no base to be wrong about.
-`pr✓` is a merged one, in the ordinary colour: it did what it was for. Read the
+`pr✓` is a merged one whose work the local trunk contains, checked by content.
+A PR merged into a feature base whose work is absent from the trunk reads
+“merged into <base>, not landed” and is offered `g2g submit` for a replacement.
+Unreadable or absent local content says “landing unconfirmed”. Read the
 column for `✗`.
 
 A branch whose work is already in the branch below it reads as `landed in …`,
@@ -1550,7 +1575,8 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 
 | State | Way out |
 |---|---|
-| A pull request has merged | `g2g pull` for a stack g2g records, `gt sync` for one Graphite declares; none for one read from pull request bases, which nothing here records |
+| A pull request has merged and its content is in the local trunk | `g2g pull` for a stack g2g records, `gt sync` for one Graphite declares; none for one read from pull request bases, which nothing here records |
+| A PR merged into a feature base, with work still outside the trunk | `g2g submit` for a replacement |
 | A branch's work has already landed | `g2g prune`, or `gt sync` for a Graphite-declared stack |
 | A branch has no pull request, or one closed without merging | `g2g submit` |
 | A pull request is open on the wrong base | `g2g github retarget` |

@@ -162,6 +162,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   and `2` when it could not tell — the `diff`/`grep` convention, so a script
   can ask. Keep the split: `status` is the full overview, `doctor` only the
   unexpected. A branch with no commits of its own is not a finding.
+- Submit refuses before pushing when an open PR base differs from its recorded
+  stack parent and would contain the proposed head by local ancestry, including
+  a local base outside the selection. It names `g2g github retarget` over the
+  selection to run first: publishing that ancestry would let GitHub mark the PR
+  merged irreversibly. A correctly based PR is never refused by this check,
+  because retargeting would change nothing. With `--link`, linking refusals
+  take precedence over publication refusals, so a fork still names narrowing
+  the selection or dropping `--link`. The check uses the existing PR read and
+  local tips only; `push` still never reads GitHub.
 - PR observations live separately from the graph, in
   `g2g/pull-requests.json` under the Git common directory. Read
   `design-docs/pr-observations.md` before changing them. The shared GitHub
@@ -227,8 +236,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
 - A branch's annotation is a list of `stackMark`, one per axis, each with its
   own severity: `base✓`/`base✗` is about a pull request's base and never its
   contents, `head✗` is about currency, and a subject-less mark carries what is
-  about neither. A merged pull request is `pr✓` and neutral — it did what it
-  was for, and only the branch left in the stack is a problem, which is the
+  about neither. A merged pull request is `pr✓` and neutral only after `landed.Into`
+  confirms its content in `Snapshot.Trunk()`, the full ancestry’s root even
+  under a narrow selection. Feature-base merges without that content
+  are `IssueMergedUnlanded` and need a replacement through `submit`, not a
+  pull. Absent or unreadable content stays unconfirmed. This preserves the
   reading the offline view (`status`, once `graph`) has always taken of an
   already-landed branch. They used to be one string under one colour, which is
   how a line came to open with the word "aligned" and go on to describe a divergence,
@@ -293,7 +305,9 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   at all — so the branch reads as missing one, and the advice for missing is to
   open one, for a change already in the trunk. `link.markLanded` asks only the
   branches whose sole problem is a missing or closed pull request, which is what
-  bounds the cost, and asks Cherry before Absorbed. Which command forgets a
+  bounds the cost, and asks Cherry before Absorbed. Merged PR history is also checked, against
+  the trunk rather than the former feature base (which may contain the head);
+  only merged predecessors add this check to submit. Which command forgets a
   landed branch depends on the source: `g2g prune` edits g2g's own graph and
   finds nothing in a Graphite-declared repository, where the answer is
   `gt sync`; a structure read from pull request bases is not a record anything
@@ -340,6 +354,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the checkout is touched puts back every tip it moved, and the journal records
   the structure as well as the tips, so `--abort` restores both and returns to
   the branch the user was standing on.
+- `track --parent` changing an existing edge preserves the branch's verified
+  replay range. A sibling's older merge base must never pull trunk commits into
+  that range. Only `graph.LaterFork` may narrow it on shared ancestry. Verify
+  the old fork resolves and is an ancestor of the branch; if it does not (or is
+  absent), require the new parent's tip in the branch or refuse through
+  `repair.Note`, asking to record its actual parent first. Track's reparent
+  preview names the boundary, and restack names each actual range it replays.
 - A rewrite that moves the branch you are standing on must reconcile the
   checkout: the replay engine and a collapse both move refs without one, so the
   index and working tree are left describing the old commit, which git reports
@@ -518,7 +539,8 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
     this worktree's files (`Journal.Load`), and the other worktrees' journals
     come from `Journal.Elsewhere`, so another worktree's damaged journal
     stops only the guards that weigh it.
-  - **What may go ahead.** restack, push, submit, create and track pass a
+  - **What may go ahead.** restack, push, submit, create, track, github retarget
+    and github comment pass a
     `restack.Footprint` (`applyFlow.touches`): what they move and what they
     read. They are refused only in the restack's own worktree, or when either
     side moves what the other reads (`RequireApart`). Both directions matter:
@@ -613,6 +635,7 @@ releases had that bug in three different places.
   repository identifier, or credential-bearing command argument. Bound a failed
   command's output with `diagnostic.BoundedOutput` and nothing else — a private
   copy of it once truncated without redacting, and only the length was tested.
+
 
 ## Shared seams
 

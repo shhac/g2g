@@ -252,3 +252,8 @@ trunks can be seen whole, which is a reading problem. A rewrite acts on one
 trunk, so spanning them is not a wider version of the same request. `prune` is
 the one mutating command that offers it, because its only write is forgetting
 what has landed, which is per branch whatever trunk it sits on.
+
+`Snapshot.Trunk` reads the root of the full ancestry, independently of the
+displayed base. Merged PR landing checks use it: a narrow branch selection
+may hang from a feature parent that contains its head, which proves nothing
+about content reaching the trunk.

@@ -63,8 +63,8 @@ lay this branch's change over whatever it is on now.
   with the `git -C … read-tree` command that finishes it, and exits `3`.
   Each worktree journals its own restack, so a restack stopped in one
   refuses only what it makes untrue elsewhere. `restack`, `push`, `submit`,
-  `create` and `track` go ahead from another worktree unless either side moves
-  what the other reads. Every other mutating command still refuses
+  `create`, `track`, `github retarget` and `github comment` go ahead from
+  another worktree unless either side moves what the other reads. Every other mutating command still refuses
   ([restack](restack.md)).
 - **A rewrite that has to rebase** (one whose preview conflicts, or which
   cannot be previewed) checks each branch out here, and Git won't check out a

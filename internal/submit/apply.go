@@ -21,11 +21,13 @@ func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ct
 // linked pull request through gh pr merge, which is how g2g land merges each
 // one; a stack submitted and then landed would stop at its first merge.
 func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) error {
-	if blocked := plan.Blocked(); blocked != "" {
-		return fmt.Errorf("submission is blocked by %s", blocked)
-	}
+	// Linking must be representable before publication is considered: a fork
+	// needs a narrower selection or no --link, whatever its preserved bases.
 	if link && plan.LinkBlocked() != "" {
 		return fmt.Errorf("submission is blocked by %s", plan.LinkBlocked())
+	}
+	if blocked := plan.Blocked(); blocked != "" {
+		return fmt.Errorf("submission is blocked by %s", blocked)
 	}
 	if err := plan.Snapshot.RequireActionable("g2g submit"); err != nil {
 		return err

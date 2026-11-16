@@ -79,3 +79,46 @@ func landedPlan() Plan {
 		Issues: []Issue{{Branch: "synthetic-top", Kind: IssueMissing, Reason: "no open PR"}},
 	}
 }
+
+// Even a feature base that contains the merged head proves nothing about the
+// trunk. A squash into that trunk, despite having no equivalent commit, does.
+func TestMergedFeatureHistoryIsLandedOnlyAfterTrunkAbsorbsIt(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-main")
+	repo.Commit("synthetic root", "root.txt", "root")
+	repo.Run("switch", "-qc", "synthetic-head")
+	repo.Commit("synthetic one", "one.txt", "one")
+	repo.Commit("synthetic two", "two.txt", "two")
+	repo.Run("switch", "-qc", "synthetic-base")
+	repo.Commit("synthetic feature", "feature.txt", "feature")
+	t.Chdir(repo.Dir)
+	service := Service{Tips: git.Client{Runner: subprocess.ExecRunner{}}}
+	plan := mergedPlan()
+	if err := service.markLanded(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Issues[0].Kind != IssueMergedUnlanded {
+		t.Fatalf("feature-only content = %#v", plan.Issues[0])
+	}
+	// The narrow selection hangs from the feature base that now contains
+	// the head, but its full ancestry still names the trunk.
+	plan = mergedPlan()
+	plan.Base = "synthetic-base"
+	plan.Scope = stack.ScopeBranch
+	if err := service.markLanded(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Issues[0].Kind != IssueMergedUnlanded {
+		t.Fatalf("narrow feature-only content = %#v", plan.Issues[0])
+	}
+
+	repo.Run("switch", "-q", "synthetic-main")
+	repo.Run("merge", "-q", "--squash", "synthetic-head")
+	repo.Run("commit", "-qm", "synthetic squash")
+	plan = mergedPlan()
+	if err := service.markLanded(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Issues[0].Kind != IssueMerged {
+		t.Fatalf("squashed trunk content = %#v", plan.Issues[0])
+	}
+}

@@ -206,11 +206,11 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		precheck:     service.RequireClean,
 		suggest:      func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
 		blocked: func(plan submit.Plan) string {
-			if blocked := submitBlocked(plan); blocked != "" {
-				return blocked
-			}
 			if o.link && plan.LinkBlocked() != "" {
 				return plan.LinkBlocked()
+			}
+			if blocked := submitBlocked(plan); blocked != "" {
+				return blocked
 			}
 			if o.specPath == "" && len(plan.CreationBranches()) != 0 {
 				return o.missingSpecNote().Sentence()
@@ -274,6 +274,8 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 // apply that refuses says it.
 func submitBlocked(plan submit.Plan) string {
 	switch {
+	case plan.Repair.Sentence() != "":
+		return plan.Repair.Sentence()
 	case len(plan.Issues) != 0:
 		return "submit is blocked by " + plan.Blocked()
 	case plan.Push.Blocked() != "":
@@ -298,10 +300,16 @@ func stoppedMidSubmit(cmd *cobra.Command, stopped *submit.Stopped, remote, retry
 		stopped)
 }
 
-// planned is submit's plan as this run asks for it. --strict is push's: submit
-// owns no rule about what may be published, so the push it plans is what is
-// made strict.
+// planned aims submit's PR repair at the selection. --strict is push's:
+// the push it plans is what is made strict.
 func (o submitOptions) planned(plan submit.Plan) submit.Plan {
+	if len(plan.Repair.Ways) != 0 {
+		command := selectedFrom(plan.Snapshot).narrowedTo(plan.Snapshot.Scope).aimedOr(retargetCommand)
+		if plan.Snapshot.Source != "" {
+			command += " --from " + string(plan.Snapshot.Source)
+		}
+		plan.Repair.Ways[0].Command = command
+	}
 	if o.strict {
 		plan.Push = plan.Push.Strictly()
 	}

@@ -60,10 +60,13 @@ const (
 	// IssueClosed is a branch whose pull requests were closed without merging.
 	// A replacement can be created, so submit resolves it.
 	IssueClosed IssueKind = "closed"
-	// IssueMerged is a branch whose pull request merged. The branch no longer
+	// IssueMerged is a branch whose pull request merged and whose work is
+	// confirmed in the trunk by content. The branch no longer
 	// belongs in the stack, and what brings the stack past it depends on which
 	// record describes it.
 	IssueMerged IssueKind = "merged"
+	// IssueMergedUnlanded is merged PR history without confirmed trunk content.
+	IssueMergedUnlanded IssueKind = "merged-unlanded"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
 	// IssueLanded is a branch with no pull request to project whose work is
@@ -264,9 +267,13 @@ func assessPRs(prs []githubstack.PullRequest, snapshot stack.Snapshot) []Issue {
 		case githubstack.StepSuperseded:
 			kind := IssueClosed
 			if step.Merged() {
-				kind = IssueMerged
+				kind = IssueMergedUnlanded
 			}
-			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Number: step.Resolution.Latest.Number, Reason: "PR " + strings.ToLower(step.Resolution.Latest.State)})
+			reason := "PR " + strings.ToLower(step.Resolution.Latest.State)
+			if kind == IssueMergedUnlanded {
+				reason = "merged into " + step.Resolution.Latest.Base + ", landing unconfirmed"
+			}
+			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Number: step.Resolution.Latest.Number, Reason: reason})
 		default:
 			issues = append(issues, Issue{Branch: step.Branch, Kind: IssueMissing, Reason: "no open PR"})
 		}

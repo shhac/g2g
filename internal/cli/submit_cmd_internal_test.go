@@ -5,10 +5,34 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
 )
+
+func TestSubmitLinkRepairPrecedesPreservedBaseRepairInPreviewAndApply(t *testing.T) {
+	snapshot := stack.Snapshot{
+		Target: "synthetic-lower", Base: "synthetic-trunk",
+		Branches: []string{"synthetic-lower", "synthetic-top", "synthetic-side"},
+		Parents:  map[string]string{"synthetic-lower": "synthetic-trunk", "synthetic-top": "synthetic-lower", "synthetic-side": "synthetic-lower"},
+	}
+	plan := submit.Plan{Snapshot: snapshot, Selected: snapshot, Repair: repair.Note{Reason: "synthetic preserved base refusal"}}
+	for _, link := range []bool{false, true} {
+		want := plan.Repair.Sentence()
+		if link {
+			want = plan.LinkBlocked()
+		}
+		view := submitView(plan, "", true, link, false)
+		flow := (submitOptions{link: link}).flow(nil, submit.Service{}, plan, submit.Spec{}, Presentation{}, "", "")
+		if got := flow.blocked(plan); got != want {
+			t.Errorf("apply link=%t: refusal = %q, want %q", link, got, want)
+		}
+		if got := view.Repair.Sentence(); got != want {
+			t.Errorf("preview link=%t: refusal = %q, want %q", link, got, want)
+		}
+	}
+}
 
 // With no spec, what a submission does depends on what exists: pull requests
 // that all exist need none, a blocked apply goes through to say why it
@@ -103,5 +127,25 @@ func TestSubmitSaysNothingOfABaseChosenInsideTheStack(t *testing.T) {
 		if strings.Contains(note.Text, "retarget") {
 			t.Errorf("the preview flags a base inside the stack: %q", note.Text)
 		}
+	}
+}
+
+func TestSubmitMergedHistoryNamesLandingEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		assessments map[string]bool
+		want        string
+	}{
+		{name: "feature only", assessments: map[string]bool{"synthetic-head": false}, want: "merged into synthetic-base, not landed"},
+		{name: "confirmed trunk", assessments: map[string]bool{"synthetic-head": true}, want: "merged · landed in synthetic-main"},
+		{name: "unconfirmed", want: "merged into synthetic-base, landing unconfirmed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := submit.Plan{Snapshot: stack.Snapshot{Base: "synthetic-main"}, Superseded: map[string]githubstack.PullRequest{"synthetic-head": {Number: 41, Base: "synthetic-base", State: "MERGED"}}, MergedLanded: test.assessments}
+			node := submitLabel(plan, nil, stackNode{Branch: "synthetic-head"}, true)
+			if !strings.Contains(node.state(), test.want) {
+				t.Errorf("label = %q, want %q", node.state(), test.want)
+			}
+		})
 	}
 }

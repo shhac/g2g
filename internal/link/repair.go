@@ -56,6 +56,18 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 	if landed := p.LandedBranches(); len(landed) != 0 {
 		return repair.Note{Reason: words.List(landed) + words.Pick(len(landed), " has", " have") + " already landed", Ways: []repair.Step{ForgetLanded(p.Source)}}, []IssueKind{IssueLanded}
 	}
+	var replacements []string
+	for _, issue := range p.Issues {
+		if issue.Kind == IssueMergedUnlanded {
+			replacements = append(replacements, issue.Branch)
+		}
+	}
+	if len(replacements) != 0 {
+		return repair.Note{
+			Reason: words.List(replacements) + words.Pick(len(replacements), " has", " have") + " merged PR history without confirmed trunk content",
+			Ways:   []repair.Step{{Command: "g2g submit", Effect: "open replacement pull requests for the work still outside the trunk"}},
+		}, []IssueKind{IssueMergedUnlanded}
+	}
 	if p.allIssuesAre(IssueBase) {
 		return repair.Note{
 			Reason: "every pull request is open, and " + words.Pick(len(p.Issues), "one is", "some are") + " based on the wrong branch",

@@ -413,6 +413,7 @@ func TestAMergedPullRequestIsNotMarkedAsAFault(t *testing.T) {
 		want  string
 	}{
 		{name: "merged", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMerged, Number: 7, Reason: "PR merged"}, want: "pr" + markYes + " merged as #7"},
+		{name: "merged outside trunk", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMergedUnlanded, Number: 7, Reason: "merged into synthetic-base, not landed"}, want: "pr" + markNo + " merged into synthetic-base, not landed"},
 		{name: "closed", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueClosed, Number: 7, Reason: "PR closed"}, want: "pr" + markNo + " closed without merging"},
 		{name: "missing", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueMissing, Reason: "no open PR"}, want: "pr" + markNo + " none open"},
 		{name: "ambiguous", issue: link.Issue{Branch: "synthetic-top", Kind: link.IssueAmbiguous, Reason: "2 open PRs"}, want: "pr" + markNo + " 2 open PRs"},

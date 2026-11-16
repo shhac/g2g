@@ -121,6 +121,15 @@ func graphiteRoutes(t *testing.T, gh []testutil.Route) (map[string][]testutil.Ro
 			// whole-branch question now, not just the per-commit one.
 			{Prefix: "--version", Output: "git version 2.44.0"},
 			{Prefix: "merge-tree", Output: "2222222222222222222222222222222222222222"},
+			// submit checks preserved bases using fully qualified local tips.
+			// Give those refs distinct commits; the older generic resolver
+			// intentionally does not model branch ancestry.
+			{Prefix: "rev-parse --verify --quiet refs/heads/synthetic-main^{commit}", Output: "3333333333333333333333333333333333333333"},
+			{Prefix: "rev-parse --verify --quiet refs/heads/synthetic-lower^{commit}", Output: "1111111111111111111111111111111111111111"},
+			{Prefix: "rev-parse --verify --quiet refs/heads/synthetic-top^{commit}", Output: "4444444444444444444444444444444444444444"},
+			{Prefix: "merge-base --is-ancestor 1111111111111111111111111111111111111111 3333333333333333333333333333333333333333", Exit: 1},
+			{Prefix: "merge-base --is-ancestor 4444444444444444444444444444444444444444 1111111111111111111111111111111111111111", Exit: 1},
+			{Prefix: "merge-base --is-ancestor 4444444444444444444444444444444444444444 3333333333333333333333333333333333333333", Exit: 1},
 			{Prefix: "rev-parse --verify", Output: "1111111111111111111111111111111111111111"},
 			// Absorbed's other half: the base's own tree, which differs from
 			// what merge-tree answers, so these branches stay unlanded.
@@ -271,6 +280,11 @@ func TestLinkApplyRunsExactlyOneStackLinkAfterRediscovery(t *testing.T) {
 // the command level at all, injected or otherwise.
 func TestSubmitApplyPushesThenCreatesOnlyMissingPullRequestsThenLinks(t *testing.T) {
 	recorder := fakeRepository(t, "")
+	t.Cleanup(func() {
+		// The only existing PR already targets its recorded parent. No
+		// retarget could repair it, so its ancestry must not block publication.
+		recorder.AssertNone("git merge-base --is-ancestor 1111111111111111111111111111111111111111 3333333333333333333333333333333333333333")
+	})
 	specDir := t.TempDir()
 
 	if _, _, err := run(t, "submit", "--write-spec", specDir); err != nil {

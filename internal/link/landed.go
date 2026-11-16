@@ -2,7 +2,9 @@ package link
 
 import (
 	"context"
+	"slices"
 
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/parallel"
 )
@@ -21,15 +23,17 @@ import (
 //
 // Only those are asked, which is what bounds the cost: a branch with an open
 // pull request has somewhere for its work to be, and one whose pull request
-// merged has already been answered by GitHub. Two local reads each, and only
+// merged still needs its content checked against the trunk. Only ask
 // for the branches where the answer changes what to do.
 func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	if s.Tips == nil {
 		return nil
 	}
+	trunk := plan.Snapshot.Trunk()
+	resolutions := githubstack.ResolveHeads(plan.PullRequests)
 	asking := make([]string, len(plan.Issues))
 	for index, issue := range plan.Issues {
-		if (issue.Kind == IssueMissing || issue.Kind == IssueClosed) && plan.here(issue.Branch) {
+		if (issue.Kind == IssueMissing || issue.Kind == IssueClosed || issue.Kind == IssueMergedUnlanded) && plan.here(issue.Branch) {
 			asking[index] = issue.Branch
 		}
 	}
@@ -37,6 +41,26 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	// lock: each read owns the one issue it was given.
 	return parallel.Each(ctx, asking, func(ctx context.Context, index int, branch string) error {
 		if branch == "" {
+			return nil
+		}
+		if plan.Issues[index].Kind == IssueMergedUnlanded {
+			if trunk == "" || slices.Contains(plan.Absent, trunk) {
+				return nil
+			}
+			// The former base may now contain the head. Limiting at that base
+			// would exclude the very work we must check; compare the range above
+			// the trunk instead, never the commits the trunk gained.
+			inTrunk, err := landed.Into(ctx, s.Tips, trunk, branch, trunk)
+			if err != nil {
+				return nil
+			}
+			if inTrunk {
+				plan.Issues[index].Kind = IssueMerged
+				plan.Issues[index].Reason = "PR merged; landed in " + trunk
+			} else {
+				pr := resolutions[branch].Latest
+				plan.Issues[index].Reason = "merged into " + pr.Base + ", not landed"
+			}
 			return nil
 		}
 		if !s.landed(ctx, plan, branch) {

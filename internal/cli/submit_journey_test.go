@@ -160,3 +160,43 @@ func TestJourneySubmitAStackThatForks(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// Reordering can make an old PR base contain its head after publication.
+// GitHub treats that as a merge, so submit must stop before any head is pushed.
+func TestJourneySubmitRefusesPreservedBaseContainingHead(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-r", "r.txt")
+	w.branchOff("synthetic-r", "synthetic-s", "s.txt")
+	w.branchOff("synthetic-s", "synthetic-n", "n.txt")
+	for _, edge := range [][2]string{{"synthetic-r", "main"}, {"synthetic-s", "synthetic-r"}, {"synthetic-n", "synthetic-s"}} {
+		mustRun(t, "track", "--branch", edge[0], "--parent", edge[1], "--apply")
+	}
+	mustRun(t, "push", "--apply")
+	landingGitHubPulls(t, w.Remote, [2]string{"synthetic-r", "main"}, [2]string{"synthetic-s", "synthetic-r"}, [2]string{"synthetic-n", "synthetic-s"})
+	before := map[string]string{}
+	for _, branch := range []string{"synthetic-r", "synthetic-s", "synthetic-n"} {
+		before[branch] = w.tip(w.Remote, branch)
+	}
+	mustRun(t, "restack", "--branch", "synthetic-n", "--scope", "branch", "--onto", "main", "--apply")
+	w.assertClean(w.Local)
+	mustRun(t, "restack", "--branch", "synthetic-r", "--onto", "synthetic-n", "--apply")
+	w.assertClean(w.Local)
+	if !w.contains(w.Local, "synthetic-n", "synthetic-s") {
+		t.Fatal("reorder did not put the PR head under its preserved base")
+	}
+	args := []string{"submit", "--branch", "synthetic-s", "--scope", "path", "--no-template", "--no-comment"}
+	preview := mustRun(t, args...)
+	if !strings.Contains(preview, "would contain") || !strings.Contains(preview, "g2g github retarget --branch synthetic-s --scope path") {
+		t.Errorf("preview does not refuse the unsafe preserved base with a scoped repair:\n%s", preview)
+	}
+	stdout, stderr, err := run(t, append(args, "--apply")...)
+	if err == nil {
+		t.Errorf("submit accepted a preserved base containing its pushed head:\n%s%s", stdout, stderr)
+	}
+	for branch, tip := range before {
+		if got := w.tip(w.Remote, branch); got != tip {
+			t.Errorf("%s was pushed before refusing: %s -> %s", branch, tip, got)
+		}
+	}
+	w.assertClean(w.Local)
+}

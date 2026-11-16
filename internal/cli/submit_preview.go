@@ -32,11 +32,14 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	if template != "" {
 		view = view.note("PR template: "+template, severityNeutral)
 	}
-	if len(plan.Issues) != 0 {
-		return view.blockedBy("repair the marked existing pull requests first.")
-	}
 	if link && plan.LinkBlocked() != "" {
 		return view.refusing(plan.LinkRepair())
+	}
+	if plan.Repair.Sentence() != "" {
+		return view.refusing(plan.Repair)
+	}
+	if len(plan.Issues) != 0 {
+		return view.blockedBy("repair the marked existing pull requests first.")
 	}
 	// Publishing is push's, refusals included, so its reason and ways out are
 	// the ones push itself would show.
@@ -115,7 +118,18 @@ func submitLabel(plan submit.Plan, resolutions map[string]githubstack.Resolution
 		node.PRNumber = resolutions[branch].Open.Number
 		return node.labeled("existing", severityOK)
 	case replaced:
-		return node.labeled(fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, strings.ToLower(previous.State)), "")
+		history := strings.ToLower(previous.State)
+		if history == "merged" {
+			history = "merged into " + previous.Base + ", landing unconfirmed"
+			if inTrunk, assessed := plan.MergedLanded[branch]; assessed {
+				if inTrunk {
+					history = "merged · landed in " + plan.Snapshot.Trunk()
+				} else {
+					history = "merged into " + previous.Base + ", not landed"
+				}
+			}
+		}
+		return node.labeled(fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, history), "")
 	}
 	return node.labeled("create "+openAs(draft), "")
 }

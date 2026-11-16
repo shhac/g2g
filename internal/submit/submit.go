@@ -65,6 +65,8 @@ type Service struct {
 }
 
 type Plan struct {
+	// Repair refuses publication that would implicitly merge a misbased open PR.
+	Repair   repair.Note
 	Snapshot stack.Snapshot
 	Remote   string
 	Existing []githubstack.PullRequest
@@ -73,6 +75,9 @@ type Plan struct {
 	// merged, so a preview can show that a new one will be created rather than
 	// silently reusing a branch name that has history.
 	Superseded map[string]githubstack.PullRequest
+	// MergedLanded records content assessments of merged predecessors only.
+	// Missing means unconfirmed, never landed.
+	MergedLanded map[string]bool
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
 	// Selected is the selection as discovered, before anything was left out
@@ -96,6 +101,9 @@ func (s Service) Ready() bool {
 
 // Blocked is why an apply would refuse, empty when it would proceed.
 func (p Plan) Blocked() string {
+	if p.Repair.Sentence() != "" {
+		return p.Repair.Sentence()
+	}
 	if len(p.Issues) != 0 {
 		return "existing pull request state: " + issueText(p.Issues)
 	}
@@ -163,7 +171,7 @@ func (p Plan) retarget() string {
 	if scope == "" {
 		scope = stack.ScopeStack
 	}
-	command := fmt.Sprintf("g2g github retarget --branch %s --scope %s", repair.Quote(p.Snapshot.Target), scope)
+	command := repair.Command([]string{"g2g", "github", "retarget", "--branch", p.Snapshot.Target, "--scope", string(scope)})
 	if p.Snapshot.Source != "" {
 		command += " --from " + string(p.Snapshot.Source)
 	}
@@ -223,6 +231,11 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		return Plan{}, err
 	}
 	plan := Plan{Selected: discovery.Snapshot, Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published, Waiting: waiting}
+	plan.MergedLanded = s.mergedLanded(ctx, plan)
+	plan.Repair, err = s.preservedBaseRepair(ctx, plan)
+	if err != nil {
+		return Plan{}, err
+	}
 	decision := "ready"
 	if plan.Blocked() != "" {
 		decision = "blocked"
@@ -233,7 +246,9 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 
 // Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
-	return p.Remote == other.Remote &&
+	return maps.Equal(p.MergedLanded, other.MergedLanded) &&
+		p.Repair.Equal(other.Repair) &&
+		p.Remote == other.Remote &&
 		slices.Equal(p.Waiting, other.Waiting) &&
 		p.Selected.Equal(other.Selected) &&
 		p.Snapshot.Equal(other.Snapshot) &&

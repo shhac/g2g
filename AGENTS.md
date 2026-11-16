@@ -455,6 +455,16 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   conflict-resolved replay publish through `push`, and every one of those
   conditions is what keeps a reviewer's amend from pairing. Repeated restacks
   compare the final replay against the same agreement. Publication refusals
+  with no usable agreement say g2g has no record that this checkout and the
+  remote agreed on the branch, for example because it was first pushed outside
+  g2g; `Assess` checks usability even without published objects.
+  Restack planning records exact equality before replay for branches it will
+  move, using the observed local tip and one batched `KnownTips` read of
+  `origin`'s local remote-tracking and g2g-fetched refs. No network is added.
+  Ahead, behind, absent, skipped and metadata-only branches record nothing;
+  never substitute a pending incoming head. Pull already records equality
+  against its selected remote before replay. A reviewer commit gained since
+  the fetch stays outside the agreement and protected. Publication refusals
   name differing remote commits when available and offer a previewable pull,
   with an explicit bounded take naming local losses; never silently replace
   remote work. Record

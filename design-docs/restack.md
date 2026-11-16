@@ -561,10 +561,22 @@ GitHub. Comment history widens its GitHub reads, never its local branch reads;
 its footprint is the full stack selected by comment planning. Both still refuse
 in the journal owner’s worktree or when another journal moves what they read.
 
-Repeated restacks do not record a new agreement with the remote. After a
-conflict-resolved `--continue`, subsequent replays still publish against the
-original sync point; the final commit keeps the author, author date and subject
-used by replay pairing. See [sync-points.md](sync-points.md).
+Before rewriting, the plan records exact agreement for each moving branch
+whose observed local tip equals its known `origin` tip. One batched `KnownTips`
+read uses remote-tracking and g2g-fetched refs, without network access. The
+record goes through `syncpoint.Record`; a recording failure is diagnostic.
+Ahead, behind, unpublished and skipped branches record nothing, nor does an
+absorb that changes only structure. A pending incoming head is not evidence of
+local agreement. Trunks never receive sync points.
+
+This preserves evidence for a branch first published outside g2g. A reviewer
+commit pushed since the last fetch is outside the agreement and remains
+protected. Pull already records level branches against its selected remote
+before replay, and records taken branches before a replay can stop.
+
+After a conflict-resolved `--continue`, further restacks of unequal tips keep
+the original sync point; the final commit keeps the author, author date and
+subject used by replay pairing. See [sync-points.md](sync-points.md).
 
 ## Remote interaction
 

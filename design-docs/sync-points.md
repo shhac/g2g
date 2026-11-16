@@ -38,6 +38,7 @@ An entry no longer reachable from the current tip expires on
 | `push` preview | each branch the remote already holds exactly |
 | `pull` (and `land`, `pull --prune`) | each reconciled selected branch the remote holds, at the tip the plan saw, after apply; excludes refs left by worktree policy |
 | `pull` preview | each branch exactly level with the remote; an ahead branch is not proof of agreement because it can carry work the remote dropped |
+| `restack` preview | each branch it will move that is exactly level with `origin` as this checkout knows it, from `KnownTips` (local refs only) |
 | `adopt`, `github adopt` | each adopted branch exactly level with the remote as last fetched |
 
 Recording the sha the plan saw, never one read again at write time, is
@@ -47,6 +48,21 @@ sync point holding commits this clone never had would call them dropped here.
 A recording that fails after the command's own work is a diagnostic, not a
 failure: the push or pull has happened, and until the next agreement records it
 the cautious reading applies.
+
+Before a restack loses the original tips, it records exact equality with the
+locally known remote copy. `KnownTips` reads both `refs/remotes/origin/` and
+`refs/g2g/remotes/origin/` for all moving branches together. The agreement uses
+the local tip the plan observed, not a pending incoming head or a tip read at
+apply time. Ahead, behind, absent, skipped and metadata-only branches record
+nothing, and neither a remote read nor a fetch is added. Restack uses `origin`;
+pull already records level branches against its selected `--remote` before
+planning the replay, and records a collected branch before replaying it.
+
+This supplies the evidence a plain `git push` or another clone did not record
+here. Even if a reviewer pushed after the fetch, the old equal tip is a real
+agreement at that commit: the reviewer's later commit is outside it, remains
+new remote work, and still refuses publication. Recording failures remain
+diagnostic; a later refusal explains when no usable agreement was recorded.
 
 Deleting a branch through g2g forgets its sync points; renaming one carries
 them — the whole history, so what it keeps reachable stays reachable, each entry
@@ -189,3 +205,14 @@ resolution keeping both sides, a lower-branch fix and two further replays.
 A refused publication names the differing published commits when available and
 offers a pull preview, including an explicit `--take published --through` choice
 that lists local losses. It never authorizes overwriting a reviewer’s commit.
+When no usable sync point exists, it also says g2g has no record that this
+checkout and the remote agreed on the branch, for example because it was first
+pushed outside g2g. `Assess` supplies this evidence even when published objects
+are unavailable, without attempting a content comparison.
+
+`TestJourneySubmitAfterPlainPushAndRepeatedReplay` reproduces plain publication
+followed by conflict recovery and repeated restacks. The neighbouring reviewer
+journey proves that recording the old equal tip never authorizes replacing a
+reviewer's later commit; the ahead-branch journey keeps refusing and explains
+the missing agreement. Pull's existing pre-replay recording is covered by
+`TestJourneyPullAfterPlainPushPreservesAgreementThroughReplayConflict`.

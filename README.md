@@ -674,6 +674,13 @@ ones an earlier step already moved. A stack that forks stops on the first
 conflict on one line of descent, and `--continue` (or `--skip`) goes on to the
 other line, stopping there too if it conflicts.
 
+Before replay, even a preview records agreement for moving branches whose local
+tips exactly match `origin` as this checkout knows it. This reads local
+remote-tracking and g2g-fetched refs only. It lets a branch first pushed with
+plain Git publish a later conflict resolution through g2g. Branches ahead of
+or behind that known copy record nothing. A reviewer commit pushed after the
+last fetch remains protected: it is outside the recorded agreement.
+
 A stopped restack exits `3`, including when `--continue` hits another conflict.
 Run recovery from the worktree that started it: each worktree keeps its own
 journal, beside Git's own rebase state there, and `--continue` elsewhere says
@@ -904,9 +911,8 @@ landed.
 `pull` refuses rather than choosing when a drop meets other work on the same
 branch — your own commits on top of what the remote dropped, or a drop here
 while the remote gained something — and names `--keep` and `--take published`
-for that branch. A branch with no sync point yet (one never pulled, pushed or
-adopted through g2g) is read as it always was: every difference is new work on
-its own side.
+for that branch. A branch with no usable sync point yet is read as it always
+was: every difference is new work on its own side.
 
 #### Prune
 
@@ -1014,11 +1020,13 @@ author date and subject, and the push publishes the resolution as a rewrite,
 listing each published commit it replaces, so check the new patches in the
 preview. A colleague's replay of the same kind is taken by `pull` the same way.
 A commit somebody added or amended on the remote since is not one you agreed
-on, so `push` still refuses over it. Without a sync point — a branch last
-pushed by plain `git push`, say — nothing proves the remote holds only what you
-had, so the refusal says the published version differs, explains this
-possibility, names the differing published commits by branch, short id and
-subject when their objects are available, and offers `g2g pull` to reconcile.
+on, so `push` still refuses over it. Without a usable sync point, for example
+when a plain-pushed branch was already ahead before g2g observed agreement,
+nothing proves the remote holds only what you had. The refusal says g2g has
+no record that this checkout and the remote agreed on the branch, explains
+that it may have been first pushed outside g2g, and names differing published
+commits by branch, short id and subject when their objects are available. It
+offers `g2g pull` to reconcile.
 `g2g pull --take published --through synthetic-top` previews taking the remote
 versions through that branch, listing the local commits it would discard; review
 that list before adding `--apply`. The refusal also retains the manual atomic

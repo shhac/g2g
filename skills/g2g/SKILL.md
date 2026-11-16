@@ -93,8 +93,20 @@ description: |
   `--strict` on `pull`, `push`, `submit` and `land` refuses any drop, and any
   branch differing with no sync point. Membership in a sync point is by commit
   id, never content.
-  Repeated restacks keep that agreement. A refused publication names differing
-  published commits when available and offers a pull preview; the explicit
+  Restack planning records agreement before replay only for moving branches
+  exactly level with their known `origin` copy (`KnownTips`, one batched local
+  read of remote-tracking and g2g-fetched refs, no network). Use the observed
+  local tip, never a pending incoming head or an apply-time read. Ahead,
+  behind, absent, skipped and metadata-only branches record nothing; a trunk
+  never has a sync point. Pull already records exact equality for its selected
+  remote before replay. Recording failures stay diagnostic through
+  `syncpoint.Record`. Repeated unequal restacks keep that agreement.
+  A refused publication with no usable agreement explains that g2g has no
+  record this checkout and the remote agreed, for example because the branch
+  was first pushed outside g2g. `syncpoint.Assess` remains the only reader for
+  a decision, including agreement usability before published objects exist.
+  A refused publication names differing published commits when available and
+  offers a pull preview; the explicit
   `--take published --through <branch>` choice lists local commits it discards.
 - `adopt --scope path` and `github adopt --scope path` record one chain — the
   trunk up to `--branch` — for taking up one line of somebody else's stack.

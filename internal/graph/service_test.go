@@ -205,7 +205,9 @@ func TestPlanTrackBlocksOnACycle(t *testing.T) {
 }
 
 func TestApplyTrackWritesOnceAndRefusesABlockedPlan(t *testing.T) {
-	service, store := newService(t, stackGit(), forest())
+	git := stackGit()
+	git.ancestors["synthetic-session"] = append(git.ancestors["synthetic-session"], "synthetic-billing")
+	service, store := newService(t, git, forest())
 	ctx := context.Background()
 
 	blocked, err := service.PlanTrack(ctx, Selection{Branch: "synthetic-login"}, "")
@@ -235,7 +237,9 @@ func TestApplyTrackWritesOnceAndRefusesABlockedPlan(t *testing.T) {
 }
 
 func TestApplyTrackRestoresTheGraphWhenPinningFails(t *testing.T) {
-	service, store := newService(t, stackGit(), forest())
+	git := stackGit()
+	git.ancestors["synthetic-session"] = append(git.ancestors["synthetic-session"], "synthetic-billing")
+	service, store := newService(t, git, forest())
 	service.Refs = &memoryPinner{failPin: "synthetic-session"}
 	plan, err := service.PlanTrack(context.Background(), Selection{Branch: "synthetic-session"}, "synthetic-billing")
 	if err != nil {

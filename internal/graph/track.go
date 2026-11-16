@@ -87,33 +87,74 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	if err != nil {
 		return TrackPlan{}, err
 	}
-	forkPoint, err := s.trackFork(ctx, parent, discovery.Target, origin, !discovery.Graph.Tracked(parent))
-	if err != nil {
-		return TrackPlan{}, err
-	}
-	// Naming a declared trunk here is the one way its declaration ends; every
-	// other path that records an edge refuses it.
+	// Validate the requested structure before deriving its replay boundary, so
+	// a cycle is refused even when the old boundary also needs repair.
 	current := discovery.Graph
 	if current.IsDeclared(discovery.Target) {
 		current = current.Undeclare(discovery.Target)
 	}
-	updated, newTrunk, err := current.Adopt(discovery.Target, Edge{
-		Parent: parent,
-		Origin: origin,
-		// Recorded now, because after the parent is merged and deleted there
-		// is nothing left to derive it from.
-		ForkPoint: forkPoint,
-	})
+	updated, newTrunk, err := current.Adopt(discovery.Target, Edge{Parent: parent, Origin: origin})
 	if err != nil {
 		plan.Repair = repair.Note{Reason: err.Error()}
 		return plan, nil
 	}
+	var forkPoint string
+	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked {
+		forkPoint, plan.Repair, err = s.reparentFork(ctx, plan, recorded, origin)
+	} else {
+		forkPoint, err = s.trackFork(ctx, parent, discovery.Target, origin, !discovery.Graph.Tracked(parent))
+	}
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	if plan.Blocked() != "" {
+		return plan, nil
+	}
+	// Recorded now, because after the parent is merged and deleted there is
+	// nothing left to derive it from.
+	edge := updated.Edges[discovery.Target]
+	edge.ForkPoint = forkPoint
+	updated.Edges[discovery.Target] = edge
 	// A parent that is not itself tracked becomes a root of the forest. Saying
 	// so is what lets the next branch in the stack find it as a candidate once
 	// the trunk has moved past being an ancestor.
 	plan.NewTrunk = newTrunk
 	plan.Updated = updated
 	return plan, nil
+}
+
+// reparentFork changes the destination without widening a recorded own range.
+// The old boundary need not be in the new parent: a sibling can fork from a
+// much older trunk. Only LaterFork may narrow that range on shared ancestry.
+// Without a usable old boundary, only a verified new parent tip separates
+// parent work from branch work; a merge base alone cannot do that.
+func (s Service) reparentFork(ctx context.Context, plan TrackPlan, recorded Edge, origin Origin) (string, repair.Note, error) {
+	if recorded.ForkPoint != "" {
+		fork, err := s.Git.Resolve(ctx, recorded.ForkPoint)
+		if err == nil {
+			intact, err := s.Git.IsAncestor(ctx, fork, plan.Target)
+			if err != nil {
+				return "", repair.Note{}, err
+			}
+			if intact {
+				if forks, ok := s.Git.(MergeBases); ok {
+					fork, err = LaterFork(ctx, s.Git, forks, plan.Parent, plan.Target, fork)
+				}
+				return fork, repair.Note{}, err
+			}
+		}
+	}
+	if origin == OriginAncestry {
+		fork, err := s.trackFork(ctx, plan.Parent, plan.Target, origin, !plan.Graph.Tracked(plan.Parent))
+		return fork, repair.Note{}, err
+	}
+	return "", repair.Note{
+		Reason: fmt.Sprintf("%s's recorded fork point is not a verified ancestor, and %s's tip is not in the branch, so its own replay range cannot be determined", plan.Target, plan.Parent),
+		Ways: []repair.Step{{
+			Command: repair.Command([]string{"g2g", "track", "--branch", plan.Target}),
+			Effect:  "choose and record the parent it is built on before reparenting",
+		}},
+	}, nil
 }
 
 // refresh answers a track naming the parent already recorded.

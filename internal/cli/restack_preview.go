@@ -34,6 +34,11 @@ func restackView(plan restack.Plan) stackView {
 	// replayed would misdescribe what happened to its commits.
 	if replaying := plan.Replaying(); len(replaying) != 0 {
 		view = view.note("Replays "+ontoEach(plan, replaying)+".", severityOK)
+		for _, step := range plan.Steps {
+			if !step.Collapses {
+				view = view.note(fmt.Sprintf("Replay range for %s: %s..%s.", step.Branch, localgit.Short(step.ForkPoint), localgit.Short(step.Head)), severityNeutral)
+			}
+		}
 	} else {
 		view = view.note("Moves "+ontoEach(plan, plan.Emptied())+" · nothing needs replaying.", severityOK)
 	}

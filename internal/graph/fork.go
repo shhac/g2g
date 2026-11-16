@@ -93,9 +93,9 @@ type ordering interface {
 // It never moves a boundary backward, so a tip that was rewritten, or one head
 // does not build on, leaves fork where it was.
 //
-// track applies it to a branch on a trunk that has moved on and restack to
-// every branch it plans, and they wrote it out apart until it was this one
-// rule.
+// track applies it on upstream trunk evidence and when changing a recorded
+// parent; restack applies it to every branch it plans. They share this rule
+// so neither can widen a branch's own range to a new parent's older merge base.
 func LaterFork(ctx context.Context, git ordering, forks MergeBases, tip, head, fork string) (string, error) {
 	shared, err := forks.MergeBase(ctx, tip, head)
 	if err != nil {

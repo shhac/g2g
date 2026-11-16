@@ -44,10 +44,12 @@ const (
 type Edge struct {
 	Parent string
 	Origin Origin
-	// ForkPoint is the parent's tip when this edge was written. It is
+	// ForkPoint is the branch's verified replay boundary. Initially it is
+	// the shared ancestry with its parent; reparenting preserves it unless
+	// shared ancestry with the new parent narrows the range. It is
 	// structural rather than drift state: it answers which commits belong to
 	// the branch, namely ForkPoint..branch, and that range is what a restack
-	// replays. It changes only when an edge is adopted or restacked.
+	// replays. It changes only when recording or repairing structure, or restacking.
 	//
 	// It cannot be derived after the fact. Once a merged parent's branch is
 	// deleted, the merge base with the trunk points before the parent's work

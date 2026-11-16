@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/shape"
@@ -21,6 +22,9 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	}
 	if plan.Blocked() == "" {
 		view = view.note(fmt.Sprintf("Records %s under %s.", plan.Target, plan.Parent), severityOK)
+		if edge, tracked := plan.Graph.Edges[plan.Target]; tracked && edge.Parent != plan.Parent {
+			view = view.note(fmt.Sprintf("Records replay range %s..%s for the next restack.", localgit.Short(plan.Updated.Edges[plan.Target].ForkPoint), plan.Target), severityNeutral)
+		}
 		if plan.Graph.IsDeclared(plan.Target) {
 			view = view.note(fmt.Sprintf("%s stops being a trunk%s, and is replayed with its stack from now on.", plan.Target, landingPhrase(plan.Graph.Declared[plan.Target])), severityWarn)
 		}
@@ -29,9 +33,11 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 		}
 		return view.note(confirmation(plan), severityFor(plan))
 	}
-	view = view.blockedBy(plan.Blocked())
-	for _, note := range candidateNotes(plan) {
-		view = view.note(note.Text, note.Severity)
+	view = view.refusing(plan.Repair)
+	if plan.Parent == "" || len(plan.Candidates) != 0 {
+		for _, note := range candidateNotes(plan) {
+			view = view.note(note.Text, note.Severity)
+		}
 	}
 	// Another record may already hold the answer this is asking for. track
 	// cannot read it — that independence is the point — but it can say so, and

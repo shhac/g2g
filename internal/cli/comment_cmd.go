@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/comment"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
@@ -44,6 +45,7 @@ func newComment(service comment.Service, completions stack.Completions, guard id
 				return writeStackView(writer, commentView(plan), p)
 			},
 			guard:    guard,
+			touches:  func(plan comment.Plan) restack.Footprint { return snapshotTouches(plan.Snapshot) },
 			execute:  service.Execute,
 			branches: comment.Plan.Changing,
 			noOp:     comment.Plan.NothingToDo,

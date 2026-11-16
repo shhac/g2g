@@ -113,3 +113,55 @@ func TestJourneyARestackStoppedElsewhereLeavesAnotherStacksRestackFree(t *testin
 	}
 	w.assertClean(agent)
 }
+
+// GitHub-only writes depend on the selected structure, so a restack moving
+// unrelated branches in another worktree must not prevent their repair.
+func TestJourneyGitHubRepairsBesideUnrelatedRestack(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-busy", "shared.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("main", "synthetic-free", "free.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("synthetic-free", "synthetic-free-top", "top.txt")
+	mustRun(t, "track", "--parent", "synthetic-free", "--apply")
+	mustRun(t, "push", "--branch", "synthetic-busy", "--apply")
+	mustRun(t, "push", "--branch", "synthetic-free", "--apply")
+	state := landingGitHubPulls(t, w.Remote, [2]string{"synthetic-busy", "main"}, [2]string{"synthetic-free", "main"}, [2]string{"synthetic-free-top", "main"})
+	w.commit(w.Local, "main", "shared.txt", "synthetic trunk conflict")
+	agent := filepath.Join(filepath.Dir(w.Local), "agent")
+	w.git(w.Local, "worktree", "add", "-q", agent, "synthetic-busy")
+	t.Chdir(agent)
+	if _, _, err := run(t, "restack", "--apply"); err == nil {
+		t.Fatal("restack did not stop on conflict")
+	}
+	t.Chdir(w.Local)
+	w.git(w.Local, "switch", "-q", "synthetic-free-top")
+	before := w.tip(w.Remote, "synthetic-free-top")
+	for _, command := range []string{"retarget", "comment"} {
+		stdout, stderr, err := run(t, "github", command, "--branch", "synthetic-free-top", "--apply")
+		if err != nil {
+			t.Errorf("unrelated %s refused: %v\n%s%s", command, err, stdout, stderr)
+		}
+		if _, stderr, err := run(t, "github", command, "--branch", "synthetic-busy", "--apply"); err == nil || !strings.Contains(stderr+err.Error(), "unfinished in checkout") {
+			t.Errorf("%s did not refuse the moving selection: %v", command, err)
+		}
+	}
+	if got := readState(t, state, "pr-43.base"); got != "synthetic-free" {
+		t.Errorf("retarget did not repair base: %s", got)
+	}
+	if got := readState(t, state, "comment-42"); got == "" {
+		t.Error("comment did not keep the free stack")
+	}
+	if w.tip(w.Remote, "synthetic-free-top") != before {
+		t.Error("GitHub repair moved a Git ref")
+	}
+	w.assertClean(w.Local)
+	t.Chdir(agent)
+	for _, command := range []string{"retarget", "comment"} {
+		if _, _, err := run(t, "github", command, "--branch", "synthetic-free-top", "--apply"); err == nil {
+			t.Errorf("%s ignored this worktree's unfinished restack", command)
+		}
+	}
+	mustRun(t, "restack", "--abort")
+	w.assertClean(agent)
+}

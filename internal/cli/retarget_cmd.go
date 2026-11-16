@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/retarget"
 	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/words"
@@ -37,6 +38,7 @@ func newRetarget(service retarget.Service, completions stack.Completions, guard 
 				return writeStackView(writer, retargetView(plan), p)
 			},
 			guard:    guard,
+			touches:  func(plan retarget.Plan) restack.Footprint { return snapshotTouches(plan.Snapshot) },
 			execute:  service.Execute,
 			branches: func(plan retarget.Plan) int { return len(plan.Changes) },
 			noOp:     retarget.Plan.NothingToRetarget,

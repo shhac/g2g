@@ -174,9 +174,11 @@ func TestAnotherWorktreeStartingRestackBetweenPlansNamesItsCheckout(t *testing.T
 	}
 }
 
-// guardFunc is an idle guard that answers both questions the same way.
-type guardFunc func() error
+// guardFuncs is the shared idleGuard fake. Each question can be observed
+// independently; guardFunc keeps the uniform answer most flow tests need.
+type guardFuncs struct{ idle, here, apart func() error }
 
-func (g guardFunc) RequireIdle(context.Context) error                     { return g() }
-func (g guardFunc) RequireIdleHere(context.Context) error                 { return g() }
-func (g guardFunc) RequireApart(context.Context, restack.Footprint) error { return g() }
+func guardFunc(answer func() error) guardFuncs                             { return guardFuncs{answer, answer, answer} }
+func (g guardFuncs) RequireIdle(context.Context) error                     { return g.idle() }
+func (g guardFuncs) RequireIdleHere(context.Context) error                 { return g.here() }
+func (g guardFuncs) RequireApart(context.Context, restack.Footprint) error { return g.apart() }

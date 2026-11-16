@@ -58,7 +58,15 @@ func leaving(plan Plan, split worktree.Split) ([]worktree.Holder, repair.Note) {
 		return nil, worktree.Refusal(split.Refuse)
 	}
 	if len(split.Leave) != 0 && plan.Onto.Reparents() {
-		return nil, ontoLeaves(split.Leave, plan.Onto.Parent)
+		roots := selectionRoots(plan.Discovery)
+		for _, holder := range split.Leave {
+			// Only a selection root is asked to change parents. A held
+			// descendant keeps its edge and fork point, just as it does in a
+			// restack without --onto; measure again with it fixed in place.
+			if slices.Contains(roots, holder.Branch) {
+				return nil, ontoLeaves(holder, plan.Onto.Parent)
+			}
+		}
 	}
 	return split.Leave, repair.Note{}
 }
@@ -75,12 +83,12 @@ func following(plan Plan, held worktree.Held, steps []Step, pending Pending) []w
 	return follow
 }
 
-// ontoLeaves refuses an --onto that would leave a branch it moves. Recording
-// the new parent for a branch still sitting on the old one describes a stack
-// that does not exist.
-func ontoLeaves(left []worktree.Holder, parent string) repair.Note {
+// ontoLeaves refuses an --onto that would leave its selection root. Recording
+// the new parent for that branch still sitting on the old one describes a
+// stack that does not exist. Descendants keep their parents and may be left.
+func ontoLeaves(holder worktree.Holder, parent string) repair.Note {
 	return repair.Note{
-		Reason: fmt.Sprintf("--onto %s has to move %s, and %s", parent, left[0].Branch, left[0].Why()),
+		Reason: fmt.Sprintf("--onto %s has to move %s, and %s", parent, holder.Branch, holder.Why()),
 		Ways:   []repair.Step{worktree.PutAway, {Effect: "run it from that worktree instead"}},
 	}
 }

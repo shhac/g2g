@@ -53,6 +53,16 @@ completions generated from that installed executable.
    Install / upgrade: `brew install shhac/tap/g2g` · `brew upgrade shhac/tap/g2g`
    (then use `g2g`, not the formula name, to run the installed command).
 
+## Suggested post-step
+
+The tag publishes `skills/g2g`, but a globally installed copy does not update
+itself. After the workflows pass, ask whether to refresh it, and run this only
+if the user says yes:
+
+```bash
+npx skills update -g -y
+```
+
 ## Manual fallback (only if the workflow itself is broken)
 
 Re-run a failed release with `gh run rerun <id> --repo shhac/g2g`. To bypass

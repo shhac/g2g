@@ -79,6 +79,18 @@ Then follow `.agents/commands/release.md` with `$ARGUMENTS` (default
 `minor`), watch the `Release`, `Publish skill` and CI workflows, and upgrade
 the local install.
 
+## Suggested post-step
+
+Once the release is out, ask whether to refresh the globally installed skill
+so it matches what was just published:
+
+```bash
+npx skills update -g -y
+```
+
+It changes the user's own skill installation, so offer it and run it only if
+they say yes.
+
 ## Report
 
 For each item: whether it was reproduced and how, what changed, and the

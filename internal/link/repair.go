@@ -71,15 +71,9 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 			continue
 		}
 		absorbed = append(absorbed, issue.Branch)
-		if issue.Kind == IssueAbsorbedStale && p.Source == stack.SourceG2G {
-			ways = append(ways, repair.Step{
-				Command: repair.Command([]string{"g2g", "pull", "--branch", issue.Branch, "--above", p.SitsOn(issue.Branch)}),
-				Effect:  "collect the published parent before pruning; leaves its ancestors alone",
-			})
-		}
+		ways = append(ways, AbsorbedWays(p.Snapshot, issue.Branch, issue.Kind == IssueAbsorbedStale, "origin")...)
 	}
 	if len(absorbed) != 0 {
-		ways = append(ways, ForgetLanded(p.Source))
 		return repair.Note{Reason: words.List(absorbed) + " absorbed into recorded parents", Ways: ways}, []IssueKind{IssueAbsorbed, IssueAbsorbedStale}
 	}
 	var replacements []string
@@ -156,4 +150,26 @@ func (p Plan) missingReason() string {
 	default:
 		return words.List(missing) + words.Pick(len(missing), " has", " have") + " no pull request, and " + words.List(closed) + words.Pick(len(closed), " had one closed", " had theirs closed")
 	}
+}
+
+// AbsorbedWays names the source's cleanup for one absorbed branch.
+func AbsorbedWays(snapshot stack.Snapshot, branch string, stale bool, remote string) []repair.Step {
+	if snapshot.Source != stack.SourceG2G {
+		return []repair.Step{ForgetLanded(snapshot.Source)}
+	}
+	ways := make([]repair.Step, 0)
+	if stale {
+		args := []string{"g2g", "pull", "--branch", branch}
+		if remote != "" && remote != "origin" {
+			args = append(args, "--remote", remote)
+		}
+		args = append(args, "--above", snapshot.SitsOn(branch))
+		ways = append(ways, repair.Step{Command: repair.Command(args), Effect: "collect the published parent before pruning; leaves its ancestors alone"})
+	}
+	if len(snapshot.Shape().Children(branch)) != 0 {
+		ways = append(ways, repair.Step{Command: repair.Command([]string{"g2g", "restack", "--branch", branch}), Effect: "reconcile surviving descendants before pruning"})
+	}
+	forget := ForgetLanded(snapshot.Source)
+	forget.Command = repair.Command([]string{"g2g", "prune", "--branch", branch, "--scope", "branch"})
+	return append(ways, forget)
 }

@@ -88,7 +88,8 @@ type Plan struct {
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
 	// Selected is the selection as discovered, before anything was left out
-	// of it: what the preview draws. Snapshot is what is submitted.
+	// of it: what the preview draws. Snapshot retains absorbed topology;
+	// Publication selects the eligible actions.
 	Selected stack.Snapshot
 	// Waiting are the branches above the target left out of the submission,
 	// in selection order: each has no commits of its own yet and no open pull
@@ -117,6 +118,8 @@ func (p Plan) Refusal(link bool) repair.Note {
 		if note := p.LinkRepair(); note.Sentence() != "" {
 			return note
 		}
+	} else if note := p.absorbedBaseRepair(false); note.Reason != "" {
+		return note
 	}
 	if p.Repair.Sentence() != "" {
 		return p.Repair
@@ -134,6 +137,9 @@ func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
 // LinkRepair is why the pull requests cannot be linked, and the ways out. A
 // GitHub native stack is one line, so a fork can be submitted and not linked.
 func (p Plan) LinkRepair() repair.Note {
+	if note := p.absorbedBaseRepair(true); note.Reason != "" {
+		return note
+	}
 	if note := p.Snapshot.LinearRepair("linking"); note.Reason != "" {
 		note.Ways = append(note.Ways, repair.Step{Effect: "drop --link to publish the whole fork, with each pull request based on its own parent"})
 		return note
@@ -200,7 +206,7 @@ func (p Plan) retarget() string {
 func (p Plan) CreationBranches() []string {
 	resolutions := githubstack.ResolveHeads(p.Existing)
 	branches := make([]string, 0)
-	for _, branch := range p.Snapshot.Branches {
+	for _, branch := range p.Publication().Branches {
 		if resolutions[branch].Open == nil {
 			branches = append(branches, branch)
 		}
@@ -215,7 +221,7 @@ func (p Plan) ExistingSpec() (Spec, bool) {
 		return Spec{}, false
 	}
 	resolutions := githubstack.ResolveHeads(p.Existing)
-	for _, branch := range p.Snapshot.Branches {
+	for _, branch := range p.Publication().Branches {
 		if resolutions[branch].OpenCount != 1 {
 			return Spec{}, false
 		}
@@ -245,14 +251,15 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	issues, superseded := assessExisting(snapshot, discovery.PullRequests)
 	plan := Plan{Selected: discovery.Snapshot, Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Waiting: waiting}
 	plan.MergedLanded = s.mergedLanded(ctx, plan)
-	plan.Absorbed = s.mergedAbsorbed(ctx, plan)
-	plan.Snapshot = without(snapshot, slices.Collect(maps.Keys(plan.Absorbed)))
-	if len(plan.Snapshot.Branches) != 0 {
-		plan.Push, err = s.Pusher.PlanOf(ctx, plan.Snapshot, remote, upstream)
+	if len(snapshot.Branches) != 0 {
+		plan.Push, err = s.Pusher.PlanOf(ctx, snapshot, remote, upstream)
 		if err != nil {
 			return Plan{}, err
 		}
 	}
+	plan.Absorbed = s.mergedAbsorbed(ctx, plan)
+	plan.Push = plan.Push.Excluding(slices.Collect(maps.Keys(plan.Absorbed)))
+
 	plan.Repair, err = s.preservedBaseRepair(ctx, plan)
 	if err != nil {
 		return Plan{}, err

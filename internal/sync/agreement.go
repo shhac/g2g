@@ -26,12 +26,7 @@ func (s Service) recordLevel(ctx context.Context, remote string, published map[s
 		return
 	}
 	locals := syncpoint.Locals(ctx, s.Git, slices.Sorted(maps.Keys(published)))
-	level := map[string]localgit.SyncPoint{}
-	for branch, local := range locals {
-		if local == published[branch] {
-			level[branch] = localgit.SyncPoint{Tip: local, Local: local, Command: "pull"}
-		}
-	}
+	level := syncpoint.Level("pull", locals, published)
 	syncpoint.Record(ctx, recorder, "sync.sync_point", remote, level)
 }
 

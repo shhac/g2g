@@ -244,7 +244,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			}
 			return claim(err, func(stopped *submit.Stopped) error { return stoppedMidSubmit(cmd, stopped, o.remote, retry, p) })
 		},
-		branches: func(plan submit.Plan) int { return len(plan.Snapshot.Branches) },
+		branches: func(plan submit.Plan) int { return len(plan.Publication().Branches) },
 		wrapMutationError: func(err error) error {
 			if o.specPath == "" {
 				return err

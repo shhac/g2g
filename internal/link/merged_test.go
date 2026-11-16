@@ -134,7 +134,7 @@ func TestMergedIntoRecordedParentRequiresAbsorbedContent(t *testing.T) {
 			}
 			if tc.want == IssueAbsorbed || tc.want == IssueAbsorbedStale {
 				note, _ := plan.Repair()
-				if note.Ways[len(note.Ways)-1].Command != "g2g prune" {
+				if note.Ways[len(note.Ways)-1].Command != "g2g prune --branch synthetic-head --scope branch" {
 					t.Fatalf("no graph repair: %+v", note)
 				}
 				if tc.want == IssueAbsorbedStale && !strings.Contains(note.Ways[0].Command, "--above synthetic-base") {

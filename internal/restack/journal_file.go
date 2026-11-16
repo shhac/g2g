@@ -85,11 +85,14 @@ func readJournal(path string) (Record, bool, error) {
 	if err := json.Unmarshal(contents, &record); err != nil {
 		return Record{}, false, fmt.Errorf("parse restack journal %s: %w", path, err)
 	}
-	if record.SchemaVersion != 1 && record.SchemaVersion != JournalSchemaVersion {
+	if record.SchemaVersion != 1 && record.SchemaVersion != 2 && record.SchemaVersion != JournalSchemaVersion {
 		return Record{}, false, fmt.Errorf("restack journal %s has schema version %d, which this g2g does not support (expected %d)", path, record.SchemaVersion, JournalSchemaVersion)
 	}
 	if record.SchemaVersion == 1 && record.Above != "" {
 		return Record{}, false, fmt.Errorf("restack journal %s has a replay boundary without schema version 2", path)
+	}
+	if record.SchemaVersion < 3 && len(record.Left) != 0 {
+		return Record{}, false, fmt.Errorf("restack journal %s has left branches without schema version 3", path)
 	}
 	return record, true, nil
 }
@@ -135,6 +138,9 @@ func (j FileJournal) Start(ctx context.Context, record Record) error {
 func write(path string, record Record, exclusive bool) error {
 	record.SchemaVersion = 1
 	if record.Above != "" {
+		record.SchemaVersion = 2
+	}
+	if len(record.Left) != 0 {
 		record.SchemaVersion = JournalSchemaVersion
 	}
 	contents, err := json.MarshalIndent(record, "", "  ")

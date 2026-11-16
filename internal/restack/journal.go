@@ -10,7 +10,7 @@ import (
 // JournalSchemaVersion is bumped when a recorded field changes meaning. It is
 // its own namespace, separate from the graph store's and from the CLI's
 // output schema.
-const JournalSchemaVersion = 2
+const JournalSchemaVersion = 3
 
 // Record is what survives between invocations of one restack.
 //
@@ -50,6 +50,9 @@ type Record struct {
 	// worktree holds, so continuing leaves the same branches where they are.
 	// A journal written before it was recorded refuses, as restack then did.
 	Worktrees worktree.Policy `json:"worktrees,omitempty"`
+	// Left keeps both the refs and replay boundaries of branches left by an
+	// earlier pass fixed, even if their worktrees are no longer holding them.
+	Left []worktree.Holder `json:"left,omitempty"`
 	// Followed is each worktree this restack brings along with its branch,
 	// and the commit that worktree's index describes. It is written before
 	// the branch moves and after each worktree is brought, so a restack that

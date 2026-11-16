@@ -1,7 +1,6 @@
 package push
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -18,11 +17,8 @@ func TestDifferenceRepairPreviewsTakingOnlyThroughTheTarget(t *testing.T) {
 			plan := Plan{
 				Snapshot: stack.Snapshot{Target: branches[0], Scope: scope, Branches: branches},
 				Remote:   "synthetic-remote", Publishing: publishing,
-				Repair: blockedBy("synthetic-remote", branches, publishing, nil, nil),
 			}
-			if err := (Service{}).explainDifference(context.Background(), &plan); err != nil {
-				t.Fatal(err)
-			}
+			plan.Repair = differenceRepair(plan, nil, nil, nil)
 			want := "g2g pull --branch 'synthetic-$target'"
 			if scope == shape.ScopeTrunk {
 				want += " --scope trunk"
@@ -40,9 +36,9 @@ func TestDifferenceRepairPreviewsTakingOnlyThroughTheTarget(t *testing.T) {
 }
 
 func TestReplacementAdvicePinsOnlyRejectedBranchesToObservedTips(t *testing.T) {
-	note := blockedBy("synthetic-remote", []string{"synthetic-a", "synthetic-b", "synthetic-c"},
-		map[string]Publication{"synthetic-a": {Standing: Behind}, "synthetic-b": {Standing: Current}, "synthetic-c": {Standing: Diverged}},
-		map[string]string{"synthetic-a": strings.Repeat("a", 40), "synthetic-b": strings.Repeat("b", 40), "synthetic-c": strings.Repeat("c", 40)}, nil)
+	note := differenceRepair(Plan{Remote: "synthetic-remote", Snapshot: stack.Snapshot{Branches: []string{"synthetic-a", "synthetic-b", "synthetic-c"}},
+		Publishing: map[string]Publication{"synthetic-a": {Standing: Behind}, "synthetic-b": {Standing: Current}, "synthetic-c": {Standing: Diverged}},
+		RemoteTips: map[string]string{"synthetic-a": strings.Repeat("a", 40), "synthetic-b": strings.Repeat("b", 40), "synthetic-c": strings.Repeat("c", 40)}}, nil, nil, nil)
 	want := "git push --atomic --force-with-lease=refs/heads/synthetic-a:" + strings.Repeat("a", 40) + " --force-with-lease=refs/heads/synthetic-c:" + strings.Repeat("c", 40) + " synthetic-remote synthetic-a synthetic-c"
 	if got := note.Ways[1].Command; got != want {
 		t.Fatalf("replacement command = %s, want %s", got, want)
@@ -67,12 +63,31 @@ func TestMissingAgreementExplainedOnlyForRejectedUnsyncedBranches(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			branches := []string{"synthetic-top"}
 			publishing := map[string]Publication{branches[0]: {Standing: test.standing}}
-			p := Plan{Snapshot: stack.Snapshot{Branches: branches}, Publishing: publishing, Repair: blockedBy("origin", branches, publishing, nil, nil)}
-			p.explainMissingAgreement(map[string]syncpoint.Changes{branches[0]: {Unsynced: test.unsynced}})
+			p := Plan{Snapshot: stack.Snapshot{Branches: branches}, Remote: "origin", Publishing: publishing}
+			p.Repair = differenceRepair(p, map[string]syncpoint.Changes{branches[0]: {Unsynced: test.unsynced}}, nil, nil)
 			got := strings.Contains(p.Repair.Reason, "g2g has no record that this checkout and the remote agreed on synthetic-top")
 			if got != test.want {
 				t.Fatalf("reason=%s, want missing agreement=%t", p.Repair.Reason, test.want)
 			}
 		})
+	}
+}
+
+func TestDifferenceRepairNamesCollectedEvidenceAndCanExcludeIt(t *testing.T) {
+	branches := []string{"synthetic-parent", "synthetic-child"}
+	plan := Plan{Snapshot: stack.Snapshot{Target: "synthetic-child", Branches: branches, Scope: shape.ScopeStack}, Remote: "origin", Publishing: map[string]Publication{"synthetic-parent": {Standing: Current}, "synthetic-child": {Standing: Behind}}}
+	plan.changes = map[string]syncpoint.Changes{"synthetic-child": {Unsynced: true}}
+	plan.differences = []Drop{{Kind: syncpoint.Left, Branch: "synthetic-child", Commit: strings.Repeat("a", 40)}}
+	plan.differenceSubjects = map[string]string{strings.Repeat("a", 40): "synthetic reviewer addition"}
+	plan.Repair = differenceRepair(plan, plan.changes, plan.differences, plan.differenceSubjects)
+	if !strings.Contains(plan.Blocked(), "synthetic reviewer addition") || len(plan.Repair.Ways) != 3 {
+		t.Fatalf("evidence or ways lost: %+v", plan.Repair)
+	}
+	if plan.Repair.Ways[0].Command != "g2g pull --branch synthetic-child" {
+		t.Fatalf("default remote advice = %s", plan.Repair.Ways[0].Command)
+	}
+	omitted := plan.Excluding([]string{"synthetic-child"})
+	if omitted.Blocked() != "" || len(omitted.Leases()) != 1 || len(plan.Branches) != 2 {
+		t.Fatalf("omitting action damaged plan or kept refusal: %+v", omitted)
 	}
 }

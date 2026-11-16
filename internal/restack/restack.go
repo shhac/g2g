@@ -126,6 +126,7 @@ func (s Service) record(plan Plan, standing checkout, recorded graph.Graph) Reco
 		OntoNamed:      plan.Onto.Named,
 		Absorb:         plan.Absorb,
 		Worktrees:      plan.Policy,
+		Left:           plan.Worktrees.Leave,
 		Branch:         plan.Target,
 		Scope:          string(plan.Scope),
 		ReturnTo:       standing.Branch,

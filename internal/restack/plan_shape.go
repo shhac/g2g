@@ -34,13 +34,13 @@ func (p Plan) collapsing() []Step {
 
 // structure is what this plan changes about the structure.
 func (p Plan) structure() structureMoves {
-	return structureMoves{reparent: p.reparenting(), onto: p.Onto.Elsewhere()}
+	return structureMoves{reparent: p.reparenting(), onto: p.Onto.Elsewhere(), left: fixed(p.Worktrees.Leave)}
 }
 
 // structure is what the restack this journal records changes about the
 // structure.
 func (r Record) structure() structureMoves {
-	return structureMoves{reparent: r.Reparent, onto: resumed(r).Elsewhere()}
+	return structureMoves{reparent: r.Reparent, onto: resumed(r).Elsewhere(), left: fixed(r.Left)}
 }
 
 // reparenting is the branches this plan moves to a different parent, which is

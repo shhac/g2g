@@ -51,7 +51,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		// first of several roots is what it used to do, silently.
 		return plan.refused(ontoOneRoot(roots, onto.Parent)), nil
 	}
-	steps, note, err := s.measure(ctx, discovery, onto, pending, nil)
+	steps, note, err := s.measure(ctx, discovery, onto, pending, fixed(pending.Leave))
 	if err != nil {
 		return Plan{}, err
 	}
@@ -67,6 +67,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 		plan.Held = true
 		return plan.refused(note), nil
 	}
+	left = worktree.NewOutcome(nil, append(slices.Clone(pending.Leave), left...)).Leave
 	if len(left) != 0 {
 		// Leaving a branch changes what sits on it: a child that was moving
 		// only because its parent was is now measured against where the

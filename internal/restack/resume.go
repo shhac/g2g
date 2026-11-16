@@ -134,6 +134,7 @@ func (s Service) finishPass(ctx context.Context, record *Record, pass int) (fini
 	if err != nil {
 		return finishComplete, err
 	}
+	record.Left = plan.Worktrees.Leave
 	if err := s.journalFollowed(ctx, record, plan); err != nil {
 		return finishComplete, err
 	}
@@ -174,7 +175,7 @@ func (s Service) resumable(ctx context.Context, record Record) (Plan, error) {
 	}
 	// No pending: a resume runs after whatever the caller was going to
 	// move has already moved.
-	plan, err := s.Plan(ctx, record.Selection(), resumed(record), record.Absorb, Pending{Above: record.Above}, record.Worktrees)
+	plan, err := s.Plan(ctx, record.Selection(), resumed(record), record.Absorb, Pending{Above: record.Above, Leave: record.Left}, record.Worktrees)
 	if err != nil {
 		return Plan{}, err
 	}

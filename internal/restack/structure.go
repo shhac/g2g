@@ -33,6 +33,7 @@ func (s Service) recordStructure(ctx context.Context, branches []string, moves s
 	if err != nil {
 		return err
 	}
+	branches = slices.DeleteFunc(slices.Clone(branches), func(branch string) bool { return moves.left[branch] })
 	if err := s.refreshForkPoints(ctx, updated, branches, moves.onto); err != nil {
 		return err
 	}
@@ -70,6 +71,7 @@ func reparentStructure(adopted graph.Graph, reparent map[string]string) (graph.G
 type structureMoves struct {
 	reparent map[string]string
 	onto     string
+	left     map[string]bool
 }
 
 // refreshForkPoints records the parent tips that describe each replay range.

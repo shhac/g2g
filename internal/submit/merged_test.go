@@ -56,7 +56,7 @@ func TestSubmissionExcludesOnlyConfirmedMergesIntoTheRecordedParent(t *testing.T
 		absorbed     bool
 	}{
 		{"local parent", landed.Present, landed.Absent, "MERGED", "synthetic-parent", true},
-		{"known parent", landed.Absent, landed.Present, "MERGED", "synthetic-parent", true},
+		{"published parent replaced by local", landed.Absent, landed.Present, "MERGED", "synthetic-parent", false},
 		{"absent content", landed.Absent, landed.Absent, "MERGED", "synthetic-parent", false},
 		{"unknown content", landed.Unknown, landed.Unknown, "MERGED", "synthetic-parent", false},
 		{"other base", landed.Present, landed.Present, "MERGED", "synthetic-other", false},
@@ -72,7 +72,7 @@ func TestSubmissionExcludesOnlyConfirmedMergesIntoTheRecordedParent(t *testing.T
 				t.Fatal(err)
 			}
 			_, absorbed := plan.Absorbed["synthetic-child"]
-			if absorbed != tc.absorbed || slices.Contains(git.planned.Branches, "synthetic-child") == tc.absorbed || slices.Contains(plan.CreationBranches(), "synthetic-child") == tc.absorbed {
+			if absorbed != tc.absorbed || slices.Contains(plan.Push.Branches, "synthetic-child") == tc.absorbed || slices.Contains(plan.CreationBranches(), "synthetic-child") == tc.absorbed {
 				t.Fatalf("absorbed=%v, pushed=%v, created=%v", absorbed, git.planned.Branches, plan.CreationBranches())
 			}
 			if tc.absorbed {

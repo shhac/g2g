@@ -33,13 +33,11 @@ func (s Service) recordLevel(ctx context.Context, plan Plan) {
 		}
 		return
 	}
-	level := map[string]localgit.SyncPoint{}
+	locals := make(map[string]string, len(plan.Steps))
 	for _, step := range plan.Steps {
-		// Tip is the local tip this plan observed, never a pending incoming
-		// Head or a ref resolved again after the rewrite moved it.
-		if step.Tip != "" && step.Tip == tips[step.Branch] {
-			level[step.Branch] = localgit.SyncPoint{Tip: step.Tip, Local: step.Tip, Command: "restack"}
-		}
+		// Use the observed local Tip, never a pending incoming Head.
+		locals[step.Branch] = step.Tip
 	}
+	level := syncpoint.Level("restack", locals, tips)
 	syncpoint.Record(ctx, git, "restack.sync_point", localgit.DefaultRemote, level)
 }

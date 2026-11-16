@@ -3,6 +3,8 @@ package push
 import (
 	"cmp"
 	"context"
+	"errors"
+	"slices"
 	gosync "sync"
 
 	"github.com/shhac/g2g/internal/landed"
@@ -130,38 +132,45 @@ type Comparer interface {
 // they are asked at once, as status's other per-branch reads are: doctor asks
 // this of every recorded branch.
 func Compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, error) {
-	publishing, _, err := compare(ctx, git, remote, branches, tips, below)
+	publishing, _, _, err := compare(ctx, git, remote, branches, tips, below, false)
 	return publishing, err
 }
 
 // compare is Compare with what each sync point said, which only push's own
 // plan reads: it lists every commit a drop concerns.
-func compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string)) (map[string]Publication, map[string]syncpoint.Changes, error) {
+func compare(ctx context.Context, git Comparer, remote string, branches []string, tips map[string]string, below func(string) (parent, trunk string), enumerate bool) (map[string]Publication, map[string]syncpoint.Changes, map[string][]string, error) {
 	latest, err := latestOf(ctx, git, remote, branches)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	// Sized before the reads start, so each owns one element and needs no lock.
 	results := make([]Publication, len(branches))
 	changes := make([]syncpoint.Changes, len(branches))
+	differences := make([][]string, len(branches))
 	err = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
 		parent, trunk := below(branch)
-		publication, changed, err := compareOne(ctx, git, latest, branch, tips[branch], parent, trunk, tips[parent])
+		var evidence *[]string
+		if enumerate {
+			evidence = &differences[index]
+		}
+		publication, changed, err := compareOne(ctx, git, latest, branch, tips[branch], parent, trunk, tips[parent], evidence)
 		results[index], changes[index] = publication, changed
 		return err
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	publishing := make(map[string]Publication, len(branches))
 	changed := make(map[string]syncpoint.Changes, len(branches))
+	differing := make(map[string][]string, len(branches))
 	for index, branch := range branches {
 		publishing[branch] = results[index]
+		differing[branch] = differences[index]
 		if changes[index].Dropped() || changes[index].Unsynced {
 			changed[branch] = changes[index]
 		}
 	}
-	return publishing, changed, nil
+	return publishing, changed, differing, nil
 }
 
 // latestOf reads every branch's newest sync point once, before the per-branch
@@ -181,7 +190,7 @@ func latestOf(ctx context.Context, git Comparer, remote string, branches []strin
 
 // compareOne is where one branch stands against the tip the remote holds for
 // it, which is empty when the remote has no such branch.
-func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, branch, tip, parent, trunk, publishedParent string) (Publication, syncpoint.Changes, error) {
+func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, branch, tip, parent, trunk, publishedParent string, differing *[]string) (Publication, syncpoint.Changes, error) {
 	if tip == "" {
 		// Absent from the remote has two meanings, and they want opposite
 		// answers: work nobody has seen, or work that merged and took the
@@ -220,9 +229,12 @@ func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, bran
 	// behind or diverged by it, and what decides which is whose drop it was.
 	publication, changes, ok, err := bySyncPoint(ctx, git, latest, branch, local, tip, parent, begins)
 	if err != nil || ok {
+		if differing != nil && publication.Rejected() {
+			*differing = append(slices.Clone(changes.New), changes.Unpaired(changes.DroppedHere)...)
+		}
 		return publication, changes, err
 	}
-	publication, err = compareApart(ctx, git, branch, tip, parent, begins)
+	publication, err = compareApart(ctx, git, branch, tip, parent, begins, differing)
 	return publication, syncpoint.Changes{Unsynced: changes.Unsynced}, err
 }
 
@@ -234,7 +246,7 @@ func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, bran
 // a commit somebody published on the parent counted as this branch's: after
 // one person replayed a stack over another's commit on the parent, every
 // branch above it read as dropping that commit, which is the parent's.
-func compareApart(ctx context.Context, git Comparer, branch, tip, parent string, begins func() (string, error)) (Publication, error) {
+func compareApart(ctx context.Context, git Comparer, branch, tip, parent string, begins func() (string, error), differing *[]string) (Publication, error) {
 	behind, ours, err := git.Divergence(ctx, tip, branch)
 	if err != nil {
 		return Publication{}, err
@@ -247,6 +259,25 @@ func compareApart(ctx context.Context, git Comparer, branch, tip, parent string,
 		// the remote's commits is missing here by definition. Comparing their
 		// content said the same thing at the cost of all of them — a trunk not
 		// updated for a while is thousands.
+		if differing != nil {
+			// Enrichment cannot turn a known refusal into an error when its
+			// published parent object is unavailable. Keep that evidence unnamed.
+			boundary, err := begins()
+			if ctx.Err() != nil {
+				return Publication{}, ctx.Err()
+			}
+			var unavailable unavailableParent
+			if err != nil && !errors.As(err, &unavailable) {
+				return Publication{}, err
+			}
+			if err == nil {
+				commits, _, err := git.Cherry(ctx, branch, tip, cmp.Or(boundary, parent))
+				if err != nil {
+					return Publication{}, err
+				}
+				*differing = commits
+			}
+		}
 		return Publication{Standing: Behind, Theirs: behind}, nil
 	}
 	// The remote tip is not an ancestor. Whether that loses anything is a
@@ -256,7 +287,11 @@ func compareApart(ctx context.Context, git Comparer, branch, tip, parent string,
 	if err != nil {
 		return Publication{}, err
 	}
-	theirs, err := landed.Missing(ctx, git, branch, tip, cmp.Or(theirsFrom, parent))
+	evidence := &missingEvidence{Lineage: git}
+	theirs, err := landed.Missing(ctx, evidence, branch, tip, cmp.Or(theirsFrom, parent))
+	if differing != nil && theirs != 0 {
+		*differing = evidence.commits
+	}
 	if err != nil {
 		return Publication{}, err
 	}
@@ -284,8 +319,30 @@ func builtOn(ctx context.Context, git Comparer, publishedParent, tip string) (st
 		return "", nil
 	}
 	built, err := git.IsAncestor(ctx, publishedParent, tip)
+	if err != nil && ctx.Err() == nil {
+		if _, resolveErr := git.Resolve(ctx, publishedParent); resolveErr != nil {
+			return "", unavailableParent{err}
+		}
+	}
 	if err != nil || !built {
 		return "", err
 	}
 	return publishedParent, nil
+}
+
+type unavailableParent struct{ error }
+
+func (e unavailableParent) Unwrap() error { return e.error }
+
+// missingEvidence retains the very Cherry answer Missing assesses, rather
+// than comparing the same pair again to explain its result.
+type missingEvidence struct {
+	landed.Lineage
+	commits []string
+}
+
+func (e *missingEvidence) Cherry(ctx context.Context, upstream, head, limit string) ([]string, []string, error) {
+	absent, present, err := e.Lineage.Cherry(ctx, upstream, head, limit)
+	e.commits = absent
+	return absent, present, err
 }

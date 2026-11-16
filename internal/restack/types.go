@@ -117,6 +117,8 @@ func (s Step) start() string {
 // The base already had this, through Onto.ToLocation naming the ref the trunk
 // is about to be at. This is the same statement for the branches above it.
 type Pending struct {
+	// Leave preserves branches left by an earlier pass of this operation.
+	Leave []worktree.Holder
 	// Above keeps this branch and its ancestors outside the replay.
 	Above string
 	// Tips is where each branch the caller moves will be.

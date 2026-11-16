@@ -20,6 +20,25 @@ func AssessParent(ctx context.Context, probe Probe, parent, branch, knownTip str
 	return answer
 }
 
+// ForPublication accepts only evidence about the parent version publication
+// leaves behind. Advisory readers may use either copy; submit must pick one.
+func (a ParentAbsorption) ForPublication(local bool) bool {
+	if local {
+		return a.Local == Present
+	}
+	return a.Known == Present
+}
+
+// AssessPublishedParent bounds work at the assessed parent version. The local
+// parent may already contain the child's commit ids and would hide work the
+// published copy lacks. Missing or unreadable evidence grants no exclusion.
+func AssessPublishedParent(ctx context.Context, probe Probe, branch, tip string) Evidence {
+	if tip == "" {
+		return Unknown
+	}
+	return Assess(ctx, probe, tip, branch, tip)
+}
+
 // KnownParents reads every candidate parent's published copy together, locally.
 // An unavailable optional capability gives no evidence and never fetches.
 func KnownParents(ctx context.Context, git any, remote string, parents []string) map[string]string {

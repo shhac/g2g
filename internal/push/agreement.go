@@ -17,12 +17,13 @@ func (s Service) recordLevel(ctx context.Context, remote string, branches []stri
 	if !ok {
 		return
 	}
-	level := map[string]localgit.SyncPoint{}
+	locals := make(map[string]string)
 	for _, branch := range branches {
 		if publishing[branch].Standing == Current {
-			level[branch] = localgit.SyncPoint{Tip: tips[branch], Local: tips[branch], Command: "push"}
+			locals[branch] = tips[branch]
 		}
 	}
+	level := syncpoint.Level("push", locals, tips)
 	syncpoint.Record(ctx, recorder, "push.sync_point", remote, level)
 }
 

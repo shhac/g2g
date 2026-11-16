@@ -27,12 +27,12 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 	if err := plan.Snapshot.RequireActionable("g2g submit"); err != nil {
 		return err
 	}
-	diagnostic.Event(ctx, "submit.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Snapshot.Branches, ",")}, diagnostic.Field{Key: "draft", Value: fmt.Sprintf("%t", spec.Draft)})
+	diagnostic.Event(ctx, "submit.apply", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Publication().Branches, ",")}, diagnostic.Field{Key: "draft", Value: fmt.Sprintf("%t", spec.Draft)})
 	requests, err := preparePulls(plan, spec)
 	if err != nil {
 		return err
 	}
-	if len(plan.Snapshot.Branches) == 0 {
+	if len(plan.Publication().Branches) == 0 {
 		return nil
 	}
 	if err := s.Pusher.Execute(ctx, plan.Push); err != nil {
@@ -46,10 +46,10 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 	if err := s.settleHeads(ctx, plan); err != nil {
 		return stopped(pushed, opened, err)
 	}
-	if !link || len(plan.Snapshot.Branches) < 2 {
+	if !link || len(plan.Publication().Branches) < 2 {
 		return nil
 	}
-	if err := s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Snapshot.Branches); err != nil {
+	if err := s.GitHub.Link(ctx, plan.Snapshot.Base, plan.Publication().Branches); err != nil {
 		return stopped(pushed, opened, fmt.Errorf("linking the stack: %w", err))
 	}
 	return nil
@@ -101,8 +101,8 @@ func preparePulls(plan Plan, spec Spec) ([]creation, error) {
 	if spec.Version != 1 {
 		return nil, fmt.Errorf("submission spec version must be 1")
 	}
-	selected := make(map[string]bool, len(plan.Snapshot.Branches))
-	for _, branch := range plan.Snapshot.Branches {
+	selected := make(map[string]bool, len(plan.Publication().Branches))
+	for _, branch := range plan.Publication().Branches {
 		selected[branch] = true
 	}
 	pulls := make(map[string]Pull, len(spec.Pulls))
@@ -116,7 +116,7 @@ func preparePulls(plan Plan, spec Spec) ([]creation, error) {
 		pulls[pull.Branch] = pull
 	}
 	requests := make([]creation, 0, len(spec.Pulls))
-	for step := range plan.Snapshot.Steps(plan.Existing) {
+	for step := range plan.Publication().Steps(plan.Existing) {
 		if step.Resolution.Open != nil {
 			continue
 		}

@@ -80,6 +80,27 @@ type Plan struct {
 	// which is exactly the case where a reader needs to see where it starts
 	// and ends before copying it.
 	Repair repair.Note
+	// Collected comparison evidence stays private; callers may narrow
+	// publication eligibility without asking Git the same questions again.
+	changes            map[string]syncpoint.Changes
+	differences        []Drop
+	differenceSubjects map[string]string
+}
+
+// Excluding leaves branches out of publication without changing their parent
+// relationships. Rebuild refusal policy from the same observed evidence.
+func (p Plan) Excluding(branches []string) Plan {
+	if len(branches) == 0 {
+		return p
+	}
+	p.Branches = slices.DeleteFunc(slices.Clone(p.Branches), func(branch string) bool { return slices.Contains(branches, branch) })
+	p.Commits = slices.DeleteFunc(slices.Clone(p.Commits), func(commit Drop) bool { return slices.Contains(branches, commit.Branch) })
+	p.differences = slices.DeleteFunc(slices.Clone(p.differences), func(commit Drop) bool { return slices.Contains(branches, commit.Branch) })
+	if p.Publishing != nil {
+		p.Repair = differenceRepair(p, p.changes, p.differences, p.differenceSubjects)
+		p.Strict = strictly(p.Remote, p.Branches, p.Publishing, p.changes, syncpoint.Of(p.Commits, syncpoint.Dropped))
+	}
+	return p
 }
 
 // Blocked is why an apply would refuse, as one sentence, empty when it would
@@ -193,9 +214,9 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 		return Plan{}, err
 	}
 	// A selection stands on one base, forked or not.
-	publishing, changed, err := compare(ctx, s.Git, remote, snapshot.Branches, tips, func(branch string) (string, string) {
+	publishing, changed, differing, err := compare(ctx, s.Git, remote, snapshot.Branches, tips, func(branch string) (string, string) {
 		return snapshot.SitsOn(branch), snapshot.Base
-	})
+	}, true)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -207,11 +228,17 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 	if plan.Subjects, err = s.subjects(ctx, plan); err != nil {
 		return Plan{}, err
 	}
-	plan.Repair = blockedBy(remote, snapshot.Branches, publishing, tips, syncpoint.Of(plan.Commits, syncpoint.Restoring))
-	plan.explainMissingAgreement(changed)
-	if err := s.explainDifference(ctx, &plan); err != nil {
+	differingCommits := make([]Drop, 0)
+	for _, branch := range snapshot.Branches {
+		differingCommits = append(differingCommits, syncpoint.Named(syncpoint.Left, branch, differing[branch])...)
+	}
+	subjects, err := s.subjects(ctx, Plan{Commits: differingCommits})
+	if err != nil {
 		return Plan{}, err
 	}
+	plan.Repair = differenceRepair(plan, changed, differingCommits, subjects)
+	plan.changes, plan.differences, plan.differenceSubjects = changed, differingCommits, subjects
+
 	plan.Strict = strictly(remote, snapshot.Branches, publishing, changed, syncpoint.Of(plan.Commits, syncpoint.Dropped))
 	diagnostic.Event(ctx, "push.plan",
 		diagnostic.Field{Key: "decision", Value: "ready"},
@@ -224,51 +251,6 @@ func (s Service) PlanOf(ctx context.Context, snapshot stack.Snapshot, remote str
 		diagnostic.Field{Key: "command", Value: diagnostic.SafeCommand("git", plan.pushArgs())},
 	)
 	return plan, nil
-}
-
-// blockedBy refuses a push the remote would reject.
-//
-// A pinned lease protects against movement after preview, not against knowingly
-// replacing remote-only work. That needs the user's explicit choice.
-func blockedBy(remote string, branches []string, publishing map[string]Publication, tips map[string]string, restores []Drop) repair.Note {
-	if len(restores) != 0 {
-		return restoring(remote, restores)
-	}
-	rejected := make([]string, 0, len(branches))
-	for _, branch := range branches {
-		if publishing[branch].Rejected() {
-			rejected = append(rejected, branch)
-		}
-	}
-	if len(rejected) == 0 {
-		return repair.Note{}
-	}
-	leases := make([]localgit.Lease, 0, len(rejected))
-	for _, branch := range rejected {
-		leases = append(leases, localgit.Lease{Branch: branch, Expected: tips[branch]})
-	}
-	replace := repair.Command(append([]string{"git"}, localgit.PushArguments(remote, leases, localgit.LeaveUpstream)...))
-	reconcile := "fetch and reconcile first"
-	for _, branch := range rejected {
-		if publishing[branch].Standing == Diverged {
-			reconcile += "; a conflict-resolved replay can also change the published patch, so check the differences before replacing it"
-			break
-		}
-	}
-	// Naming the command that does work matters more than the refusal. No g2g
-	// command republishes over a remote that has moved, and deliberately
-	// dropping a published commit is a real thing to want, so a preview that
-	// only says no leaves the reader with nowhere to go.
-	return repair.Note{
-		Reason: fmt.Sprintf("the published version differs on %s", strings.Join(rejected, ", ")),
-		Ways: []repair.Step{
-			{Effect: reconcile},
-			{
-				Command: replace,
-				Effect:  "replace what is published, dropping what the remote has",
-			},
-		},
-	}
 }
 
 func (s Service) Execute(ctx context.Context, plan Plan) error {

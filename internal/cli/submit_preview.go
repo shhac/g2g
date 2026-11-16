@@ -8,7 +8,6 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/landed"
-	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/submit"
 )
 
@@ -35,12 +34,14 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		if !absorbed {
 			continue
 		}
-		if absorption.Local != landed.Present {
-			pull := selectedFrom(plan.Selected).at(branch, plan.Selected.Scope).aimedOr(pullCommand)
-			view = view.note("Refresh the parent first: "+runnable(pull+" --above "+repair.Quote(plan.Selected.SitsOn(branch)))+".", severityNeutral)
+		for _, way := range absorptionAdvice(plan.Selected, plan.Remote, branch, absorption.Local != landed.Present) {
+			text := way.Effect
+			if way.Command != "" {
+				text = runnable(way.Command) + " · " + text
+			}
+			view = view.note(text+".", severityNeutral)
 		}
-		prune := selectedFrom(plan.Selected).at(branch, "branch").narrowedTo("branch").aimedOr(pruneCommand)
-		view = view.note("After the parent is current, "+runnable(prune)+" previews forgetting the absorbed branch.", severityNeutral)
+
 	}
 
 	if template != "" {
@@ -54,11 +55,11 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	if _, existingOnly := plan.ExistingSpec(); !existingOnly {
 		view = view.note(fmt.Sprintf("Missing PRs will be created %s; existing PRs are preserved.", openAsPlural(draft)), severityNeutral)
 	}
-	if link && len(plan.Snapshot.Branches) > 1 {
+	if link && len(plan.Publication().Branches) > 1 {
 		view = view.note("Then links them as a GitHub stack · g2g land refuses a linked stack until it is unlinked.", severityNeutral)
 	}
 	switch {
-	case comments && len(plan.Snapshot.Branches) == 1:
+	case comments && len(plan.Publication().Branches) == 1:
 		view = view.note("Then keeps the stack comment, which a stack listing only one pull request does not get · --no-comment skips it.", severityNeutral)
 	case comments:
 		view = view.note("Then keeps the stack comment on each pull request · --no-comment skips it.", severityNeutral)

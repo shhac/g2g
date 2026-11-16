@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
 	"github.com/shhac/g2g/internal/repair"
+	"github.com/shhac/g2g/internal/stack"
 )
 
 func linkView(plan link.Plan) stackView {
@@ -69,24 +73,39 @@ func blockedReason(plan link.Plan) string {
 // other CLI suggestions. A stale trunk is refreshed where status was aimed.
 func linkRepair(plan link.Plan) (repair.Note, []link.IssueKind) {
 	note, kinds := plan.Repair()
-	for _, kind := range kinds {
-		if kind == link.IssueAbsorbed || kind == link.IssueAbsorbedStale {
-			note.Ways = append([]repair.Step(nil), note.Ways...)
-			for index, way := range note.Ways {
-				if way.Command == pruneCommand.command {
-					note.Ways[index].Command = selectedFrom(plan.Snapshot).aimedOr(pruneCommand)
-				}
-			}
-		}
-		if kind != link.IssueMergedStale {
-			continue
-		}
-		note.Ways = append([]repair.Step(nil), note.Ways...)
-		for index, way := range note.Ways {
-			if way.Command == pullCommand.command {
-				note.Ways[index].Command = selectedFrom(plan.Snapshot).aimedOr(pullCommand)
-			}
+	// Absorbed cleanup already names each branch and its exact scope. Only
+	// the generic trunk-refresh command needs aiming at this selection.
+	if !slices.Contains(kinds, link.IssueMergedStale) {
+		return note, kinds
+	}
+	command := selectedFrom(plan.Snapshot).aimedOr(pullCommand)
+	note.Ways = slices.Clone(note.Ways)
+	for index, way := range note.Ways {
+		if way.Command == pullCommand.command {
+			note.Ways[index].Command = command
 		}
 	}
+
 	return note, kinds
+}
+
+// absorptionAdvice aims each source-aware cleanup command once. Package-owned
+// policy determines the order; selection determines its flags.
+func absorptionAdvice(snapshot stack.Snapshot, remote, branch string, stale bool) []repair.Step {
+	ways := link.AbsorbedWays(snapshot, branch, stale, remote)
+	if snapshot.Source != stack.SourceG2G {
+		return ways
+	}
+	acted := selectedFrom(snapshot).from(remote).at(branch, "branch")
+	for index, way := range ways {
+		switch {
+		case strings.HasPrefix(way.Command, "g2g pull "):
+			ways[index].Command = acted.aimedOr(pullCommand) + " --above " + repair.Quote(snapshot.SitsOn(branch))
+		case strings.HasPrefix(way.Command, "g2g restack "):
+			ways[index].Command = acted.at(branch, "subtree").aimedOr(restackCommand)
+		case strings.HasPrefix(way.Command, "g2g prune "):
+			ways[index].Command = acted.narrowedTo("branch").aimedOr(pruneCommand)
+		}
+	}
+	return ways
 }

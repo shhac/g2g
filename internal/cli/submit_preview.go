@@ -8,6 +8,7 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/submit"
 )
 
@@ -28,6 +29,18 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	resolutions := githubstack.ResolveHeads(plan.Existing)
 	for index, node := range view.Nodes[1:] {
 		view.Nodes[index+1] = submitLabel(plan, resolutions, node, draft)
+	}
+	for _, branch := range plan.Selected.Branches {
+		absorption, absorbed := plan.Absorbed[branch]
+		if !absorbed {
+			continue
+		}
+		if absorption.Local != landed.Present {
+			pull := selectedFrom(plan.Selected).at(branch, plan.Selected.Scope).aimedOr(pullCommand)
+			view = view.note("Refresh the parent first: "+runnable(pull+" --above "+repair.Quote(plan.Selected.SitsOn(branch)))+".", severityNeutral)
+		}
+		prune := selectedFrom(plan.Selected).at(branch, "branch").narrowedTo("branch").aimedOr(pruneCommand)
+		view = view.note("After the parent is current, "+runnable(prune)+" previews forgetting the absorbed branch.", severityNeutral)
 	}
 
 	if template != "" {
@@ -97,6 +110,11 @@ func writeSubmitPreview(w io.Writer, plan submit.Plan, p Presentation, template 
 // first open head, so the preview cannot disagree with the plan.
 func submitLabel(plan submit.Plan, resolutions map[string]githubstack.Resolution, node stackNode, draft bool) stackNode {
 	branch := node.Branch
+	if _, absorbed := plan.Absorbed[branch]; absorbed {
+		previous := plan.Superseded[branch]
+		node.PRNumber = previous.Number
+		return node.labeled("left out · merged into "+previous.Base+"; absorbed", severityNeutral)
+	}
 	if slices.Contains(plan.Waiting, branch) {
 		return node.labeled("left out · no commits of its own yet", severityNeutral)
 	}

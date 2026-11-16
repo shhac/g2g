@@ -65,6 +65,23 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 	if len(stale) != 0 {
 		return repair.Note{Reason: words.List(stale) + " merged into " + p.Trunk() + "; local trunk content is unconfirmed", Ways: []repair.Step{{Command: "g2g pull", Effect: "refresh the trunk and reassess the merged work"}}}, []IssueKind{IssueMergedStale}
 	}
+	absorbed, ways := make([]string, 0), make([]repair.Step, 0)
+	for _, issue := range p.Issues {
+		if issue.Kind != IssueAbsorbed && issue.Kind != IssueAbsorbedStale {
+			continue
+		}
+		absorbed = append(absorbed, issue.Branch)
+		if issue.Kind == IssueAbsorbedStale && p.Source == stack.SourceG2G {
+			ways = append(ways, repair.Step{
+				Command: repair.Command([]string{"g2g", "pull", "--branch", issue.Branch, "--above", p.SitsOn(issue.Branch)}),
+				Effect:  "collect the published parent before pruning; leaves its ancestors alone",
+			})
+		}
+	}
+	if len(absorbed) != 0 {
+		ways = append(ways, ForgetLanded(p.Source))
+		return repair.Note{Reason: words.List(absorbed) + " absorbed into recorded parents", Ways: ways}, []IssueKind{IssueAbsorbed, IssueAbsorbedStale}
+	}
 	var replacements []string
 	for _, issue := range p.Issues {
 		if issue.Kind == IssueMergedUnlanded {

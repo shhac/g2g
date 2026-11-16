@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/pause"
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/repair"
@@ -81,6 +82,9 @@ type Plan struct {
 	// MergedLanded records content assessments of merged predecessors only.
 	// Missing means unconfirmed, never landed.
 	MergedLanded map[string]bool
+	// Absorbed are merged branches whose recorded feature parent has their
+	// work, locally or in its known published copy. They are not submitted.
+	Absorbed map[string]landed.ParentAbsorption
 	// Push is how the stack is published, planned by push with its refusals.
 	Push push.Plan
 	// Selected is the selection as discovered, before anything was left out
@@ -239,12 +243,16 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 	}
 	snapshot := without(discovery.Snapshot, waiting)
 	issues, superseded := assessExisting(snapshot, discovery.PullRequests)
-	published, err := s.Pusher.PlanOf(ctx, snapshot, remote, upstream)
-	if err != nil {
-		return Plan{}, err
-	}
-	plan := Plan{Selected: discovery.Snapshot, Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Push: published, Waiting: waiting}
+	plan := Plan{Selected: discovery.Snapshot, Snapshot: snapshot, Remote: remote, Existing: discovery.PullRequests, Issues: issues, Superseded: superseded, Waiting: waiting}
 	plan.MergedLanded = s.mergedLanded(ctx, plan)
+	plan.Absorbed = s.mergedAbsorbed(ctx, plan)
+	plan.Snapshot = without(snapshot, slices.Collect(maps.Keys(plan.Absorbed)))
+	if len(plan.Snapshot.Branches) != 0 {
+		plan.Push, err = s.Pusher.PlanOf(ctx, plan.Snapshot, remote, upstream)
+		if err != nil {
+			return Plan{}, err
+		}
+	}
 	plan.Repair, err = s.preservedBaseRepair(ctx, plan)
 	if err != nil {
 		return Plan{}, err
@@ -260,6 +268,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 // Equal compares every fact that can change what the submission does.
 func (p Plan) Equal(other Plan) bool {
 	return maps.Equal(p.MergedLanded, other.MergedLanded) &&
+		maps.Equal(p.Absorbed, other.Absorbed) &&
 		p.Repair.Equal(other.Repair) &&
 		p.Remote == other.Remote &&
 		slices.Equal(p.Waiting, other.Waiting) &&

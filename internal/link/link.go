@@ -70,6 +70,10 @@ const (
 	IssueMergedStale IssueKind = "merged-stale"
 	// IssueMergedUnlanded is feature-base merged history without confirmed trunk content.
 	IssueMergedUnlanded IssueKind = "merged-unlanded"
+	// IssueAbsorbed is merged work confirmed in its recorded feature parent.
+	IssueAbsorbed IssueKind = "absorbed"
+	// IssueAbsorbedStale is confirmed only in the known published parent.
+	IssueAbsorbedStale IssueKind = "absorbed-stale"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
 	// IssueLanded is a branch with no pull request to project whose work is

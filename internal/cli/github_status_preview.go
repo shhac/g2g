@@ -180,6 +180,8 @@ func issueMark(issue link.Issue) stackMark {
 		return stackMark{Subject: "base", Detail: issue.Reason, Severity: severityBad}
 	case link.IssueMerged:
 		return stackMark{Subject: "pr", OK: true, Detail: mergedDetail(issue), Severity: severityNeutral}
+	case link.IssueAbsorbed, link.IssueAbsorbedStale:
+		return stackMark{Subject: "pr", OK: true, Detail: issue.Reason, Severity: severityNeutral}
 	case link.IssueLanded:
 		// Not about a pull request. There may not be one — a squash merge
 		// lands the work under a different head, and a cherry-picked series

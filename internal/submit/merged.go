@@ -2,10 +2,47 @@ package submit
 
 import (
 	"context"
+	"slices"
 
 	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/parallel"
 )
+
+// mergedAbsorbed is distinct from landing in the trunk: a merge into the
+// recorded feature parent needs no replacement PR when that parent has the
+// work. Read known published parents once before independent content probes.
+func (s Service) mergedAbsorbed(ctx context.Context, plan Plan) map[string]landed.ParentAbsorption {
+	probe, ok := s.Git.(landed.Probe)
+	if !ok {
+		return nil
+	}
+	branches, parents := make([]string, 0), make([]string, 0)
+	for _, branch := range plan.Snapshot.Branches {
+		previous := plan.Superseded[branch]
+		parent := plan.Snapshot.SitsOn(branch)
+		if previous.State != "MERGED" || previous.Base != parent || parent == plan.Snapshot.Trunk() || plan.MergedLanded[branch] {
+			continue
+		}
+		branches = append(branches, branch)
+		if !slices.Contains(parents, parent) {
+			parents = append(parents, parent)
+		}
+	}
+	tips := landed.KnownParents(ctx, s.Git, plan.Remote, parents)
+	answers := make([]landed.ParentAbsorption, len(branches))
+	_ = parallel.Each(ctx, branches, func(ctx context.Context, index int, branch string) error {
+		parent := plan.Snapshot.SitsOn(branch)
+		answers[index] = landed.AssessParent(ctx, probe, parent, branch, tips[parent])
+		return nil
+	})
+	result := map[string]landed.ParentAbsorption{}
+	for index, answer := range answers {
+		if answer.Present() {
+			result[branches[index]] = answer
+		}
+	}
+	return result
+}
 
 // A merged predecessor is lifecycle history, not proof that work reached the
 // trunk. Only merged predecessors need this optional, local content reading.

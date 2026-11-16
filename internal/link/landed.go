@@ -30,33 +30,56 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 		return nil
 	}
 	resolutions := githubstack.ResolveHeads(plan.PullRequests)
+	parents := make([]string, 0)
+	for _, issue := range plan.Issues {
+		previous := resolutions[issue.Branch].Latest
+		parent := plan.SitsOn(issue.Branch)
+		if previous != nil && previous.State == "MERGED" && previous.Base == parent && parent != plan.Trunk() && plan.here(issue.Branch) {
+			if !slices.Contains(parents, parent) {
+				parents = append(parents, parent)
+			}
+		}
+	}
+	parentTips := landed.KnownParents(ctx, s.Tips, "origin", parents)
 	// Each read owns one preallocated issue slot; policy stays in assessLanded.
 	return parallel.Each(ctx, plan.Issues, func(ctx context.Context, index int, issue Issue) error {
-		plan.Issues[index] = s.assessLanded(ctx, plan, issue, resolutions[issue.Branch].Latest)
+		plan.Issues[index] = s.assessLanded(ctx, plan, issue, resolutions[issue.Branch].Latest, parentTips[plan.SitsOn(issue.Branch)])
 		return nil
 	})
 }
 
 // assessLanded assesses one issue independently of scheduling. Unavailable
 // evidence leaves its existing classification and reason unchanged.
-func (s Service) assessLanded(ctx context.Context, plan Plan, issue Issue, previous *githubstack.PullRequest) Issue {
+func (s Service) assessLanded(ctx context.Context, plan Plan, issue Issue, previous *githubstack.PullRequest, knownParent string) Issue {
 	if s.Tips == nil || !plan.here(issue.Branch) {
 		return issue
 	}
 	switch issue.Kind {
 	case IssueMergedUnlanded, IssueMergedStale:
 		trunk := plan.Snapshot.Trunk()
-		if slices.Contains(plan.Absent, trunk) {
-			return issue
-		}
 		// A former feature base may contain the head, so bound at the landing
 		// trunk rather than excluding that work through the former base.
-		switch landed.Assess(ctx, s.Tips, trunk, issue.Branch, trunk) {
+		trunkEvidence := landed.Unknown
+		if !slices.Contains(plan.Absent, trunk) {
+			trunkEvidence = landed.Assess(ctx, s.Tips, trunk, issue.Branch, trunk)
+		}
+		switch trunkEvidence {
 		case landed.Present:
 			issue.Kind, issue.Reason = IssueMerged, "PR merged; landed in "+trunk
 		case landed.Absent:
 			if issue.Kind == IssueMergedUnlanded && previous != nil {
 				issue.Reason = "merged into " + previous.Base + ", not landed"
+			}
+		}
+		parent := plan.SitsOn(issue.Branch)
+		if issue.Kind != IssueMerged && previous != nil && previous.Base == parent && parent != trunk {
+			absorption := landed.AssessParent(ctx, s.Tips, parent, issue.Branch, knownParent)
+			if absorption.Present() {
+				issue.Kind, issue.Reason = IssueAbsorbed, "merged into "+parent+"; absorbed"
+				if absorption.Local != landed.Present {
+					issue.Kind = IssueAbsorbedStale
+					issue.Reason += " in the known published parent; refresh " + parent + " before pruning"
+				}
 			}
 		}
 	case IssueMissing, IssueClosed:

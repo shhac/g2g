@@ -70,6 +70,14 @@ func blockedReason(plan link.Plan) string {
 func linkRepair(plan link.Plan) (repair.Note, []link.IssueKind) {
 	note, kinds := plan.Repair()
 	for _, kind := range kinds {
+		if kind == link.IssueAbsorbed || kind == link.IssueAbsorbedStale {
+			note.Ways = append([]repair.Step(nil), note.Ways...)
+			for index, way := range note.Ways {
+				if way.Command == pruneCommand.command {
+					note.Ways[index].Command = selectedFrom(plan.Snapshot).aimedOr(pruneCommand)
+				}
+			}
+		}
 		if kind != link.IssueMergedStale {
 			continue
 		}

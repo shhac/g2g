@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/stack"
 )
 
@@ -17,10 +18,21 @@ type mergedTips struct {
 	err      error
 	asked    [][3]string
 	merges   int
+	byBase   map[string]landed.Evidence
 }
 
 func (f *mergedTips) Cherry(_ context.Context, base, head, limit string) ([]string, []string, error) {
 	f.asked = append(f.asked, [3]string{base, head, limit})
+	if f.byBase != nil {
+		switch f.byBase[base] {
+		case landed.Present:
+			return nil, nil, nil
+		case landed.Absent:
+			return []string{"synthetic-commit"}, nil, nil
+		default:
+			return nil, nil, errors.New("synthetic unreadable base")
+		}
+	}
 	return f.absent, nil, f.err
 }
 func (f *mergedTips) Absorbed(context.Context, string, string) (bool, error) {
@@ -74,7 +86,7 @@ func TestMergedHistoryRequiresTrunkContent(t *testing.T) {
 			if test.noProbe {
 				service.Tips = nil
 			}
-			plan.Issues[0] = service.assessLanded(context.Background(), plan, plan.Issues[0], &plan.PullRequests[0])
+			plan.Issues[0] = service.assessLanded(context.Background(), plan, plan.Issues[0], &plan.PullRequests[0], "")
 			if plan.Issues[0].Kind != test.want || !strings.Contains(plan.Issues[0].Reason, test.phrase) {
 				t.Fatalf("issue = %#v", plan.Issues[0])
 			}
@@ -83,13 +95,72 @@ func TestMergedHistoryRequiresTrunkContent(t *testing.T) {
 				t.Errorf("repair = %#v", note)
 			}
 			if !test.noProbe && !test.absentBranch {
-				if len(probe.asked) != 1 || probe.asked[0] != [3]string{"synthetic-main", "synthetic-head", "synthetic-main"} {
+				reads := 1
+				if !test.trunkMerge && test.want == IssueMergedUnlanded {
+					reads = 2
+				}
+				if len(probe.asked) != reads || probe.asked[0] != [3]string{"synthetic-main", "synthetic-head", "synthetic-main"} {
 					t.Errorf("content asked %v", probe.asked)
 				}
 			} else if len(probe.asked) != 0 {
 				t.Errorf("content asked for unavailable branch: %v", probe.asked)
 			}
 		})
+	}
+}
+
+func TestMergedIntoRecordedParentRequiresAbsorbedContent(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		local, known landed.Evidence
+		mismatched   bool
+		want         IssueKind
+	}{
+		{"local parent", landed.Present, landed.Absent, false, IssueAbsorbed},
+		{"known parent", landed.Absent, landed.Present, false, IssueAbsorbedStale},
+		{"absent", landed.Absent, landed.Absent, false, IssueMergedUnlanded},
+		{"unknown", landed.Unknown, landed.Unknown, false, IssueMergedUnlanded},
+		{"other feature base", landed.Present, landed.Present, true, IssueMergedUnlanded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := mergedPlan()
+			if tc.mismatched {
+				plan.PullRequests[0].Base = "synthetic-other"
+			}
+			probe := &mergedTips{byBase: map[string]landed.Evidence{"synthetic-main": landed.Absent, "synthetic-base": tc.local, "synthetic-known": tc.known}}
+			plan.Issues[0] = (Service{Tips: probe}).assessLanded(context.Background(), plan, plan.Issues[0], &plan.PullRequests[0], "synthetic-known")
+			if plan.Issues[0].Kind != tc.want {
+				t.Fatalf("issue = %+v, want %s", plan.Issues[0], tc.want)
+			}
+			if tc.want == IssueAbsorbed || tc.want == IssueAbsorbedStale {
+				note, _ := plan.Repair()
+				if note.Ways[len(note.Ways)-1].Command != "g2g prune" {
+					t.Fatalf("no graph repair: %+v", note)
+				}
+				if tc.want == IssueAbsorbedStale && !strings.Contains(note.Ways[0].Command, "--above synthetic-base") {
+					t.Fatalf("stale parent sent straight to prune: %+v", note)
+				}
+			}
+		})
+	}
+}
+
+func TestAbsorbedParentCleanupStaysWithItsSource(t *testing.T) {
+	for _, source := range []stack.Source{stack.SourceGraphite, stack.SourceGitHub} {
+		plan := mergedPlan()
+		plan.Source = source
+		plan.Issues = []Issue{{Branch: "synthetic-head", Kind: IssueAbsorbedStale}}
+		note, _ := plan.Repair()
+		if len(note.Ways) != 1 {
+			t.Fatalf("%s has a g2g parent collection step: %+v", source, note)
+		}
+		want := ""
+		if source == stack.SourceGraphite {
+			want = "gt sync"
+		}
+		if note.Ways[0].Command != want {
+			t.Errorf("%s cleanup = %q, want %q", source, note.Ways[0].Command, want)
+		}
 	}
 }
 
@@ -121,7 +192,7 @@ func TestMergedAssessorUsesResolvedLandingTrunk(t *testing.T) {
 	plan.Ancestry = append([]string{"synthetic-develop"}, plan.Ancestry...)
 	plan.LandingTrunk = "synthetic-main"
 	probe := &mergedTips{}
-	issue := (Service{Tips: probe}).assessLanded(context.Background(), plan, plan.Issues[0], &plan.PullRequests[0])
+	issue := (Service{Tips: probe}).assessLanded(context.Background(), plan, plan.Issues[0], &plan.PullRequests[0], "")
 	if issue.Kind != IssueMerged || len(probe.asked) != 1 || probe.asked[0][0] != "synthetic-main" {
 		t.Fatalf("assessed wrong destination: %+v, %v", issue, probe.asked)
 	}
@@ -140,7 +211,7 @@ func TestAssessLandedMissingAndClosed(t *testing.T) {
 				if outcome == "unknown" {
 					probe.err = errors.New("synthetic unavailable content")
 				}
-				issue := (Service{Tips: probe}).assessLanded(context.Background(), plan, original, nil)
+				issue := (Service{Tips: probe}).assessLanded(context.Background(), plan, original, nil, "")
 				if outcome == "present" {
 					if issue.Kind != IssueLanded || issue.Number != 41 || issue.Reason != "landed in synthetic-base" {
 						t.Fatal(issue)

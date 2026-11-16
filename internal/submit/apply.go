@@ -32,6 +32,9 @@ func (s Service) Apply(ctx context.Context, plan Plan, spec Spec, link bool) err
 	if err != nil {
 		return err
 	}
+	if len(plan.Snapshot.Branches) == 0 {
+		return nil
+	}
 	if err := s.Pusher.Execute(ctx, plan.Push); err != nil {
 		return err
 	}

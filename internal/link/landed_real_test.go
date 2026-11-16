@@ -80,9 +80,9 @@ func landedPlan() Plan {
 	}
 }
 
-// Even a feature base that contains the merged head proves nothing about the
-// trunk. A squash into that trunk, despite having no equivalent commit, does.
-func TestMergedFeatureHistoryIsLandedOnlyAfterTrunkAbsorbsIt(t *testing.T) {
+// Absorption into the recorded parent is distinct from landing in the trunk.
+// Both avoid replacement advice, while naming different graph repairs.
+func TestMergedFeatureHistoryDistinguishesParentAbsorptionFromTrunkLanding(t *testing.T) {
 	repo := testutil.NewGitRepo(t, "synthetic-main")
 	repo.Commit("synthetic root", "root.txt", "root")
 	repo.Run("switch", "-qc", "synthetic-head")
@@ -96,7 +96,7 @@ func TestMergedFeatureHistoryIsLandedOnlyAfterTrunkAbsorbsIt(t *testing.T) {
 	if err := service.markLanded(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
-	if plan.Issues[0].Kind != IssueMergedUnlanded {
+	if plan.Issues[0].Kind != IssueAbsorbed {
 		t.Fatalf("feature-only content = %#v", plan.Issues[0])
 	}
 	// The narrow selection hangs from the feature base that now contains
@@ -107,7 +107,7 @@ func TestMergedFeatureHistoryIsLandedOnlyAfterTrunkAbsorbsIt(t *testing.T) {
 	if err := service.markLanded(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
-	if plan.Issues[0].Kind != IssueMergedUnlanded {
+	if plan.Issues[0].Kind != IssueAbsorbed {
 		t.Fatalf("narrow feature-only content = %#v", plan.Issues[0])
 	}
 

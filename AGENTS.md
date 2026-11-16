@@ -162,15 +162,17 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   and `2` when it could not tell — the `diff`/`grep` convention, so a script
   can ask. Keep the split: `status` is the full overview, `doctor` only the
   unexpected. A branch with no commits of its own is not a finding.
-- Submit refuses before pushing when an open PR base differs from its recorded
-  stack parent and would contain the proposed head by local ancestry, including
-  a local base outside the selection. It names `g2g github retarget` over the
-  selection to run first: publishing that ancestry would let GitHub mark the PR
-  merged irreversibly. A correctly based PR is never refused by this check,
-  because retargeting would change nothing. With `--link`, linking refusals
-  take precedence over publication refusals, so a fork still names narrowing
-  the selection or dropping `--link`. The check uses the existing PR read and
-  local tips only; `push` still never reads GitHub.
+- Submit refuses before pushing when a mismatched open PR base would contain
+  the proposed head after publication, which GitHub would mark merged irreversibly.
+  A base in `Push.Leases()` uses its proposed local tip; any base left untouched
+  uses its observed remote tip, including waiting and landed branches. Reuse push's
+  observations and batch any missing bases into one Git `RemoteTips` read. Missing
+  refs or unavailable objects provide no merge assertion. The repair is
+  `g2g github retarget` over the selection before publishing. Correctly based PRs
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+  existing-PR, then push refusals, in that order; preview, CLI blocking and apply
+  all consume it. Missing-spec requirements remain in the CLI. The check adds no
+  GitHub reads, and `push` stays Git-only.
 - PR observations live separately from the graph, in
   `g2g/pull-requests.json` under the Git common directory. Read
   `design-docs/pr-observations.md` before changing them. The shared GitHub
@@ -237,10 +239,16 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   own severity: `base✓`/`base✗` is about a pull request's base and never its
   contents, `head✗` is about currency, and a subject-less mark carries what is
   about neither. A merged pull request is `pr✓` and neutral only after `landed.Into`
-  confirms its content in `Snapshot.Trunk()`, the full ancestry’s root even
-  under a narrow selection. Feature-base merges without that content
-  are `IssueMergedUnlanded` and need a replacement through `submit`, not a
-  pull. Absent or unreadable content stays unconfirmed. This preserves the
+  confirms its content in `Snapshot.Trunk()`, the source-resolved landing
+  boundary carried as `LandingTrunk`, even under a narrow selection. Full
+  ancestry remains revalidation data; it must never override a selected trunk
+  partway along Graphite ancestry. Each source fills that boundary, and equality
+  compares it. A narrow Graphite selection without an unambiguous landing trunk
+  stays selectable but asserts no landing evidence. Feature-base merges without
+  trunk content are `IssueMergedUnlanded` and need replacement through `submit`.
+  Merges into the landing trunk with absent or unknown local content are
+  `IssueMergedStale`: advise `g2g pull` through `selected.aim`, then reassess.
+  Absent or unreadable feature content stays unconfirmed. This preserves the
   reading the offline view (`status`, once `graph`) has always taken of an
   already-landed branch. They used to be one string under one colour, which is
   how a line came to open with the word "aligned" and go on to describe a divergence,
@@ -639,10 +647,16 @@ releases had that bug in three different places.
 
 ## Shared seams
 
-Fifteen things exist once and must not be reimplemented locally. Each was found as
+The following decisions exist once and must not be reimplemented locally. Each was found as
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
+- `landed.Assess` — present, absent or unknown content evidence for advisory
+  merged-history reads in link and submit, sharing `landed.Into` underneath.
+  `link.Service.assessLanded` owns per-issue policy; its scheduler only assigns
+  results to preallocated slice slots. Destructive callers retain Into's errors.
+- `submit.Plan.Refusal(link)` — refusal precedence for preview, CLI blocking and
+  apply. Missing submission metadata is still checked only by the CLI.
 - `graph.Graph.Records` — whether the graph names a branch anywhere: an edge,
   a trunk, a parent, or somewhere a declared trunk lands. It was written out in
   four places, and none of them knew about landing, so renaming onto the branch

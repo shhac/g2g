@@ -200,15 +200,17 @@ description: |
   call (`--no-set-upstream` drops `--set-upstream`; `submit` and `land` carry
   the same flag through to it). Keep the remote default explicit (`origin`),
   validate it, and never fall back to a weaker push mode.
-- Submit refuses before pushing when an open PR base differs from its recorded
-  stack parent and would contain the proposed head by local ancestry, including
-  a local base outside the selection. It names `g2g github retarget` over the
-  selection to run first: publishing that ancestry would let GitHub mark the PR
-  merged irreversibly. A correctly based PR is never refused by this check,
-  because retargeting would change nothing. With `--link`, linking refusals
-  take precedence over publication refusals, so a fork still names narrowing
-  the selection or dropping `--link`. The check uses the existing PR read and
-  local tips only; `push` still never reads GitHub.
+- Submit refuses before pushing when a mismatched open PR base would contain
+  the proposed head after publication, which GitHub would mark merged irreversibly.
+  A base in `Push.Leases()` uses its proposed local tip; any base left untouched
+  uses its observed remote tip, including waiting and landed branches. Reuse push's
+  observations and batch any missing bases into one Git `RemoteTips` read. Missing
+  refs or unavailable objects provide no merge assertion. The repair is
+  `g2g github retarget` over the selection before publishing. Correctly based PRs
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+  existing-PR, then push refusals, in that order; preview, CLI blocking and apply
+  all consume it. Missing-spec requirements remain in the CLI. The check adds no
+  GitHub reads, and `push` stays Git-only.
 - A command that did part of what it was asked and stopped exits `3` — not `0`,
   which told a script the work had finished, and not the failure status, because
   what it achieved is not coming back. `pull` stopping mid-replay, `pull --prune`
@@ -694,8 +696,9 @@ description: |
   and `labeled` supplies a plain label. Marks are the sole annotation record;
   machine state and worst severity are derived when rendered, never cached
   alongside them. Do not fold two axes into one mark. A merged
-  pull request is `pr✓` and neutral, never grouped with a missing or closed
-  one: it succeeded, and only the leftover branch is a problem.
+  pull request is `pr✓` and neutral only when content is confirmed in the
+  resolved landing trunk. Merges into that trunk with stale local evidence
+  need a trunk refresh; feature-base merges still outside it need replacement.
 - Batch before parallelising, and do not reintroduce a call whose only purpose
   is to feed the next one: `Inspect` is a single `gh api graphql` naming the
   repository through `{owner}`/`{repo}`, and revisions resolve through
@@ -720,10 +723,13 @@ description: |
   only merged predecessors and qualifies their history in its preview. Both
   compare against the local trunk, bounded above that trunk rather than a
   feature parent that may already contain the head. Cherry and whole-branch
-  absorption remain the shared decision. A negative answer says “merged into
-  <base>, not landed” and offers a replacement through `g2g submit`; unavailable
-  content stays “landing unconfirmed”. Cached lifecycle observations remain
-  dated history and never evidence for deletion. No GitHub call is added.
+  absorption remain the shared decision, with advisory present/absent/unknown
+  outcomes in `landed.Assess`. A PR merged into the resolved landing trunk whose
+  content is absent or unconfirmed locally needs `g2g pull` to refresh that trunk
+  and reassess, never replacement advice. Only feature-base merges with absent
+  content say “merged into <base>, not landed” and offer `g2g submit`; unavailable
+  feature content stays “landing unconfirmed”. Cached lifecycle observations
+  remain dated history and never evidence for deletion. No GitHub call is added.
 - `github status` is the read-only triage entry point for pull requests. It
   renders one selected path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

@@ -281,3 +281,13 @@ is a different mutation from creating a pull request or replaying local refs.
 **Whether one pull request may belong to two native stacks.** Unanswered, and
 it decides what `github link` does on a fork. It needs an experiment against real
 GitHub, not a decision.
+
+## Landing boundary and ancestry
+
+Every source carries its resolved landing boundary as `Snapshot.LandingTrunk`.
+For the g2g and pull-request forests it is the ancestry root (or the declared
+trunk's `Into` destination); Graphite uses its declared-boundary decision,
+including an explicit `--trunk` partway along the ancestry. Narrow selections
+keep their feature-parent base separately. If Graphite cannot resolve a landing
+boundary for an otherwise valid narrow selection, landing evidence stays unknown.
+Full ancestry remains available for revalidation, and equality compares both.

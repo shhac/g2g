@@ -253,7 +253,11 @@ trunk, so spanning them is not a wider version of the same request. `prune` is
 the one mutating command that offers it, because its only write is forgetting
 what has landed, which is per branch whatever trunk it sits on.
 
-`Snapshot.Trunk` reads the root of the full ancestry, independently of the
-displayed base. Merged PR landing checks use it: a narrow branch selection
-may hang from a feature parent that contains its head, which proves nothing
-about content reaching the trunk.
+`Snapshot.LandingTrunk` carries the boundary resolved by each source;
+`Snapshot.Trunk()` reads it independently of the displayed base and full
+ancestry. A narrow branch selection may hang from a feature parent that
+contains its head, which proves nothing about reaching the trunk. Graphite's
+chosen declared trunk may sit partway along the full ancestry, so the forest's
+first ancestor is not the landing destination. Equality compares LandingTrunk
+as well as ancestry. Narrow Graphite selections without an unambiguous declared
+landing trunk remain selectable with unknown landing evidence.

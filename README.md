@@ -1083,15 +1083,17 @@ that moves it. Explicit `--link` requires matching bases and otherwise names
 still require a completed spec; `--apply` without one fails with the command
 to create it.
 
-Submit refuses before pushing when an open PR base differs from its recorded
-stack parent and would contain the proposed head by local ancestry, including
-a local base outside the selection. It names `g2g github retarget` over the
-selection to run first: publishing that ancestry would let GitHub mark the PR
-merged irreversibly. A correctly based PR is never refused by this check,
-because retargeting would change nothing. With `--link`, linking refusals
-take precedence over publication refusals, so a fork still names narrowing
-the selection or dropping `--link`. The check uses the existing PR read and
-local tips only; `push` still never reads GitHub.
+Submit refuses before pushing when a mismatched open PR base would contain
+the proposed head after publication, which GitHub would mark merged irreversibly.
+A base in `Push.Leases()` uses its proposed local tip; any base left untouched
+uses its observed remote tip, including waiting and landed branches. Reuse push's
+observations and batch any missing bases into one Git `RemoteTips` read. Missing
+refs or unavailable objects provide no merge assertion. The repair is
+`g2g github retarget` over the selection before publishing. Correctly based PRs
+remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+existing-PR, then push refusals, in that order; preview, CLI blocking and apply
+all consume it. Missing-spec requirements remain in the CLI. The check adds no
+GitHub reads, and `push` stays Git-only.
 
 Generate a reusable spec outside the repository, fill in the missing PRs' titles, validate,
 then apply it:
@@ -1247,8 +1249,10 @@ a base, because a branch with no pull request has no base to be wrong about.
 `pr✓` is a merged one whose work the local trunk contains, checked by content.
 A PR merged into a feature base whose work is absent from the trunk reads
 “merged into <base>, not landed” and is offered `g2g submit` for a replacement.
-Unreadable or absent local content says “landing unconfirmed”. Read the
-column for `✗`.
+Unreadable or absent local feature content says “landing unconfirmed”. A PR
+merged into the landing trunk whose content is not confirmed locally says to
+refresh that trunk and reassess, with `g2g pull` aimed at the selection. Submit's
+merged-history label makes the same distinction. Read the column for `✗`.
 
 A branch whose work is already in the branch below it reads as `landed in …`,
 in the ordinary colour, and is offered forgetting rather than submitting. That
@@ -1576,6 +1580,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | State | Way out |
 |---|---|
 | A pull request has merged and its content is in the local trunk | `g2g pull` for a stack g2g records, `gt sync` for one Graphite declares; none for one read from pull request bases, which nothing here records |
+| A PR merged into the landing trunk, with local content absent or unconfirmed | `g2g pull` to refresh the trunk and reassess |
 | A PR merged into a feature base, with work still outside the trunk | `g2g submit` for a replacement |
 | A branch's work has already landed | `g2g prune`, or `gt sync` for a Graphite-declared stack |
 | A branch has no pull request, or one closed without merging | `g2g submit` |

@@ -51,10 +51,13 @@ A GitHub `MERGED` lifecycle is not proof of landing in the trunk. Live
 only merged predecessors and qualifies their history in its preview. Both
 compare against the local trunk, bounded above that trunk rather than a
 feature parent that may already contain the head. Cherry and whole-branch
-absorption remain the shared decision. A negative answer says “merged into
-<base>, not landed” and offers a replacement through `g2g submit`; unavailable
-content stays “landing unconfirmed”. Cached lifecycle observations remain
-dated history and never evidence for deletion. No GitHub call is added.
+absorption remain the shared decision, with advisory present/absent/unknown
+outcomes in `landed.Assess`. A PR merged into the resolved landing trunk whose
+content is absent or unconfirmed locally needs `g2g pull` to refresh that trunk
+and reassess, never replacement advice. Only feature-base merges with absent
+content say “merged into <base>, not landed” and offer `g2g submit`; unavailable
+feature content stays “landing unconfirmed”. Cached lifecycle observations
+remain dated history and never evidence for deletion. No GitHub call is added.
 
 ## Explicit cleanup
 

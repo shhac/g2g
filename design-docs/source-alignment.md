@@ -351,15 +351,17 @@ edge it will overwrite, and that is enough.
 
 ## Publishing preserves safe bases
 
-Submit refuses before pushing when an open PR base differs from its recorded
-stack parent and would contain the proposed head by local ancestry, including
-a local base outside the selection. It names `g2g github retarget` over the
-selection to run first: publishing that ancestry would let GitHub mark the PR
-merged irreversibly. A correctly based PR is never refused by this check,
-because retargeting would change nothing. With `--link`, linking refusals
-take precedence over publication refusals, so a fork still names narrowing
-the selection or dropping `--link`. The check uses the existing PR read and
-local tips only; `push` still never reads GitHub.
+Submit refuses before pushing when a mismatched open PR base would contain
+the proposed head after publication, which GitHub would mark merged irreversibly.
+A base in `Push.Leases()` uses its proposed local tip; any base left untouched
+uses its observed remote tip, including waiting and landed branches. Reuse push's
+observations and batch any missing bases into one Git `RemoteTips` read. Missing
+refs or unavailable objects provide no merge assertion. The repair is
+`g2g github retarget` over the selection before publishing. Correctly based PRs
+remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+existing-PR, then push refusals, in that order; preview, CLI blocking and apply
+all consume it. Missing-spec requirements remain in the CLI. The check adds no
+GitHub reads, and `push` stays Git-only.
 
 ## Deferred
 

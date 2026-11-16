@@ -519,8 +519,12 @@ Only the selection root changes parents under `--onto`. A descendant held by
 another worktree may be left by `--worktrees skip`, or by `follow` when that
 worktree has changes: it gets no step and retains its edge and fork point.
 Branches above it are measured against its actual tip, as in an ordinary
-restack. The preview names what stays and the later `g2g restack` in the
-holder's worktree. A held root that must move still refuses, since leaving
+restack. Left branches are excluded from fork-point refresh even when their
+parent collapses backwards. The journal carries the original leaves through
+continuation, even after a holder detaches; abort restores the original edges
+and pins. Records with leaves use schema 3 so older readers refuse; schemas 1
+and 2 remain readable. The preview names what stays and the later `g2g restack`
+in the holder's worktree. A held root that must move still refuses, since leaving
 that root would skip the move the user explicitly asked for. See
 [worktrees](worktrees.md).
 
@@ -564,7 +568,8 @@ in the journal owner’s worktree or when another journal moves what they read.
 Before rewriting, the plan records exact agreement for each moving branch
 whose observed local tip equals its known `origin` tip. One batched `KnownTips`
 read uses remote-tracking and g2g-fetched refs, without network access. The
-record goes through `syncpoint.Record`; a recording failure is diagnostic.
+record is constructed by the pure `syncpoint.Level` equality filter and goes
+through `syncpoint.Record`; a recording failure is diagnostic.
 Ahead, behind, unpublished and skipped branches record nothing, nor does an
 absorb that changes only structure. A pending incoming head is not evidence of
 local agreement. Trunks never receive sync points.

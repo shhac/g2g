@@ -140,7 +140,19 @@ confirmed child is “merged into synthetic-parent; absorbed”, excluded from
 submission metadata and publication. It is not asserted landed in the trunk.
 `github status` offers the source’s cleanup command. For g2g, `prune` already
 checks parent absorption; when only the known published parent contains the
-work, collect it first with `pull --above synthetic-parent`, then prune.
+work, collect it first with `pull --above synthetic-parent` on the selected
+remote. Restack surviving descendants before pruning. Graphite names `gt sync`;
+PR-derived structure supplies no cleanup command.
+Submit keeps selected topology and filters publication eligibility separately.
+It refuses creation or linking across an omitted absorbed base before pushing.
+Its absorption evidence must describe the resulting parent: the proposed local
+tip for a parent in the final push leases, otherwise the observed published tip
+or locally known copy for an unobserved parent. Observed absence overrides stale
+knowledge. Bound a published-parent assessment at that version, never the local
+parent, which may already contain the child's commit ids. Push observations and
+comparison evidence are reused when excluding absorbed actions, without a
+second push comparison. Advisory status may still report either parent's copy.
+
 A merge into another feature base, or absent/unreadable parent content, grants
 no exclusion. Followup child work still needs a replacement. These advisory
 reads neither fetch nor authorize deletion from cached PR lifecycle state.
@@ -172,7 +184,8 @@ Known, measured, and left for a change of its own:
   by the advance after it.
 - **restack resolves and re-records serially.** Each step resolves its tips one
   at a time, and fork points are re-recorded for every branch after a rewrite,
-  including ones that did not move. One batched resolve and one `update-ref
+  including ones that did not move, except branches explicitly left by worktree
+  policy. One batched resolve and one `update-ref
   --stdin` transaction would do.
 - **A child of a rewritten parent is compared with everything the trunk
   gained.** `classifyOrphans` runs `git cherry` and `rev-list --left-right`

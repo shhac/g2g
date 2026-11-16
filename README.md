@@ -679,7 +679,9 @@ tips exactly match `origin` as this checkout knows it. This reads local
 remote-tracking and g2g-fetched refs only. It lets a branch first pushed with
 plain Git publish a later conflict resolution through g2g. Branches ahead of
 or behind that known copy record nothing. A reviewer commit pushed after the
-last fetch remains protected: it is outside the recorded agreement.
+last fetch remains protected: it is outside the recorded agreement. Abandoning
+the preview still preserves that agreement; later reviewer additions remain
+protected and upstream drops remain distinguishable from new local work.
 
 A stopped restack exits `3`, including when `--continue` hits another conflict.
 Run recovery from the worktree that started it: each worktree keeps its own
@@ -746,7 +748,9 @@ with the command that finishes one later; a leave the preview named exits
 along reports the `git -C … read-tree` command that finishes it and exits
 `3`; `pull`'s own moves bring the worktree first, so one that will not come
 along stops that move instead. With `restack --onto`, a held descendant may
-stay too: it keeps its parent and fork point, and branches above it are
+stay too: it keeps its parent and fork point, even if the root collapses
+backwards onto an older base. That leave remains fixed through continuation
+and abort; structure recording never refreshes a left branch’s fork. Branches above it are
 measured against its unchanged tip. A held selection root that `--onto` must
 move still refuses, because leaving it would omit the requested move. See
 [design-docs/worktrees.md](design-docs/worktrees.md).
@@ -1025,7 +1029,9 @@ when a plain-pushed branch was already ahead before g2g observed agreement,
 nothing proves the remote holds only what you had. The refusal says g2g has
 no record that this checkout and the remote agreed on the branch, explains
 that it may have been first pushed outside g2g, and names differing published
-commits by branch, short id and subject when their objects are available. It
+commits by branch, short id and subject when their objects and published-parent
+evidence are available. Unavailable explanatory evidence leaves commits unnamed
+and preserves the refusal and its repair commands. It
 offers `g2g pull` to reconcile.
 `g2g pull --take published --through synthetic-top` previews taking the remote
 versions through that branch, listing the local commits it would discard; review
@@ -1050,7 +1056,9 @@ since the last fetch.
 
 #### submit
 
-`g2g submit` is a preview-first publication path for a resolved stack.
+`g2g submit` is a preview-first publication path for a resolved stack. It takes
+`--scope stack|path` (default `stack`). Both include the selected branch’s
+ancestors so its parents are published with it.
 With `--apply`, it validates metadata for PRs being created, revalidates immediately before
 mutation, performs one atomic lease-protected push, creates only missing PRs
 bottom-to-top as drafts, preserves existing PRs, and keeps the stack comment on
@@ -1069,8 +1077,9 @@ Branches above the one submitted that have no commits of their own yet and no
 open pull request are left out, with anything above them that is left out
 too, and the preview marks them so: a branch just created to work in next has
 nothing to open a pull request for. On a fork each arm is asked on its own.
-The branch named, or the one you stand on, is never left out, and neither is a
-branch something submitted sits on.
+This waiting rule never leaves out the branch named, the one you stand on, or
+a branch something submitted sits on. Confirmed absorption is a separate
+publication decision described below.
 
 After pushing, `submit` waits, up to a minute, until GitHub shows each
 existing pull request it pushed to at the pushed head. A push finishing is not
@@ -1104,20 +1113,29 @@ uses its observed remote tip, including waiting and landed branches. Reuse push'
 observations and batch any missing bases into one Git `RemoteTips` read. Missing
 refs or unavailable objects provide no merge assertion. The repair is
 `g2g github retarget` over the selection before publishing. Correctly based PRs
-remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
 existing-PR, then push refusals, in that order; preview, CLI blocking and apply
 all consume it. Missing-spec requirements remain in the CLI. The check adds no
 GitHub reads, and `push` stays Git-only.
 
-A child squash-merged into its recorded feature parent is left out when Git
-confirms the parent already has its work. Its preview says “merged into
-synthetic-parent; absorbed”, asks for no spec entry and does not push it.
-Locally known remote parent copies count too, without fetching. When only that
-copy contains the work, first collect it with
-`g2g pull --branch synthetic-child --above synthetic-parent`, then preview
-`g2g prune --branch synthetic-child --scope branch` to forget the record.
-A merge into a different feature base, or child work the parent does not have,
-still needs a replacement. No PR lifecycle alone proves absorption.
+A child squash-merged into its recorded feature parent is left out only when
+Git confirms its work in the parent version this publication will leave behind:
+the proposed local parent if that parent is pushed, otherwise its published or
+locally known remote copy. A squash this submit removes cannot justify omission.
+The preview says “merged into synthetic-parent; absorbed”, asks for no spec
+entry and does not push that child. Selection topology remains intact. Before
+publishing, submit refuses PR creation or linking that depends on an omitted
+absorbed base. Existing open PRs can still receive updates without linking.
+
+For g2g-recorded structure, collect a parent known only remotely with
+`g2g pull --branch synthetic-child --above synthetic-parent` (carrying the
+selected `--remote`). When surviving descendants need reconciliation, preview
+and apply `g2g restack --branch synthetic-child` before
+`g2g prune --branch synthetic-child --scope branch`. Graphite-described stacks
+name `gt sync`; PR-derived structure names no cleanup command. Prune still
+checks local content independently.
+A merge into a different feature base, or child work the effective parent does
+not have, still needs a replacement. No PR lifecycle alone proves absorption.
 
 Generate a reusable spec outside the repository, fill in the missing PRs' titles, validate,
 then apply it:
@@ -1272,8 +1290,9 @@ is a pull request that is missing, closed, or ambiguous — not a statement abou
 a base, because a branch with no pull request has no base to be wrong about.
 `pr✓` confirms a merge by content, either in the local trunk or absorbed into
 its recorded feature parent. Parent absorption reads “merged into
-synthetic-parent; absorbed” and offers pruning, after collecting the parent
-first if only its known remote copy contains the work. Other feature-base
+synthetic-parent; absorbed” and offers source-aware cleanup: collect a parent
+known only remotely first, restack surviving descendants, then prune g2g’s
+record; Graphite names `gt sync` and PR-derived structure names no command. Other feature-base
 merges whose work is absent from the trunk read “merged into <base>, not
 landed” and offer `g2g submit` for a replacement.
 Unreadable or absent local feature content says “landing unconfirmed”. A PR

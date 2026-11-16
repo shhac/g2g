@@ -100,13 +100,20 @@ description: |
   behind, absent, skipped and metadata-only branches record nothing; a trunk
   never has a sync point. Pull already records exact equality for its selected
   remote before replay. Recording failures stay diagnostic through
-  `syncpoint.Record`. Repeated unequal restacks keep that agreement.
+  `syncpoint.Record`. Pure `syncpoint.Level` constructs nonempty exact-equality
+  agreements for restack, pull, adoption and push; callers own reads and
+  eligibility. An abandoned restack preview must still protect later reviewer
+  additions and classify upstream drops, without changing tips or agreeing on
+  a trunk. Repeated unequal restacks keep that agreement.
   A refused publication with no usable agreement explains that g2g has no
   record this checkout and the remote agreed, for example because the branch
   was first pushed outside g2g. `syncpoint.Assess` remains the only reader for
   a decision, including agreement usability before published objects exist.
-  A refused publication names differing published commits when available and
-  offers a pull preview; the explicit
+  A refused publication carries difference evidence out of the canonical
+  comparison, privately to push, and constructs its repair once from collected
+  values. Unavailable published-parent evidence leaves commits unnamed and
+  preserves the refusal and ways; other errors and cancellation propagate. It
+  names differing published commits when available and offers a pull preview; the explicit
   `--take published --through <branch>` choice lists local commits it discards.
 - `adopt --scope path` and `github adopt --scope path` record one chain — the
   trunk up to `--branch` — for taking up one line of somebody else's stack.
@@ -135,7 +142,10 @@ description: |
   is finished later by `g2g restack` (or `g2g pull --trunk-only` for a trunk)
   run in that worktree. `--worktrees skip` leaves every such branch;
   `restack --onto` can leave a held descendant too, keeping its parent and
-  fork point and measuring its children against its actual tip. Only a held
+  fork point and measuring its children against its actual tip. Exclude left
+  branches from fork-point refresh even after a backwards collapse. Schema-3
+  journals preserve leaves through continuation even if a holder detaches;
+  abort restores original edges and pins. Keep schema-1/2 reader support. Only a held
   selection root that `--onto` must move refuses; do not make the presence of
   `--onto` refuse every left descendant.
   For a left `pull --above` boundary, rerun the same scoped pull once its
@@ -226,7 +236,7 @@ description: |
   observations and batch any missing bases into one Git `RemoteTips` read. Missing
   refs or unavailable objects provide no merge assertion. The repair is
   `g2g github retarget` over the selection before publishing. Correctly based PRs
-  remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
   existing-PR, then push refusals, in that order; preview, CLI blocking and apply
   all consume it. Missing-spec requirements remain in the CLI. The check adds no
   GitHub reads, and `push` stays Git-only.
@@ -523,7 +533,8 @@ description: |
   selected records. `ParseScope` takes both the accepted
   set and the fallback; there is no global default left to inherit.
 - Projection is a capability, not a scope. `github link`, `submit`, `land` and
-  `github retarget` take `stack|path`. `github link`, `land` and
+  `github retarget` take `stack|path` (`shape.ProjectScopes`); both include
+  ancestors for publication. `github link`, `land` and
   `submit --link` refuse a forked selection through `Snapshot.RequireLinear`,
   which names the leaves to select instead of choosing a line. `submit` and
   `retarget` take a fork whole, every pull request aimed at its own parent
@@ -752,9 +763,22 @@ description: |
   Exception to replacement: a merged PR into its recorded feature parent is
   absorbed when `landed.AssessParent` confirms content locally or in its known
   remote copy. Read candidate parents once through `landed.KnownParents` before
-  parallel probes. Submit excludes it from specs and pushes; status names
-  pruning. If only the known remote parent has the work, collect that parent
-  with `pull --above` first. Prune still verifies local content independently.
+  parallel probes. Status may report either copy. Submit keeps selected
+  topology intact and filters publication actions (`Plan.Publication`,
+  `Push.Excluding`) against the parent version this publication leaves:
+  proposed local when pushed, otherwise observed published or locally known
+  when unobserved. A squash publication removes cannot justify omission. Bound
+  published evidence at that version, never the local parent. Refuse creation
+  or linking that depends on an omitted absorbed base before any push.
+  `link.AbsorbedWays` owns ordered cleanup through `ForgetLanded`: for g2g,
+  collect a remote-only parent with `pull --above` carrying the selected remote,
+  restack surviving descendants, then prune. Graphite names `gt sync`;
+  PR-derived structure names no command. CLI advice uses `selected.from` and
+  aims/clones/rewrites ways once. Prune still verifies local content independently.
+  An empty publication performs no push, PR creation or link. Cover that
+  service guard with a directly constructed plan, without widening submit’s
+  CLI scopes. Keep the abandoned-preview safety journey and held-middle
+  conflict continuation/abort coverage.
 - `github status` is the read-only triage entry point for pull requests. It
   renders one selected path from the resolved g2g or Graphite structure and reports each selected
   PR's native GitHub stack membership from the same batched PR query; keep the

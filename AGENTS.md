@@ -169,7 +169,7 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   observations and batch any missing bases into one Git `RemoteTips` read. Missing
   refs or unavailable objects provide no merge assertion. The repair is
   `g2g github retarget` over the selection before publishing. Correctly based PRs
-  remain exempt. `submit.Plan.Refusal(link)` selects linking, preserved-base,
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
   existing-PR, then push refusals, in that order; preview, CLI blocking and apply
   all consume it. Missing-spec requirements remain in the CLI. The check adds no
   GitHub reads, and `push` stays Git-only.
@@ -250,10 +250,20 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `IssueMergedStale`: advise `g2g pull` through `selected.aim`, then reassess.
   A merged PR into its recorded feature parent is separately absorbed when
   `landed.AssessParent` confirms content locally or in its known published copy.
-  Submit excludes it from metadata and pushes; status names source-appropriate
-  cleanup. `landed.KnownParents` batches candidate-parent reads before concurrent
+  Status names source-appropriate cleanup. Submit retains selected topology and
+  filters actions only when the parent version publication leaves behind has
+  the child: proposed local for a pushed parent, observed published (or known
+  when unobserved) for an untouched one. Bound published evidence at that
+  version, never the local parent. `Plan.Publication` and `Push.Excluding`
+  share eligibility without another comparison; never reuse structural
+  `without` for interior absorption. Creation and linking across an omitted
+  absorbed base refuse before publishing through `Plan.Refusal`. `landed.KnownParents` batches candidate-parent reads before concurrent
   probes. Collect a parent known only remotely with `pull --above` before
-  pruning; prune still checks local content, never PR lifecycle alone.
+  pruning, carrying the selected remote. Reconcile surviving descendants with
+  `restack --branch <absorbed>` before prune; `link.AbsorbedWays` owns this
+  ordered, source-aware cleanup through `ForgetLanded` (`gt sync` for Graphite,
+  no command for PR-derived structure). The CLI aims once and clones/rewrites
+  ways in one pass. Prune still checks local content, never PR lifecycle alone.
   Absent or unreadable feature content stays unconfirmed. This preserves the
   reading the offline view (`status`, once `graph`) has always taken of an
   already-landed branch. They used to be one string under one colour, which is
@@ -399,7 +409,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   leaves every held branch; `refuse` is the old refusal. A left branch gets no
   step, so what sits on it is measured against where it is. A restack onto a
   named base may leave held descendants, preserving their edges and fork
-  points. Only a held selection root that `--onto` must move refuses. Use
+  points. Only a held selection root that `--onto` must move refuses.
+  Structure recording excludes left branches from fork-point refresh even
+  after a backwards collapse. Schema-3 journals carry those leaves across
+  continuation (even if a holder detaches); abort restores the original edges
+  and pins. Readers retain schema-1/2 support. Use
   `selectionRoots` for that distinction; the shared worktree policy still
   decides who is left.
   `pull` collects again with left branches fixed, records no sync point for
@@ -465,7 +479,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   never substitute a pending incoming head. Pull already records equality
   against its selected remote before replay. A reviewer commit gained since
   the fetch stays outside the agreement and protected. Publication refusals
-  name differing remote commits when available and offer a previewable pull,
+  retain private difference evidence from the canonical push comparison and
+  construct repair policy once, purely from collected values. Unavailable
+  published-parent evidence leaves commit names absent and preserves the
+  refusal and its ways; other Git errors and cancellation still propagate.
+  They name differing remote commits when available and offer a previewable pull,
   with an explicit bounded take naming local losses; never silently replace
   remote work. Record
   the tip the plan saw, never one read again at write time; record at plan time
@@ -473,8 +491,11 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   is also what a remote-dropped commit looks like; and a recording that fails
   after the command's own work is a diagnostic, never a failure. The Git
   client's own delete and rename forget and carry them, so no command can
-  forget to. A trunk never has one. Three things exist once: `syncpoint.Assess`
-  is the only place a sync point is read for a decision (pull and push each
+  forget to. A trunk never has one. Exact-level agreement construction exists
+  once in pure `syncpoint.Level`,
+  shared by restack, pull, adoption and push; callers retain their reads,
+  eligibility and diagnostics. Three recording/assessment seams exist once:
+  `syncpoint.Assess` is the only place a sync point is read for a decision (pull and push each
   had a copy, and each set `Unsynced` by convention), `syncpoint.Record` is
   the only agree-then-diagnose wrapper, and `localgit.Short` is the only
   short-id rule — the ids a preview prints are the ones `--keep` is asked for,
@@ -598,6 +619,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
     stored queue, which is what makes the user's own
     `git rebase --continue`/`--abort` harmless.
 
+Submit offers exactly `shape.ProjectScopes` (`stack|path`), defaulting to
+`stack`, so ancestors are included for publication. Keep the service guard for
+an empty publication: no push, PR creation or link. Test it with a directly
+constructed plan in `internal/submit`, without adding a CLI scope. Keep the
+preview-only agreement safety journey and the held-middle conflict
+continuation/abort tests; check tips, edges, pins, checkout cleanliness and held
+edits, not just output.
+
 ## Source resolution
 
 - Read `design-docs/source-resolution.md` before changing how a command selects
@@ -676,7 +705,8 @@ The following decisions exist once and must not be reimplemented locally. Each w
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
-- `landed.AssessParent` / `landed.KnownParents` — shared advisory parent
+- `landed.AssessParent` / `landed.AssessPublishedParent` /
+  `landed.KnownParents` — shared advisory and effective-version parent
   absorption and one batched local read of known published parent copies.
 - `landed.Assess` — present, absent or unknown content evidence for advisory
   merged-history reads in link and submit, sharing `landed.Into` underneath.

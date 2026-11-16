@@ -69,6 +69,12 @@ them — the whole history, so what it keeps reachable stays reachable, each ent
 dated by the rename since `update-ref` cannot write an older date. That lives in the Git client's own delete and rename, so no command that
 deletes a branch can forget to.
 
+Exact-level construction is shared through pure `syncpoint.Level` by restack,
+pull, adoption and push. It filters nonempty equal observed tips; callers keep
+reads, branch eligibility and diagnostics. An abandoned restack preview still
+records a real past agreement: reviewer additions remain protected, upstream
+drops remain drops, and neither local tips nor trunk sync points are changed.
+
 A trunk never has one. What `pull` does to a trunk is decided by the rules for a
 rewritten trunk, and a drop there is nobody's to publish.
 
@@ -216,3 +222,10 @@ journey proves that recording the old equal tip never authorizes replacing a
 reviewer's later commit; the ahead-branch journey keeps refusing and explains
 the missing agreement. Pull's existing pre-replay recording is covered by
 `TestJourneyPullAfterPlainPushPreservesAgreementThroughReplayConflict`.
+
+Push retains difference evidence privately from its canonical comparison.
+Refusal wording and commands are built once by a pure function from that
+evidence, including scope, remote and quoted names. An unavailable published
+parent leaves difference commits unnamed, while the refusal and its ways out
+remain available; errors and cancellation unrelated to missing evidence still
+propagate.

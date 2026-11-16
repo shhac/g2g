@@ -92,6 +92,11 @@ the new parent without moving it would claim a move that never happened.
 This is the same distinction as a held survivor above a land descent: work
 below a left descendant does not depend on moving it.
 
+Leaving protects the recorded replay boundary as well as the ref: fork-point
+refresh skips left branches, including when their parent collapses backwards.
+Schema-3 journals preserve those leaves across continuation, even if a holder
+detaches; abort restores the original structure and pins alongside the tips.
+
 Each command decides only the branches it moves itself. `pull` decides its own
 moves first -- the trunk it advances, the branches it takes -- and the replay
 after it takes those decisions as given rather than asking again, bringing a

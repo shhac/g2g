@@ -24,6 +24,9 @@ type Git interface {
 	// nothing on GitHub. push checks it again when it plans; that is one
 	// local read.
 	Remote(context.Context, string) error
+	// RemoteTips fills only preserved bases push did not already observe.
+	// The whole missing set is one read, without fetching objects or refs.
+	RemoteTips(context.Context, string, []string) (map[string]string, error)
 	IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error)
 	// ResolveAll says where each branch is, in one process: what the pull
 	// requests a push updated are waited on to report.
@@ -100,14 +103,24 @@ func (s Service) Ready() bool {
 }
 
 // Blocked is why an apply would refuse, empty when it would proceed.
-func (p Plan) Blocked() string {
+func (p Plan) Blocked() string { return p.Refusal(false).Sentence() }
+
+// Refusal selects the single refusal for preview, CLI blocking and Apply.
+// Explicit linking takes precedence over publication; missing PR metadata is
+// a CLI concern and is not part of this policy.
+func (p Plan) Refusal(link bool) repair.Note {
+	if link {
+		if note := p.LinkRepair(); note.Sentence() != "" {
+			return note
+		}
+	}
 	if p.Repair.Sentence() != "" {
-		return p.Repair.Sentence()
+		return p.Repair
 	}
 	if len(p.Issues) != 0 {
-		return "existing pull request state: " + issueText(p.Issues)
+		return repair.Note{Reason: "existing pull request state: " + issueText(p.Issues)}
 	}
-	return p.Push.Blocked()
+	return p.Push.Repair
 }
 
 // LinkBlocked keeps base agreement a requirement of explicit GitHub linking,

@@ -46,7 +46,7 @@ type adviceStep struct {
 // so the sentence a machine reads and this column cannot name different
 // commands.
 func repairAdvice(plan link.Plan) advice {
-	note, kinds := plan.Repair()
+	note, kinds := linkRepair(plan)
 	return advice{Ways: note.Ways, Steps: steps(plan, kinds...)}
 }
 

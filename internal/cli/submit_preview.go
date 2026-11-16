@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/githubstack"
+	"github.com/shhac/g2g/internal/landed"
 	"github.com/shhac/g2g/internal/submit"
 )
 
@@ -32,19 +33,8 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 	if template != "" {
 		view = view.note("PR template: "+template, severityNeutral)
 	}
-	if link && plan.LinkBlocked() != "" {
-		return view.refusing(plan.LinkRepair())
-	}
-	if plan.Repair.Sentence() != "" {
-		return view.refusing(plan.Repair)
-	}
-	if len(plan.Issues) != 0 {
-		return view.blockedBy("repair the marked existing pull requests first.")
-	}
-	// Publishing is push's, refusals included, so its reason and ways out are
-	// the ones push itself would show.
-	if plan.Push.Blocked() != "" {
-		return view.refusing(plan.Push.Repair)
+	if note := plan.Refusal(link); note.Sentence() != "" {
+		return view.refusing(note)
 	}
 	view = view.note("Publishes the selected branches through one atomic, lease-protected push; existing PR bases are preserved.", severityNeutral)
 	view = offStackNote(view, plan)
@@ -118,20 +108,34 @@ func submitLabel(plan submit.Plan, resolutions map[string]githubstack.Resolution
 		node.PRNumber = resolutions[branch].Open.Number
 		return node.labeled("existing", severityOK)
 	case replaced:
-		history := strings.ToLower(previous.State)
-		if history == "merged" {
-			history = "merged into " + previous.Base + ", landing unconfirmed"
-			if inTrunk, assessed := plan.MergedLanded[branch]; assessed {
-				if inTrunk {
-					history = "merged · landed in " + plan.Snapshot.Trunk()
-				} else {
-					history = "merged into " + previous.Base + ", not landed"
-				}
+		assessment := landed.Unknown
+		if present, assessed := plan.MergedLanded[branch]; assessed {
+			assessment = landed.Absent
+			if present {
+				assessment = landed.Present
 			}
 		}
+		history := supersededHistory(previous, plan.Snapshot.Trunk(), assessment)
 		return node.labeled(fmt.Sprintf("create %s · #%d %s", openAs(draft), previous.Number, history), "")
 	}
 	return node.labeled("create "+openAs(draft), "")
+}
+
+// supersededHistory qualifies lifecycle history with local landing evidence.
+func supersededHistory(previous githubstack.PullRequest, trunk string, assessment landed.Evidence) string {
+	if previous.State != "MERGED" {
+		return strings.ToLower(previous.State)
+	}
+	if assessment == landed.Present {
+		return "merged · landed in " + trunk
+	}
+	if trunk != "" && previous.Base == trunk {
+		return "merged into " + trunk + "; refresh " + trunk + " and reassess"
+	}
+	if assessment == landed.Absent {
+		return "merged into " + previous.Base + ", not landed"
+	}
+	return "merged into " + previous.Base + ", landing unconfirmed"
 }
 
 // offStackNote names each pull request based on a branch the stack no longer

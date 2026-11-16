@@ -129,20 +129,15 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 // Without a usable old boundary, only a verified new parent tip separates
 // parent work from branch work; a merge base alone cannot do that.
 func (s Service) reparentFork(ctx context.Context, plan TrackPlan, recorded Edge, origin Origin) (string, repair.Note, error) {
-	if recorded.ForkPoint != "" {
-		fork, err := s.Git.Resolve(ctx, recorded.ForkPoint)
-		if err == nil {
-			intact, err := s.Git.IsAncestor(ctx, fork, plan.Target)
-			if err != nil {
-				return "", repair.Note{}, err
-			}
-			if intact {
-				if forks, ok := s.Git.(MergeBases); ok {
-					fork, err = LaterFork(ctx, s.Git, forks, plan.Parent, plan.Target, fork)
-				}
-				return fork, repair.Note{}, err
-			}
+	fork, valid, err := s.recordedBoundary(ctx, plan.Target, recorded.ForkPoint)
+	if err != nil {
+		return "", repair.Note{}, err
+	}
+	if valid {
+		if forks, ok := s.Git.(MergeBases); ok {
+			fork, err = LaterFork(ctx, s.Git, forks, plan.Parent, plan.Target, fork)
 		}
+		return fork, repair.Note{}, err
 	}
 	if origin == OriginAncestry {
 		fork, err := s.trackFork(ctx, plan.Parent, plan.Target, origin, !plan.Graph.Tracked(plan.Parent))
@@ -155,6 +150,20 @@ func (s Service) reparentFork(ctx context.Context, plan TrackPlan, recorded Edge
 			Effect:  "choose and record the parent it is built on before reparenting",
 		}},
 	}, nil
+}
+
+// recordedBoundary verifies the old range without deriving another one. A
+// missing object is an unusable boundary; an ancestry read failure is an error.
+func (s Service) recordedBoundary(ctx context.Context, branch, boundary string) (string, bool, error) {
+	if boundary == "" {
+		return "", false, nil
+	}
+	fork, err := s.Git.Resolve(ctx, boundary)
+	if err != nil {
+		return "", false, nil
+	}
+	valid, err := s.Git.IsAncestor(ctx, fork, branch)
+	return fork, valid, err
 }
 
 // refresh answers a track naming the parent already recorded.

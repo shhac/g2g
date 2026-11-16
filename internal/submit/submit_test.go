@@ -129,6 +129,10 @@ func snapshot() stack.Snapshot {
 		Parents: map[string]string{"synthetic/lower": "main", "synthetic/middle": "synthetic/lower", "synthetic/top": "synthetic/middle"}}
 }
 
+func (*fakeGit) RemoteTips(context.Context, string, []string) (map[string]string, error) {
+	return nil, nil
+}
+
 type fakeGit struct {
 	published   push.Plan
 	pushBlocked string

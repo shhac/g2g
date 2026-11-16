@@ -29,63 +29,44 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	if s.Tips == nil {
 		return nil
 	}
-	trunk := plan.Snapshot.Trunk()
 	resolutions := githubstack.ResolveHeads(plan.PullRequests)
-	asking := make([]string, len(plan.Issues))
-	for index, issue := range plan.Issues {
-		if (issue.Kind == IssueMissing || issue.Kind == IssueClosed || issue.Kind == IssueMergedUnlanded) && plan.here(issue.Branch) {
-			asking[index] = issue.Branch
-		}
-	}
-	// Distinct elements of a slice that already exists, so the writes need no
-	// lock: each read owns the one issue it was given.
-	return parallel.Each(ctx, asking, func(ctx context.Context, index int, branch string) error {
-		if branch == "" {
-			return nil
-		}
-		if plan.Issues[index].Kind == IssueMergedUnlanded {
-			if trunk == "" || slices.Contains(plan.Absent, trunk) {
-				return nil
-			}
-			// The former base may now contain the head. Limiting at that base
-			// would exclude the very work we must check; compare the range above
-			// the trunk instead, never the commits the trunk gained.
-			inTrunk, err := landed.Into(ctx, s.Tips, trunk, branch, trunk)
-			if err != nil {
-				return nil
-			}
-			if inTrunk {
-				plan.Issues[index].Kind = IssueMerged
-				plan.Issues[index].Reason = "PR merged; landed in " + trunk
-			} else {
-				pr := resolutions[branch].Latest
-				plan.Issues[index].Reason = "merged into " + pr.Base + ", not landed"
-			}
-			return nil
-		}
-		if !s.landed(ctx, plan, branch) {
-			return nil
-		}
-		below := plan.SitsOn(branch)
-		plan.Issues[index] = Issue{
-			Branch: branch,
-			Kind:   IssueLanded,
-			Number: plan.Issues[index].Number,
-			Reason: "landed in " + below,
-		}
+	// Each read owns one preallocated issue slot; policy stays in assessLanded.
+	return parallel.Each(ctx, plan.Issues, func(ctx context.Context, index int, issue Issue) error {
+		plan.Issues[index] = s.assessLanded(ctx, plan, issue, resolutions[issue.Branch].Latest)
 		return nil
 	})
 }
 
-// landed reports a branch with nothing left to contribute to the branch below
-// it. The cheap per-commit question comes first; the whole-branch merge is
-// asked only of what it says no to, because that is the squash-merge case and
-// it is the more expensive read.
-// It cannot fail. A branch sharing no history with the one below it cannot be
-// compared, which is an answer rather than a failure, so the only fallible call
-// in here is answered rather than returned.
-func (s Service) landed(ctx context.Context, plan Plan, branch string) bool {
-	below := plan.SitsOn(branch)
-	upstream, err := landed.Into(ctx, s.Tips, below, branch, below)
-	return err == nil && upstream
+// assessLanded assesses one issue independently of scheduling. Unavailable
+// evidence leaves its existing classification and reason unchanged.
+func (s Service) assessLanded(ctx context.Context, plan Plan, issue Issue, previous *githubstack.PullRequest) Issue {
+	if s.Tips == nil || !plan.here(issue.Branch) {
+		return issue
+	}
+	switch issue.Kind {
+	case IssueMergedUnlanded, IssueMergedStale:
+		trunk := plan.Snapshot.Trunk()
+		if slices.Contains(plan.Absent, trunk) {
+			return issue
+		}
+		// A former feature base may contain the head, so bound at the landing
+		// trunk rather than excluding that work through the former base.
+		switch landed.Assess(ctx, s.Tips, trunk, issue.Branch, trunk) {
+		case landed.Present:
+			issue.Kind, issue.Reason = IssueMerged, "PR merged; landed in "+trunk
+		case landed.Absent:
+			if issue.Kind == IssueMergedUnlanded && previous != nil {
+				issue.Reason = "merged into " + previous.Base + ", not landed"
+			}
+		}
+	case IssueMissing, IssueClosed:
+		below := plan.SitsOn(issue.Branch)
+		if slices.Contains(plan.Absent, below) {
+			return issue
+		}
+		if landed.Assess(ctx, s.Tips, below, issue.Branch, below) == landed.Present {
+			issue.Kind, issue.Reason = IssueLanded, "landed in "+below
+		}
+	}
+	return issue
 }

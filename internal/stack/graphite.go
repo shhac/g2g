@@ -113,7 +113,14 @@ func resolveGraphite(ctx context.Context, graphiteClient Graphite, target, sourc
 	if err != nil {
 		return Snapshot{}, err
 	}
+	trunk := base
+	if scope == ScopeBranch || scope == ScopeSubtree {
+		// Narrow selection can be valid without an unambiguous landing
+		// boundary. Preserve that selection, but assert no trunk content.
+		trunk, _, _ = selectBoundary(ancestry, declared.Roots, requestedTrunk)
+	}
 	return Snapshot{
+		LandingTrunk: trunk,
 		Target:       target,
 		TargetSource: source,
 		Ancestry:     ancestry,

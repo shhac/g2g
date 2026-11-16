@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 func linkView(plan link.Plan) stackView {
@@ -43,7 +44,7 @@ func linkView(plan link.Plan) stackView {
 	}
 	if len(plan.Issues) != 0 {
 		blocked := view.blockedBy(blockedReason(plan))
-		blocked.Repair, _ = plan.Repair()
+		blocked.Repair, _ = linkRepair(plan)
 		return blocked
 	}
 	if len(view.Action) == 0 {
@@ -60,6 +61,24 @@ func linkView(plan link.Plan) stackView {
 // out of a rendered line — which quietly tied one command's output to a literal
 // six other files typed by hand.
 func blockedReason(plan link.Plan) string {
-	note, _ := plan.Repair()
+	note, _ := linkRepair(plan)
 	return note.SentenceWith(runnable)
+}
+
+// linkRepair aims package-owned advice through the same selection seam as
+// other CLI suggestions. A stale trunk is refreshed where status was aimed.
+func linkRepair(plan link.Plan) (repair.Note, []link.IssueKind) {
+	note, kinds := plan.Repair()
+	for _, kind := range kinds {
+		if kind != link.IssueMergedStale {
+			continue
+		}
+		note.Ways = append([]repair.Step(nil), note.Ways...)
+		for index, way := range note.Ways {
+			if way.Command == pullCommand.command {
+				note.Ways[index].Command = selectedFrom(plan.Snapshot).aimedOr(pullCommand)
+			}
+		}
+	}
+	return note, kinds
 }

@@ -56,3 +56,12 @@ func TestSupersededMergedHistoryIsAssessedByContentOnly(t *testing.T) {
 		})
 	}
 }
+
+func TestMergedContentUsesResolvedLandingTrunk(t *testing.T) {
+	git := &mergedGit{}
+	plan := Plan{Snapshot: stack.Snapshot{Base: "synthetic-parent", LandingTrunk: "synthetic-main", Ancestry: []string{"synthetic-develop", "synthetic-main", "synthetic-parent", "synthetic-head"}, Branches: []string{"synthetic-head"}}, Superseded: map[string]githubstack.PullRequest{"synthetic-head": {State: "MERGED"}}}
+	result := (Service{Git: git}).mergedLanded(context.Background(), plan)
+	if !result["synthetic-head"] || len(git.asked) != 1 || git.asked[0] != [3]string{"synthetic-main", "synthetic-head", "synthetic-main"} {
+		t.Fatalf("wrong landing destination: %v, %v", result, git.asked)
+	}
+}

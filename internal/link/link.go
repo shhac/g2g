@@ -65,7 +65,10 @@ const (
 	// belongs in the stack, and what brings the stack past it depends on which
 	// record describes it.
 	IssueMerged IssueKind = "merged"
-	// IssueMergedUnlanded is merged PR history without confirmed trunk content.
+	// IssueMergedStale merged into the landing trunk, which needs refreshing
+	// before absent local content can be assessed again.
+	IssueMergedStale IssueKind = "merged-stale"
+	// IssueMergedUnlanded is feature-base merged history without confirmed trunk content.
 	IssueMergedUnlanded IssueKind = "merged-unlanded"
 	// IssueAmbiguous is a branch with more than one open pull request.
 	IssueAmbiguous IssueKind = "ambiguous"
@@ -272,6 +275,10 @@ func assessPRs(prs []githubstack.PullRequest, snapshot stack.Snapshot) []Issue {
 			reason := "PR " + strings.ToLower(step.Resolution.Latest.State)
 			if kind == IssueMergedUnlanded {
 				reason = "merged into " + step.Resolution.Latest.Base + ", landing unconfirmed"
+				if snapshot.Trunk() != "" && step.Resolution.Latest.Base == snapshot.Trunk() {
+					kind = IssueMergedStale
+					reason = "merged into " + snapshot.Trunk() + "; refresh " + snapshot.Trunk() + " and reassess"
+				}
 			}
 			issues = append(issues, Issue{Branch: step.Branch, Kind: kind, Number: step.Resolution.Latest.Number, Reason: reason})
 		default:

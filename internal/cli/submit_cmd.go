@@ -172,7 +172,7 @@ func (o submitOptions) submission(plan submit.Plan) (submission, error) {
 		return submission{spec, "Rerun with --apply to publish commits to the existing PRs.", o.apply}, nil
 	}
 	if o.apply {
-		if plan.Blocked() != "" {
+		if plan.Refusal(o.link).Sentence() != "" {
 			return submission{spec: submit.Spec{Draft: submit.DefaultDraft}, apply: true}, nil
 		}
 		return submission{}, fmt.Errorf("missing PRs require a submission spec · create one with %s, fill in the titles, then validate and apply with --spec", o.retryCommand("--write-spec", "<private-temp-dir>"))
@@ -206,10 +206,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		precheck:     service.RequireClean,
 		suggest:      func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
 		blocked: func(plan submit.Plan) string {
-			if o.link && plan.LinkBlocked() != "" {
-				return plan.LinkBlocked()
-			}
-			if blocked := submitBlocked(plan); blocked != "" {
+			if blocked := plan.Refusal(o.link).Sentence(); blocked != "" {
 				return blocked
 			}
 			if o.specPath == "" && len(plan.CreationBranches()) != 0 {
@@ -219,7 +216,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		},
 		render: func(w io.Writer, plan submit.Plan, presentation Presentation) error {
 			view := submitView(plan, template, spec.Draft, o.link, o.keepsComments())
-			if o.specPath == "" && len(plan.CreationBranches()) != 0 && submitBlocked(plan) == "" && (!o.link || plan.LinkBlocked() == "") {
+			if o.specPath == "" && len(plan.CreationBranches()) != 0 && plan.Refusal(o.link).Sentence() == "" {
 				view = view.refusing(o.missingSpecNote())
 			}
 			return writeStackView(w, view, presentation)
@@ -268,20 +265,6 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 		flow.touches = func(plan submit.Plan) restack.Footprint { return snapshotTouches(plan.Snapshot) }
 	}
 	return flow
-}
-
-// submitBlocked is why a submission must not be applied, in the words an
-// apply that refuses says it.
-func submitBlocked(plan submit.Plan) string {
-	switch {
-	case plan.Repair.Sentence() != "":
-		return plan.Repair.Sentence()
-	case len(plan.Issues) != 0:
-		return "submit is blocked by " + plan.Blocked()
-	case plan.Push.Blocked() != "":
-		return "submit cannot publish: " + plan.Push.Blocked()
-	}
-	return ""
 }
 
 // stoppedMidSubmit says what a submission published before it stopped, from

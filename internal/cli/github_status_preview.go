@@ -108,7 +108,7 @@ func githubStatusView(plan link.Plan) stackView {
 		blocked.BlockedHeading = "Safe next action"
 		laid := repairAdvice(plan)
 		blocked.Advice = &laid
-		blocked.Repair, _ = plan.Repair()
+		blocked.Repair, _ = linkRepair(plan)
 		return structureNote(blocked, plan.Snapshot)
 	}
 	return structureNote(view.note(nativeMessage(native), membershipNoteSeverity(native.State)), plan.Snapshot)
@@ -185,7 +185,7 @@ func issueMark(issue link.Issue) stackMark {
 		// lands the work under a different head, and a cherry-picked series
 		// under none — and the branch being finished is the whole statement.
 		return stackMark{Detail: issue.Reason, Severity: severityNeutral}
-	case link.IssueMergedUnlanded:
+	case link.IssueMergedUnlanded, link.IssueMergedStale:
 		return stackMark{Subject: "pr", Detail: issue.Reason, Severity: severityWarn}
 	case link.IssueClosed:
 		return stackMark{Subject: "pr", Detail: "closed without merging", Severity: severityBad}

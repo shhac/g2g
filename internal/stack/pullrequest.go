@@ -143,6 +143,7 @@ func selectPullRequestSnapshot(selection Selection, target, source string, local
 		Target:       target,
 		TargetSource: source,
 		Ancestry:     ancestry,
+		LandingTrunk: ancestry[0],
 		Base:         base,
 		BaseSource:   "pull request base",
 		Branches:     branches,

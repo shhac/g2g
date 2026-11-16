@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -93,4 +94,55 @@ func TestJourneyTrackReparentRefusesAnInvalidRecordedRange(t *testing.T) {
 	if got := w.tip(w.Local, "refs/g2g/forkpoints/synthetic-b"); got != fork {
 		t.Errorf("repaired reparent fork = %s, want %s", got, fork)
 	}
+}
+
+// The new parent shares part of the target's former own range. Only the
+// remainder belongs to the target after recording that parent.
+func TestJourneyTrackReparentNarrowsSharedRange(t *testing.T) {
+	w := newWorld(t)
+	w.git(w.Local, "branch", "-m", "main", "synthetic-trunk")
+	w.branchOff("synthetic-trunk", "synthetic-target", "shared.txt")
+	mustRun(t, "track", "--parent", "synthetic-trunk", "--apply")
+	old := w.tip(w.Local, "refs/g2g/forkpoints/synthetic-target")
+	shared := w.tip(w.Local, "synthetic-target")
+	w.commit(w.Local, "synthetic-target", "remaining.txt", "synthetic remaining")
+	w.git(w.Local, "branch", "synthetic-parent", shared)
+	w.commit(w.Local, "synthetic-parent", "parent.txt", "synthetic parent")
+	mustRun(t, "track", "--parent", "synthetic-trunk", "--apply")
+	w.git(w.Local, "switch", "synthetic-target")
+	preview := mustRun(t, "track", "--parent", "synthetic-parent")
+	if !strings.Contains(preview, localgit.Short(shared)+"..synthetic-target") {
+		t.Fatalf("preview did not narrow %s to %s:\n%s", old, shared, preview)
+	}
+	mustRun(t, "track", "--parent", "synthetic-parent", "--apply")
+	w.assertClean(w.Local)
+	var stored struct {
+		Branches map[string]struct {
+			Parent string `json:"parent"`
+			Fork   string `json:"forkPoint"`
+		} `json:"branches"`
+	}
+	if err := json.Unmarshal([]byte(w.readStore()), &stored); err != nil {
+		t.Fatal(err)
+	}
+	edge := stored.Branches["synthetic-target"]
+	if edge.Parent != "synthetic-parent" || edge.Fork != shared || w.tip(w.Local, "refs/g2g/forkpoints/synthetic-target") != shared {
+		t.Fatalf("narrowed graph and pin disagree: %+v", edge)
+	}
+	tip := w.tip(w.Local, "synthetic-target")
+	preview = mustRun(t, "restack", "--branch", "synthetic-target")
+	if !strings.Contains(preview, "Replay range for synthetic-target: "+localgit.Short(shared)+".."+localgit.Short(tip)) {
+		t.Fatalf("restack did not preview remaining range:\n%s", preview)
+	}
+	mustRun(t, "restack", "--branch", "synthetic-target", "--apply")
+	if got := w.git(w.Local, "log", "--format=%s", "synthetic-parent..synthetic-target"); got != "synthetic remaining.txt" {
+		t.Errorf("replayed more than remainder: %s", got)
+	}
+	for _, name := range []string{"shared.txt", "remaining.txt", "parent.txt"} {
+		w.assertHas(w.Local, "synthetic-target", name)
+	}
+	if !w.contains(w.Local, "synthetic-parent", "synthetic-target") {
+		t.Error("target was not replayed onto parent")
+	}
+	w.assertClean(w.Local)
 }

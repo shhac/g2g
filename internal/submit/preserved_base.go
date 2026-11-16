@@ -3,25 +3,64 @@ package submit
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/repair"
 )
 
-// A mismatched base must be retargeted before publishing would make it contain
-// the PR's head. GitHub treats that ancestry as a merge, irreversibly closing
-// the PR. Correct bases need no retarget. Use local tips, including local bases
-// outside the selection, and no additional GitHub reads. Nonlocal bases cannot
-// be assessed here.
+// A mismatched base must be retargeted before publication would make it contain
+// the head. Pushed bases use their proposed tips; untouched bases use observed
+// remote tips. Missing refs or objects provide no ancestry assertion.
 func (s Service) preservedBaseRepair(ctx context.Context, plan Plan) (repair.Note, error) {
 	misbased := make(map[string]*githubstack.PullRequest)
 	for _, step := range plan.misbased() {
 		misbased[step.Branch] = step.Resolution.Open
 	}
+	leases := plan.Push.Leases()
+	pushed := make(map[string]bool, len(leases))
+	for _, lease := range leases {
+		pushed[lease.Branch] = true
+	}
+	remote := maps.Clone(plan.Push.RemoteTips)
+	if remote == nil {
+		remote = map[string]string{}
+	}
+	// push observed every selected branch, including branches it leaves landed.
+	observed := make(map[string]bool)
+	for branch := range remote {
+		observed[branch] = true
+	}
+	for _, branch := range plan.Push.Branches {
+		observed[branch] = true
+	}
+	missing := make(map[string]bool)
+	for _, lease := range leases {
+		if pr := misbased[lease.Branch]; pr != nil && !pushed[pr.Base] && !observed[pr.Base] {
+			missing[pr.Base] = true
+		}
+	}
+	if len(missing) != 0 {
+		tips, err := s.Git.RemoteTips(ctx, plan.Remote, slices.Sorted(maps.Keys(missing)))
+		if err != nil {
+			return repair.Note{}, err
+		}
+		maps.Copy(remote, tips)
+	}
+	bases := make(map[string]string)
 	var revisions []string
-	for _, lease := range plan.Push.Leases() {
+	for _, lease := range leases {
 		if pr := misbased[lease.Branch]; pr != nil {
-			revisions = append(revisions, "refs/heads/"+lease.Branch, "refs/heads/"+pr.Base)
+			base := remote[pr.Base]
+			if pushed[pr.Base] {
+				base = "refs/heads/" + pr.Base
+			}
+			bases[lease.Branch] = base
+			revisions = append(revisions, "refs/heads/"+lease.Branch)
+			if base != "" {
+				revisions = append(revisions, base)
+			}
 		}
 	}
 	if len(revisions) == 0 {
@@ -31,12 +70,13 @@ func (s Service) preservedBaseRepair(ctx context.Context, plan Plan) (repair.Not
 	if err != nil {
 		return repair.Note{}, err
 	}
-	for _, lease := range plan.Push.Leases() {
+
+	for _, lease := range leases {
 		pr := misbased[lease.Branch]
 		if pr == nil {
 			continue
 		}
-		head, base := tips["refs/heads/"+lease.Branch], tips["refs/heads/"+pr.Base]
+		head, base := tips["refs/heads/"+lease.Branch], tips[bases[lease.Branch]]
 		if head == "" || base == "" {
 			continue
 		}

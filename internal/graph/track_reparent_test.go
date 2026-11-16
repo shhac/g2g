@@ -78,3 +78,28 @@ func TestPlanTrackReparentRequiresAnEvidencedOwnRange(t *testing.T) {
 		})
 	}
 }
+
+func TestRecordedBoundaryVerification(t *testing.T) {
+	for _, tc := range []struct {
+		name, boundary  string
+		missing, intact bool
+		want            string
+		valid           bool
+	}{
+		{name: "legacy empty"},
+		{name: "missing object", boundary: "synthetic-pin", missing: true},
+		{name: "resolved but unrelated", boundary: "synthetic-pin", want: "synthetic-fork"},
+		{name: "resolved ancestor", boundary: "synthetic-pin", intact: true, want: "synthetic-fork", valid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git := fakeAncestry{objects: map[string]string{"synthetic-pin": "synthetic-fork"}, unresolvable: map[string]bool{"synthetic-pin": tc.missing}, ancestors: map[string][]string{}}
+			if tc.intact {
+				git.ancestors["synthetic-target"] = []string{"synthetic-fork"}
+			}
+			fork, valid, err := (Service{Git: git}).recordedBoundary(context.Background(), "synthetic-target", tc.boundary)
+			if err != nil || fork != tc.want || valid != tc.valid {
+				t.Fatalf("boundary=(%q,%t,%v); want (%q,%t,nil)", fork, valid, err, tc.want, tc.valid)
+			}
+		})
+	}
+}

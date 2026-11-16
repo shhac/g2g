@@ -51,6 +51,7 @@ func (s Snapshot) Equal(other Snapshot) bool {
 		s.TargetSource == other.TargetSource &&
 		s.Source == other.Source &&
 		s.Base == other.Base &&
+		s.LandingTrunk == other.LandingTrunk &&
 		s.BaseSource == other.BaseSource &&
 		s.Scope == other.Scope &&
 		maps.Equal(s.Parents, other.Parents) &&
@@ -135,10 +136,13 @@ type Snapshot struct {
 	// revalidation, which has to notice the structure above the base moving
 	// even when Branches is unchanged — so every source fills it, and one that
 	// did not would revalidate more weakly than the others without saying so.
-	Ancestry   []string
-	Base       string
-	BaseSource string
-	Branches   []string
+	// LandingTrunk is the source-resolved landing boundary, independent of
+	// both the selected Base and the full ancestry retained for revalidation.
+	LandingTrunk string
+	Ancestry     []string
+	Base         string
+	BaseSource   string
+	Branches     []string
 	// Parents carries the shape that Branches alone cannot express: the edges
 	// among the selection, plus the edge from each of its roots to Base. Every
 	// acted-on branch therefore has its parent here, whether that parent is

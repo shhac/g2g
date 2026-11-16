@@ -56,6 +56,15 @@ func (p Plan) Repair() (repair.Note, []IssueKind) {
 	if landed := p.LandedBranches(); len(landed) != 0 {
 		return repair.Note{Reason: words.List(landed) + words.Pick(len(landed), " has", " have") + " already landed", Ways: []repair.Step{ForgetLanded(p.Source)}}, []IssueKind{IssueLanded}
 	}
+	var stale []string
+	for _, issue := range p.Issues {
+		if issue.Kind == IssueMergedStale {
+			stale = append(stale, issue.Branch)
+		}
+	}
+	if len(stale) != 0 {
+		return repair.Note{Reason: words.List(stale) + " merged into " + p.Trunk() + "; local trunk content is unconfirmed", Ways: []repair.Step{{Command: "g2g pull", Effect: "refresh the trunk and reassess the merged work"}}}, []IssueKind{IssueMergedStale}
+	}
 	var replacements []string
 	for _, issue := range p.Issues {
 		if issue.Kind == IssueMergedUnlanded {

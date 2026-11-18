@@ -227,3 +227,33 @@ func TestTrackKeepsABoundaryOnATrunkThatAdvancedPastIt(t *testing.T) {
 		t.Fatalf("retracking moved a valid boundary to a commit the branch does not hold: %v, %+v", err, again.Updated.Edges[selection.Branch])
 	}
 }
+
+// A parent rewound under its child still has its tip in the child, which is
+// the evidence a boundary is seated on. Seating it there would move the
+// boundary back over the commits the parent dropped and record them as the
+// child's own: what restack offers as --absorb, taken without being asked.
+func TestTrackDoesNotMoveABoundaryBackOntoARewoundParent(t *testing.T) {
+	repo, service := sameTipRepository(t)
+	repo.Run("switch", "-q", "-c", "synthetic-parent", "synthetic-main")
+	repo.Commit("synthetic kept", "kept.txt", "kept")
+	repo.Commit("synthetic dropped", "dropped.txt", "dropped")
+	repo.Run("switch", "-q", "-c", "synthetic-child")
+	repo.Commit("synthetic child", "child.txt", "child")
+	ctx := context.Background()
+	for _, each := range [][2]string{{"synthetic-parent", "synthetic-main"}, {"synthetic-child", "synthetic-parent"}} {
+		plan, err := service.PlanTrack(ctx, graph.Selection{Branch: each[0]}, each[1])
+		if err != nil || plan.Blocked() != "" {
+			t.Fatalf("track %s: %v, %s", each[0], err, plan.Blocked())
+		}
+		if err := service.ApplyTrack(ctx, plan); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fork := repo.Revision("synthetic-parent")
+	repo.Run("branch", "-f", "synthetic-parent", "synthetic-parent~1")
+
+	again, err := service.PlanTrack(ctx, graph.Selection{Branch: "synthetic-child"}, "synthetic-parent")
+	if err != nil || again.Refreshed || again.Updated.Edges["synthetic-child"].ForkPoint != fork {
+		t.Fatalf("retracking moved the boundary back onto a rewound parent: %v, refreshed %v, %+v", err, again.Refreshed, again.Updated.Edges["synthetic-child"])
+	}
+}

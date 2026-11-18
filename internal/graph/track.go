@@ -243,11 +243,13 @@ func (s Service) seat(ctx context.Context, plan TrackPlan, recorded Edge) (Track
 	if recorded.ForkPoint == "" || fork == recorded.ForkPoint {
 		return plan, nil
 	}
-	if !holds {
-		forward, err := s.Git.IsAncestor(ctx, recorded.ForkPoint, fork)
-		if err != nil || !forward {
-			return plan, err
-		}
+	// Forward only, whatever the evidence. A parent that was rewound still has
+	// its tip in the branch, and seating there would record the commits it
+	// dropped as the branch's own: what restack offers as --absorb, taken
+	// without being asked for.
+	forward, err := s.Git.IsAncestor(ctx, recorded.ForkPoint, fork)
+	if err != nil || !forward {
+		return plan, err
 	}
 	updated := plan.Graph.Clone()
 	recorded.ForkPoint = fork

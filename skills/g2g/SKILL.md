@@ -688,6 +688,19 @@ description: |
   there and in `schema_test.go`. `gh pr create` and `gh pr merge` are
   deliberately not batched.
 
+- `--snapshot <path>` (`prune`, `restack`) connects a preview to its apply:
+  the preview writes the plan with what it rests on (`snapshot.Rests`, named by
+  the command), and `--apply` with the same file checks that basis and carries
+  out the saved plan without planning. The basis is scoped, never "the whole
+  repository": exact for the branches the plan forgets, records or replays
+  (tip, edge, edges recorded on it, holder) and every ancestor a prune judged
+  them against, "still contains" for a prune's trunks, plus the checkout. A
+  restack also asks again whether a followed worktree is clean and where a
+  remote copy named by `--onto` is. The path must not be an existing file that
+  is not a snapshot, nor, for a restack, an unignored path in the working tree. A plan type written to a
+  snapshot must be plain exported data; `TestEverySnapshottedPlanSurvivesBeingWritten`
+  fails on a field that would not survive. Read `design-docs/snapshots.md`
+  before adding a command or a plan field.
 - Each discovery and revalidation pass has its own planning budget, separate
   from mutation. `G2G_TIMEOUT` raises each default as a minimum and cannot shorten
   a long landing; explicit `--timeout` overrides each ceiling exactly. Validate

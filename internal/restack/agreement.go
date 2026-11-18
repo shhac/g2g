@@ -13,7 +13,12 @@ import (
 // Exactly equal tips are evidence even from an earlier fetch: anything the
 // remote gained afterwards stays outside this agreement and protected by push.
 // An ahead branch is not evidence: it can carry work the remote dropped.
-func (s Service) recordLevel(ctx context.Context, plan Plan) {
+func (s Service) recordLevel(ctx context.Context, plan Plan) { s.RecordLevel(ctx, plan) }
+
+// RecordLevel is recordLevel for an apply that did not plan: one carrying
+// out a plan read from a snapshot, whose tips are checked to be the ones the
+// plan was made from.
+func (s Service) RecordLevel(ctx context.Context, plan Plan) {
 	git, ok := s.Git.(interface {
 		knownTips
 		syncpoint.ReadRecorder

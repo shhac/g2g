@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/g2g/internal/restack"
+	"github.com/shhac/g2g/internal/snapshot"
 	"github.com/shhac/g2g/internal/words"
 	"github.com/shhac/g2g/internal/worktree"
 )
@@ -28,6 +30,7 @@ type restackOptions struct {
 	// --worktrees follow through.
 	worktreesGiven bool
 	selector       graphOptions
+	snapshot       string
 }
 
 func (o restackOptions) resuming() bool { return o.resume || o.abort || o.skip }
@@ -59,6 +62,7 @@ func newRestack(service restack.Service, presentation Presentation) *cobra.Comma
 	cmd.Flags().BoolVar(&options.absorb, "absorb", false, "keep commits the parent dropped instead of dropping them too")
 	cmd.Flags().BoolVar(&options.apply, "apply", false, "perform the replay instead of previewing it")
 	registerWorktrees(cmd, &options.worktrees)
+	registerSnapshot(cmd, &options.snapshot)
 	options.selector.registerBranch(cmd, service.Graph)
 	// Rewriting defaults to the branches above the target: a conflict below it
 	// is one the user may be deliberately deferring, and replaying it uninvited
@@ -85,7 +89,7 @@ func (o restackOptions) validate() error {
 	if chosen > 1 {
 		return fmt.Errorf("--continue, --abort, and --skip are mutually exclusive")
 	}
-	if chosen == 1 && (o.apply || o.onto != "" || o.absorb || o.worktreesGiven) {
+	if chosen == 1 && (o.apply || o.onto != "" || o.absorb || o.worktreesGiven || o.snapshot != "") {
 		return fmt.Errorf("--continue, --abort, and --skip resume the restack already in progress and take no other options")
 	}
 	return nil
@@ -257,5 +261,76 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			recovery: "Inspect with git status, then g2g restack --continue or g2g restack --abort.",
 		},
 	}
+	if options.snapshot != "" {
+		held, err := restackSnapshot(cmd, service, options)
+		if err != nil {
+			return err
+		}
+		flow.snapshot = held
+	}
 	return flow.run(cmd, ctx, newBudgets(cmd), p, options.apply)
+}
+
+// restackSnapshot is what a restack writes down and reads back.
+func restackSnapshot(cmd *cobra.Command, service restack.Service, options restackOptions) (*snapshotting[restack.Plan], error) {
+	path := options.snapshot
+	git, ok := service.Git.(snapshotGit)
+	if !ok || service.Graph.Store == nil {
+		return nil, errors.New("--snapshot needs the repository's own Git and recorded graph, which this build was not given")
+	}
+	return &snapshotting[restack.Plan]{
+		path: path, tool: cmd.Root().Version, command: cmd.CommandPath(), request: requestOf(cmd),
+		git: git, store: service.Graph.Store,
+		rests:   func(plan restack.Plan) snapshot.Rests { return snapshot.Rests{Branches: plan.Rests(), Here: true} },
+		held:    func(plan restack.Plan) any { return plan },
+		restore: readPlan[restack.Plan],
+		still: func(ctx context.Context, plan restack.Plan) error {
+			// A remote's copy named by --onto is a commit in the plan and
+			// no branch in the basis, so a fetch that moved it is asked for.
+			onto, err := service.OntoNamed(ctx, options.onto)
+			if err != nil {
+				return err
+			}
+			if onto != plan.Onto {
+				return fmt.Errorf("%s is not where it was when this was previewed · preview again", options.onto)
+			}
+			if err := stillFollows(ctx, service, plan); err != nil {
+				return err
+			}
+			// Planning records that a branch level with its remote agreed
+			// with it before the replay, and nothing planned here.
+			service.RecordLevel(ctx, plan)
+			return nil
+		},
+		place: func(ctx context.Context, path string) error {
+			dirties, err := git.WouldDirty(ctx, path)
+			if err != nil || !dirties {
+				return err
+			}
+			return fmt.Errorf("a snapshot at %s would be a change in the working tree, and a restack applies only to a clean one · write it outside the checkout, or somewhere Git ignores", path)
+		},
+	}, nil
+}
+
+// stillFollows refuses a plan that brings another worktree along when that
+// worktree is no longer clean. Whether it was is what decided the plan would
+// move its branch, and the basis says only which worktree holds it.
+func stillFollows(ctx context.Context, service restack.Service, plan restack.Plan) error {
+	follows := make([]string, 0, len(plan.Worktrees.Follow))
+	for _, holder := range plan.Worktrees.Follow {
+		follows = append(follows, holder.Branch)
+	}
+	if len(follows) == 0 {
+		return nil
+	}
+	held, err := worktree.Read(ctx, service.Git, plan.Policy, follows)
+	if err != nil {
+		return err
+	}
+	for _, holder := range plan.Worktrees.Follow {
+		if now, there := held[holder.Branch]; !there || !now.Clean {
+			return fmt.Errorf("%s has changes in %s that were not there when this was previewed · preview again", holder.Branch, holder.Path)
+		}
+	}
+	return nil
 }

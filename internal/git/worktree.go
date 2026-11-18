@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"github.com/shhac/g2g/internal/subprocess"
 	"os"
 	"path/filepath"
 	"strings"
@@ -178,4 +179,21 @@ func (c Client) WorktreeClean(ctx context.Context, path string) (bool, error) {
 // one the branch now points at.
 func (c Client) SwitchTreeIn(ctx context.Context, path, from, to string) error {
 	return c.switchTree(ctx, path, from, to)
+}
+
+// WouldDirty reports a path that, written to, would show as a change in this
+// working tree: one inside it that Git does not ignore.
+func (c Client) WouldDirty(ctx context.Context, path string) (bool, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return false, err
+	}
+	_, err = c.run(ctx, "check-ignore", "--quiet", "--", absolute)
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	// Zero is ignored and one is not; anything else is a path outside the
+	// working tree, which cannot dirty it.
+	code, exited := subprocess.ExitCode(err)
+	return exited && code == 1, nil
 }

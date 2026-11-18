@@ -1031,6 +1031,24 @@ property the original had.
   `doctor` and `github status` run inside one budget through
   `budgets.reading`, and the restack guards are reported like the plan they
   precede; a new read-only command or guard goes through the same report.
+- A snapshot (`--snapshot <path>`, `prune` and `restack`) is the one path that
+  applies a plan without planning it again: the preview writes the plan with
+  what it rests on, and the apply checks that and carries the plan out
+  (`applyFlow.runSnapshot`, `internal/snapshot`). Read
+  `design-docs/snapshots.md` before touching it. Three rules hold it up. What
+  a plan rests on is named by the command and is scoped to it, because a
+  check that refused whenever anything in a shared repository moved would
+  refuse almost always where planning is slow enough to want this; so a new
+  dependency of a plan has to be added to its `Rests`, and nothing notices if
+  it is not. The basis is the repository as the plan saw it: read before
+  planning, cut once the plan says what it rests on, and read again after, so
+  a branch that moved while it was being judged writes no snapshot. And the
+  plan is the service's own type written as it is, which is sound only while
+  every field is exported plain data;
+  `TestEverySnapshottedPlanSurvivesBeingWritten` fails on one that would come
+  back zero. `prune.Apply` compares what the prune rests on with the record
+  (`restsChanged`) and no longer the whole graph, which refused over a branch
+  recorded in an unrelated stack.
 - Preview/apply sequencing is a safety contract, not just presentation. When a
   command can mutate, preserve its re-discovery/revalidation and final
   render/write/flush-before-mutation tests; command-family coverage lives under

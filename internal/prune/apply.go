@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	"github.com/shhac/g2g/internal/graph"
 )
 
 // Apply forgets the selected records, recording each evidenced surviving child
@@ -26,8 +27,8 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 	if err != nil {
 		return err
 	}
-	if !adopted.Equal(plan.Discovery.Graph) {
-		return fmt.Errorf("the graph changed before pruning · preview again")
+	if changed := plan.restsChanged(adopted); changed != "" {
+		return fmt.Errorf("the graph changed before pruning: %s · preview again", changed)
 	}
 	if len(plan.Delete) != 0 {
 		if s.Cleaner == nil {
@@ -80,4 +81,69 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		}
 	}
 	return nil
+}
+
+// Rests is the branches this prune rests on: the ones it forgets, the
+// children it records again, and every branch recorded under them down to
+// the trunk. A branch among them that moved, was recorded differently or
+// gained a recorded child is not the branch that was judged.
+//
+// Every ancestor, and not only the recorded parent, because a branch is
+// judged against the first ancestor that is still there: with the branch
+// below it deleted, that is one further down, and a plan that did not rest on
+// it went on calling the branch landed after that ancestor was moved back.
+//
+// The trunks those stand on only have to still contain what they contained:
+// a branch found landed in a trunk is still in it after the trunk moves on.
+// When branches are deleted the tips that justified it are leased exactly,
+// the trunk's among them, so they are exact here too and the refusal comes
+// before anything is announced.
+func (p Plan) Rests() (exact, advancing []string) {
+	recorded := p.Discovery.Graph
+	rooted := append(p.Forgotten(), slices.Collect(maps.Keys(p.Rehome))...)
+	for _, branch := range rooted {
+		path, err := recorded.Path(branch)
+		if err != nil {
+			path = []string{branch, recorded.Edges[branch].Parent}
+		}
+		exact = append(exact, path...)
+	}
+	for _, edge := range p.Rehome {
+		exact = append(exact, edge.Parent)
+	}
+	if len(p.Delete) != 0 {
+		return unique(append(exact, slices.Collect(maps.Keys(p.Tips))...)), nil
+	}
+	for _, branch := range exact {
+		if recorded.IsTrunk(branch) {
+			advancing = append(advancing, branch)
+		}
+	}
+	exact = slices.DeleteFunc(exact, recorded.IsTrunk)
+	return unique(exact), unique(advancing)
+}
+
+// unique is the names sorted, each once, less the empty one a missing parent
+// leaves.
+func unique(branches []string) []string {
+	return slices.DeleteFunc(slices.Compact(slices.Sorted(slices.Values(branches))), func(branch string) bool { return branch == "" })
+}
+
+// restsChanged names what this prune rests on that the record no longer
+// says, empty when it all still does.
+//
+// The whole record used to be compared, so a branch recorded in an unrelated
+// stack while this prune was being read refused it. The edits are made to the
+// record as it is now, and only what they depend on has to be as it was.
+func (p Plan) restsChanged(now graph.Graph) string {
+	exact, _ := p.Rests()
+	for _, branch := range exact {
+		if p.Discovery.Graph.Edges[branch] != now.Edges[branch] {
+			return "what it records of " + branch + " is not what was previewed"
+		}
+		if !slices.Equal(p.Discovery.Graph.Children(branch), now.Children(branch)) {
+			return "the branches recorded on " + branch + " are not the ones previewed"
+		}
+	}
+	return ""
 }

@@ -115,6 +115,10 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// local state and never the network, as prune's is.
 	suggest func(P) string
 
+	// snapshot connects a preview to the apply that follows it, for a
+	// command that offers --snapshot and was given one. See snapshotting.
+	snapshot *snapshotting[P]
+
 	notices flowNotices
 }
 
@@ -158,6 +162,9 @@ const (
 )
 
 func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budgets, p Presentation, apply bool) error {
+	if f.snapshot != nil {
+		return f.runSnapshot(cmd, root, budgets, p, apply)
+	}
 	ctx, cancel := budgets.discovery(root)
 	defer cancel()
 

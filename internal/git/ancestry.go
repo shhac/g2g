@@ -26,6 +26,38 @@ func (c Client) CurrentBranch(ctx context.Context) (string, error) {
 	}
 	return branch, nil
 }
+
+// LocalTips is every local branch with the commit it points at, in one read.
+func (c Client) LocalTips(ctx context.Context) (map[string]string, error) {
+	output, err := c.run(ctx, "for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	tips := map[string]string{}
+	for _, line := range outputLines(output) {
+		if branch, object, found := strings.Cut(line, "\t"); found {
+			tips[branch] = object
+		}
+	}
+	return tips, nil
+}
+
+// Here is where this checkout stands: the branch it has checked out, or the
+// commit it is detached at.
+func (c Client) Here(ctx context.Context) (string, error) {
+	if output, err := c.run(ctx, "symbolic-ref", "--quiet", "HEAD"); err == nil {
+		return strings.TrimSpace(string(output)), nil
+	}
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	output, err := c.run(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func (c Client) LocalBranches(ctx context.Context) ([]string, error) {
 	output, err := c.run(ctx, "branch", "--format=%(refname:short)")
 	if err != nil {

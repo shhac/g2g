@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"slices"
 
@@ -13,12 +15,14 @@ import (
 	"github.com/shhac/g2g/internal/push"
 	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
+	"github.com/shhac/g2g/internal/snapshot"
 )
 
 func newPrune(service prune.Service, published push.Known, guard idleGuard, presentation Presentation) *cobra.Command {
 	var selection graphOptions
 	var apply bool
 	var cleanup prune.Options
+	var snapshotPath string
 	cmd := &cobra.Command{
 		Use:     "prune",
 		GroupID: groupUpdate,
@@ -31,8 +35,17 @@ func newPrune(service prune.Service, published push.Known, guard idleGuard, pres
 			return err
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
-		return pruneFlow(service, published, localgit.DefaultRemote, selection.Selection(), guard, cmd, presentation, cleanup).run(cmd, ctx, newBudgets(cmd), presentation, apply)
+		flow := pruneFlow(service, published, localgit.DefaultRemote, selection.Selection(), guard, cmd, presentation, cleanup)
+		if snapshotPath != "" {
+			held, err := pruneSnapshot(cmd, service, snapshotPath)
+			if err != nil {
+				return err
+			}
+			flow.snapshot = held
+		}
+		return flow.run(cmd, ctx, newBudgets(cmd), presentation, apply)
 	}
+	registerSnapshot(cmd, &snapshotPath)
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform the listed cleanup instead of previewing the change")
 	cmd.Flags().BoolVar(&cleanup.DeleteBranches, "delete-branches", false, "also delete the local branches whose work is already upstream (refuses checked-out branches)")
 	cmd.Flags().BoolVar(&cleanup.ForgetMissing, "forget-missing", false, "also forget records for missing local branches, without stranding surviving children")
@@ -168,4 +181,30 @@ func keptSelection(plan prune.Plan) (selected, bool) {
 		scope = shape.ScopeTrunk
 	}
 	return acted.at(kept[0], scope), true
+}
+
+// pruneSnapshot is what a prune writes down and reads back. The plan held is
+// the service's own; what the command adds to it is only for the suggestion
+// that follows, and an apply works that out again.
+func pruneSnapshot(cmd *cobra.Command, service prune.Service, path string) (*snapshotting[prunePlan], error) {
+	git, ok := service.Graph.Git.(snapshotGit)
+	if !ok || service.Graph.Store == nil {
+		return nil, errors.New("--snapshot needs the repository's own Git and recorded graph, which this build was not given")
+	}
+	return &snapshotting[prunePlan]{
+		path: path, tool: cmd.Root().Version, command: cmd.CommandPath(), request: requestOf(cmd),
+		git: git, store: service.Graph.Store,
+		rests: func(plan prunePlan) snapshot.Rests {
+			exact, advancing := plan.Rests()
+			// With no --branch the selection started from wherever this
+			// checkout stood, so the same flags from another branch are
+			// another request.
+			return snapshot.Rests{Branches: exact, Advancing: advancing, Here: !cmd.Flags().Changed("branch")}
+		},
+		held: func(plan prunePlan) any { return plan.Plan },
+		restore: func(encoded json.RawMessage) (prunePlan, error) {
+			plan, err := readPlan[prune.Plan](encoded)
+			return prunePlan{Plan: plan, remote: localgit.DefaultRemote}, err
+		},
+	}, nil
 }

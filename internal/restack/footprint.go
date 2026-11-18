@@ -145,3 +145,26 @@ func (f Footprint) holds(other Footprint, shared map[string]bool) {
 		}
 	}
 }
+
+// Rests is the branches this plan rests on, for a snapshot of it: every
+// branch it records or replays, what each sits on and is replayed onto, the
+// branch an --onto names, and the branches it would strand. All of them have
+// to be exactly as they were. A replay is computed onto a particular commit,
+// so a trunk that has only advanced is still a different plan.
+func (p Plan) Rests() []string {
+	rests := slices.Clone(p.Discovery.Branches)
+	for _, branch := range p.Discovery.Branches {
+		rests = append(rests, p.Discovery.Graph.Edges[branch].Parent)
+	}
+	for _, step := range p.Steps {
+		rests = append(rests, step.Parent)
+	}
+	for _, parent := range p.reparenting() {
+		rests = append(rests, parent)
+	}
+	for _, stranded := range p.Stranded {
+		rests = append(rests, stranded.Branch)
+	}
+	rests = append(rests, p.Onto.Parent)
+	return slices.DeleteFunc(slices.Compact(slices.Sorted(slices.Values(rests))), func(branch string) bool { return branch == "" })
+}

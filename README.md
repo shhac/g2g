@@ -254,14 +254,41 @@ flush the final plan first, and refuse ambiguous or unsafe work instead of
 guessing. On success a command prints a concise confirmation; on failure it
 never claims that changes were made.
 
-When the repository changed between the preview and the apply, the apply
-refuses and sends you back to the preview. A restack or a pull also says what
-changed, naming the first fact that differs: a branch that moved and between
-which commits, a record another session edited, a worktree that took a branch.
+That comparison is made inside the one `--apply` run: it plans, plans again
+immediately before mutating, and refuses if the two differ. A restack or a pull
+also says what changed, naming the first fact that differs: a branch that moved
+and between which commits, a record another session edited, a worktree that
+took a branch.
 
 ```
 restack plan changed during revalidation: synthetic-a moved from 1005ca4 to 2f6b9d1 · rerun without --apply to review the new plan
 ```
+
+It does not connect the apply to a preview run earlier. If the repository
+changed between the two, the apply plans against what is there now, and the
+plan it prints before mutating is the one to read.
+
+`prune` and `restack` can make that connection with `--snapshot <path>`. A
+preview given one writes its plan to the file, with what the plan rests on;
+`--apply` given the same file checks that those things are still so and
+carries out that plan, without planning again.
+
+```bash
+g2g prune --snapshot synthetic-plan.json            # plans once, and writes the plan down
+g2g prune --snapshot synthetic-plan.json --apply    # checks, then applies exactly that plan
+```
+
+What a plan rests on is less than the whole repository, so that work going on
+elsewhere does not refuse it: the branches it forgets, records or replays,
+with what each is recorded on and which worktree holds it. A prune's trunk
+only has to still contain what it contained; a restack's has to be exactly
+where it was, because a replay is computed onto one commit. Anything else may
+move. When something it rests on has changed the apply refuses and says what,
+and the same is true if the flags differ from the ones the snapshot was made
+with, or another version of g2g made it. A snapshot is used once, and one is
+written only for a plan there is something to apply. Planning is most of what
+these commands cost on a large repository, and an apply from a snapshot does
+none. Commands that read GitHub, and `pull`, do not offer it.
 
 The one exception is moving the checkout (`up`, `down`, `top`, `bottom`),
 which changes nothing else — see [Move and add](#move-and-add).

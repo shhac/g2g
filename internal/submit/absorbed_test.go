@@ -20,7 +20,7 @@ func TestAbsorptionFiltersActionsWithoutChangingTopology(t *testing.T) {
 		t.Fatal("creation accepted an omitted base")
 	}
 	plan.Existing = []githubstack.PullRequest{{Head: "synthetic-top", Base: "synthetic-child", State: "OPEN", Number: 43}}
-	if plan.absorbedBaseRepair(false).Reason != "" {
+	if plan.omittedBaseRepair(false).Reason != "" {
 		t.Fatal("ordinary publication cannot preserve an existing PR")
 	}
 	if plan.LinkRepair().Reason == "" {

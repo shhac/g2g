@@ -80,7 +80,8 @@ type Plan struct {
 	// silently reusing a branch name that has history.
 	Superseded map[string]githubstack.PullRequest
 	// MergedLanded records content assessments of merged predecessors only.
-	// Missing means unconfirmed, never landed.
+	// Missing means unconfirmed, never landed. A confirmed one is left out of
+	// the publication, as an absorbed branch is.
 	MergedLanded map[string]bool
 	// Absorbed are merged branches whose recorded feature parent has their
 	// work, locally or in its known published copy. They are not submitted.
@@ -118,7 +119,7 @@ func (p Plan) Refusal(link bool) repair.Note {
 		if note := p.LinkRepair(); note.Sentence() != "" {
 			return note
 		}
-	} else if note := p.absorbedBaseRepair(false); note.Reason != "" {
+	} else if note := p.omittedBaseRepair(false); note.Reason != "" {
 		return note
 	}
 	if p.Repair.Sentence() != "" {
@@ -137,7 +138,7 @@ func (p Plan) LinkBlocked() string { return p.LinkRepair().Sentence() }
 // LinkRepair is why the pull requests cannot be linked, and the ways out. A
 // GitHub native stack is one line, so a fork can be submitted and not linked.
 func (p Plan) LinkRepair() repair.Note {
-	if note := p.absorbedBaseRepair(true); note.Reason != "" {
+	if note := p.omittedBaseRepair(true); note.Reason != "" {
 		return note
 	}
 	if note := p.Snapshot.LinearRepair("linking"); note.Reason != "" {
@@ -258,7 +259,7 @@ func (s Service) Plan(ctx context.Context, selection stack.Selection, remote str
 		}
 	}
 	plan.Absorbed = s.mergedAbsorbed(ctx, plan)
-	plan.Push = plan.Push.Excluding(slices.Collect(maps.Keys(plan.Absorbed)))
+	plan.Push = plan.Push.Excluding(slices.DeleteFunc(slices.Clone(snapshot.Branches), func(branch string) bool { return !plan.omitted(branch) }))
 
 	plan.Repair, err = s.preservedBaseRepair(ctx, plan)
 	if err != nil {

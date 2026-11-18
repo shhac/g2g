@@ -8,7 +8,10 @@ import (
 
 	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/link"
+	"github.com/shhac/g2g/internal/stack"
 	"github.com/shhac/g2g/internal/submit"
+	"github.com/shhac/g2g/internal/words"
 )
 
 // What submitting a stack would do, drawn.
@@ -43,6 +46,7 @@ func submitView(plan submit.Plan, template string, draft, link, comments bool) s
 		}
 
 	}
+	view = landedNotes(view, plan)
 
 	if template != "" {
 		view = view.note("PR template: "+template, severityNeutral)
@@ -119,6 +123,11 @@ func submitLabel(plan submit.Plan, resolutions map[string]githubstack.Resolution
 	if slices.Contains(plan.Waiting, branch) {
 		return node.labeled("left out · no commits of its own yet", severityNeutral)
 	}
+	if slices.Contains(plan.Landed(), branch) {
+		previous := plan.Superseded[branch]
+		node.PRNumber = previous.Number
+		return node.labeled("left out · "+supersededHistory(previous, plan.Snapshot.Trunk(), landed.Present), severityNeutral)
+	}
 	previous, replaced := plan.Superseded[branch]
 	switch {
 	case plan.Issues[branch] != "":
@@ -155,6 +164,36 @@ func supersededHistory(previous githubstack.PullRequest, trunk string, assessmen
 		return "merged into " + previous.Base + ", not landed"
 	}
 	return "merged into " + previous.Base + ", landing unconfirmed"
+}
+
+// landedNotes says why a landed branch is left out and what forgets it, aimed
+// at the selection as every other suggestion is. A pull request still based on
+// one is named too: submit preserves that base, and retarget moves it only
+// once the record no longer names the landed branch.
+func landedNotes(view stackView, plan submit.Plan) stackView {
+	left := plan.Landed()
+	if len(left) == 0 {
+		return view
+	}
+	forget := link.ForgetLanded(plan.Selected.Source)
+	cleanup := forget.Effect
+	if plan.Selected.Source == stack.SourceG2G {
+		forget.Command = selectedFrom(plan.Selected).aimedOr(pruneCommand)
+	}
+	if forget.Command != "" {
+		cleanup = "run " + runnable(forget.Command) + " to " + forget.Effect
+	}
+	view = view.note(fmt.Sprintf("%s %s landed in %s and %s left out · %s.", words.List(left), words.Pick(len(left), "has", "have"), plan.Snapshot.Trunk(), words.Pick(len(left), "is", "are"), cleanup), severityNeutral)
+	based := plan.OnLanded()
+	if len(based) == 0 {
+		return view
+	}
+	said := make([]string, 0, len(based))
+	for _, step := range based {
+		said = append(said, fmt.Sprintf("#%d (%s) is still based on %s", step.Resolution.Open.Number, step.Branch, step.Resolution.Open.Base))
+	}
+	retarget := selectedFrom(plan.Snapshot).aimedOr(retargetCommand)
+	return view.note(strings.Join(said, "; ")+" · submit leaves it, and "+runnable(retarget+" --apply")+" moves it once the landed branch is forgotten.", severityWarn)
 }
 
 // offStackNote names each pull request based on a branch the stack no longer

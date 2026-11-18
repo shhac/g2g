@@ -168,3 +168,9 @@ func (p Plan) Rests() []string {
 	rests = append(rests, p.Onto.Parent)
 	return slices.DeleteFunc(slices.Compact(slices.Sorted(slices.Values(rests))), func(branch string) bool { return branch == "" })
 }
+
+// Names is every branch the footprint moves or reads, sorted: what an
+// operation says it touches, for a record of what it changed.
+func (f Footprint) Names() []string {
+	return slices.Sorted(maps.Keys(both(f.moves, f.reads)))
+}

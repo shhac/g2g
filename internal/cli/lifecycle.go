@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -114,6 +115,12 @@ type applyFlow[P interface{ Equal(P) bool }] struct {
 	// needs is gathered while revalidating and carried on the plan, from
 	// local state and never the network, as prune's is.
 	suggest func(P) string
+
+	// changes names the branches a mutation changes, for the record g2g
+	// undo reads, on a command that gives the guard no footprint. Without
+	// either, everything that changed while it ran is recorded as its own,
+	// another session's commit among it.
+	changes func(P) []string
 
 	// snapshot connects a preview to the apply that follows it, for a
 	// command that offers --snapshot and was given one. See snapshotting.
@@ -271,8 +278,19 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 
 	mutateCtx, cancelMutation := f.mutationBudget(budgets, root, f.mutationSize(validated))
 	defer cancelMutation()
+	// What the mutation changes is the difference between the repository
+	// before it and after, written down so that g2g undo can put it back.
+	recorder := recording(cmd)
+	before, reading := recorder.before(mutateCtx)
+	publishes := reading && slices.Contains(publishing, cmd.Name())
+	if publishes {
+		recorder.publishes(mutateCtx, cmd, before, f.named(validated))
+	}
 	if err := f.execute(mutateCtx, validated); err != nil {
 		return f.executionFailed(cmd, mutateCtx, validated, p, err)
+	}
+	if reading && !publishes {
+		recorder.record(context.WithoutCancel(mutateCtx), cmd, before, f.named(validated))
 	}
 
 	if err := prose(cmd.OutOrStdout(), p, p.notice(f.notices.applied)); err != nil {
@@ -407,4 +425,17 @@ func whatChanged[P any](preview, current P) string {
 		return ""
 	}
 	return namer.Changed(current)
+}
+
+// named is the branches a plan says it touches, for the record of what it
+// changed: its footprint, or what it names for the purpose. Nil when it says
+// neither.
+func (f applyFlow[P]) named(plan P) []string {
+	switch {
+	case f.touches != nil:
+		return f.touches(plan).Names()
+	case f.changes != nil:
+		return f.changes(plan)
+	}
+	return nil
 }

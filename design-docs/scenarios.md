@@ -449,6 +449,13 @@ went to a reflog to learn whether a colleague's fetch or a defect was the
 cause. *There is no way to say "I know, go anyway", which may be worth
 adding.*
 
+**you changed your mind after it finished.** A restack applied cleanly, or a
+prune forgot a branch, and that was not what you wanted. `g2g undo` puts back
+what that operation changed here, and refuses if any of it has changed again
+since, has been published, or is checked out in another worktree. *A restack
+that stopped and was finished with `--continue` is not recorded, so it cannot
+be undone this way and blocks the undo of anything before it.*
+
 **the repository is bigger than the budget.** Working out what to do takes
 longer than a planning pass is allowed. Every command, the read-only ones
 included, says it timed out before anything was changed, names the ceiling in

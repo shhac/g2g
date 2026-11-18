@@ -30,6 +30,7 @@ import (
 	"github.com/shhac/g2g/internal/submit"
 	"github.com/shhac/g2g/internal/subprocess"
 	syncer "github.com/shhac/g2g/internal/sync"
+	"github.com/shhac/g2g/internal/undo"
 )
 
 // Options are the dependencies a root command is built from.
@@ -196,7 +197,10 @@ func NewWithOptions(options Options) *cobra.Command {
 			"Structure is recorded locally and needs no Graphite. Start with `" + options.CommandName +
 			" adopt`, which records the stack you are on in one step, then `" + options.CommandName +
 			" status` to see it.",
-		PersistentPreRunE: validateTimeout,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			withOperations(cmd, operationsOf(options.Graph))
+			return validateTimeout(cmd, args)
+		},
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.NoArgs,
@@ -241,6 +245,9 @@ func NewWithOptions(options Options) *cobra.Command {
 	}
 	if options.Restack.Ready() {
 		root.AddCommand(newRestack(options.Restack, presentation))
+		if git, ok := options.Graph.Git.(undo.Git); ok {
+			root.AddCommand(newUndo(undo.Service{Git: git, Store: options.Graph.Store}, guard, presentation))
+		}
 	}
 	if options.Sync.Ready() {
 		root.AddCommand(newPull(options.Sync, options.Prune, options.Published, guard, presentation))

@@ -697,6 +697,15 @@ description: |
   kept, and a change to `internal/git/content.go` fails
   `TestRememberedVerdictsAreTiedToTheRuleThatMadeThem` until `absorbedRules`
   is bumped or the digest updated.
+- `g2g undo` (`--apply`, `--list`) puts back the newest recorded local
+  operation: branches, g2g's fork-point and sync-point refs, graph edges and
+  the checkout. Entries are the difference between readings before and after
+  `applyFlow.mutate`, cut to `touches`/`changes`, in `g2g/operations.json`.
+  It refuses over anything changed, published or checked out elsewhere
+  since, over a created branch holding the only copy of a commit, and over a
+  commit that is gone; publishing commands write a marker first. Local only,
+  no redo. A new mutating command goes in `recorded` with a footprint or
+  `changes`. Read `design-docs/undo.md`.
 - `--snapshot <path>` (`prune`, `restack`) connects a preview to its apply:
   the preview writes the plan with what it rests on (`snapshot.Rests`, named by
   the command), and `--apply` with the same file checks that basis and carries

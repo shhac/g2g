@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Moving a branch ref, and bringing the checkout with it.
@@ -215,4 +216,68 @@ func (c Client) SwitchDetached(ctx context.Context, revision string) error {
 	}
 	_, err := c.run(ctx, "switch", "--detach", revision)
 	return err
+}
+
+// ownRefs are the refs an operation here can change: local branches and
+// g2g's own, less its fetched copies of a remote, which record the remote
+// and nothing done in this repository.
+var ownRefs = []string{"refs/heads", "refs/g2g"}
+
+// OwnRefs is every local branch and every ref g2g keeps for itself, with the
+// commit each points at, in one read.
+func (c Client) OwnRefs(ctx context.Context) (map[string]string, error) {
+	output, err := c.run(ctx, append([]string{"for-each-ref", "--format=%(refname)%09%(objectname)"}, ownRefs...)...)
+	if err != nil {
+		return nil, err
+	}
+	refs := map[string]string{}
+	for _, line := range outputLines(output) {
+		ref, object, found := strings.Cut(line, "\t")
+		if found && !strings.HasPrefix(ref, isolatedRemotePrefix) {
+			refs[ref] = object
+		}
+	}
+	return refs, nil
+}
+
+// MoveRef points a ref from one commit at another, and only from that one:
+// Git refuses if the ref is anywhere else, so what is put back is put back
+// over exactly what was expected to be there. An empty to deletes the ref,
+// and an empty from requires that it does not exist.
+func (c Client) MoveRef(ctx context.Context, ref, to, from string) error {
+	for _, revision := range []string{ref, to, from} {
+		if revision == "" {
+			continue
+		}
+		if err := safeRef(revision); err != nil {
+			return err
+		}
+	}
+	if to == "" {
+		_, err := c.run(ctx, "update-ref", "-m", "g2g undo", "-d", ref, from)
+		return err
+	}
+	if from == "" {
+		from = strings.Repeat("0", len(to))
+	}
+	_, err := c.run(ctx, "update-ref", "-m", "g2g undo", ref, to, from)
+	return err
+}
+
+// OnlyOn reports a local branch holding commits that no other branch, no
+// tag and no remote's copy reaches -- g2g's own fetched copies included --
+// which is what deleting it would leave to the reflog alone.
+func (c Client) OnlyOn(ctx context.Context, branch string) (bool, error) {
+	if err := safeRef(branch); err != nil {
+		return false, err
+	}
+	ref := "refs/heads/" + branch
+	// The pattern is given without refs/heads/, which is how --exclude
+	// reads one meant for --branches; with it, nothing is excluded and the
+	// branch always reaches its own commits.
+	output, err := c.run(ctx, "rev-list", "-n", "1", ref, "--not", "--exclude="+branch, "--branches", "--tags", "--remotes", "--glob="+strings.TrimSuffix(isolatedRemotePrefix, "/"))
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(output)) != "", nil
 }

@@ -1056,6 +1056,31 @@ property the original had.
   `doctor` and `github status` run inside one budget through
   `budgets.reading`, and the restack guards are reported like the plan they
   precede; a new read-only command or guard goes through the same report.
+- `g2g undo` puts back the newest recorded local operation, from
+  `g2g/operations.json` under the Git common directory (`internal/oplog`,
+  `internal/undo`). Read `design-docs/undo.md` before touching it. An entry
+  is the difference between a reading of the repository before a mutation
+  and one after (`applyFlow.mutate`), so no command has anything to remember
+  to record: local branches, g2g's own refs less the fetched copies of a
+  remote, the graph's edges, and where the checkout stood. Sync points are in
+  it because a pull undone under a sync point still naming the remote's newer
+  tip would read the commits it put back as dropped here. The difference is
+  cut to the branches the operation names, `applyFlow.touches` or, for a
+  command with no footprint, `applyFlow.changes`: without either, another
+  session's commit made in those seconds is recorded as this operation's and
+  an undo would rewind it. A new recorded command needs one of the two, and
+  goes in `recorded`. Undo rests on what it puts back being where the
+  operation left it, as a snapshot rests on its basis, and asks everything
+  before it moves anything: nothing has moved since, nothing was published
+  since (`push`, `submit` and `land` write a marker *before* they run, since
+  one that stops part-way has still published), no other worktree holds a
+  branch it moves, a branch it would remove holds no commit that is on
+  nothing else, and every commit it needs still exists. Refs move one at a
+  time, each leased on what the operation left, because the process seam
+  carries no standard input for `update-ref --stdin`; a ref already where it
+  is going is skipped, which is what makes an undo that stopped part-way
+  finish when it is run again. It never reaches the remote and there is no
+  redo.
 - A snapshot (`--snapshot <path>`, `prune` and `restack`) is the one path that
   applies a plan without planning it again: the preview writes the plan with
   what it rests on, and the apply checks that and carries the plan out

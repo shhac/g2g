@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -78,14 +79,19 @@ func newRemoval(operation reshape.Operation, service reshape.Service, branches g
 				return service.Plan(ctx, operation, branch)
 			},
 			revalidation: revalidation{string(operation), "the branch and the stack around it"},
-			render:       writeRemovalPlan,
-			guard:        guard,
-			execute:      service.Apply,
-			branches:     func(plan reshape.Plan) int { return 1 + len(plan.Children) },
-			blocked:      reshape.Plan.Blocked,
-			interrupted:  reshapeInterrupted[reshape.Plan](cmd, presentation),
-			suggest:      removalNext,
-			notices:      words.notices,
+			// The branch, what it sat on and what sat on it: a fold moves
+			// the parent, and either one records the children elsewhere.
+			changes: func(plan reshape.Plan) []string {
+				return slices.Concat([]string{plan.Branch, plan.Parent}, plan.Children, plan.Siblings)
+			},
+			render:      writeRemovalPlan,
+			guard:       guard,
+			execute:     service.Apply,
+			branches:    func(plan reshape.Plan) int { return 1 + len(plan.Children) },
+			blocked:     reshape.Plan.Blocked,
+			interrupted: reshapeInterrupted[reshape.Plan](cmd, presentation),
+			suggest:     removalNext,
+			notices:     words.notices,
 		}
 		return flow.run(cmd, root, newBudgets(cmd), presentation, apply)
 	}
@@ -116,12 +122,15 @@ func newRename(service reshape.Service, branches graph.Service, guard idleGuard,
 				return service.PlanRename(ctx, branch, name)
 			},
 			revalidation: revalidation{"rename", "the branch and the stack around it"},
-			render:       writeRenamePlan,
-			guard:        guard,
-			execute:      service.ApplyRename,
-			branches:     func(plan reshape.RenamePlan) int { return 1 + len(plan.Children) },
-			blocked:      reshape.RenamePlan.Blocked,
-			interrupted:  reshapeInterrupted[reshape.RenamePlan](cmd, presentation),
+			changes: func(plan reshape.RenamePlan) []string {
+				return slices.Concat([]string{plan.From, plan.To}, plan.Children)
+			},
+			render:      writeRenamePlan,
+			guard:       guard,
+			execute:     service.ApplyRename,
+			branches:    func(plan reshape.RenamePlan) int { return 1 + len(plan.Children) },
+			blocked:     reshape.RenamePlan.Blocked,
+			interrupted: reshapeInterrupted[reshape.RenamePlan](cmd, presentation),
 			// Not aimed at the selection: it names the branch by the name it
 			// no longer has.
 			suggest: always[reshape.RenamePlan]("g2g status"),

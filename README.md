@@ -1074,6 +1074,37 @@ forget does the prune refuse. Either way it offers
 `g2g track --branch <child> --parent <branch>` for each child, to record it by
 hand.
 
+### Undo
+
+A restack that stops part-way has `--abort`. One that finishes, and a prune, a
+fold, an untrack or any other change to this repository, has `g2g undo`:
+
+```bash
+g2g undo            # what the last operation changed, and what putting it back does
+g2g undo --apply
+g2g undo --list     # recent operations, newest first
+```
+
+It puts back what the newest recorded operation changed: the branches it
+moved, created or deleted, the fork points and sync points g2g keeps, what the
+graph records, and where this checkout stood. Run it again and it offers the
+operation before that. Operations recorded are those of `adopt`, `create`,
+`delete`, `fold`, `prune`, `pull`, `rename`, `restack`, `track` and `untrack`.
+
+It never undoes work done since. If a branch the operation changed has moved,
+been recorded differently or been deleted, the undo is refused and says which.
+It is also refused when another worktree has one of those branches checked
+out, when the working tree here has changes it would move files under, when a
+commit it needs is no longer in the repository, and when a branch the
+operation created holds a commit that is on nothing else (`create -m` commits
+what was staged; keep it under another name first).
+
+It is local. `push`, `submit` and `land` are recorded only so that undo knows
+they happened: an operation whose branches have been published since is not
+put back, because that would leave the remote holding what this checkout no
+longer had. A restored branch does not get back the upstream it tracked, and
+there is no redo: run the command again.
+
 ### Publish
 
 A branch is identified by its single open pull request. Closed and merged pull
@@ -1764,6 +1795,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
 | The remote has moved on a branch `push` would publish | `g2g pull` to reconcile, or preview `g2g pull --take published --through synthetic-top` and review its listed local losses; the manual pinned replacement can drop remote-only work |
 | A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
+| `undo` finds a branch the operation changed has changed again, was published since, or is checked out elsewhere | it names which; move that one by hand with `git branch -f <branch> <commit>` from the commits the preview lists, or switch the other worktree away |
 | `prune` would strand a child Git does not show sitting on the branch below, and nothing else is safe to forget (otherwise it keeps that branch, says so, and forgets the rest) | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |

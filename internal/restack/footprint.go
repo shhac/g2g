@@ -19,10 +19,10 @@ import (
 // plans again from the refs and carries on to where the trunk is now; undoing
 // it puts back tips and fork points that never named the trunk's tip.
 // Refusing it made every pull wait for every stack's conflict, since every
-// stack reads the trunk. An advance still meets what another moves: nothing
-// may fast-forward a branch a restack is rewriting.
+// stack reads the trunk. An advance still meets what another moves, as any
+// read does: nothing may fast-forward a branch a restack is rewriting.
 type Footprint struct {
-	moves, advances, reads map[string]bool
+	moves, reads map[string]bool
 }
 
 // Reads is the footprint of a command that moves nothing a restack replays
@@ -40,18 +40,16 @@ func Moves(branches ...string) Footprint {
 }
 
 // Advances is the footprint of fast-forwarding branches: each ends on a
-// commit that contains where it was. It reads them too.
-func Advances(branches ...string) Footprint {
-	return Footprint{advances: members(branches), reads: members(branches)}
-}
+// commit that contains where it was. To everything else that is a read. What
+// another operation reads of the branch is still true of it afterwards, and
+// one that moves the branch already meets anything that reads it. It is
+// named so that a caller says which it means, and a fast-forward cannot be
+// declared a move for want of a word.
+func Advances(branches ...string) Footprint { return Reads(branches...) }
 
 // With is both footprints together, for a command made of several steps.
 func (f Footprint) With(other Footprint) Footprint {
-	return Footprint{
-		moves:    both(f.moves, other.moves),
-		advances: both(f.advances, other.advances),
-		reads:    both(f.reads, other.reads),
-	}
+	return Footprint{moves: both(f.moves, other.moves), reads: both(f.reads, other.reads)}
 }
 
 // members is the named branches as a set, less the empty name a missing
@@ -130,8 +128,8 @@ func (r Record) moving() map[string]bool {
 	return moving
 }
 
-// meets is every branch one footprint moves that the other reads, or advances
-// that the other moves, either way round, sorted.
+// meets is every branch one footprint moves that the other reads, either way
+// round, sorted.
 func (f Footprint) meets(other Footprint) []string {
 	shared := map[string]bool{}
 	f.holds(other, shared)
@@ -139,16 +137,10 @@ func (f Footprint) meets(other Footprint) []string {
 	return slices.Sorted(maps.Keys(shared))
 }
 
-// holds adds to shared what this footprint moves that the other reads, and
-// what it advances that the other moves.
+// holds adds to shared what this footprint moves that the other reads.
 func (f Footprint) holds(other Footprint, shared map[string]bool) {
 	for branch := range f.moves {
 		if other.reads[branch] {
-			shared[branch] = true
-		}
-	}
-	for branch := range f.advances {
-		if other.moves[branch] {
 			shared[branch] = true
 		}
 	}

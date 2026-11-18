@@ -350,10 +350,6 @@ func (p Plan) Changed(other Plan) string {
 		return "what was asked for changed"
 	case !p.Repair.Equal(other.Repair):
 		return "whether the restack may go ahead changed"
-	case p.Clean != other.Clean:
-		return "the working tree gained or lost uncommitted changes"
-	case p.Predicted != other.Predicted:
-		return "whether the replay applies cleanly changed"
 	case !p.Worktrees.Equal(other.Worktrees):
 		return "another worktree took or let go of a branch, or its changes there came or went"
 	case !slices.Equal(p.Seated, other.Seated):
@@ -369,6 +365,14 @@ func (p Plan) Changed(other Plan) string {
 		if changed := was.changed(other.Steps[index]); changed != "" {
 			return changed
 		}
+	}
+	// After the steps, because these are what a moved commit does to the
+	// prediction, and the commit is the cause worth naming.
+	switch {
+	case p.Clean != other.Clean:
+		return "whether the replay applies without a conflict changed"
+	case p.Predicted != other.Predicted:
+		return "whether the replay could be previewed changed"
 	}
 	return ""
 }
@@ -386,7 +390,7 @@ func (s Step) changed(other Step) string {
 	case s.Tip != other.Tip:
 		return moved(s.Branch, s.Tip, other.Tip)
 	case s.Head != other.Head:
-		return moved("the commit "+s.Branch+" is replayed onto", s.Head, other.Head)
+		return moved("the version of "+s.Branch+" to be replayed", s.Head, other.Head)
 	case s.ForkPoint != other.ForkPoint:
 		return moved("where "+s.Branch+"'s own commits start", s.ForkPoint, other.ForkPoint)
 	case s.Behind != other.Behind || !slices.Equal(s.Orphans, other.Orphans):

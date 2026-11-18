@@ -31,7 +31,9 @@ func TestAPlanNamesWhatChangedSinceThePreview(t *testing.T) {
 		change func(*Plan)
 		want   string
 	}{
-		"the trunk moved":           {func(p *Plan) { p.Steps[0].Head = newTip }, "the commit synthetic-a is replayed onto moved from aaaaaaaaaaaa to bbbbbbbbbbbb"},
+		"an incoming version moved": {func(p *Plan) { p.Steps[0].Head = newTip }, "the version of synthetic-a to be replayed moved from aaaaaaaaaaaa to bbbbbbbbbbbb"},
+		"the base moved":            {func(p *Plan) { p.Steps[0].Base = "synthetic-other" }, "what synthetic-a is replayed onto changed"},
+		"a move makes it conflict":  {func(p *Plan) { p.Steps[0].Tip, p.Clean = newTip, true }, "synthetic-a moved from aaaaaaaaaaaa to bbbbbbbbbbbb"},
 		"a branch gained a commit":  {func(p *Plan) { p.Steps[0].Tip = newTip }, "synthetic-a moved from aaaaaaaaaaaa to bbbbbbbbbbbb"},
 		"another session reparents": {func(p *Plan) { p.Discovery.Graph.Edges["synthetic-b"] = graph.Edge{Parent: "main", ForkPoint: oldTip} }, "synthetic-b was recorded on main instead of synthetic-a"},
 		"another session tracks":    {func(p *Plan) { p.Discovery.Graph.Edges["synthetic-c"] = graph.Edge{Parent: "main"} }, "synthetic-c was recorded on main"},
@@ -39,9 +41,10 @@ func TestAPlanNamesWhatChangedSinceThePreview(t *testing.T) {
 		"a fork point is refreshed": {func(p *Plan) {
 			p.Discovery.Graph.Edges["synthetic-b"] = graph.Edge{Parent: "synthetic-a", ForkPoint: newTip}
 		}, "the record of where synthetic-b starts on synthetic-a changed"},
-		"a branch's state changes": {func(p *Plan) { p.Discovery.States["synthetic-b"] = graph.StateNeedsRestack }, `synthetic-b went from "aligned" to "needs restack"`},
-		"the tree becomes dirty":   {func(p *Plan) { p.Clean = true }, "the working tree gained or lost uncommitted changes"},
-		"a step is added":          {func(p *Plan) { p.Steps = append(p.Steps, Step{Branch: "synthetic-b"}) }, "the branches to replay changed from 1 to 2"},
+		"a branch's state changes":  {func(p *Plan) { p.Discovery.States["synthetic-b"] = graph.StateNeedsRestack }, `synthetic-b went from "aligned" to "needs restack"`},
+		"it stops applying cleanly": {func(p *Plan) { p.Clean = true }, "whether the replay applies without a conflict changed"},
+		"it can no longer preview":  {func(p *Plan) { p.Predicted = true }, "whether the replay could be previewed changed"},
+		"a step is added":           {func(p *Plan) { p.Steps = append(p.Steps, Step{Branch: "synthetic-b"}) }, "the branches to replay changed from 1 to 2"},
 	}
 	for name, each := range changes {
 		t.Run(name, func(t *testing.T) {

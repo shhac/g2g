@@ -30,7 +30,7 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 		decided, note := classify(facts{
 			Step:           step,
 			State:          stateFor(mergeability, step),
-			Landed:         s.landedIn(ctx, step.Branch, trunks),
+			Landed:         s.landedIn(ctx, step.Branch, trunks, discovery.Parents[step.Branch]),
 			Current:        tip != "" && tips[step.Branch] == tip,
 			Tip:            tip,
 			Queue:          mergeability.Queue != nil,

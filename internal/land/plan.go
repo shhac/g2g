@@ -257,15 +257,21 @@ func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, r
 // unrelated history is an answer, not a failure.
 // It cannot fail. An unrelated history cannot be compared, which is an answer
 // rather than a failure: a branch nothing can say has landed has not.
-func (s Service) landed(ctx context.Context, branch, base string) bool {
+//
+// below is the branch this one sits on, when there is one. The whole branch
+// is asked about, because the branch below may have landed with it, and a
+// yes is believed only if the branch's commits above below would change
+// nothing either: a commit that takes back part of what below added is not in
+// a merge of the whole branch at all.
+func (s Service) landed(ctx context.Context, branch, base, below string) bool {
 	upstream, err := landed.Into(ctx, s.Git, base, branch, "")
-	return err == nil && upstream
+	return err == nil && upstream && !landed.Carries(ctx, s.Git, base, branch, below)
 }
 
 // landedIn is landed against any of the trunk's versions.
-func (s Service) landedIn(ctx context.Context, branch string, trunks []string) bool {
+func (s Service) landedIn(ctx context.Context, branch string, trunks []string, below string) bool {
 	for _, trunk := range trunks {
-		if s.landed(ctx, branch, trunk) {
+		if s.landed(ctx, branch, trunk, below) {
 			return true
 		}
 	}

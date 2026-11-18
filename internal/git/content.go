@@ -90,6 +90,54 @@ func (c Client) Absorbed(ctx context.Context, base, branch string) (bool, error)
 	return c.sameTree(ctx, merged, base)
 }
 
+// carriesMinorVersion is the first Git minor release whose merge-tree takes
+// the merge base it is told.
+const carriesMinorVersion = 40
+
+// Carries reports a branch whose commits since a point of its own history
+// would still change base: replayed onto it, they leave something there that
+// was not.
+//
+// It is the half of the question Absorbed cannot see. Absorbed merges the
+// whole branch, measured from where it and the base parted, and a change that
+// cancels out over that distance is not in the merge at all: a branch whose
+// only commit deletes a file its parent added differs from the fork by less
+// than its parent does, so once the parent is in the base the merge changes
+// nothing, exactly as if the branch had landed. Measured from since -- the
+// parent it sits on -- the deletion is the whole of it.
+//
+// Only a clean merge that changes the base is an answer. A conflict, a since
+// the branch does not contain, and a Git that cannot be asked all say
+// nothing, and what Absorbed found stands.
+func (c Client) Carries(ctx context.Context, base, branch, since string) (bool, error) {
+	if since == "" {
+		return false, nil
+	}
+	if err := safeRefs(base, branch); err != nil {
+		return false, err
+	}
+	if err := safeRef(since); err != nil {
+		return false, err
+	}
+	supported, err := c.gitAtLeast(ctx, carriesMinorVersion)
+	if err != nil || !supported {
+		return false, err
+	}
+	contained, err := c.IsAncestor(ctx, since, branch)
+	if err != nil || !contained {
+		return false, err
+	}
+	merged, err := c.run(ctx, "merge-tree", "--write-tree", "--merge-base="+since, base, branch)
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if err != nil {
+		return false, nil
+	}
+	same, err := c.sameTree(ctx, merged, base)
+	return !same, err
+}
+
 // absorbedCandidates bounds how far back absorbedEarlier looks: the newest
 // that many trunk commits touching the branch's files. Past it the answer is
 // no, which costs only the case where the squash is buried under that many
@@ -303,6 +351,12 @@ func (c Client) sameTree(ctx context.Context, merged []byte, revision string) (b
 // versions only, and answering false costs the squash-merge case and nothing
 // else.
 func (c Client) supportsMergeTree(ctx context.Context) (bool, error) {
+	return c.gitAtLeast(ctx, absorbedMinorVersion)
+}
+
+// gitAtLeast reports a Git 2 of at least this minor release, or any later
+// major one.
+func (c Client) gitAtLeast(ctx context.Context, minorVersion int) (bool, error) {
 	output, err := c.run(ctx, "--version")
 	if err != nil {
 		return false, err
@@ -311,7 +365,7 @@ func (c Client) supportsMergeTree(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return major > 2 || (major == 2 && minor >= absorbedMinorVersion), nil
+	return major > 2 || (major == 2 && minor >= minorVersion), nil
 }
 
 // Unreferenced reports a revision with commits that no branch, tag or

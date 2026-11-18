@@ -109,7 +109,15 @@ func (s Service) landedThrough(ctx context.Context, recorded graph.Graph, branch
 	if !comparable {
 		return false, nil
 	}
-	return s.assessBranch(ctx, branch, edge, deleting, tips)
+	landedWhole, err := s.assessBranch(ctx, branch, edge, deleting, tips)
+	if err != nil || !landedWhole {
+		return false, err
+	}
+	// The range above the surviving ancestor holds the parent's commits
+	// too, and a commit of this branch that takes back part of them is not
+	// in a merge of that whole range at all. Its own commits are asked alone
+	// before the whole is believed.
+	return !landed.Carries(ctx, s.Git, edge.Parent, branch, recorded.Edges[branch].ForkPoint), nil
 }
 
 // comparisonEdges bounds each assessment at its first surviving parent.

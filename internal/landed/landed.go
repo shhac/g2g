@@ -54,7 +54,43 @@ func Into(ctx context.Context, probe Probe, base, branch, limit string) (bool, e
 	if len(absent) == 0 {
 		return true, nil
 	}
-	return probe.Absorbed(ctx, base, branch)
+	absorbed, err := probe.Absorbed(ctx, base, branch)
+	if err != nil || !absorbed {
+		return false, err
+	}
+	return !Carries(ctx, probe, base, branch, limit), nil
+}
+
+// Carrier is the question a Probe may also answer, which is what keeps the
+// whole-branch merge from deciding alone: whether the branch's commits since
+// a point of its own history would still change base.
+//
+// A merge of the whole branch is measured from where it left the base, and a
+// change that cancels out over that distance vanishes from it. A branch whose
+// one commit takes back a file its parent added changes less than its parent
+// does, so with the parent squashed into the trunk the merge changes nothing
+// and the branch read as landed: a pull moved it onto the trunk with nothing
+// on it, a land published it that way, and GitHub closed the pull request it
+// had just been emptied under. Measured from the parent, the commit is still
+// there to see.
+//
+// It is optional because it only ever turns a yes into a no, and a Probe that
+// cannot answer it is as it was.
+type Carrier interface {
+	Carries(ctx context.Context, base, branch, since string) (bool, error)
+}
+
+// Carries reports a branch whose own commits, those since, would still change
+// base. Into asks it of its limit. A caller that asks Into about the whole
+// branch, with no limit, and knows where the branch's own work starts asks it
+// that here before believing a yes. A failure to answer is "could not tell".
+func Carries(ctx context.Context, probe Probe, base, branch, since string) bool {
+	asker, ok := probe.(Carrier)
+	if !ok || since == "" {
+		return false
+	}
+	carries, err := asker.Carries(ctx, base, branch, since)
+	return err == nil && carries
 }
 
 // Untouched is the cheap question a Probe may also answer: whether base has

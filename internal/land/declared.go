@@ -108,7 +108,7 @@ func syncSelection(plan Plan, target string) graph.Selection {
 // It has no edge to drop and nothing sat on it, so this is ending the
 // declaration, through the same untrack a person would run.
 func (s Service) undeclare(ctx context.Context, landed, into string) error {
-	if !s.landed(ctx, landed, into) {
+	if !s.landed(ctx, landed, into, "") {
 		return fmt.Errorf("%s merged, but git does not find its work in %s by content, so it is left declared · run g2g status to see why", landed, into)
 	}
 	plan, err := s.Graph.PlanUntrack(ctx, graph.Selection{Branch: landed})

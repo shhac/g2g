@@ -122,7 +122,7 @@ func TestJourneyPruneDeletesWhatIsFreeAndKeepsWhatAWorktreeHolds(t *testing.T) {
 	for _, want := range []string{
 		"Deletes local branches synthetic-free.",
 		"Kept as they are, record and branch: synthetic-held is checked out in ",
-		"git worktree remove ",
+		"switch --detach",
 	} {
 		if !strings.Contains(preview, want) {
 			t.Errorf("preview lacks %q:\n%s", want, preview)
@@ -165,5 +165,46 @@ func TestJourneyPruneWithEveryLandedBranchHeldStillRefuses(t *testing.T) {
 	}
 	if w.readStore() != before {
 		t.Error("a refused cleanup changed the record")
+	}
+}
+
+// A whole stack that has landed, with its top branch checked out in a
+// worktree: the branch below is kept so as not to strand it, and the reason
+// given is the worktree. It used to read as a branch that would be stranded,
+// with untrack offered -- which forgets a branch prune could then never
+// delete.
+func TestJourneyPruneSaysAWorktreeHoldsTheStackItCannotCleanUp(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-low", "low.txt")
+	w.branchOff("synthetic-low", "synthetic-top", "top.txt")
+	mustRun(t, "track", "--branch", "synthetic-low", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-top", "--parent", "synthetic-low", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-low", "synthetic-top")
+	w.git(w.Other, "fetch", "-q", "origin")
+	w.git(w.Other, "merge", "-q", "--squash", "origin/synthetic-top")
+	w.git(w.Other, "commit", "-qm", "synthetic squash of the stack")
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "main")
+	mustRun(t, "pull", "--trunk-only", "--apply")
+	elsewhere := filepath.Join(t.TempDir(), "synthetic-elsewhere")
+	w.git(w.Local, "worktree", "add", "-q", elsewhere, "synthetic-top")
+
+	preview := mustRun(t, "prune", "--scope", "trunk", "--delete-branches")
+	for _, want := range []string{"Apply blocked", "synthetic-top is checked out in ", "switch --detach"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("preview lacks %q:\n%s", want, preview)
+		}
+	}
+	for _, wrong := range []string{"would strand", "g2g untrack"} {
+		if strings.Contains(preview, wrong) {
+			t.Errorf("preview says %q of a branch a worktree holds:\n%s", wrong, preview)
+		}
+	}
+
+	// Let go of there, the whole stack is cleaned up.
+	w.git(elsewhere, "switch", "-q", "--detach")
+	mustRun(t, "prune", "--scope", "trunk", "--delete-branches", "--apply")
+	if left := w.git(w.Local, "for-each-ref", "--format=%(refname:short)", "refs/heads"); left != "main" {
+		t.Errorf("branches after the cleanup: %q, want only main", left)
 	}
 }

@@ -76,13 +76,19 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
 	// the same reason.
+	// Everything found landed, before anything is held back: a branch kept
+	// for one reason is a child the branch below must not strand, and it has
+	// to be told from a child that has work of its own.
+	found := plan.Forgotten()
 	if options.DeleteBranches {
 		if err := s.keepWhatIsHeld(ctx, &plan); err != nil {
 			return Plan{}, err
 		}
 	}
-	if err := s.keepWhatStrands(ctx, &plan); err != nil {
-		return Plan{}, err
+	if plan.Blocked() == "" {
+		if err := s.keepWhatStrands(ctx, &plan, found); err != nil {
+			return Plan{}, err
+		}
 	}
 	if options.DeleteBranches && plan.Blocked() == "" {
 		if err := s.planDeletions(ctx, &plan, plan.Tips); err != nil {
@@ -302,9 +308,9 @@ func comparisonEdge(recorded graph.Graph, branch string, survives func(string) b
 // in turn, until nothing left to forget strands anything. When that leaves
 // nothing to forget at all, it is the refusal it always was: there is no
 // prune to run, only something to put right first.
-func (s Service) keepWhatStrands(ctx context.Context, plan *Plan) error {
+func (s Service) keepWhatStrands(ctx context.Context, plan *Plan, found []string) error {
 	landed, missing := slices.Clone(plan.Landed), slices.Clone(plan.ForgottenMissing)
-	asked := plan.Forgotten()
+	asked := found
 	stranded := make([]placement, 0)
 	for {
 		rehome, left, err := s.rehome(ctx, placements(plan.Discovery, plan.Forgotten()))
@@ -329,17 +335,22 @@ func (s Service) keepWhatStrands(ctx context.Context, plan *Plan) error {
 		plan.Landed = slices.DeleteFunc(plan.Landed, keeping)
 		plan.ForgottenMissing = slices.DeleteFunc(plan.ForgottenMissing, keeping)
 	}
-	if len(stranded) == 0 {
-		return nil
-	}
-	if plan.Nothing() {
+	if plan.Nothing() && (len(stranded) != 0 || plan.Held.Reason != "") {
 		// Shown as it was found: every branch that has landed, and why none
-		// of them can be forgotten yet.
+		// of them can be forgotten yet. A branch a worktree holds is the
+		// reason when nothing else is: the ones below it were kept so as not
+		// to strand it, and saying they would strand a branch sent the
+		// reader to untrack one that then could never be deleted.
 		plan.Landed, plan.ForgottenMissing, plan.Rehome = landed, missing, nil
-		plan.Repair = strandedNote(stranded)
+		plan.Repair, plan.Held = plan.Held, repair.Note{}
+		if len(stranded) != 0 {
+			plan.Repair = strandedNote(stranded)
+		}
 		return nil
 	}
-	plan.Kept = strandedNote(stranded)
+	if len(stranded) != 0 {
+		plan.Kept = strandedNote(stranded)
+	}
 	return nil
 }
 
@@ -375,7 +386,11 @@ func (s Service) keepWhatIsHeld(ctx context.Context, plan *Plan) error {
 			continue
 		}
 		held = append(held, branch+" is checked out in "+path)
-		ways = append(ways, repair.Step{Command: repair.Command([]string{"git", "worktree", "remove", path}), Effect: "remove that worktree, or switch it to another branch, then prune again"})
+		// Detaching is the way out that loses nothing: the worktree keeps
+		// its files and whatever is uncommitted in them, and only stops
+		// holding the branch. Removing it is refused by Git when it has
+		// changes, and is more than was asked.
+		ways = append(ways, repair.Step{Command: repair.Command([]string{"git", "-C", path, "switch", "--detach"}), Effect: "let go of " + branch + " there, keeping its files as they are, then prune again"})
 		plan.Landed = slices.DeleteFunc(plan.Landed, func(each string) bool { return each == branch })
 	}
 	if len(held) == 0 {

@@ -25,6 +25,8 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/shhac/g2g/internal/atomicfile"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 )
 
@@ -157,7 +159,7 @@ func (b Basis) Changed(ctx context.Context, git Ancestry, now World) (string, er
 		case was == "":
 			return branch + " exists now and did not", nil
 		default:
-			return fmt.Sprintf("%s moved from %s to %s", branch, short(was), short(is)), nil
+			return fmt.Sprintf("%s moved from %s to %s", branch, localgit.Short(was), localgit.Short(is)), nil
 		}
 		if b.Edges[branch] != current.Edges[branch] {
 			return "what the graph records of " + branch + " changed", nil
@@ -185,20 +187,13 @@ func (b Basis) Changed(ctx context.Context, git Ancestry, now World) (string, er
 			return "", err
 		}
 		if !contains {
-			return fmt.Sprintf("%s was rewritten: it no longer contains %s", branch, short(was)), nil
+			return fmt.Sprintf("%s was rewritten: it no longer contains %s", branch, localgit.Short(was)), nil
 		}
 	}
 	if b.Here != nil && *b.Here != *current.Here {
 		return fmt.Sprintf("this checkout moved from %s to %s", *b.Here, *current.Here), nil
 	}
 	return "", nil
-}
-
-func short(object string) string {
-	if len(object) <= 12 {
-		return object
-	}
-	return object[:12]
 }
 
 // format is the layout of the file. A file in another layout is refused
@@ -229,23 +224,7 @@ func Save(path string, file File) error {
 	if err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".g2g-snapshot-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temporary.Name())
-	if _, err := temporary.Write(append(content, '\n')); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporary.Name(), path)
+	return atomicfile.Write(path, append(content, '\n'))
 }
 
 // Writable refuses, before anything is planned, a path a snapshot could not

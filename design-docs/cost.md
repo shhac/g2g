@@ -261,6 +261,21 @@ Known, measured, and left for a change of its own:
   restack stopped anywhere refuses it. That costs waiting rather than
   processes, and is listed here because it is the same shape: a whole
   repository's state charged to one stack.
+- **What g2g keeps is read whole each time it is asked.** The remembered
+  landed answers are one small file, read once per search and written once
+  per answer, so a status over a hundred branches reads it a hundred times.
+  An operation is recorded from two readings of every local branch and the
+  graph, one before the mutation and one after, and a snapshot's basis from
+  two more around planning: a `for-each-ref` and a file each, whatever the
+  stack's size. Undo asks one question per branch it removes and per commit
+  it restores, serially.
+- **Left for a change of their own, from the pass over these features:** the
+  repository is read "as it is" by two types that overlap (`snapshot.World`,
+  `oplog.Reading`), and "is what this rests on still so" is asked by two
+  functions with different vocabularies (`Basis.Changed`, undo's `since`);
+  `undo.Service.Apply` and `Plan` each do several jobs in one body;
+  `runSnapshot` spells the flow's gates a second time; and nothing tests that
+  the three destructive callers ask with `landed.Fresh`.
 - **`status` asks a drifted branch whether it landed twice**: once for its
   state (`graph` `drifted`, through `landedInATrunk`) and once for its
   publication (`push` `Compare`'s landed standing), with the same trunk and

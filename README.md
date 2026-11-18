@@ -1031,8 +1031,10 @@ which is why a preview that forgets landed branches without deleting them names
 the `--delete-branches` run that would remove them too. Git will not delete a
 branch a worktree has checked out, so a landed branch that is still checked out
 somewhere is kept as it is, record and branch, while the rest are deleted; the
-preview names each one and its worktree. Remove that worktree or switch it to
-another branch, and the next cleanup takes the branch.
+preview names each one and its worktree, with the `git -C <worktree> switch
+--detach` that lets go of it there without touching its files. The next
+cleanup then takes the branch. A branch below a held one is kept with it, so
+as not to strand it.
 
 Deletion uses Git's content assessment, never a cached PR verdict. It refuses
 branches checked out in this or another worktree, rechecks the assessed heads
@@ -1085,10 +1087,12 @@ g2g undo --apply
 g2g undo --list     # recent operations, newest first
 ```
 
-It puts back what the newest recorded operation changed: the branches it
-moved, created or deleted, the fork points and sync points g2g keeps, what the
-graph records, and where this checkout stood. Run it again and it offers the
-operation before that. Operations recorded are those of `adopt`, `create`,
+It puts back what the newest operation recorded from this worktree changed:
+the branches it moved, created or deleted, the fork points and sync points g2g
+keeps, what the graph records, and where this checkout stood. Run it again and
+it offers the operation before that. Operations made from another worktree are
+listed and never offered here: each worktree may be somebody else's session,
+and their work is theirs to put back. Operations recorded are those of `adopt`, `create`,
 `delete`, `fold`, `prune`, `pull`, `rename`, `restack`, `track` and `untrack`.
 
 It never undoes work done since. If a branch the operation changed has moved,
@@ -1795,7 +1799,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
 | The remote has moved on a branch `push` would publish | `g2g pull` to reconcile, or preview `g2g pull --take published --through synthetic-top` and review its listed local losses; the manual pinned replacement can drop remote-only work |
 | A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
-| `undo` finds a branch the operation changed has changed again, was published since, or is checked out elsewhere | it names which; move that one by hand with `git branch -f <branch> <commit>` from the commits the preview lists, or switch the other worktree away |
+| `undo` finds a branch the operation changed has changed again, was published since, or is checked out elsewhere | it names which; move that one by hand to the commit the preview lists for it, or switch the other worktree away |
 | `prune` would strand a child Git does not show sitting on the branch below, and nothing else is safe to forget (otherwise it keeps that branch, says so, and forgets the rest) | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |

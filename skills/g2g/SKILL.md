@@ -176,7 +176,8 @@ description: |
   `--delete-branches` opts into local deletion; `--forget-missing` also removes
   selected records whose refs are gone. Preview lists both acts separately.
   Deletion is content-based, keeps whole (record and branch) each landed
-  branch a worktree has checked out while deleting the rest, rechecks heads
+  branch a worktree has checked out, and the landed branches under it, while
+  deleting the rest (the way out is `git -C <worktree> switch --detach`), rechecks heads
   and bases, and removes refs under an expected-tip lease. Partial cleanup
   exits `3` with completed work and a scoped retry. Remote branches are untouched.
   A child that
@@ -703,8 +704,10 @@ description: |
   `applyFlow.mutate`, cut to `touches`/`changes`, in `g2g/operations.json`.
   It refuses over anything changed, published or checked out elsewhere
   since, over a created branch holding the only copy of a commit, and over a
-  commit that is gone; publishing commands write a marker first. Local only,
-  no redo. A new mutating command goes in `recorded` with a footprint or
+  commit that is gone; publishing commands write a marker first. Only
+  operations made from this worktree are offered, and a branch an operation
+  merely reads is never recorded as moved by it (`Footprint.Moved`). Local
+  only, no redo. A new mutating command goes in `recorded` with a footprint or
   `changes`. Read `design-docs/undo.md`.
 - `--snapshot <path>` (`prune`, `restack`) connects a preview to its apply:
   the preview writes the plan with what it rests on (`snapshot.Rests`, named by

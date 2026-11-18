@@ -17,7 +17,8 @@ remove: the graph file is overwritten in place and no earlier version is kept.
 
 ## What undo is
 
-`g2g undo` puts back what the last local operation in this repository changed:
+`g2g undo` puts back what the last local operation made from this worktree
+changed:
 the branches it moved, created or deleted, what the graph records, g2g's own
 refs, and the checkouts it brought along. It is a preview until `--apply`,
 like everything else.
@@ -62,7 +63,14 @@ the difference is cut to what the operation says it touches: the footprint a
 command gives the restack guard (`applyFlow.touches`), or for the reshaping
 commands, which give none, the branches they name for the purpose
 (`applyFlow.changes`). A branch that was created or deleted between the two
-readings is always the operation's own.
+readings is always the operation's own. Within that, a branch that existed
+before and after is recorded as moved only when the operation may move it: a
+restack reads the trunk it replays onto, and a pull in another worktree that
+advanced the trunk in those seconds is not the restack's to put back.
+
+The log is shared by every worktree, and each may be somebody else's session,
+so an undo offers only the operations made from the worktree it is run in.
+`--list` shows the rest, marked.
 
 Two things are deliberately outside it. A command that finds a branch level
 with its remote records that agreement while it plans, before the first
@@ -91,8 +99,10 @@ before anything moves:
 - every ref the operation changed is where the operation left it, or already
   where it is going. A branch committed to since, or moved by another
   session, is not put back over that work, and the refusal names it;
-- every branch whose record it changed is at the tip it had, and every edge
-  as it left it;
+- every branch whose record it changed is at the tip it had, every edge as
+  it left it, and the branches recorded on each are the ones that were:
+  something that leaves no entry here may have recorded a child since, which
+  putting back the record would strand;
 - none of those branches has been published since;
 - no other worktree has one of them checked out, since putting it back would
   leave that worktree's files describing a commit its branch no longer has.
@@ -101,7 +111,8 @@ before anything moves:
 - a branch the operation created holds no commit that is on nothing else.
   `create -m` commits what was staged, and removing the branch would leave
   that work on no branch while reporting everything as it was. Keeping the
-  commit under another name is the way through;
+  commit under another name is the way through. A rename is not that: the
+  same undo restores the old name at that commit;
 - every commit a branch is to be put back at still exists;
 - the working tree here is clean, when the undo moves the branch that is
   checked out or returns the checkout to where it stood;

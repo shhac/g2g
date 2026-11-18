@@ -23,6 +23,11 @@ import (
 // read does: nothing may fast-forward a branch a restack is rewriting.
 type Footprint struct {
 	moves, reads map[string]bool
+	// advanced are the branches an operation fast-forwards. To the guard
+	// they are reads; they are kept apart only so that a record of what the
+	// operation changed can tell a branch it moved forward from one it
+	// merely measured against.
+	advanced map[string]bool
 }
 
 // Reads is the footprint of a command that moves nothing a restack replays
@@ -45,11 +50,13 @@ func Moves(branches ...string) Footprint {
 // one that moves the branch already meets anything that reads it. It is
 // named so that a caller says which it means, and a fast-forward cannot be
 // declared a move for want of a word.
-func Advances(branches ...string) Footprint { return Reads(branches...) }
+func Advances(branches ...string) Footprint {
+	return Footprint{reads: members(branches), advanced: members(branches)}
+}
 
 // With is both footprints together, for a command made of several steps.
 func (f Footprint) With(other Footprint) Footprint {
-	return Footprint{moves: both(f.moves, other.moves), reads: both(f.reads, other.reads)}
+	return Footprint{moves: both(f.moves, other.moves), reads: both(f.reads, other.reads), advanced: both(f.advanced, other.advanced)}
 }
 
 // members is the named branches as a set, less the empty name a missing
@@ -173,4 +180,11 @@ func (p Plan) Rests() []string {
 // operation says it touches, for a record of what it changed.
 func (f Footprint) Names() []string {
 	return slices.Sorted(maps.Keys(both(f.moves, f.reads)))
+}
+
+// Moved is every branch the footprint moves or fast-forwards, sorted: the
+// ones a record of the operation may say it moved. A branch it only reads is
+// not among them, however it changed while the operation ran.
+func (f Footprint) Moved() []string {
+	return slices.Sorted(maps.Keys(both(f.moves, f.advanced)))
 }

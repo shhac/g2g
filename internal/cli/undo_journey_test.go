@@ -335,3 +335,44 @@ func TestJourneyUndoIsRefusedWholeWhenACommitIsGone(t *testing.T) {
 		t.Errorf("an undo with a commit gone changed something: %v", err)
 	}
 }
+
+// A rename is put back for a branch nothing else holds: the old name comes
+// back with everything the new one had. Asking whether the new name was the
+// only branch with its commits refused every rename of an unpushed branch.
+func TestJourneyUndoPutsBackTheRenameOfAnUnpushedBranch(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "a.txt")
+	mustRun(t, "track", "--branch", "synthetic-a", "--parent", "main", "--apply")
+	before := w.standing(t)
+	mustRun(t, "rename", "synthetic-renamed", "--apply")
+	mustRun(t, "undo", "--apply")
+	if after := w.standing(t); after != before {
+		t.Errorf("after the undo:\n%s\nbefore the rename:\n%s", after, before)
+	}
+	w.assertClean(w.Local)
+}
+
+// The log is shared by every worktree, and each may be somebody else's
+// session. An undo offers only what was done from the worktree it is run in.
+func TestJourneyUndoOffersOnlyThisWorktreesOperations(t *testing.T) {
+	w := undoWorld(t)
+	elsewhere := filepath.Join(t.TempDir(), "synthetic-elsewhere")
+	w.git(w.Local, "worktree", "add", "-q", "-b", "synthetic-theirs", elsewhere, "main")
+	t.Chdir(elsewhere)
+	mustRun(t, "track", "--branch", "synthetic-theirs", "--parent", "main", "--apply")
+	t.Chdir(w.Local)
+	store := w.readStore()
+
+	list := mustRun(t, "undo", "--list")
+	if !strings.Contains(list, "--branch=synthetic-theirs --parent=main · from another worktree") {
+		t.Errorf("the list does not mark the other worktree's operation:\n%s", list)
+	}
+	preview := mustRun(t, "undo")
+	if strings.Contains(preview, "synthetic-theirs") || !strings.Contains(preview, "--branch=synthetic-b") {
+		t.Errorf("an undo here offers something other than this worktree's last operation:\n%s", preview)
+	}
+	mustRun(t, "undo", "--apply")
+	if !strings.Contains(w.readStore(), "synthetic-theirs") || w.readStore() == store {
+		t.Error("the undo here did not put back this worktree's operation alone")
+	}
+}

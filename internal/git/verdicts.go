@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shhac/g2g/internal/atomicfile"
 	"github.com/shhac/g2g/internal/landed"
 )
 
@@ -118,19 +119,7 @@ func (a asking) remember(absorbed, replaced string) {
 	if err != nil {
 		return
 	}
-	if os.MkdirAll(filepath.Dir(a.file), 0o755) != nil {
-		return
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(a.file), ".landed-*")
-	if err != nil {
-		return
-	}
-	defer os.Remove(temporary.Name())
-	_, err = temporary.Write(content)
-	if closed := temporary.Close(); err != nil || closed != nil {
-		return
-	}
-	_ = os.Rename(temporary.Name(), a.file)
+	_ = atomicfile.Write(a.file, content)
 }
 
 // forgetOldest drops the least recently answered half once there are more

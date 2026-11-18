@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shhac/g2g/internal/atomicfile"
 	"github.com/shhac/g2g/internal/graph"
 )
 
@@ -92,6 +93,10 @@ type Entry struct {
 	// back has to be the branch that record was about: one rebased with
 	// plain Git since would get back a fork point it no longer holds.
 	Tips map[string]string `json:"tips,omitempty"`
+	// Children are the branches recorded on each of those once it was done.
+	// One recorded since, by something that left no entry here, would be
+	// stranded by putting back a record that removes its parent.
+	Children map[string][]string `json:"children,omitempty"`
 	// RootsBefore and RootsAfter are set only when it changed which
 	// branches are trunks.
 	RootsBefore *Roots `json:"rootsBefore,omitempty"`
@@ -138,17 +143,25 @@ func BranchesOf(ref string) []string {
 
 // Between is what changed from one reading to the next.
 //
-// touched says which branches the operation says it touches, and cuts the
-// difference to them: the two readings are seconds apart in a repository
-// other sessions are working in, and a branch one of them moved in that time
-// is no part of this operation. Nil takes everything, for a command that
-// cannot say.
-func Between(before, after Reading, touched func(branch string) bool) Entry {
+// The two readings are seconds apart in a repository other sessions are
+// working in, and what one of them did in that time is no part of this
+// operation, so the difference is cut twice. touched says which branches the
+// operation has anything to do with: the ones it moves and the ones it
+// measures them against. moves says which of those it may move. A branch it
+// only reads -- the trunk a restack replays onto -- that another session
+// advanced meanwhile is then not recorded as moved by this operation, and an
+// undo does not wind it back. A branch that came into being or went away is
+// the operation's own whichever it is. Nil takes everything, for a command
+// that cannot say.
+func Between(before, after Reading, touched, moves func(branch string) bool) Entry {
 	concerns := func(branch string) bool { return touched == nil || touched(branch) }
 	entry := Entry{}
 	for _, ref := range union(before.Refs, after.Refs) {
 		was, is := before.Refs[ref], after.Refs[ref]
 		if was == is || !slices.ContainsFunc(BranchesOf(ref), concerns) {
+			continue
+		}
+		if branch, local := strings.CutPrefix(ref, "refs/heads/"); local && was != "" && is != "" && moves != nil && !moves(branch) {
 			continue
 		}
 		if entry.Refs == nil {
@@ -172,6 +185,10 @@ func Between(before, after Reading, touched func(branch string) bool) Entry {
 			}
 			entry.Tips[branch] = tip
 		}
+		if entry.Children == nil {
+			entry.Children = map[string][]string{}
+		}
+		entry.Children[branch] = after.Graph.Children(branch)
 	}
 	if !slices.Equal(before.Graph.Trunks, after.Graph.Trunks) || !maps.Equal(before.Graph.Declared, after.Graph.Declared) {
 		entry.RootsBefore, entry.RootsAfter = rootsOf(before.Graph), rootsOf(after.Graph)
@@ -276,22 +293,7 @@ func save(path string, log Log) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".operations-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temporary.Name())
-	if _, err := temporary.Write(append(content, '\n')); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporary.Name(), path)
+	return atomicfile.Write(path, append(content, '\n'))
 }
 
 // Latest is the newest operation not yet undone, which is the one an undo
@@ -299,7 +301,12 @@ func save(path string, log Log) error {
 //
 // published is the branches sent to a remote since that operation, by the
 // operations recorded after it.
-func (l Log) Latest(now time.Time) (entry Entry, published []string, found bool) {
+//
+// Only an operation made from this worktree is offered. The log is shared by
+// every worktree of a repository, each of which may be somebody else's
+// session, and the newest entry in it is as likely theirs: offering it let
+// one session put back another's work. A publication counts whoever made it.
+func (l Log) Latest(now time.Time, worktree string) (entry Entry, published []string, found bool) {
 	for _, each := range slices.Backward(l.Entries) {
 		if now.Sub(each.At) > expiry {
 			// Too old to offer, and so is everything before it.
@@ -309,7 +316,7 @@ func (l Log) Latest(now time.Time) (entry Entry, published []string, found bool)
 			published = append(published, each.Published...)
 			continue
 		}
-		if !each.Undone {
+		if !each.Undone && each.Worktree == worktree {
 			return each, published, true
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -280,18 +279,12 @@ func (f applyFlow[P]) mutate(cmd *cobra.Command, root context.Context, budgets b
 	defer cancelMutation()
 	// What the mutation changes is the difference between the repository
 	// before it and after, written down so that g2g undo can put it back.
-	recorder := recording(cmd)
-	before, reading := recorder.before(mutateCtx)
-	publishes := reading && slices.Contains(publishing, cmd.Name())
-	if publishes {
-		recorder.publishes(mutateCtx, cmd, before, f.named(validated))
-	}
+	names, moved := f.named(validated)
+	record := recording(cmd).around(mutateCtx, cmd, f.revalidation.event, names, moved)
 	if err := f.execute(mutateCtx, validated); err != nil {
 		return f.executionFailed(cmd, mutateCtx, validated, p, err)
 	}
-	if reading && !publishes {
-		recorder.record(context.WithoutCancel(mutateCtx), cmd, before, f.named(validated))
-	}
+	record(context.WithoutCancel(mutateCtx))
 
 	if err := prose(cmd.OutOrStdout(), p, p.notice(f.notices.applied)); err != nil {
 		return err
@@ -428,14 +421,16 @@ func whatChanged[P any](preview, current P) string {
 }
 
 // named is the branches a plan says it touches, for the record of what it
-// changed: its footprint, or what it names for the purpose. Nil when it says
-// neither.
-func (f applyFlow[P]) named(plan P) []string {
+// changed, and which of those it may move: its footprint, or what it names
+// for the purpose. Nil when it says neither.
+func (f applyFlow[P]) named(plan P) (names, moved []string) {
 	switch {
 	case f.touches != nil:
-		return f.touches(plan).Names()
+		footprint := f.touches(plan)
+		return footprint.Names(), footprint.Moved()
 	case f.changes != nil:
-		return f.changes(plan)
+		changed := f.changes(plan)
+		return changed, changed
 	}
-	return nil
+	return nil, nil
 }

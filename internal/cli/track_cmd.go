@@ -149,6 +149,9 @@ func declareFlow(service graph.Service, selection graphOptions, declaration grap
 			return service.PlanDeclare(ctx, selection.Selection(), declaration)
 		},
 		revalidation: revalidation{"graph.declare", "graph"},
+		changes: func(plan graph.DeclarePlan) []string {
+			return []string{plan.Target, plan.Removed, plan.Declaration.Into}
+		},
 		render: func(writer io.Writer, plan graph.DeclarePlan, p Presentation) error {
 			return writeGraphView(writer, declareView(plan), plan.Discovery, p)
 		},

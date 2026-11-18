@@ -40,7 +40,7 @@ func TestAnEntryIsTheDifferenceCutToWhatTheOperationTouches(t *testing.T) {
 	after.Graph.Edges["synthetic-other"] = graph.Edge{Parent: "synthetic-a"}
 	after.Here = "refs/heads/synthetic-new"
 
-	entry := Between(reading(), after, func(branch string) bool { return branch == "synthetic-a" || branch == "synthetic-new" })
+	entry := Between(reading(), after, func(branch string) bool { return branch == "synthetic-a" || branch == "synthetic-new" }, nil)
 	want := map[string]Move{
 		"refs/heads/synthetic-a":             {Before: "a-1", After: "a-2"},
 		"refs/g2g/forkpoints/synthetic-a":    {Before: "main-1", After: "main-2"},
@@ -65,10 +65,18 @@ func TestAnEntryIsTheDifferenceCutToWhatTheOperationTouches(t *testing.T) {
 		t.Error("the trunks did not change and were recorded")
 	}
 
-	if all := Between(reading(), after, nil); len(all.Refs) != 5 || len(all.Edges) != 2 {
+	if all := Between(reading(), after, nil, nil); len(all.Refs) != 5 || len(all.Edges) != 2 {
 		t.Errorf("with nothing to cut by: %d refs and %d edges, want everything that changed", len(all.Refs), len(all.Edges))
 	}
-	if !Between(reading(), reading(), nil).Empty() {
+	// A branch the operation only reads is not recorded as moved by it.
+	read := Between(reading(), after, func(string) bool { return true }, func(branch string) bool { return branch == "synthetic-a" })
+	if _, moved := read.Refs["refs/heads/synthetic-other"]; moved {
+		t.Error("a branch the operation only reads was recorded as moved by it")
+	}
+	if _, created := read.Refs["refs/heads/synthetic-new"]; !created || read.Refs["refs/heads/synthetic-a"].After != "a-2" {
+		t.Errorf("what it moved or created is missing: %v", read.Refs)
+	}
+	if !Between(reading(), reading(), nil, nil).Empty() {
 		t.Error("two readings that agree made an entry")
 	}
 }
@@ -108,17 +116,17 @@ func TestTheLogOffersTheNewestOperationNotUndone(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entry, published, found := Load(path).Latest(start.Add(time.Hour))
+	entry, published, found := Load(path).Latest(start.Add(time.Hour), "")
 	if !found || entry.Command != "g2g second" || len(published) != 1 || published[0] != "synthetic-a" {
 		t.Fatalf("Latest() = %q, %v, %v", entry.Command, published, found)
 	}
 	if err := MarkUndone(path, entry.At); err != nil {
 		t.Fatal(err)
 	}
-	if entry, _, found := Load(path).Latest(start.Add(time.Hour)); !found || entry.Command != "g2g first" {
+	if entry, _, found := Load(path).Latest(start.Add(time.Hour), ""); !found || entry.Command != "g2g first" {
 		t.Errorf("after undoing the second, Latest() = %q, %v", entry.Command, found)
 	}
-	if _, _, found := Load(path).Latest(start.Add(expiry + time.Hour)); found {
+	if _, _, found := Load(path).Latest(start.Add(expiry+time.Hour), ""); found {
 		t.Error("an operation too old to trust was offered")
 	}
 
@@ -130,7 +138,10 @@ func TestTheLogOffersTheNewestOperationNotUndone(t *testing.T) {
 	if entries := Load(path).Entries; len(entries) != 1 || entries[0].Command != "g2g late" {
 		t.Errorf("entries after expiry = %+v", entries)
 	}
-	if _, _, found := Load(filepath.Join(t.TempDir(), "synthetic-missing.json")).Latest(start); found {
+	if _, _, found := Load(path).Latest(late, "synthetic/elsewhere"); found {
+		t.Error("an operation made from another worktree was offered")
+	}
+	if _, _, found := Load(filepath.Join(t.TempDir(), "synthetic-missing.json")).Latest(start, ""); found {
 		t.Error("a missing log offered an operation")
 	}
 }

@@ -683,7 +683,14 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   undeleted, because prune deletes only what it records and could never
   remove it later. It runs before `keepWhatStrands`, since a branch kept is a
   child the branch below must not strand. With every landed branch held it
-  is the refusal it was. `--forget-missing` explicitly
+  is the refusal it was. The two keep passes are ordered by `PlanWithOptions`
+  and told what was found landed before either held anything back: a branch
+  kept because a worktree holds it is a child the branch below is kept for,
+  and without that it read as a child with work of its own, so a landed
+  stack with its top checked out refused as stranding and offered `untrack`,
+  after which prune could never delete it. The way out named is `git -C
+  <worktree> switch --detach`, which lets go of the branch and keeps the
+  files; removing a worktree is refused by Git when it has changes. `--forget-missing` explicitly
   removes absent selected records without claiming their work landed. Both
   flags compose through `pull --prune`. Deletion precedes graph removal so a
   partial failure leaves recoverable records; report completed work and exit
@@ -893,6 +900,12 @@ The following decisions exist once and must not be reimplemented locally. Each w
 several diverging copies, and in two cases the copies had already lost a
 property the original had.
 
+- `atomicfile.Write` — replacing one of g2g's own files whole: a temporary
+  file beside it, flushed, renamed over it. The snapshot, the operation log
+  and the remembered landed answers use it. The graph store, the restack
+  journal and the pull request observations still carry their own copy, and
+  two of the three newer copies had already dropped the flush before they
+  were folded together.
 - `landed.AssessParent` / `landed.AssessPublishedParent` /
   `landed.KnownParents` — shared advisory and effective-version parent
   absorption and one batched local read of known published parent copies.
@@ -1080,7 +1093,17 @@ property the original had.
   carries no standard input for `update-ref --stdin`; a ref already where it
   is going is skipped, which is what makes an undo that stopped part-way
   finish when it is run again. It never reaches the remote and there is no
-  redo.
+  redo. Three rules came out of the first review of it. Only an operation
+  made from this worktree is offered (`Log.Latest`): the log is shared and
+  the newest entry is as likely another session's. A move of a branch that
+  existed before and after is attributed only when the operation may move it
+  (`Footprint.Moved`, which `Advances` feeds): one it merely reads, such as
+  the trunk a restack replays onto, is otherwise recorded as moved by it when
+  another session's pull lands between the two readings, and an undo would
+  wind that pull back. And removing a branch the operation created asks
+  whether the same undo restores another at that commit (`restores`) before
+  asking whether it holds the only copy of its commits, or every rename of
+  an unpushed branch is refused.
 - A snapshot (`--snapshot <path>`, `prune` and `restack`) is the one path that
   applies a plan without planning it again: the preview writes the plan with
   what it rests on, and the apply checks that and carries the plan out

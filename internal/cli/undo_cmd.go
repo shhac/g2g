@@ -76,56 +76,73 @@ func recording(cmd *cobra.Command) *operations {
 	return recorder
 }
 
-// before reads the repository ahead of a mutation. A reading that fails
-// records nothing and never fails the operation it was for.
-func (o *operations) before(ctx context.Context) (oplog.Reading, bool) {
+// around brackets a mutation: it reads the repository before, and hands back
+// what to call once the mutation has finished, which reads it again and
+// writes down the difference. For a command that publishes it writes the
+// marker now and hands back nothing to do. A nil recorder records nothing.
+//
+// names cuts the difference to the branches the operation has to do with,
+// and moved to the ones it may move; a branch that came into being or went
+// away is its own either way. Nil takes everything. A reading that fails
+// records nothing, says so, and never fails the operation it was for.
+func (o *operations) around(ctx context.Context, cmd *cobra.Command, event string, names, moved []string) func(context.Context) {
+	nothing := func(context.Context) {}
 	if o == nil {
-		return oplog.Reading{}, false
+		return nothing
 	}
-	reading, err := oplog.Read(ctx, o.git, o.store)
-	return reading, err == nil
-}
-
-// record writes down what a finished mutation changed. names cuts the
-// difference to the branches the operation says it touches, with any branch
-// it created or deleted: what a command names is what it moves and reads,
-// and a branch that did not exist before is its own even where it is not
-// named. Nil takes everything.
-func (o *operations) record(ctx context.Context, cmd *cobra.Command, before oplog.Reading, names []string) {
-	after, err := oplog.Read(ctx, o.git, o.store)
-	if err != nil {
+	unrecorded := func(err error) {
 		diagnostic.Warn(ctx, "undo.record", fmt.Sprintf("this operation was not recorded for g2g undo: %v", err))
-		return
 	}
-	var touched func(string) bool
-	if names != nil {
-		touched = func(branch string) bool {
-			_, was := before.Refs["refs/heads/"+branch]
-			_, is := after.Refs["refs/heads/"+branch]
-			return slices.Contains(names, branch) || was != is
-		}
+	before, err := oplog.Read(ctx, o.git, o.store)
+	if err != nil {
+		unrecorded(err)
+		return nothing
 	}
 	worktree, _ := o.git.WorktreeDir(ctx)
-	if err := undo.Record(ctx, o.git, askedFor(cmd), worktree, before, after, touched, time.Now()); err != nil {
-		diagnostic.Warn(ctx, "undo.record", fmt.Sprintf("this operation was not recorded for g2g undo: %v", err))
+	asked := askedFor(cmd)
+	// pull --prune is two mutations under one command, recorded one after
+	// the other, and the second has to be told from the first.
+	if cmd.Name() == "pull" && event == "prune" {
+		asked += " · the prune"
+	}
+	if slices.Contains(publishing, cmd.Name()) {
+		if err := undo.Publishing(ctx, o.git, asked, worktree, among(before, names), time.Now()); err != nil {
+			unrecorded(err)
+		}
+		return nothing
+	}
+	return func(ctx context.Context) {
+		after, err := oplog.Read(ctx, o.git, o.store)
+		if err != nil {
+			unrecorded(err)
+			return
+		}
+		var touched, moves func(string) bool
+		if names != nil {
+			touched = func(branch string) bool {
+				_, was := before.Refs["refs/heads/"+branch]
+				_, is := after.Refs["refs/heads/"+branch]
+				return slices.Contains(names, branch) || was != is
+			}
+			moves = func(branch string) bool { return slices.Contains(moved, branch) }
+		}
+		if err := undo.Record(ctx, o.git, asked, worktree, before, after, touched, moves, time.Now()); err != nil {
+			unrecorded(err)
+		}
 	}
 }
 
-// publishes writes down, before a command that publishes runs, the branches
-// it is about to send: the ones it names, or every local branch when it
+// among is the local branches a publication names, or every one when it
 // cannot say.
-func (o *operations) publishes(ctx context.Context, cmd *cobra.Command, before oplog.Reading, names []string) {
+func among(reading oplog.Reading, names []string) []string {
 	branches := make([]string, 0)
-	for ref := range before.Refs {
+	for ref := range reading.Refs {
 		if branch, local := strings.CutPrefix(ref, "refs/heads/"); local && (names == nil || slices.Contains(names, branch)) {
 			branches = append(branches, branch)
 		}
 	}
 	slices.Sort(branches)
-	worktree, _ := o.git.WorktreeDir(ctx)
-	if err := undo.Publishing(ctx, o.git, askedFor(cmd), worktree, branches, time.Now()); err != nil {
-		diagnostic.Warn(ctx, "undo.record", fmt.Sprintf("this publication was not recorded for g2g undo: %v", err))
-	}
+	return branches
 }
 
 // askedFor is the command as it was asked for, less the flags that say how
@@ -153,11 +170,11 @@ func newUndo(service undo.Service, guard idleGuard, presentation Presentation) *
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), "", "")
 		if list {
 			return newBudgets(cmd).reading(ctx, func(ctx context.Context) error {
-				entries, err := service.List(ctx)
+				entries, worktree, err := service.List(ctx)
 				if err != nil {
 					return err
 				}
-				return writeStackView(cmd.OutOrStdout(), operationsView(entries, time.Now()), presentation)
+				return writeStackView(cmd.OutOrStdout(), operationsView(entries, worktree, time.Now()), presentation)
 			})
 		}
 		flow := applyFlow[undo.Plan]{
@@ -256,8 +273,9 @@ func recordedAgain(branch string, was oplog.Recorded) string {
 	}
 }
 
-// operationsView lists the recorded operations, newest first.
-func operationsView(entries []oplog.Entry, now time.Time) stackView {
+// operationsView lists the recorded operations, newest first, marking the
+// one an undo here would put back.
+func operationsView(entries []oplog.Entry, worktree string, now time.Time) stackView {
 	view := stackView{Operation: "undo", Target: "this repository", TargetSource: "recorded operations"}
 	if len(entries) == 0 {
 		return view.note("No operation is recorded here.", severityNeutral)
@@ -270,6 +288,9 @@ func operationsView(entries []oplog.Entry, now time.Time) stackView {
 			line += " · published, not undone from here"
 		case entry.Undone:
 			line += " · undone"
+		case entry.Worktree != worktree:
+			// Somebody else's, as likely as not, and theirs to put back.
+			line += " · from another worktree, undone from there"
 		case next:
 			line, next = line+" · next to undo", false
 		}

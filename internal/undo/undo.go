@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/oplog"
 	"github.com/shhac/g2g/internal/repair"
@@ -23,6 +24,7 @@ import (
 type Git interface {
 	oplog.Reader
 	CommonDir(ctx context.Context) (string, error)
+	WorktreeDir(ctx context.Context) (string, error)
 	MoveRef(ctx context.Context, ref, to, from string) error
 	// CheckedOutElsewhere maps each branch another worktree has checked out
 	// to that worktree.
@@ -91,15 +93,20 @@ func (s Service) log(ctx context.Context) (string, error) {
 	return oplog.Path(common), nil
 }
 
-// List is the recorded operations, newest first.
-func (s Service) List(ctx context.Context) ([]oplog.Entry, error) {
+// List is the recorded operations, newest first, and the worktree this is
+// asked from: only its own are offered to be undone.
+func (s Service) List(ctx context.Context) ([]oplog.Entry, string, error) {
 	path, err := s.log(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	worktree, err := s.Git.WorktreeDir(ctx)
+	if err != nil {
+		return nil, "", err
 	}
 	entries := oplog.Load(path).Entries
 	slices.Reverse(entries)
-	return entries, nil
+	return entries, worktree, nil
 }
 
 // Plan is the newest operation not yet undone, and whether everything it
@@ -109,7 +116,11 @@ func (s Service) Plan(ctx context.Context) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	entry, published, found := oplog.Load(path).Latest(time.Now())
+	worktree, err := s.Git.WorktreeDir(ctx)
+	if err != nil {
+		return Plan{}, err
+	}
+	entry, published, found := oplog.Load(path).Latest(time.Now(), worktree)
 	if !found {
 		return Plan{}, nil
 	}
@@ -122,7 +133,7 @@ func (s Service) Plan(ctx context.Context) (Plan, error) {
 	if changed := since(entry, now); changed != "" {
 		plan.Repair = repair.Note{
 			Reason: changed + ", so putting back what " + entry.Command + " changed would undo that as well",
-			Ways:   []repair.Step{{Effect: "what it changed is listed above, with the commits each branch was at; git branch -f <branch> <commit> puts one back by hand"}},
+			Ways:   []repair.Step{{Effect: "what it changed is listed above with the commit each branch was at, for putting one back by hand"}},
 		}
 		return plan, nil
 	}
@@ -130,7 +141,7 @@ func (s Service) Plan(ctx context.Context) (Plan, error) {
 		if slices.Contains(published, branch) {
 			plan.Repair = repair.Note{
 				Reason: branch + " has been published since " + entry.Command + ", and putting it back here would leave the remote holding what this checkout no longer has",
-				Ways:   []repair.Step{{Effect: "undo does not reach the remote; to go back anyway, move the branch by hand with git branch -f <branch> <commit> and publish that"}},
+				Ways:   []repair.Step{{Effect: "undo does not reach the remote; to go back anyway, move the branch by hand to the commit listed above and publish that"}},
 			}
 			return plan, nil
 		}
@@ -175,7 +186,7 @@ func (s Service) kept(ctx context.Context, entry oplog.Entry, now oplog.Reading)
 	for _, ref := range slices.Sorted(maps.Keys(entry.Refs)) {
 		move := entry.Refs[ref]
 		branch, local := strings.CutPrefix(ref, "refs/heads/")
-		if move.Before == "" && local && now.Refs[ref] == move.After {
+		if move.Before == "" && local && now.Refs[ref] == move.After && !restores(entry, ref) {
 			only, err := s.Git.OnlyOn(ctx, branch)
 			if err != nil {
 				return repair.Note{}, err
@@ -196,7 +207,7 @@ func (s Service) kept(ctx context.Context, entry oplog.Entry, now oplog.Reading)
 			if ctx.Err() != nil {
 				return repair.Note{}, ctx.Err()
 			}
-			return repair.Note{Reason: fmt.Sprintf("the commit %s was at, %s, is no longer in this repository, so it cannot be put back", ref, short(move.Before))}, nil
+			return repair.Note{Reason: fmt.Sprintf("the commit %s was at, %s, is no longer in this repository, so it cannot be put back", ref, localgit.Short(move.Before))}, nil
 		}
 	}
 	return repair.Note{}, nil
@@ -232,7 +243,7 @@ func since(entry oplog.Entry, now oplog.Reading) string {
 		case move.After == "":
 			return name + " has been created again since"
 		default:
-			return fmt.Sprintf("%s has moved since, from %s to %s", name, short(move.After), short(is))
+			return fmt.Sprintf("%s has moved since, from %s to %s", name, localgit.Short(move.After), localgit.Short(is))
 		}
 	}
 	for _, branch := range slices.Sorted(maps.Keys(entry.Tips)) {
@@ -243,7 +254,7 @@ func since(entry oplog.Entry, now oplog.Reading) string {
 			if is == "" {
 				return branch + " has been deleted since"
 			}
-			return fmt.Sprintf("%s has moved since, from %s to %s", branch, short(left), short(is))
+			return fmt.Sprintf("%s has moved since, from %s to %s", branch, localgit.Short(left), localgit.Short(is))
 		}
 	}
 	for _, branch := range slices.Sorted(maps.Keys(entry.Edges)) {
@@ -252,10 +263,30 @@ func since(entry oplog.Entry, now oplog.Reading) string {
 			return "what the graph records of " + branch + " has changed since"
 		}
 	}
+	for _, branch := range slices.Sorted(maps.Keys(entry.Children)) {
+		if !slices.Equal(entry.Children[branch], now.Graph.Children(branch)) && !same(entry.Edges[branch].Before, now.Graph.Edges[branch], recordedNow(now, branch)) {
+			return "the branches recorded on " + branch + " have changed since"
+		}
+	}
 	if entry.RootsAfter != nil && !rootsAre(entry.RootsAfter, now.Graph) && !rootsAre(entry.RootsBefore, now.Graph) {
 		return "the recorded trunks have changed since"
 	}
 	return ""
+}
+
+// restores reports an undo that puts another branch back at the commit this
+// one is removed from, which is a rename: the old name comes back holding
+// everything the new one held, so removing the new one loses nothing. Asking
+// whether the new name is the only branch with its commits said yes, since
+// the old name is gone, and refused the undo of every rename of a branch not
+// yet pushed.
+func restores(entry oplog.Entry, ref string) bool {
+	for other, move := range entry.Refs {
+		if other != ref && strings.HasPrefix(other, "refs/heads/") && move.Before == entry.Refs[ref].After {
+			return true
+		}
+	}
+	return false
 }
 
 // same reports a record that is what an entry says it was: both absent, or
@@ -267,15 +298,13 @@ func same(was *graph.Edge, is graph.Edge, recorded bool) bool {
 	return recorded && *was == is
 }
 
-func rootsAre(roots *oplog.Roots, recorded graph.Graph) bool {
-	return slices.Equal(roots.Trunks, recorded.Trunks) && maps.Equal(roots.Declared, recorded.Declared)
+func recordedNow(now oplog.Reading, branch string) bool {
+	_, recorded := now.Graph.Edges[branch]
+	return recorded
 }
 
-func short(object string) string {
-	if len(object) <= 12 {
-		return object
-	}
-	return object[:12]
+func rootsAre(roots *oplog.Roots, recorded graph.Graph) bool {
+	return slices.Equal(roots.Trunks, recorded.Trunks) && maps.Equal(roots.Declared, recorded.Declared)
 }
 
 // Stopped is an undo that put some things back and then could not go on.
@@ -365,7 +394,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 		if err := s.Git.MoveRef(ctx, ref, move.Before, move.After); err != nil {
 			if checkedOut {
 				if restoreErr := s.Git.SwitchTree(ctx, move.Before, move.After); restoreErr != nil {
-					err = fmt.Errorf("%w; the working tree was also left at %s and could not be put back: %v", err, short(move.Before), restoreErr)
+					err = fmt.Errorf("%w; the working tree was also left at %s and could not be put back: %v", err, localgit.Short(move.Before), restoreErr)
 				}
 			}
 			return stop(err)
@@ -423,8 +452,8 @@ func (s Service) record(ctx context.Context, entry oplog.Entry) error {
 // one after. Nothing is written for one that changed nothing.
 func Record(ctx context.Context, git interface {
 	CommonDir(ctx context.Context) (string, error)
-}, command, worktree string, before, after oplog.Reading, touched func(string) bool, now time.Time) error {
-	entry := oplog.Between(before, after, touched)
+}, command, worktree string, before, after oplog.Reading, touched, moves func(string) bool, now time.Time) error {
+	entry := oplog.Between(before, after, touched, moves)
 	if entry.Empty() {
 		return nil
 	}

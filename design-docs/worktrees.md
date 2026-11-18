@@ -62,10 +62,15 @@ lay this branch's change over whatever it is on now.
   `--abort` brings each one back. A failure to bring one is reported as done,
   with the `git -C … read-tree` command that finishes it, and exits `3`.
   Each worktree journals its own restack, so a restack stopped in one
-  refuses only what it makes untrue elsewhere. `restack`, `push`, `submit`,
-  `create`, `track`, `github retarget` and `github comment` go ahead from
-  another worktree unless either side moves what the other reads. Every other mutating command still refuses
-  ([restack](restack.md)).
+  refuses only what it makes untrue elsewhere. `restack`, `pull`, `prune`,
+  `push`, `submit`, `create`, `track`, `untrack`, `adopt`, `github retarget`
+  and `github comment` go ahead from another worktree unless either side moves
+  what the other reads. Fast-forwarding a trunk counts as reading it, so a
+  pull that only fast-forwards the trunk runs beside another stack's stopped
+  restack on that trunk. `up`, `down`, `top` and `bottom` wait for this
+  worktree's restack alone. `land`, the reshaping commands and the others that
+  cannot name what they touch still wait for every restack, and say that is
+  why ([restack](restack.md)).
 - **A rewrite that has to rebase** (one whose preview conflicts, or which
   cannot be previewed) checks each branch out here, and Git won't check out a
   branch another worktree has. Following can't help, so it refuses and offers
@@ -96,6 +101,18 @@ Leaving protects the recorded replay boundary as well as the ref: fork-point
 refresh skips left branches, including when their parent collapses backwards.
 Schema-3 journals preserve those leaves across continuation, even if a holder
 detaches; abort restores the original structure and pins alongside the tips.
+
+A left branch nobody has committed to yet needs that record more than any
+other. It sits on the tip its parent had before the replay, with an empty
+range of its own, so "nothing left to contribute" is true of it without
+anything having been asked. `prune` used to forget it as landed. The first
+commit made on it then sat on the parent's old commits, and recording the
+branch again could only measure from where it meets the rewritten parent, so
+the next restack offered the parent's old commits as the branch's own. `prune`
+now forgets an empty branch only where its tip is inside its parent; one left
+behind stays recorded and reads as needing a restack, whether its parent was
+rewritten or has since landed ([scenarios](scenarios.md), *an empty branch
+left behind*).
 
 Each command decides only the branches it moves itself. `pull` decides its own
 moves first -- the trunk it advances, the branches it takes -- and the replay
@@ -168,3 +185,6 @@ branch is held and busy, and busy is never clean.
 - Two applies running at once in two worktrees still race on the graph file,
   and the last one to save wins. The atomic save keeps the file whole, and
   the preview and revalidation keep each command honest about what it saw.
+  More commands now write beside another worktree's stopped restack, and
+  `track`, `untrack` and `adopt` save the whole graph as they read it when
+  planning, so the window is wider for them.

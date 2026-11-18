@@ -235,7 +235,10 @@ trunk`.
 `pull` offers `stack | trunk` and nothing narrower, because nothing narrower
 means anything: it advances the base and replays what sits on it, so replaying a
 subtree would leave the branches below it on the old base while the subtree's own
-fork point had not moved — a replay that does nothing.
+fork point had not moved — a replay that does nothing. The refusal of a
+narrower scope says that a pull replays the whole stack, descendants included,
+and names the two flags below, since someone arriving from `submit --scope
+path` otherwise had only the list of accepted values to go on.
 
 `pull --trunk-only` answers a different request: advance the evidenced trunk
 without collecting or replaying any stack branch. It resolves the recorded root

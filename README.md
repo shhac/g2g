@@ -223,7 +223,10 @@ uninvited is how restacking from the middle walks into it every time. `land`
 defaults to `path`, because standing in the middle of a stack and typing `land`
 means "as far as here". `prune` defaults to `stack` and offers `all`, since it
 edits only the record and forgets only what has landed. `pull` offers only
-`stack` and `trunk`, and `untrack` only `branch` (its default) and `subtree`.
+`stack` and `trunk`, because it replays the whole stack, descendants included;
+what narrows a pull is a flag of its own, `--trunk-only` or `--above <branch>`,
+and the refusal of any other scope names both. `untrack` offers only `branch`
+(its default) and `subtree`.
 `push` defaults to `stack` and takes every scope but `all`, forks included,
 because one atomic push has no order to keep.
 
@@ -250,6 +253,15 @@ re-discover and revalidate against the preview before mutating, render and
 flush the final plan first, and refuse ambiguous or unsafe work instead of
 guessing. On success a command prints a concise confirmation; on failure it
 never claims that changes were made.
+
+When the repository changed between the preview and the apply, the apply
+refuses and sends you back to the preview. A restack or a pull also says what
+changed, naming the first fact that differs: a branch that moved and between
+which commits, a record another session edited, a worktree that took a branch.
+
+```
+restack plan changed during revalidation: synthetic-a moved from 1005ca4 to 2f6b9d1 · rerun without --apply to review the new plan
+```
 
 The one exception is moving the checkout (`up`, `down`, `top`, `bottom`),
 which changes nothing else — see [Move and add](#move-and-add).
@@ -434,7 +446,20 @@ down structure every later command trusts.
 
 A parent you name that is *not* an ancestor is recorded on request rather than
 refused, since that is how a stack looks before a restack, but `track` says so
-first, because it explains why the branch will then read as needing one.
+first, because it explains why the branch will then read as needing one. It
+also names the replay range it records, which starts where the branch and the
+parent meet: if the parent was rewritten after the branch was built on it,
+that range holds the parent's old commits, and it is better to read that here
+than to find a restack offering them.
+
+Naming the parent already recorded is how to tell g2g a branch has caught up
+by hand. When Git shows the parent's tip in the branch, because you
+fast-forwarded along the parent or merged it in, `track` moves the fork point
+up to that tip and the preview names both boundaries. Without that evidence a
+boundary that still holds is left alone. A fork point only ever moves
+forward this way: a parent that was rewound still has its tip in the branch,
+and moving the boundary back would record the commits it dropped as the
+branch's own.
 
 Changing a recorded parent preserves the branch's verified replay boundary.
 Reparenting `synthetic-b` onto `synthetic-a`, which left the trunk earlier,
@@ -683,6 +708,14 @@ last fetch remains protected: it is outside the recorded agreement. Abandoning
 the preview still preserves that agreement; later reviewer additions remain
 protected and upstream drops remain distinguishable from new local work.
 
+A rebase Git could not start at all is a different thing from a conflict. Git
+can exit successfully having moved nothing when it cannot write its own state,
+in a read-only or sandboxed Git directory for example. The restack then
+reports what Git printed and that nothing was replayed: every branch is where
+it was, no restack is left in progress, and there is nothing to continue or
+abort. `restack` exits `2`; a `pull` whose trunk had already advanced exits
+`3`.
+
 A stopped restack exits `3`, including when `--continue` hits another conflict.
 Run recovery from the worktree that started it: each worktree keeps its own
 journal, beside Git's own rebase state there, and `--continue` elsewhere says
@@ -693,20 +726,32 @@ back with its branch, unless somebody has committed there since.
 
 This is g2g's only resumable operation, so **a command that changes anything
 refuses while a restack is unfinished** — mid-restack a branch may already
-have moved while the graph still records where it used to be. `restack`,
-`push`, `submit`, `create`, `track`, `github retarget` and `github comment`
-are the exceptions, because they can say which branches they touch: from another worktree they go ahead unless
-another worktree's restack moves one of those branches, or a parent they
-measure one against. A restack is also refused when it would move a branch
-the other restack replays onto. Two sessions can therefore restack two
-stacks at once, each in its own worktree. In the worktree the restack belongs
-to, those commands refuse like everything else. A refusal over another
-worktree's restack names its checkout and says to wait, because its
-`--continue` and `--abort` are for whoever started it. If that worktree has
-been removed, the refusal names the journal file to delete. `doctor`
+have moved while the graph still records where it used to be. That is true
+in the worktree the restack belongs to. From another worktree, `restack`,
+`pull`, `prune`, `push`, `submit`, `create`, `track`, `untrack`, `adopt`,
+`github retarget` and `github comment` can say which branches they touch, so
+they go ahead unless the other worktree's restack moves one of those
+branches, or a parent they measure one against, or they would move a branch
+that restack reads. Two sessions can therefore work on two stacks at once,
+each in its own worktree, even when one is stopped on a conflict.
+
+A `pull` that only fast-forwards the trunk goes ahead beside another stack's
+stopped restack on that trunk: the trunk still contains where it was, so the
+other restack's `--continue` carries on to the new tip and its `--abort`
+restores what it moved. A pull that would replace the trunk with a rewritten
+one waits. `up`, `down`, `top` and `bottom` wait only for a restack in their
+own worktree.
+
+`land`, `delete`, `fold`, `rename`, `graphite adopt`, `github adopt`,
+`graphite mirror`, `github link`, `github unlink` and `track --as-trunk`
+cannot name the branches they would touch before they run, so they wait for
+every worktree's restack, and the refusal says that is the reason. A refusal
+over another worktree's restack names its checkout and says to wait, because
+its `--continue` and `--abort` are for whoever started it. If that worktree
+has been removed, the refusal names the journal file to delete. `doctor`
 reports every worktree's unfinished restack.
 
-Four things a restack reports rather than doing quietly:
+Things a restack reports rather than doing quietly:
 
 - **A branch it empties.** If everything a branch carried is already upstream
   it collapses onto its base and its pull request would show no changes. The
@@ -733,10 +778,32 @@ Four things a restack reports rather than doing quietly:
   original commits and its pull request would conflict — the preview says so
   and names `g2g pull`, or `--onto origin/<trunk>` when the trunk is held with
   changes in another worktree.
+- **A branch that already holds its parent.** One you fast-forwarded along its
+  parent, or merged its parent into, has nothing to replay. It is not
+  rewritten and neither is anything stacked on it; only where it forks is
+  recorded again, and the preview says so: `synthetic-child already holds
+  synthetic-parent · records that it forks at 2f6b9d1 rather than 1005ca4, and
+  rewrites nothing.`
 
 A branch you rebased by hand is refused rather than replayed: its recorded
 fork point is no longer in its history, so the replay range would silently
 widen to include the base's own commits. Re-record it with `g2g track` first.
+
+A branch whose own commits include a merge commit is refused too, in the
+preview and before anything moves, because a replay would flatten the merge
+into the commits it merged. The refusal names the way that keeps it:
+
+```sh
+git merge synthetic-parent     # with synthetic-child checked out
+g2g track --branch synthetic-child --parent synthetic-parent --apply
+```
+
+Merging the parent in leaves the branch holding its parent's tip, so nothing
+is left to replay and `track` records where it now forks. When the same
+restack would move the parent, the refusal names `g2g restack --branch
+synthetic-parent --scope path` to run first. g2g does not rebuild merges with
+`git rebase --rebase-merges`, which merges again from scratch and loses what
+the original merge resolved.
 A branch another worktree has checked out is moved only when that worktree is
 clean, and its files come along. A worktree with uncommitted changes keeps its
 branch where it is, and the rest of the stack still moves. `--worktrees
@@ -947,6 +1014,18 @@ parent did, over the whole range above the branch it would be left on. A parent
 and child squash-merged together are forgotten together, rather than the child
 being kept for having work its parent branch lacks.
 
+Two branches that can look landed are kept. A child that takes back part of
+what its landed parent added, deleting a file the parent created, say, merges
+into the trunk without changing it, yet its commit is in nobody's trunk; it
+is asked whether its own commits would change the trunk, and they would. And
+a branch with no commits of its own is forgotten only where it sits inside
+its parent. One left on the tip its parent had before a restack, because
+another worktree held it, stays recorded and reads as needing a restack: that
+record is the only statement of where its work will begin. That holds when
+the parent has since landed, too. Prune then refuses rather than strand the
+branch, and `pull --prune` exits `3`; commit the branch's work, restack it,
+which puts it on the trunk with that commit alone, and prune again.
+
 Forgetting a branch can leave a child recorded under something that is no
 longer there. Where Git shows the branch below is an ancestor of that child —
 which is what a pull leaves, having replayed the child onto it — prune records
@@ -966,7 +1045,8 @@ hand.
 A branch is identified by its single open pull request. Closed and merged pull
 requests left on a reused branch name are treated as history: they never block
 `github link`, `github retarget`, or `github status`, and `submit` creates a
-replacement unless the recorded parent already contains a merged branch’s work. Two or more open pull requests for
+replacement unless the trunk or the recorded parent already contains a merged
+branch’s work. Two or more open pull requests for
 one branch is the only ambiguity, and it fails closed.
 
 #### push
@@ -1113,10 +1193,24 @@ uses its observed remote tip, including waiting and landed branches. Reuse push'
 observations and batch any missing bases into one Git `RemoteTips` read. Missing
 refs or unavailable objects provide no merge assertion. The repair is
 `g2g github retarget` over the selection before publishing. Correctly based PRs
-remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
+remain exempt. `submit.Plan.Refusal(link)` selects linking, omitted-base creation, preserved-base,
 existing-PR, then push refusals, in that order; preview, CLI blocking and apply
 all consume it. Missing-spec requirements remain in the CLI. The check adds no
 GitHub reads, and `push` stays Git-only.
+
+A parent whose pull request merged and whose work Git confirms in the trunk
+is left out: after a squash merge and a `pull`, the landed parent is still
+recorded until `prune` forgets it. The preview marks it `left out · merged ·
+landed in main`, asks for no spec entry and pushes nothing for it, and names
+the `g2g prune` that forgets it. An open pull request above keeps the base it
+has; when that base is the landed branch the preview says so and names the
+`g2g github retarget` that moves it once the branch is forgotten. Opening or
+linking a pull request on a landed base is refused before any push, naming
+`g2g prune --branch synthetic-parent` (`gt sync` for a
+Graphite-described stack), because choosing another base would be recording
+structure. A merge whose content is absent or unconfirmed locally is not
+this: it still needs a replacement or a refreshed trunk. A landed branch that
+never had a pull request is still offered as a creation until it is pruned.
 
 A child squash-merged into its recorded feature parent is left out only when
 Git confirms its work in the parent version this publication will leave behind:
@@ -1125,7 +1219,7 @@ locally known remote copy. A squash this submit removes cannot justify omission.
 The preview says “merged into synthetic-parent; absorbed”, asks for no spec
 entry and does not push that child. Selection topology remains intact. Before
 publishing, submit refuses PR creation or linking that depends on an omitted
-absorbed base. Existing open PRs can still receive updates without linking.
+base, absorbed or landed. Existing open PRs can still receive updates without linking.
 
 For g2g-recorded structure, collect a parent known only remotely with
 `g2g pull --branch synthetic-child --above synthetic-parent` (carrying the
@@ -1204,9 +1298,10 @@ leaves branches with no pull request to `submit`, ignores merged and closed
 ones, and refuses outright when a branch has more than one open pull request,
 because nothing here can tell which one you meant.
 
-Retarget and comment can run beside an unrelated restack in another worktree.
-They read the selected branches and parents and change only GitHub; a restack
-moving any of those branches still refuses them, as does one in this worktree.
+Retarget and comment can run beside an unrelated restack in another worktree,
+as the [other commands that name what they touch](#restack) can. They read the
+selected branches and parents and change only GitHub; a restack moving any of
+those branches still refuses them, as does one in this worktree.
 
 It moves the bases bottom-up. GitHub applies every move in a request whatever
 happened to the one before, so a refusal no longer stops the run: it moves
@@ -1638,6 +1733,12 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |
+| A branch's own commits include a merge commit, which a restack would flatten | `git merge <parent>` on the branch, then `g2g track --branch <branch> --parent <parent>`; `g2g restack --branch <parent> --scope path` first when the parent has to move |
+| A pull request would open or link on a parent that has landed | `g2g prune --branch <landed>`, or `gt sync` for a Graphite-declared stack |
+| `pull --scope path`, `branch` or `subtree` | `g2g pull --trunk-only` to advance the trunk alone, or `g2g pull --above <branch>` to replay only what sits above a branch |
+| Another worktree's restack is unfinished and this command waits for every restack | finish or abort it from that worktree; the refusal names its checkout |
+| An apply was refused because the plan changed during revalidation | rerun without `--apply`; a restack or pull says what changed |
+| Planning timed out before anything was changed | raise the ceiling with `--timeout` or `G2G_TIMEOUT`; `--debug` shows what it was waiting on |
 | A branch that has to move is checked out in another worktree with changes, or `--worktrees refuse` was given | commit there and rerun, rerun with `--worktrees skip` to leave it, switch that worktree away, or select less with `--branch` or `--scope` |
 | A conflicting rewrite needs a branch another worktree has checked out | run it from that worktree, or rerun with `--worktrees skip` |
 | `fold` into a parent that has moved on since the branch was stacked on it | `g2g restack --branch <branch>`, then fold |
@@ -1782,6 +1883,18 @@ Set `G2G_TIMEOUT=3m` for a persistent minimum phase budget. It raises shorter
 defaults and leaves a longer stack landing budget intact. An explicit
 `--timeout 3m` takes precedence and replaces every phase's ceiling exactly.
 Both values must be positive durations; invalid values fail before execution.
+
+A planning pass that runs out of its budget is always reported as that,
+whichever call the deadline happened to cut off, and for the read-only
+commands (`status`, `doctor`, `github status`) as for the rest:
+
+```
+timed out working out what to do, before anything was changed · a large repository can need longer than the 45s default (raise it with --timeout or G2G_TIMEOUT; --debug shows what it was waiting on)
+```
+
+It names the ceiling that was in force, `--timeout`'s or `G2G_TIMEOUT`'s when
+one was set, so nobody is told to raise a flag they already raised. Nothing
+has been changed at that point.
 
 A mutation that expires states what may already have happened, because an
 interrupted `submit` can leave refs pushed and some PRs created; rerunning with

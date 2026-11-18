@@ -102,6 +102,28 @@ the gap, and names `g2g pull --prune` first and then
 widening the selection, which brings the child in, finds its own work, and
 refuses again.
 
+**undoing-child.** `main ← A ← B`, where A adds a file and B's only commit
+deletes it again. A is squash-merged. Merged into the trunk as a whole branch,
+B changes nothing: over the distance from where the stack left the trunk the
+addition and the deletion cancel, so B differs from the fork by less than A
+does, and the squashed-parent check above answers that B has contributed
+nothing. It has not landed. Its one commit is in nobody's trunk.
+
+Read as landed, `pull` collapsed B onto the trunk with nothing on it, `land`
+published it that way and GitHub closed the pull request it had just emptied,
+`status` called it landed, `prune` offered to forget and delete it, and `push`
+declined to publish it. A yes from the whole-branch merge is now believed only
+if B's own commits, replayed from the parent they sit on, would change nothing
+either; they would delete the file, so B replays onto the trunk carrying its
+deletion. Every caller hands that question the boundaries it knows
+(`landed.Whole`), so the answer survives A having been amended after B
+forked, and a follow-up commit made after a pull request merged is measured
+from the head that merged. Not yet covered: a branch recorded directly on the
+trunk whose follow-up reverts its own merged work still reads as landed to
+`prune` and to a replay. The journey is in `internal/cli/undoing_child_journey_test.go`,
+against a real repository, because the question is what Git's merge makes of
+it.
+
 **borrower.** Someone cherry-picked your commits into their branch and it landed
 first. Your commits are in the trunk under different object ids. Replaying drops
 them by content rather than applying them twice.
@@ -240,6 +262,22 @@ same tip as the parent, same fork point — so saying which it is would be a gue
 and the wrong guess invites someone to prune work they are about to start.
 Saying what is true of both is not a guess.
 
+That holds only while the empty branch's tip is inside its parent. See *an
+empty branch left behind*, below, for the one that is not.
+
+**landed parent, not yet pruned.** `main ← A ← B`; A is squash-merged and you
+`pull`, which collapses A and replays B, and you `submit` before pruning. A is
+still recorded and its pull request is merged. `submit` leaves A out, `left
+out · merged · landed in main`, asks for no spec entry for it, and names
+`g2g prune`; B's open pull request keeps its base, and the preview names the
+`g2g github retarget` that moves it once A is forgotten. It used to read A's
+merged pull request as history to replace, say `create draft` about work it
+had just confirmed in the trunk, and block B on a title for it. Opening a new
+pull request for a branch that sits on A is refused before any push, naming
+`g2g prune --branch A`: choosing another base there would be recording
+structure. That is a prune of A's stack, because one of A alone forgets
+nothing when the branch under it has landed too and is still recorded.
+
 **your branch was deleted after it merged.** You still have it locally with no
 work of its own. `push` says "already in the trunk · nothing to publish" rather
 than offering to recreate it, and `status` reports it as landed with `prune` as
@@ -268,9 +306,56 @@ finishes it there. `--worktrees refuse` refuses instead, naming the branch and
 the worktree. `land` treats a branch above the descent the same way: an
 agent's dirty branch above the one being landed is left unreplayed, recorded
 on the trunk, and finished by a `pull` in its worktree, where it used to
-refuse the descent under every policy. A restack stopped on a conflict in
-that worktree no longer refuses `push`, `submit`, `create` or `track` from
-another one on a stack it is not moving. See `design-docs/worktrees.md`.
+refuse the descent under every policy. See `design-docs/worktrees.md`.
+
+**somebody else's restack is stopped.** A session in another worktree has a
+restack stopped on a conflict, on a stack with nothing in common with yours.
+With a worktree per session that is nearly always true of some worktree.
+`restack`, `pull`, `prune`, `push`, `submit`, `create`, `track`, `untrack`,
+`adopt`, `github retarget` and `github comment` go ahead, and are refused only
+when the stopped restack moves a branch they read or they move one it reads. A
+`pull` that fast-forwards the trunk both stacks sit on goes ahead too: the
+other session's `--continue` carries on to the new tip. `land` and the
+reshaping commands still wait, and say it is because they cannot name what
+they would touch, not because that restack holds their branches.
+
+**an empty branch left behind.** `main ← A ← B`, with B just created, nothing
+committed to it, and open in another worktree with changes. You restack A; B's
+worktree is not clean, so B is left on the tip A used to have. B has no
+commits of its own, which is also how a branch that collapsed onto its parent
+reads, and `prune` forgot it as landed. That record was the only statement of
+where B's work begins: the first commit made on B sat on A's old commits, and
+recording B again could only measure from where it meets the rewritten A, so
+the next restack offered A's old commits as B's own. `prune` now forgets an
+empty branch only where its tip is inside its parent. B stays recorded and
+reads as needing a restack, which moves it. The same holds when A was
+squash-landed instead of rewritten: asked over the range above the trunk B
+has commits, all of them A's and all in the squash, so it read as landed with
+A, where the same branch with one commit was kept. Prune now asks B's own
+record first and refuses as stranding B, and `pull --prune` exits `3`. Once
+B's work is committed, its own restack lands it on the trunk with that commit
+alone, and prune goes through. Recording any branch for the first
+time under a parent it is not built on now names the range it writes down,
+for the same reason.
+
+**a merge inside your branch.** You merged another stack's branch, or your own
+parent, into a branch with plain Git. Its own commits now include a merge
+commit, and a replay would flatten it into the commits it merged. `restack`
+refuses when planning, before anything moves, and names the way that keeps the
+merge: `git merge <parent>` on the branch, then `g2g track --branch <branch>
+--parent <parent>`. A branch that holds its parent's tip has nothing to
+replay, so that track only records where it now forks, and a later restack
+says it "already holds" its parent and rewrites nothing. It used to replay
+such a branch onto the commit it already sat on, giving it and everything
+above it new commit ids, and to stop on the merge.
+
+**the rebase never started.** The replay conflicts, so it has to rebase in
+your working tree, and Git cannot create its state directory: a read-only or
+sandboxed Git directory. Git exits zero having moved nothing. The restack says
+what Git printed and that nothing was replayed, and leaves no restack in
+progress. It used to say "stopped part-way, with nothing left unmerged" after
+two passes and leave a journal that refused every other command, under advice
+to `--continue` a replay that would fail the same way.
 
 **the trunk open in the main checkout.** The ordinary layout with agent
 worktrees: the main checkout sits on the trunk and the work is elsewhere.
@@ -356,8 +441,20 @@ a remote-tracking ref; `git fetch` does.
 ## Timing
 
 **the world moves between preview and apply.** A colleague publishes between
-your two invocations. Revalidation refuses. *There is no way to say "I know, go
-anyway", which may be worth adding.*
+your two invocations. Revalidation refuses. For a restack or a pull it names
+the first fact that differs: which branch moved and between which commits,
+which record another session edited, a worktree that took a branch. Sessions
+sharing one repository refuse each other often, and without that the reader
+went to a reflog to learn whether a colleague's fetch or a defect was the
+cause. *There is no way to say "I know, go anyway", which may be worth
+adding.*
+
+**the repository is bigger than the budget.** Working out what to do takes
+longer than a planning pass is allowed. Every command, the read-only ones
+included, says it timed out before anything was changed, names the ceiling in
+force and how to raise it, and points at `--debug` for the call it was waiting
+on. It used to surface as whatever the cut-off call was read as, such as a
+branch "not a commit in this repository", a different branch each run.
 
 **one rejected branch stops the whole push.** `push --atomic` advances every
 selected ref or none. One branch's lease failing leaves the others exactly where

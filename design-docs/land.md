@@ -38,11 +38,25 @@ already covered against real Git. So it decides the order and nothing else:
 |---|---|---|
 | publish one branch | `push` | refuses a remote that has moved |
 | advance and replay | `pull` | refuses a diverged trunk; the replay itself |
-| has this landed | `prune` | `Cherry` then `Absorbed`, by content |
+| has this landed | `prune` | `Cherry` then `Absorbed`, by content, through `landed.Whole`: a child that takes back part of its landed parent has not |
 | the merge | `githubstack` | the only new external call |
 
 This is `pull`'s own architecture, for the same reason it gives: *"It is an
 orchestrator and owns no rules of its own."*
+
+The landed row shows what sharing buys and what it costs. The plan asks about
+each whole branch, because the branch below may have landed with it, and a
+merge of the whole branch cannot see a commit that takes back part of what the
+branch below added. A child whose only commit deletes a file its parent added
+read as landed once the parent was squash-merged: the descent moved it onto
+the trunk with nothing on it, published it that way, and GitHub closed the
+pull request it had just emptied. The fix is in the shared decision
+(`landed.Whole`, see [restack](restack.md)): a yes is believed only if the
+branch's commits above its recorded fork point, read from the graph store,
+and above the branch below would change nothing either. The name of the
+branch below was not enough alone: it is no part of a child once that branch
+has been rewritten. `pull`, `status`, `prune` and `push` were wrong in the same
+way and were put right by the same change.
 
 The first draft did reach past them — a direct `PushAtomic`, its own refusal
 table, `restack --onto` for the reparenting. Each of those dropped a property

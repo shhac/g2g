@@ -181,8 +181,9 @@ those refs, or applies this rule to a tracked feature parent:
 That is not drift state, it is structural state — it answers *which commits
 are mine*, namely `forkPoint..branch`. Without it a restack cannot compute what
 to replay, because the range must exclude everything that was already in the
-parent. It changes only on structural events (adopting an edge, restacking),
-never on a commit or a force push.
+parent. It changes only on structural events (adopting an edge, restacking,
+recording again a branch that has taken in its parent's tip), never on a
+commit or a force push.
 
 It is also what lets a restack survive its parent's deletion. Once a merged
 parent's branch is gone, `merge-base(trunk, child)` points at the fork with the
@@ -202,8 +203,9 @@ An unrecognised future store version fails closed.
 g2g status  [--branch <branch>] [--scope branch|path|subtree|stack|trunk|all]
             [--from g2g|graphite] [--remote <remote>]
 g2g doctor  [--remote <remote>]
-g2g adopt   [--branch <branch>] [--trunk <branch>] [--apply]
+g2g adopt   [--branch <branch>] [--trunk <branch>] [--scope stack|path] [--apply]
 g2g track   [--branch <branch>] [--parent <branch>] [--apply]
+g2g track   [--branch <branch>] --as-trunk [--into <branch> --by squash|merge|rebase] [--apply]
 g2g untrack [--branch <branch>] [--scope branch|subtree] [--apply]
 g2g restack [--branch <branch>] [--scope branch|path|subtree|stack|trunk] [--apply]
 g2g create  <branch> [--parent <branch>] [-m <message>] [--apply]
@@ -233,6 +235,33 @@ preserved. A rewritten feature parent still requires its tip in the child
 before refreshing, because a merge base cannot separate its old work from
 the child's.
 
+Naming the same parent also moves a fork point that still holds, for any
+parent, when Git shows the parent's tip in the branch (`graph.Service.seat`).
+The branch was fast-forwarded along the parent or merged it in, so it holds
+everything the parent has and nothing below that tip is its own. The preview
+names both boundaries: "Records that synthetic-child forks from
+synthetic-parent at <new> rather than <old>: it already holds synthetic-parent
+up to there." This used to answer "Nothing to do" while `status` went on
+reading the old fork point as a parent that had moved, and a branch that had
+merged its parent in could be recorded again only by untracking it first. It
+is the second step of the way out restack names for a merge commit in a replay
+range ([restack](restack.md)), and the record a restack makes itself for a
+branch it finds already seated.
+
+The move is only ever forward: the recorded fork point must be an ancestor of
+the new one, even when the branch holds the parent's tip. A parent that was
+rewound still has its tip in the branch, so seating there moved the boundary
+back over the commits the parent dropped and recorded them as the branch's
+own. That is what restack offers as `--absorb`, taken without being asked,
+while restack's own preview said they would be dropped.
+
+Whether the tip is in the branch is asked of Git each time, never read from
+the origin the edge recorded. That origin says ancestry held when the edge was
+written. For a branch recorded on a trunk's tip, taking it at its word after
+the trunk advanced wrote the trunk's new tip as the fork point of a branch
+that does not hold it, and the branch read as moved off its parent from then
+on.
+
 Changing an already recorded parent preserves its verified fork point rather
 than deriving a wider range from the new parent. If `synthetic-b` forks from a
 newer trunk than sibling `synthetic-a`, their merge base lies below trunk
@@ -245,7 +274,11 @@ the branch permits a new boundary; otherwise the plan refuses with a
 `repair.Note` asking the user to record the parent it is actually built on.
 Initial tracking of an unrecorded branch retains the explicit asserted-parent
 contract above. The reparent preview names the range being recorded, and
-restack names each actual range it will replay.
+restack names each actual range it will replay. A first recording under a
+parent the branch is not built on names its range too: it starts where the
+two meet, so whatever the branch still carries of a parent that has since
+been rewritten is recorded as the branch's own, and nothing said so before a
+restack offered those commits and did not apply.
 
 Recording a branch under a parent that is not itself tracked also records that
 parent as a root. Without it the next branch up the stack could not find the

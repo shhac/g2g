@@ -31,6 +31,65 @@ pull request state is needed — which matters because a cherry-picked series ha
 no pull request at all, and a squash lands the work under a head the branch
 never had.
 
+When merging into the base's tip conflicts, a squash and then a later edit to
+the same lines, `Absorbed` asks again at earlier trunk commits: the newest 32
+since the fork that touch the branch's files. Before making any of those
+merges it asks one cheaper question (`heldAdded`, one `git log
+--find-object`): did the trunk ever hold the files the branch adds, exactly as
+the branch has them? A trunk that absorbed the branch must have. A new file
+that never arrived means the branch was absorbed nowhere, and no merge is
+made. One the trunk went on to edit means the branch was absorbed, if at all,
+before that edit, so the search starts at the commit before it, which also
+finds a squash buried deeper than the 32. The question only rules commits
+out: what is called absorbed is still a merge that changed nothing. A branch
+that adds no file, or deletes one, is asked as before, and a history the
+question misreads (a trunk that moved the files as it took them) reads as not
+landed, the direction that loses nothing.
+
+**The whole-branch merge does not decide alone.** It is measured from where
+the branch left the trunk, and a change that cancels out over that distance is
+not in the merge at all. In `synthetic-trunk ← synthetic-parent ←
+synthetic-child`, where the child's only commit deletes a file the parent
+added, the child differs from the fork by less than the parent does. Once the
+parent is squash-merged, merging the child into the trunk changes nothing,
+exactly as if it had landed: the replay collapsed it onto the trunk with
+nothing on it, `land` published it that way and GitHub closed its pull
+request. So a yes is believed only if the branch's own commits, measured from
+the parent it sits on, would change nothing either. `git.Client.Carries(base,
+branch, since)` is `merge-tree` given `since` as the merge base, which needs
+Git 2.40. `landed.Into` asks it of its limit. It only ever turns a yes into a no. A
+conflict, a boundary the branch does not contain and an older Git say
+nothing, and what `Absorbed` found stands; a call the deadline cut off reads
+as "carries", so a yes is never left unexamined. `landed.Missing` already
+knew this about a reviewer's revert of squashed work.
+
+A caller that asks about a whole branch on purpose asks `landed.Whole`, which
+is that decision once: `Into` with no limit, believed only if the commits
+above none of the boundaries the caller knows would still change the base.
+It was written out at four callers, and they did not hand it the same
+boundary. push and land gave the name of the branch below, which is no part
+of a child once that branch has been rewritten, so a child that takes back
+part of a parent amended after it forked still read as landed. submit and
+`github status` bounded the question at the trunk, whose tip is never part of
+the branch, so it was never asked: a follow-up commit reverting what a pull
+request merged left the branch "landed in main". Each now passes every
+boundary it has:
+
+| Caller | Boundaries |
+|---|---|
+| status's landed state | the recorded fork point, the parent |
+| land's plan | the recorded fork point, the branch below |
+| push's absent branch | the branch below |
+| submit and `github status`, for a merged pull request (`landed.AssessOwn`) | the branch below, the head that merged |
+
+prune's look past a forgotten parent still asks `landed.Carries` directly, of
+the branch's own fork point.
+
+One case is left for a change of its own. A branch recorded directly on the
+trunk whose follow-up commit reverts its own merged work still reads as
+landed to prune and to a replay's collapse, which know no boundary inside the
+branch. submit and `github status` see it, through the merged head.
+
 ## The rebase range
 
 The naive `git rebase <trunk> <child>` conflicts once the parent's commits
@@ -67,6 +126,53 @@ commits then stay outside the replay range rather than being offered as the
 child's, where they conflict with the parent's own later rework of them. A
 parent that was rewritten meets the child below the recorded fork point, so it
 keeps its range, as does explicit `--onto` reparenting.
+
+A branch that already holds its parent's tip, by that fast-forward or by
+merging the parent in, under a parent that is not itself moving, has nothing
+to replay however far behind its recorded fork point is. It is **seated**
+(`Plan.Seated`): it gets no step, no commit is rewritten, the branches stacked
+on it are not dragged along, and only the fork point is recorded again. The
+preview says "synthetic-child already holds synthetic-parent · records that it
+forks at <new> rather than <old>, and rewrites nothing". Planning a step for
+it replayed the branch onto the commit it already sat on so that the record
+would follow, which gave it and everything above it new commit ids for
+nothing, and stopped on the merge when there was one. A plan that only seats
+is not "nothing to do": `Plan.Nothing`, `Equal` and `Changed` count seated
+branches, and `pull` applies such a plan rather than skipping it for want of
+steps. `track --branch <b> --parent <the parent already recorded>` makes the
+same record on its own ([g2g-owned-graphs.md](g2g-owned-graphs.md)).
+
+### A merge commit in the range
+
+A branch that merged another stack's branch with plain Git has a merge commit
+among its own commits, and neither engine can carry one. `git replay` stops on
+it, which a preview met as a raw "replaying merge commits is not supported
+yet". `git rebase` is worse: it drops the merge and offers every commit it
+brought in as the branch's own, which is where the conflict path and any Git
+too old to replay would have gone.
+
+The plan asks each branch it would replay for merges in `forkPoint..head`
+(`git.Client.Merges`, one `rev-list --merges` bounded by the branch's own
+commits) and refuses before anything moves, the branches below included. A
+branch that collapses hands the engines nothing and is not asked, and a seated
+one has no step at all. The refusal reads "synthetic-child's own commits
+include merge commit <id>, which a replay would flatten into the commits it
+merged", and names the way that keeps the merge:
+
+```sh
+git merge synthetic-parent     # with synthetic-child checked out
+g2g track --branch synthetic-child --parent synthetic-parent
+```
+
+Merging the parent in leaves the branch holding its parent's tip, so there is
+nothing left to replay, and the track records where it now forks. When the
+same plan would move the parent, `g2g restack --branch synthetic-parent
+--scope path` is named first: merged in as it is now, the parent's replay
+would leave the branch holding the commits the parent had before.
+
+`git rebase --rebase-merges` was not taken. It merges again from scratch, so
+whatever the original merge resolved or amended is lost, silently when the
+second merge happens to be clean.
 
 **Children reparent onto the merged branch's recorded parent**, never onto "the
 trunk". Those coincide in a simple linear stack and diverge everywhere else —
@@ -224,7 +330,9 @@ Rebase and replay both drop commits whose patch content is already upstream.
 That is exactly what makes squash-merge cleanup work — a fully merged branch
 correctly collapses onto its new base — but it means a restack can leave a
 branch identical to its parent, whose pull request would then show no changes.
-That is reported, not silent, and the suggested remedy is `g2g untrack`.
+That is reported, not silent, and the suggested remedy is `g2g prune`, which
+forgets the branch and records what sat on it where the replay left it.
+`untrack` was the earlier advice and would have stranded those branches.
 
 The same mechanism can drop a commit whose content coincidentally matches
 something upstream. The preview counts what will be replayed and what will be
@@ -317,6 +425,30 @@ failure before the checkout is touched, puts them all back and says so; it is
 journaled while it runs, so a process that dies part-way, or a restore that
 fails, still leaves something `--abort` can undo. "Not applied" is never said
 over refs that moved.
+
+The resumable engine needs the same care from the other side. `git rebase`
+exits zero from a rebase it cannot start when it cannot create its own state
+directory: a read-only Git directory, or a sandbox that forbids writing there.
+It prints "could not create temporary …/rebase-merge" and leaves the branch
+where it was. Taking the exit status at its word, the restack planned the same
+rebase again and gave up with "did not settle after 2 passes" under "stopped
+part-way, with nothing left unmerged": no mention of Git or the reason, and a
+journal left behind under advice to `--continue` a replay that would fail the
+same way. `git.Client.Rebase` now asks whether the branch is on its new base
+after a rebase that reported success, and when it is not, fails with what Git
+printed, bounded and redacted.
+
+A rebase that fails before moving anything, that case or an honest non-zero
+exit such as a locked index, leaves no journal either (`neverStarted`). With
+no rebase in progress, the checkout where it stood and every branch at its
+original tip, there is nothing to continue and nothing to abort, so the
+journal is cleared and the error ends "nothing was replayed: every branch is
+where it was, and no restack is left in progress". `restack` reports `Not
+applied` and exits `2`; `pull` exits `3`, because its trunk had already
+advanced; `land` replays through the same service and reports the same thing.
+Anything that cannot be confirmed keeps the journal: a cancelled run may have
+killed Git mid-rewrite, and a branch or a checkout that has moved is exactly
+what `--abort` puts back.
 
 Two rebase flags exist only to stop behaviour depending on which Git is
 installed. `--no-reapply-cherry-picks` drops a commit whose content is already
@@ -417,7 +549,8 @@ record that names none is anyone's, as it was then.
 
 Two restacks in different worktrees run side by side unless either moves a
 branch the other reads: its own branches, their parents, and an `--onto`
-target. Each checks again once its own journal is published, so two that
+target. Other commands are held to the same test
+([below](#consequences-for-the-rest-of-the-tool)). Each checks again once its own journal is published, so two that
 start at the same moment both step back. A refusal over another worktree's
 restack names its checkout and says to wait. It offers to delete that
 journal only when Git no longer has the worktree.
@@ -467,8 +600,9 @@ Continuation, skip and abort preserve that boundary and the original selected
 branches. Recomputing must never expand a child replay onto the protected
 parent or its ancestors.
 
-A fresh restack refuses while any journal exists, even on an unrelated stack
-in another worktree. Publishing a new journal is atomic and exclusive: it
+A fresh restack refuses while this worktree's journal exists, and while
+another worktree's meets its footprint (below). Publishing a new journal is
+atomic and exclusive: it
 links a fully written temporary file into place, so two simultaneous starts
 cannot replace one another's recovery state. Resumed passes replace their own
 journal atomically as before.
@@ -542,18 +676,58 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
 - Every other mutating command must refuse while a restack is in progress.
   Mid-restack a branch's ref may have moved while the graph still records its
   old parent, so `g2g push` would publish a half-rebased stack. What is untrue
-  is confined to the branches the restack moves, though, and the journal is
-  shared by every worktree, so refusing everything let one restack stopped on a
+  is confined to the branches the restack moves, though. Each worktree has
+  its own journal, and when they shared one, refusing everything let one
+  restack stopped on a
   conflict in an agent's worktree block every other worktree's work on stacks
-  with nothing in common with it. `push`, `submit`, `create`, `track`,
-  `github retarget` and `github comment` therefore name the branches they
-  touch, with the parents they measure them against, and are refused only when one of them is a branch the journal
-  records moving (its original tips, reparents or structure), or when they run
-  in the worktree the restack belongs to, where Git's rebase owns the index and
-  the checkout, or the journal does not say which worktree that is. The
-  branches a restack replays onto are not among those it moves, so a stack
-  beside it on the same trunk is no conflict. A command that cannot say what it
-  touches still refuses while any restack is unfinished.
+  with nothing in common with it. `restack`, `pull`, `prune`, `push`,
+  `submit`, `create`, `track`, `untrack`, `adopt`, `github retarget` and
+  `github comment` therefore name what they touch as a `restack.Footprint`,
+  and are refused only when it meets the journal's (its original tips,
+  reparents and structure), or when they run in the worktree the restack
+  belongs to, where Git's rebase owns the index and the checkout, or the
+  journal does not say which worktree that is. The branches a restack replays
+  onto are not among those it moves, so a stack beside it on the same trunk is
+  no conflict.
+- A footprint has two sets. A command **moves** the branches it rewrites,
+  deletes, or changes or forgets the record of, and **reads** those and the
+  parents it measures them against. Two footprints meet when either moves
+  what the other reads. A fast-forward is declared as an advance
+  (`restack.Advances`) and is a read underneath, which is what lets a `pull`
+  run beside another stack's stopped restack on the same trunk. A
+  fast-forwarded trunk
+  ends on a commit that contains where it was, so what the stopped restack
+  already replayed still sits on the trunk's history: `--continue` plans again
+  from the refs and carries on to where the trunk now is, and `--abort` puts
+  back tips and fork points that never named the trunk's tip, on a fresh load
+  of the store, so an unrelated edit made meanwhile survives. Treating the
+  advance as a move made every pull wait for every stack's conflict, since
+  every stack reads its trunk. A trunk a pull resets to a rewritten one is a
+  move, because what the restack replayed would then sit on commits the trunk
+  no longer has, and it waits. So does a fast-forward of a branch a restack
+  is rewriting, since that restack moves what the pull reads. The advance was
+  briefly a third set; it met only what another moves, which meeting its
+  reads already covered, so it could not change an answer and went.
+- What each names: `untrack` moves the records it drops and reads their
+  parents and the children it strands; `prune` moves what it forgets, deletes
+  or records on the branch below, and reads every branch it judged, since one
+  a restack is part-way through moving cannot be judged; `adopt` moves the
+  branches it records and reads their parents; `pull` moves what it takes and
+  replays, with `--trunk-only`, `--above` and `--prune` each the footprint of
+  what that run does.
+- `up`, `down`, `top` and `bottom` only switch this checkout, so they wait for
+  this worktree's restack alone.
+- A command that cannot name the branches it would touch before it runs still
+  refuses while any restack is unfinished: `land`, `delete`, `fold`, `rename`,
+  `graphite adopt`, `github adopt`, `graphite mirror`, `github link` and
+  `unlink`, and `track --as-trunk`. Its refusal says so, "…and this command
+  waits for every restack because it cannot name the branches it would touch
+  before it runs", because a refusal naming only somebody else's restack read
+  as that restack holding this command's branches.
+- The graph store is last-writer-wins and has no lock. More commands now write
+  it beside a stopped restack, and `track`, `untrack` and `adopt` save the
+  whole graph as they read it when planning, so an edit another session makes
+  in that window is lost. That is known and was left.
 - The clean-worktree precondition changes meaning: still required before apply,
   but the tool may now leave the tree dirty on purpose.
 - The graph edge update is applied only when the whole operation completes, and

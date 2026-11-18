@@ -113,8 +113,9 @@ per extra arm, never one per branch.
 
 **A restack guard reads every worktree's journal at once.** Each guard
 check resolves the common and private Git directories, which costs two
-`rev-parse` calls. It then reads the shared journal file and globs the linked
-worktrees' files. That is one pass whatever the number of worktrees. It
+`rev-parse` calls. It then reads the shared journal file and lists the linked
+worktrees' files with `os.ReadDir`, never a glob built from the repository's
+path. That is one pass whatever the number of worktrees. It
 never asks Git per worktree: a linked worktree's checkout comes from the
 `gitdir` backlink in its private directory.
 
@@ -131,6 +132,14 @@ and reassess, never replacement advice. Only feature-base merges with absent
 content say “merged into <base>, not landed” and offer `g2g submit`; unavailable
 feature content stays “landing unconfirmed”. Cached lifecycle observations
 remain dated history and never evidence for deletion. No GitHub call is added.
+
+A merged predecessor whose content that reading confirms in the landing trunk
+is left out of the submission: no creation, no spec entry, no push. This is
+the landed parent still recorded after a squash merge and a pull, until
+`prune` forgets it. It costs nothing more, because it reuses the
+merged-history answer the plan already holds (`Plan.landed` over
+`MergedLanded`). A landed branch with no pull request at all is still offered
+as a creation; see below.
 
 A merged PR into the branch’s recorded feature parent has a separate outcome:
 `landed.AssessParent` checks that parent by content and, when necessary, its
@@ -209,12 +218,41 @@ Known, measured, and left for a change of its own:
   that touch the branch's files, one `git log` to find them with their trees
   and a merge each. The bound is the newest 32, not "give up past 32": it is
   how deep the squash is buried that it limits, so a branch whose files the
-  trunk edited often while it was in review is still found landed. The price
-  is that a branch which genuinely conflicts with a busy trunk now always pays
-  the whole bound, where it used to give up after one `rev-list`: six such
-  branches on one status measured 396 merges. `merge-tree --stdin` would take
-  them all in one process, but needs input on standard input, which
-  `subprocess.Runner` does not carry.
+  trunk edited often while it was in review is still found landed. A branch
+  that never landed paid for all 32, and so did one that landed and was edited
+  over since: six such branches on one status measured 396 merges. `heldAdded` now asks first, in one `git log --find-object`,
+  whether the trunk ever held the files the branch adds exactly as the branch
+  has them: a new file that never arrived rules every candidate out with no
+  merge at all, and one the trunk later edited starts the search at the commit
+  before that edit. A status over about 110 branches, most of them finished
+  and not yet pruned, went from 1,982 trial merges to 1,381. What still pays
+  the whole bound is a branch that adds no file, or deletes one, and one whose
+  added files the trunk still holds unedited while something else conflicts.
+  `merge-tree --stdin` would take the remaining merges in one process, but
+  needs input on standard input, which `subprocess.Runner` does not carry.
+- **A landed answer is checked against the branch's own commits.** A yes from
+  the whole-branch merge is followed by `Carries`: one ancestry check and one
+  `merge-tree`, for each boundary the caller hands `landed.Whole` (a recorded
+  fork point, the branch below, a merged head). It is asked only
+  after a yes, so a branch that has not landed pays nothing.
+- **A branch on the trunk that reverts its own merged work reads as landed**
+  to prune and to a replay's collapse. They know no boundary inside the
+  branch to measure the follow-up commit from; submit and `github status` do,
+  through the merged pull request's head. Left for a change of its own.
+- **A replayed branch is asked for merge commits.** restack's plan runs one
+  `rev-list --merges` over `forkPoint..head` for each branch it would replay,
+  bounded by that branch's own commits. A collapsing branch and a seated one
+  are not asked. One call naming every range would make it a process per plan.
+- **A landed branch with no pull request is still offered as a creation by
+  `submit`.** Leaving out a landed parent reuses the answer already read for
+  merged predecessors. Confirming a branch that never had a pull request would
+  cost a landed check per creation candidate, on every submit, for a case the
+  next `prune` removes. Deferred deliberately.
+- **`land` still waits for every worktree's restack.** It cannot name the
+  branches a descent touches before it runs, so it has no footprint and one
+  restack stopped anywhere refuses it. That costs waiting rather than
+  processes, and is listed here because it is the same shape: a whole
+  repository's state charged to one stack.
 - **`status` asks a drifted branch whether it landed twice**: once for its
   state (`graph` `drifted`, through `landedInATrunk`) and once for its
   publication (`push` `Compare`'s landed standing), with the same trunk and

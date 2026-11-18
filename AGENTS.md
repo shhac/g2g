@@ -169,7 +169,7 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   observations and batch any missing bases into one Git `RemoteTips` read. Missing
   refs or unavailable objects provide no merge assertion. The repair is
   `g2g github retarget` over the selection before publishing. Correctly based PRs
-  remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, omitted-base creation, preserved-base,
   existing-PR, then push refusals, in that order; preview, CLI blocking and apply
   all consume it. Missing-spec requirements remain in the CLI. The check adds no
   GitHub reads, and `push` stays Git-only.
@@ -257,7 +257,25 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   version, never the local parent. `Plan.Publication` and `Push.Excluding`
   share eligibility without another comparison; never reuse structural
   `without` for interior absorption. Creation and linking across an omitted
-  absorbed base refuse before publishing through `Plan.Refusal`. `landed.KnownParents` batches candidate-parent reads before concurrent
+  absorbed base refuse before publishing through `Plan.Refusal`. A merged
+  predecessor whose content is confirmed in the landing trunk is omitted the
+  same way (`Plan.landed`, reusing the `MergedLanded` answer the plan already
+  holds, so nothing more is asked of Git or GitHub): `Plan.omitted` covers
+  both, no spec entry is asked for, and the row reads `left out · merged ·
+  landed in <trunk>`. It is the ordinary state after a squash merge and a pull,
+  before a prune, and reading it as history to replace blocked the child above
+  on a title for work already in the trunk. `Plan.Landed()` and
+  `Plan.OnLanded()` feed the notes: `g2g prune` through `selected.aim`, and
+  `g2g github retarget` for an open pull request still based on the landed
+  branch, once it is forgotten. Creating or linking on a landed base refuses
+  through `omittedBaseRepair`, naming `g2g prune --branch <landed>`, or `gt
+  sync` for Graphite; choosing another base there would be recording
+  structure. That prune is of the branch's stack on purpose: `--scope branch`
+  forgets nothing when the branch under it has landed too and is still
+  recorded. The absorbed case keeps `--scope branch` through
+  `link.AbsorbedWays`. A landed branch with no pull request at all is still
+  offered as `create`: confirming it would cost a landed check per creation
+  candidate. `landed.KnownParents` batches candidate-parent reads before concurrent
   probes. Collect a parent known only remotely with `pull --above` before
   pruning, carrying the selected remote. Reconcile surviving descendants with
   `restack --branch <absorbed>` before prune; `link.AbsorbedWays` owns this
@@ -368,7 +386,44 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   squash is buried, never how busy those files were before it: counting every
   edit since the fork gave up on a branch whose files the trunk kept touching
   while it was in review, so `land` replayed the branch it had just merged and
-  `prune` said nothing had landed.
+  `prune` said nothing had landed. Before those merges, `heldAdded` asks in
+  one `git log --find-object` whether the trunk ever held the files the branch
+  adds exactly as the branch has them. One that never arrived means the branch
+  was absorbed nowhere, and no merge is made; one the trunk later edited starts
+  the search at the commit before that edit, which also finds a squash buried
+  deeper than the bound. It only ever rules commits out, a branch that adds no
+  file or deletes one is asked as before, and every doubt reads as not landed.
+- A yes from the whole-branch merge is believed only if the branch's own
+  commits would change nothing either. `Absorbed` measures from where the
+  branch left the trunk, and a change that cancels out over that distance is
+  not in the merge: a child whose only commit deletes a file its parent added
+  differs from the fork by less than its parent does, so once the parent was
+  squash-merged the child read as landed. `land` and `pull` collapsed it onto
+  the trunk, `land` published it empty and GitHub closed its pull request,
+  `status` called it landed, `prune` would have forgotten and deleted it, and
+  `push` would not publish it. `git.Client.Carries(base, branch, since)` is
+  `merge-tree` with `--merge-base=since` (Git 2.40 or later), and
+  `landed.Into` asks it of its limit. A caller that asks about a whole branch
+  on purpose asks `landed.Whole(ctx, probe, base, branch, own...)`: `Into`
+  with no limit, believed only if the commits above none of the `own`
+  boundaries would still change the base. The callers each wrote that out and
+  did not hand it the same boundary. push and land gave the name of the branch
+  below, which is no part of a child once that branch has been rewritten;
+  submit and `github status` bounded it at the trunk, whose tip is never part
+  of the branch, so it was never asked. Now the graph's `landedInATrunk`
+  passes the recorded fork point and the parent, land's plan the recorded fork
+  point (read from the graph store) and the branch below, push's absent branch
+  the branch below, and submit's `mergedLanded` and link's merged pull request
+  arm the branch below and the merged pull request's head (`HeadOID`,
+  through `landed.AssessOwn`), so a follow-up commit made after a merge is
+  seen. prune's `landedThrough` still asks `landed.Carries` directly, of the
+  branch's own fork point. It only turns a yes into a no; a conflict, an
+  unknown boundary or an older Git leave the answer as it was, and a call the
+  deadline cut off reads as carries, so a yes never stands unexamined.
+  `landed.Missing` already held the same rule about a reviewer's revert.
+  Known and left: a branch recorded directly on the trunk whose follow-up
+  commit reverts its own merged work still reads as landed to prune and to a
+  replay's collapse, which know no boundary inside the branch.
 - `internal/restack` is the only package allowed to rewrite history. The replay
   range is `forkPoint..branch`; the fork point must be an ancestor of the
   branch before any rewrite, or the range silently widens to include the base's
@@ -378,6 +433,37 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the checkout is touched puts back every tip it moved, and the journal records
   the structure as well as the tips, so `--abort` restores both and returns to
   the branch the user was standing on.
+- The resumable engine has the counterpart of that rule. `git rebase` exits
+  zero from a rebase it cannot start when it cannot create its state directory
+  (a read-only or sandboxed Git directory), so `git.Client.Rebase` checks the
+  branch ended on its new base and otherwise fails with Git's output, through
+  `diagnostic.BoundedOutput`. Taking the exit status at its word planned the
+  same rebase again and reported "did not settle after 2 passes" over a journal
+  nothing could continue. `neverStarted` clears the journal only when it can
+  confirm nothing moved: the context is live, no rebase is in progress, and the
+  checkout and every journaled tip are where they were. The error then says
+  nothing was replayed and no restack is left in progress; restack exits `2`,
+  and pull `3` because its trunk had already advanced. Anything it cannot
+  confirm keeps the journal, which is what `--abort` needs.
+- A merge commit among a branch's own commits is refused when planning, before
+  anything moves and for the branches below it too (`carriesMerge` in
+  `internal/restack/merges.go`, one `git.Client.Merges` per branch actually
+  replayed; a collapsing branch hands the engines nothing and is not asked).
+  Neither engine can carry one: `git replay` stops on it, and `git rebase`
+  drops it and offers what it merged as the branch's own. The way out keeps the
+  merge: `git merge <parent>` with the branch checked out, then `g2g track
+  --branch <branch> --parent <parent>`, after `g2g restack --branch <parent>
+  --scope path` when the same plan would move the parent. Do not reach for
+  `--rebase-merges`: it merges again from scratch and loses what the original
+  merge resolved or amended, silently when it happens to merge cleanly.
+- A branch that already holds its parent's tip, by a merge or a fast-forward
+  along it, under a parent that is not moving, is `Plan.Seated`: no step, no
+  rewrite, and its children are not dragged along. Only the fork point is
+  recorded again. Replaying it onto the commit it already sat on gave it and
+  everything above it new commit ids for nothing, and stopped on the merge.
+  `Plan.Nothing`, `Equal` and `Changed` count seated branches, and sync asks
+  `Restack.Nothing()` rather than counting steps, or a pull would skip a plan
+  that only records.
 - `track --parent` changing an existing edge preserves the branch's verified
   replay range. A sibling's older merge base must never pull trunk commits into
   that range. Only `graph.LaterFork` may narrow it on shared ancestry. Verify
@@ -385,6 +471,23 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   absent), require the new parent's tip in the branch or refuse through
   `repair.Note`, asking to record its actual parent first. Track's reparent
   preview names the boundary, and restack names each actual range it replays.
+  A first recording under a parent the branch is not built on is named too
+  (`rangeNote`): that range starts where the two meet, so it can hold commits
+  the parent had and has since rewritten.
+- `track --parent` naming the parent already recorded moves the fork point to
+  the parent's tip when Git shows that tip in the branch
+  (`graph.Service.seat`), for a feature parent as for a trunk, and its preview
+  names both boundaries. It is the second half of the merge refusal's way out.
+  It only ever moves a fork point forward: the recorded one must be an
+  ancestor of the new one, even when the branch holds the parent's tip. A
+  rewound parent still has its tip in the branch, so seating there moved the
+  boundary back over the commits the parent dropped and recorded them as the
+  branch's own, which is restack's `--absorb` taken without being asked while
+  restack's preview said they would be dropped.
+  Ask Git for the ancestry; never read it from the edge's recorded origin,
+  which says what was true when the edge was written. Trusting it wrote an
+  advanced trunk's new tip as the fork point of a branch that does not hold
+  it, and the branch read as moved off its parent from then on.
 - A rewrite that moves the branch you are standing on must reconcile the
   checkout: the replay engine and a collapse both move refs without one, so the
   index and working tree are left describing the old commit, which git reports
@@ -560,6 +663,23 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   refused to forget the parent for stranding it. `status` has the matching
   rule (`graph.belowLanded`), because a branch still on its parent's tip was
   never asked whether it had landed.
+- A branch with no commits of its own answers "nothing left to contribute"
+  without having been asked anything, so `prune` forgets one only where its
+  tip is inside its parent: collapsed onto its base, or not started. One whose
+  tip the parent does not contain (`leftBehind` in `internal/prune/plan.go`)
+  was left on the parent's old commits when the parent was replayed while
+  another worktree held it. Its record is the only statement of where its own
+  work begins: forgotten and recorded again, it could only be measured from
+  where it meets the rewritten parent, and the next restack offered the
+  parent's old commits as its own. It stays recorded and reads as needing a
+  restack. The question is asked of the branch's own record before
+  `landedThrough`'s wider range. Over the range above the trunk the branch
+  has commits, all its parent's and all in the squash, so an unstarted branch
+  whose parent landed in the same run read as landed with it, where the same
+  branch with one commit was kept. The prune now refuses as stranding it, as
+  it does for a started child and as `--delete-branches` already did, and
+  `pull --prune` exits `3` there. The way through is the branch's own restack
+  once its work is committed, then prune.
 - restack is the only resumable operation, so a mutating command refuses
   while a journal exists, but only as far as that journal makes anything
   untrue.
@@ -593,28 +713,62 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
     this worktree's files (`Journal.Load`), and the other worktrees' journals
     come from `Journal.Elsewhere`, so another worktree's damaged journal
     stops only the guards that weigh it.
-  - **What may go ahead.** restack, push, submit, create, track, github retarget
-    and github comment pass a
-    `restack.Footprint` (`applyFlow.touches`): what they move and what they
-    read. They are refused only in the restack's own worktree, or when either
-    side moves what the other reads (`RequireApart`). Both directions matter:
-    a restack paused while replaying a child onto its parent is undone by
-    another moving that parent. A plan and the record it journals derive their
-    footprints through one function, `footprintOf`. A restack checks again
-    after it publishes its journal, so two that start at once both step back.
-    Every other mutating command cannot say what it touches and refuses while
-    any worktree's restack is unfinished. pull is one of these, because it
-    advances a trunk another restack replays onto.
+  - **What may go ahead.** restack, pull (with `--trunk-only`, `--above` and
+    `--prune`), prune, push, submit, create, track, untrack, adopt, github
+    retarget and github comment pass a `restack.Footprint`
+    (`applyFlow.touches`): what they move and what they read, built from
+    `Moves`, `Advances`, `Reads` and `With`. They are refused only in the
+    restack's own worktree, or when either side moves what the other reads
+    (`RequireApart`). Both
+    directions matter: a restack paused while replaying a child onto its
+    parent is undone by another moving that parent. A plan and the record it
+    journals derive their footprints through one function, `footprintOf`. A
+    restack checks again after it publishes its journal, so two that start at
+    once both step back. With a worktree per session some worktree nearly
+    always has a restack stopped on a conflict, and while these waited for
+    every one, sessions on stacks with nothing in common kept refusing each
+    other.
+  - **An advance is a read.** A pull that fast-forwards a trunk declares it
+    with `restack.Advances`, which is a read underneath: the trunk ends on a
+    commit that contains where it was, so what a stopped restack already
+    replayed still sits on the trunk's history. That is apart from a restack
+    that only reads the trunk, which is every stack on it. `--continue` plans
+    again from the refs and carries on to the new tip, and `--abort` restores
+    tips and fork points per branch on a fresh load of the store, none of
+    which named the trunk's tip, so a disjoint edit made meanwhile survives.
+    Nothing may fast-forward a branch a restack is rewriting, and the read
+    already meets that move. A trunk a pull resets to a rewritten one
+    (`Supersede`) declares a move and waits. Calling every pull a move made
+    each one wait for every stack's conflict, since every stack reads its
+    trunk. `Advances` stays as the word a caller uses; a third set for it
+    existed briefly and could not change an answer, so do not add it back.
+  - **What each one names.** `untrack` moves the records it drops and reads
+    their parents and the children it strands. `prune` moves what it forgets,
+    deletes or records on the branch below and reads every branch it judged,
+    because one a restack is part-way through moving cannot be judged. `adopt`
+    moves the branches it records and reads their parents. `track` reads its
+    branch and parent.
+  - **What still waits.** `land`, the reshaping commands (`delete`, `fold`,
+    `rename`), `graphite adopt`, `github adopt`, `graphite mirror`, `github
+    link` and `unlink`, and `track --as-trunk` cannot name the branches they
+    would touch before they run, so they refuse while any worktree's restack
+    is unfinished. `RequireIdle`'s refusal says that is why (`waitsForAll`): a
+    refusal naming only somebody else's restack read as that restack holding
+    this command's branches.
   - **The guard questions.** The three questions are `idleGuard`'s
     `RequireIdle`, `RequireIdleHere` and `RequireApart`
     (`internal/cli/guard.go`, `internal/restack/idle.go`). They are named
     rather than told apart by an empty argument, which every layer had to pass
-    correctly.
-  - **No lock on the graph store.** Two restacks finishing at the same moment
-    could lose one edge update, because the store is last-writer-wins
-    (`graph.FileStore.Save`). The window is the store's own load-modify-save,
-    which already existed between worktrees. A lock was deliberately not
-    added.
+    correctly. `up`, `down`, `top` and `bottom` only switch this checkout, so
+    they ask `RequireIdleHere` alone.
+  - **No lock on the graph store.** The store is last-writer-wins
+    (`graph.FileStore.Save`), so two writers finishing at the same moment can
+    lose one update. That was two restacks; `untrack`, `prune`, `adopt` and a
+    pull's reforks now write beside a stopped restack as well. The window is
+    the store's own load-modify-save, except that `track`, `untrack` and
+    `adopt` save the whole graph as they read it at plan time, which is a
+    known, wider one: an edit another session made between their plan and
+    their save is lost. A lock was deliberately not added.
   - **Resuming.** `--continue` recomputes from the refs rather than resuming a
     stored queue, which is what makes the user's own
     `git rebase --continue`/`--abort` harmless.
@@ -712,8 +866,21 @@ property the original had.
   merged-history reads in link and submit, sharing `landed.Into` underneath.
   `link.Service.assessLanded` owns per-issue policy; its scheduler only assigns
   results to preallocated slice slots. Destructive callers retain Into's errors.
+- `landed.Into` with `landed.Carries` — whether a branch has landed: `Cherry`,
+  then `Absorbed`, and a yes from `Absorbed` only when the branch's own
+  commits since its limit would change nothing.
+- `landed.Whole` / `landed.AssessOwn` — whether a whole branch has landed:
+  `Into` with no limit, believed only if the commits above none of the
+  boundaries the caller knows would still change the base. `AssessOwn` is the
+  advisory form for merged pull request history. It was written out at four
+  callers that did not hand it the same boundary, so pass every boundary you
+  have (recorded fork point, branch below, a merged head) rather than writing
+  the pair of calls again.
 - `submit.Plan.Refusal(link)` — refusal precedence for preview, CLI blocking and
   apply. Missing submission metadata is still checked only by the CLI.
+  `Plan.omitted` is the one answer to what a submission leaves out for being
+  finished, an absorbed child or a landed parent; `Publication`,
+  `Push.Excluding` and `omittedBaseRepair` all read it.
 - `graph.Graph.Records` — whether the graph names a branch anywhere: an edge,
   a trunk, a parent, or somewhere a declared trunk lands. It was written out in
   four places, and none of them knew about landing, so renaming onto the branch
@@ -723,8 +890,10 @@ property the original had.
   is what a reader acts on; only the rule is shared.
 - `diagnostic.BoundedOutput` — bounding *and redacting* a failed command's
   output.
-- `diagnostic.Revalidated` — the preview/apply revalidation check and its
-  diagnostic event. `applyFlow` is its one caller.
+- `diagnostic.Revalidated` — the preview/apply revalidation check, its
+  diagnostic event (with a `changed` field) and the refusal's wording, with or
+  without what changed. `applyFlow` is its one caller, and passes whatever the
+  plan's `Changed` names.
 - `githubstack.PathStep.Classify` — what one branch's pull request is.
   `github link` and `submit` apply different policy to the same answer; only the policy
   differs. `stack.Snapshot.Steps` pairs each selected branch with its pull
@@ -823,12 +992,36 @@ property the original had.
   flow's type parameter requires the method, so a command cannot leave the
   comparison out, and a wrapper plan (`prunePlan`, `trackPlan`, `unlinkPlan`)
   says on its own `Equal` which of its fields count. `revalidation` names the
-  event and the refusal. `precheck` runs
+  event and the refusal. A plan that has a `Changed` method also names the
+  first fact that differs, and the refusal carries it: `restack plan changed
+  during revalidation: synthetic-a moved from <id> to <id>`. Steps are
+  compared before the prediction, so the commit that moved is named rather
+  than what it did to the preview; a changed prediction alone reads "whether
+  the replay applies without a conflict changed", and a changed incoming
+  version "the version of <branch> to be replayed moved from … to …". Sessions sharing
+  one repository refuse each other often, and without it a reader went to a
+  reflog to learn whether a colleague's fetch or a defect had refused them.
+  `graph.Graph.Changed`, `graph.Discovery.Changed`, `restack.Plan.Changed` and
+  `sync.Plan.Changed` exist, and each `Equal` is `Changed(...) == ""`, so what
+  counts as a change and what is named cannot drift apart. A plan without one
+  is refused in the old words. `precheck` runs
   before the second plan (a clean working tree for restack, submit, link and
   unlink) and `settle` after the comparison (link's unresolved mappings,
   prune's publication facts), both only on apply. Twenty services each carried
   a `Revalidate` that re-planned and compared, and unlink was clean-checked only
   because it borrowed link's.
+- A planning pass that runs out of its budget is a timeout, whatever the
+  interrupted call said. `budgets.discoveryTimedOut` tests the budget's own
+  context as well as the error, and reports "timed out working out what to do,
+  before anything was changed", naming the ceiling in force (`--timeout`,
+  `G2G_TIMEOUT` or the 45s default) and that `--debug` shows what it was
+  waiting on. What reads a cut-off call gives the failure a meaning of its
+  own: a revision not resolved in time came back as "not a commit in this
+  repository", naming a different branch each run, so `Resolve` hands a
+  cancelled context back rather than calling the revision missing. `status`,
+  `doctor` and `github status` run inside one budget through
+  `budgets.reading`, and the restack guards are reported like the plan they
+  precede; a new read-only command or guard goes through the same report.
 - Preview/apply sequencing is a safety contract, not just presentation. When a
   command can mutate, preserve its re-discovery/revalidation and final
   render/write/flush-before-mutation tests; command-family coverage lives under

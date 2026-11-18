@@ -122,6 +122,10 @@ description: |
   alone, works on default or declared trunks before a stack is recorded, and
   refuses unknown feature branches. It is mutually exclusive with `--scope`,
   `--take`, `--through`, and `--prune`.
+- `pull` takes `--scope stack|trunk` only, because it advances the base and
+  replays everything on it. The refusal of a narrower scope says a pull
+  replays the whole stack, descendants included, and names `--trunk-only` and
+  `--above <branch>`, which are flags and not scopes. Do not add a path scope.
 - `pull --above <branch>` reconciles a published feature parent without
   replaying it onto trunk, and replays only the target's selected branches above
   that boundary. The boundary must be the target or a recorded ancestor with a
@@ -183,6 +187,15 @@ description: |
   `g2g pull --prune` and then a
   `g2g track --branch <child> --parent <branch>` per child. Do not widen the
   rehome to a guess.
+  A branch with no commits of its own is forgotten only where its tip is
+  inside its parent (collapsed, or not started). One left on the tip its
+  parent had before a replay, held by another worktree meanwhile, is not
+  landed (`leftBehind`): its record is the only statement of where its work
+  begins, so it stays and reads as needing a restack. It is asked of the
+  branch's own record before `landedThrough`'s wider range, so an unstarted
+  branch whose parent was squash-landed is kept too: the prune refuses as
+  stranding it (`pull --prune` exits `3`), and the way through is that
+  branch's own restack once its work is committed, then prune.
 - `pull --prune` composes the two over one selection: the pull, then the
   prune. The preview can only say it will prune, because what has landed is
   known once the base moves. A prune that refuses after the pull happened is a
@@ -236,7 +249,7 @@ description: |
   observations and batch any missing bases into one Git `RemoteTips` read. Missing
   refs or unavailable objects provide no merge assertion. The repair is
   `g2g github retarget` over the selection before publishing. Correctly based PRs
-  remain exempt. `submit.Plan.Refusal(link)` selects linking, absorbed-base creation, preserved-base,
+  remain exempt. `submit.Plan.Refusal(link)` selects linking, omitted-base creation, preserved-base,
   existing-PR, then push refusals, in that order; preview, CLI blocking and apply
   all consume it. Missing-spec requirements remain in the CLI. The check adds no
   GitHub reads, and `push` stays Git-only.
@@ -382,7 +395,18 @@ description: |
   fork must resolve and be an ancestor of the branch. Without it, require the
   new parent's tip in the branch or refuse with `repair.Note` asking to record
   its actual parent first. The reparent preview names the resulting boundary;
-  restack previews each actual `forkPoint..head` range.
+  restack previews each actual `forkPoint..head` range. A first recording
+  under a parent the branch is not built on names its range too (`rangeNote`),
+  since it can hold commits the parent had and rewrote.
+- `track --parent` naming the parent already recorded moves the fork point to
+  the parent's tip when Git shows that tip in the branch (`graph.Service.seat`),
+  for a feature parent as for a trunk, and the preview names both boundaries.
+  Ask Git for that ancestry; never trust the edge's recorded origin, which
+  once wrote an advanced trunk's tip as the fork point of a branch that did
+  not hold it. A valid boundary with no such evidence is left alone. It only
+  ever moves a fork point forward (the recorded one must be an ancestor of
+  the new one): a rewound parent still has its tip in the branch, and seating
+  backward recorded the commits it dropped as the branch's own.
 - `delete`, `fold` and `rename` (`internal/reshape`, which reaches Git and the
   graph and nothing else) act only on branches the g2g graph records and refuse
   the rest naming `g2g track`. `delete` is the one place children are
@@ -497,6 +521,30 @@ description: |
   rewrite, the fork point must be an ancestor of the branch — a branch someone
   rebased by hand fails that, and replaying anyway pulls the base's own commits
   into the range. Refuse and tell the user to retrack.
+- A merge commit in a replay range is refused when planning, before anything
+  moves (`carriesMerge`, one `git.Client.Merges` per branch actually
+  replayed; a collapsing branch is not asked). `git replay` stops on one and
+  `git rebase` drops it and offers what it merged as the branch's own. The
+  ways out are `git merge <parent>` with the branch checked out, then `g2g
+  track --branch <branch> --parent <parent>`, after `g2g restack --branch
+  <parent> --scope path` when the plan would move the parent. Never use
+  `--rebase-merges`: it re-merges from scratch and loses what the original
+  merge resolved.
+- A branch that already holds its parent's tip, under a parent that is not
+  moving, is `Plan.Seated`: no step, no rewrite, children not dragged along,
+  only the fork point recorded again. The preview says "<branch> already
+  holds <parent> · records that it forks at <new> rather than <old>, and
+  rewrites nothing". `Plan.Nothing`, `Equal` and `Changed` include it, and
+  sync asks `Restack.Nothing()` so a pull applies a plan that only records.
+- `git rebase` can exit zero having moved nothing, when it cannot create its
+  state directory. `git.Client.Rebase` verifies the branch ended on its new
+  base and otherwise fails with Git's output through
+  `diagnostic.BoundedOutput`. `neverStarted` clears the journal when it can
+  confirm nothing moved (no rebase in progress, checkout and every tip where
+  they were) and the error says nothing was replayed and no restack is left
+  in progress: restack `Not applied`, exit `2`; pull exit `3`, its trunk
+  having advanced. A cancelled run, a moved branch or a moved checkout keeps
+  the journal. Do not report such a run as stopped part-way.
 - A branch whose parent is being rewritten must be rewritten too, even when it
   still sits exactly where its fork point says. Each independent root is its
   own replay, and every range passed to an engine starts at that root's fork
@@ -506,11 +554,22 @@ description: |
   `g2g/restack/worktrees/<name>.json` for a linked one, all under the common
   directory). Which worktree a record belongs to depends on the file it is in,
   never on the absolute path inside it. Every other mutating command refuses
-  while any worktree's restack is unfinished (`RequireIdle`). The exceptions
-  are restack, push, submit, create, track, github retarget and github comment.
-  They pass a
-  `restack.Footprint` and are refused only in the restack's own worktree, or
-  when either side moves what the other reads (`RequireApart`). A restack
+  while any worktree's restack is unfinished (`RequireIdle`), and that refusal
+  says it waits for every restack because it cannot name the branches it would
+  touch before it runs: land, delete, fold, rename, graphite adopt, github
+  adopt, graphite mirror, github link and unlink, and `track --as-trunk`. The
+  exceptions are restack, pull (with `--trunk-only`, `--above`, `--prune`),
+  prune, push, submit, create, track, untrack, adopt, github retarget and
+  github comment. They pass a `restack.Footprint` of what they move and read
+  (`Moves`, `Advances`, `Reads`, `With`) and are refused only in the
+  restack's own worktree, or when either side moves what the other reads
+  (`RequireApart`). A pull that fast-forwards the trunk declares it with
+  `Advances`, which is a read underneath, so it is apart from a restack
+  replaying onto that trunk; a trunk reset to a rewritten one is a move and
+  waits. Do not add a third set for advances. `up`, `down`,
+  `top` and `bottom` ask only `RequireIdleHere`. The graph store has no lock:
+  `track`, `untrack` and `adopt` save the whole graph from plan time, a known
+  window beside another session's write. A restack
   checks again after publishing its journal, so two that start at once both
   step back. `--continue` recomputes from the refs rather than resuming a
   stored queue. `--abort` restores the tips the journal recorded, because git
@@ -630,8 +689,25 @@ description: |
 - Each discovery and revalidation pass has its own planning budget, separate
   from mutation. `G2G_TIMEOUT` raises each default as a minimum and cannot shorten
   a long landing; explicit `--timeout` overrides each ceiling exactly. Validate
-  positive durations before execution. Recheck the restack guard before
+  positive durations before execution. A planning pass that runs out of its
+  budget is reported as "timed out working out what to do, before anything
+  was changed", naming the ceiling in force (`--timeout`, `G2G_TIMEOUT` or the
+  45s default) and that `--debug` shows what it was waiting on, whatever the
+  interrupted call said (`budgets.discoveryTimedOut`; read-only commands go
+  through `budgets.reading`, and the restack guards are reported the same
+  way). Never let a cut-off call's own error stand: it once read as a revision
+  that "is not a commit in this repository". Recheck the restack guard before
   revalidation and report a current blocker before generic plan inequality.
+  A plan with a `Changed` method (`graph.Graph`, `graph.Discovery`,
+  `restack.Plan`, `sync.Plan`) names the first differing fact and the refusal
+  carries it, "restack plan changed during revalidation: synthetic-a moved
+  from <id> to <id> · rerun without --apply to review the new plan" (steps
+  are compared before the prediction; a changed prediction reads "whether the
+  replay applies without a conflict changed", a changed incoming version "the
+  version of <branch> to be replayed moved from … to …"); its
+  `Equal` is `Changed(...) == ""`. `applyFlow` passes it to
+  `diagnostic.Revalidated`, which also records it as the event's `changed`
+  field. A plan without one is refused in the old words.
   Restack owner information is a private Git directory unless mapped to a
   checkout; never suggest changing directory into `.git/worktrees/...`.
 - Pull and push share the emptied-branch boundary: when no previously shared
@@ -744,7 +820,25 @@ description: |
   nothing missing, needs pushing, and not a divergence.
 - "Landed" is a content question Git answers and GitHub cannot, and it needs
   both halves: `Cherry` per commit, then `Absorbed` for the squash merge. A
-  landed branch is `link.IssueLanded`, never `IssueMissing` — the advice for
+  yes from `Absorbed` is believed only if the branch's own commits since its
+  parent would change nothing either (`git.Client.Carries`, `merge-tree` with
+  `--merge-base`, Git 2.40 or later): a child whose only commit deletes a file
+  its squash-merged parent added merges into the trunk without changing it
+  and has not landed. `landed.Into` asks it of its limit; callers asking about
+  a whole branch ask `landed.Whole(ctx, probe, base, branch, own...)`, the one
+  decision, passing every boundary they know: graph state the recorded fork
+  point and the parent, land's plan the recorded fork point and the branch
+  below, push's absent branch the branch below, and submit's `mergedLanded`
+  and link's merged-PR arm the branch below and the merged head (`HeadOID`,
+  through `landed.AssessOwn`), so a follow-up commit after a merge is seen.
+  prune's `landedThrough` still calls `landed.Carries` with the branch's own
+  fork point. It only turns a yes into a no, and a call the deadline cut off
+  reads as carries. Known limit: a branch recorded on the trunk whose
+  follow-up reverts its own merged work still reads as landed to prune and to
+  a replay's collapse. `Absorbed`'s earlier look first asks, in one
+  `git log --find-object`, whether the trunk ever held the files the branch
+  adds as the branch has them (`heldAdded`), which only rules candidates out.
+  A landed branch is `link.IssueLanded`, never `IssueMissing` — the advice for
   missing is `g2g submit`, and submitting work already in the trunk is the bug
   this prevents. What forgets it depends on the source (`g2g prune` for g2g's
   graph, `gt sync` for Graphite), so do not hardcode one.
@@ -770,6 +864,17 @@ description: |
   when unobserved. A squash publication removes cannot justify omission. Bound
   published evidence at that version, never the local parent. Refuse creation
   or linking that depends on an omitted absorbed base before any push.
+  A merged predecessor whose content is confirmed in the landing trunk is
+  omitted the same way (`Plan.landed` over `MergedLanded`, no further Git or
+  GitHub read; `Plan.omitted` covers both): row `left out · merged · landed
+  in <trunk>`, no spec entry, no push, notes naming `g2g prune` through
+  `selected.aim` and, for an open PR still based on it (`Plan.OnLanded`),
+  `g2g github retarget` once it is forgotten. Creating or linking on a landed
+  base refuses through `omittedBaseRepair`, naming `g2g prune --branch
+  <landed>` (`gt sync` for Graphite): its stack, never `--scope branch`,
+  which forgets nothing when the branch under it has landed too. A landed branch with no
+  PR at all is still offered as `create`, deliberately: confirming it would
+  cost a landed check per creation candidate.
   `link.AbsorbedWays` owns ordered cleanup through `ForgetLanded`: for g2g,
   collect a remote-only parent with `pull --above` carrying the selected remote,
   restack surviving descendants, then prune. Graphite names `gt sync`;

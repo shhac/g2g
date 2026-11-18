@@ -121,12 +121,20 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 		return false
 	}
 	since := strings.TrimSpace(string(forked))
-	changed, err := c.run(ctx, "diff", "--name-only", "--no-renames", "-z", since, branch)
+	changed, err := c.run(ctx, "diff", "--raw", "--no-abbrev", "--no-renames", "-z", since, branch)
 	if err != nil {
 		return false
 	}
-	paths := strings.FieldsFunc(string(changed), func(r rune) bool { return r == 0 })
-	if len(paths) == 0 || len(paths) > absorbedPaths {
+	changes := rawChanges(changed)
+	if len(changes) == 0 || len(changes) > absorbedPaths {
+		return false
+	}
+	paths := make([]string, 0, len(changes))
+	for _, change := range changes {
+		paths = append(paths, change.path)
+	}
+	held, before := c.heldAdded(ctx, since, base, addedFiles(changes))
+	if !held {
 		return false
 	}
 	// Literal, because a file name is not a pattern: one called "*" would
@@ -140,7 +148,12 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 	// a clean merge is compared with: asking for it after each merge spawned a
 	// second process per candidate, and on a branch that conflicts with all
 	// of them that doubled the cost of the answer no.
-	args := append([]string{"--literal-pathspecs", "log", "--format=%H %T", fmt.Sprintf("--max-count=%d", absorbedCandidates), since + ".." + base, "--"}, paths...)
+	range_ := []string{since + ".." + base}
+	if before != "" {
+		range_ = []string{before + "^@", "^" + since}
+	}
+	args := append([]string{"--literal-pathspecs", "log", "--format=%H %T", fmt.Sprintf("--max-count=%d", absorbedCandidates)}, range_...)
+	args = append(append(args, "--"), paths...)
 	touched, err := c.run(ctx, args...)
 	if err != nil {
 		return false
@@ -156,6 +169,125 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 		}
 	}
 	return false
+}
+
+// absorbedWitnesses bounds how many of a branch's new files are looked for in
+// the base, since each is two arguments to one command.
+const absorbedWitnesses = 16
+
+// rawChange is one file from git's --raw output: the object it was, the one
+// it became and what happened to it -- and, read from a log, in which commit.
+type rawChange struct {
+	status, was, object, path, commit string
+}
+
+// rawCommit is the format that names each commit in a log read by rawChanges.
+const rawCommit = "--format=commit %H"
+
+// rawChanges reads `--raw --no-abbrev --no-renames -z` output: a record of
+// modes, objects and a status, then the path it is about, each ended by NUL.
+func rawChanges(output []byte) []rawChange {
+	fields := strings.Split(string(output), "\x00")
+	changes := make([]rawChange, 0, len(fields)/2)
+	commit := ""
+	for i := 0; i+1 < len(fields); i++ {
+		field := strings.TrimLeft(fields[i], "\n")
+		if named, found := strings.CutPrefix(field, "commit "); found {
+			commit = named
+			continue
+		}
+		record, found := strings.CutPrefix(field, ":")
+		if !found {
+			continue
+		}
+		parts := strings.Fields(record)
+		if len(parts) != 5 {
+			continue
+		}
+		i++
+		changes = append(changes, rawChange{status: parts[4], was: parts[2], object: parts[3], path: fields[i], commit: commit})
+	}
+	return changes
+}
+
+// addedFiles is the files a branch adds, when those can witness for it: none
+// if the branch deletes anything, because a deleted file and an added one may
+// be one file renamed, and a merge follows a rename where a path does not.
+func addedFiles(changes []rawChange) []rawChange {
+	added := make([]rawChange, 0, absorbedWitnesses)
+	for _, change := range changes {
+		if change.status == "D" {
+			return nil
+		}
+		if change.status == "A" && len(added) < absorbedWitnesses {
+			added = append(added, change)
+		}
+	}
+	return added
+}
+
+// heldAdded reports whether the base, at some commit since the fork, held
+// every one of the files a branch adds exactly as the branch has it -- and,
+// when the base has changed one of them since, the commit that first did,
+// which nothing from there on can have absorbed the branch. It only ever
+// rules commits out.
+//
+// A trunk that absorbed a branch holds the files the branch added, as the
+// branch has them: a file both sides added differently is a conflict, and one
+// the trunk lacks is a change the merge would make. So a branch one of whose
+// new files never appeared in the trunk was absorbed by none of its commits,
+// and one whose new file the trunk went on to edit was absorbed, if at all,
+// before that edit. Both are one walk of the trunk's history rather than a
+// merge at each of the candidates. A branch that conflicts with a busy trunk
+// paid for every one of them, each time anything asked whether it had landed,
+// and so did a branch that had landed and been edited over since: on a
+// repository of a hundred stacks, most of them finished and not yet pruned,
+// that was two thousand merges and most of a status.
+//
+// It is right about every history that takes a branch's files in where the
+// branch put them and edits them on the line that took them. Where it is not
+// -- a trunk that moved them as it took them, or holds them on a line the
+// edit never reached -- the answer is that the branch has not landed, which
+// is the direction that loses nothing. A branch that adds no file, or deletes
+// one, is not asked, and a failure to ask rules nothing out.
+func (c Client) heldAdded(ctx context.Context, since, base string, added []rawChange) (held bool, before string) {
+	if len(added) == 0 {
+		return true, ""
+	}
+	// -m, because a merge is otherwise shown with no changes at all, and a
+	// file that arrived through one would read as never having arrived.
+	args := []string{"--literal-pathspecs", "log", rawCommit, "--raw", "--no-abbrev", "--no-renames", "-z", "-m"}
+	type file struct{ object, path string }
+	const unseen, arrived, edited = 0, 1, 2
+	latest := make(map[file]int, len(added))
+	paths := make([]string, 0, len(added))
+	for _, witness := range added {
+		args = append(args, "--find-object="+witness.object)
+		latest[file{witness.object, witness.path}] = unseen
+		paths = append(paths, witness.path)
+	}
+	output, err := c.run(ctx, append(append(args, since+".."+base, "--"), paths...)...)
+	if err != nil {
+		return true, ""
+	}
+	// Newest first, so the first thing read about a file is the last thing
+	// that happened to it, and the last edit read is the oldest of those.
+	for _, change := range rawChanges(output) {
+		took, lost := file{change.object, change.path}, file{change.was, change.path}
+		if state, wanted := latest[took]; wanted && state == unseen {
+			latest[took] = arrived
+		}
+		if state, wanted := latest[lost]; wanted && state == unseen && change.was != change.object {
+			latest[lost] = edited
+			before = change.commit
+		}
+	}
+	for _, state := range latest {
+		if state == unseen {
+			return false, ""
+		}
+	}
+	return true, before
 }
 
 // sameTree reports whether merge-tree's answer is the revision's own tree.

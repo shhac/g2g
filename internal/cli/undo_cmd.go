@@ -158,10 +158,11 @@ func newUndo(service undo.Service, guard idleGuard, presentation Presentation) *
 		Use:     "undo",
 		GroupID: groupUpdate,
 		Short:   "Put back what the last local operation changed (preview by default)",
-		Long: "Puts back what the last recorded operation in this repository changed: the branches it moved, created or " +
+		Long: "Puts back what the last recorded operation made from this worktree changed: the branches it moved, created or " +
 			"deleted, what the graph records, and where this checkout stood.\n\n" +
 			"It is refused if anything that operation changed has changed again since, so it never undoes work done " +
-			"after it. It is local: nothing pushed, merged or retargeted is touched. Operations recorded are those of " +
+			"after it. It is local: nothing pushed, merged or retargeted is touched. Operations made from other worktrees " +
+			"are not offered, and --list shows them. Operations recorded are those of " +
 			words.List(recorded) + ".",
 		Args: cobra.NoArgs,
 	}

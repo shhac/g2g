@@ -91,7 +91,7 @@ func (s Service) Apply(ctx context.Context, plan Plan) error {
 			return stop(err)
 		}
 	}
-	if len(plan.Restack.Steps) != 0 {
+	if !plan.Restack.Nothing() {
 		if err := s.Restack.Apply(ctx, plan.Restack); err != nil {
 			return stop(err)
 		}

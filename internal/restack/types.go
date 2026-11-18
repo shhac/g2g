@@ -40,6 +40,8 @@ type Git interface {
 	CherryDropped(context.Context, string, string) ([]string, error)
 	Cherry(ctx context.Context, upstream, head, limit string) (absent, present []string, err error)
 	Absorbed(ctx context.Context, base, branch string) (bool, error)
+	// Merges lists the merge commits in from..to.
+	Merges(ctx context.Context, from, to string) ([]string, error)
 	PinForkPoint(context.Context, string, string) error
 	UpdateBranch(context.Context, string, string) error
 }
@@ -95,6 +97,17 @@ type Step struct {
 	// reapplies it changed between Git 2.54 and 2.55, and it is exactly the
 	// case a restack exists for, so the commits are never handed over at all.
 	Collapses bool
+}
+
+// Seated is a branch with nothing to replay whose record is behind it: it
+// already holds its parent's tip, by a fast-forward along the parent or by
+// merging it in, while its recorded fork point is still where the parent used
+// to be. Only the record moves, to Base, and no commit is rewritten.
+type Seated struct {
+	Branch, Parent string
+	// ForkPoint is where the record says the branch forks, and Base the
+	// parent's tip it holds, where the record will say it does.
+	ForkPoint, Base string
 }
 
 // start is where the rewrite finds the branch: Head, or Tip for a step built
@@ -202,6 +215,8 @@ type Plan struct {
 	Onto   Onto
 	Absorb bool
 	Steps  []Step
+	// Seated are the branches whose fork point alone is recorded again.
+	Seated []Seated
 	// Updates is what a replay says the refs would become, and Clean reports
 	// that it would apply without a conflict. Both come from a preview that
 	// moves nothing.
@@ -263,15 +278,15 @@ type Stranded struct {
 // proceed.
 func (p Plan) Blocked() string { return p.Repair.Sentence() }
 
-// Nothing reports a plan with nothing to do: no branch to rewrite and no edge
-// to record.
+// Nothing reports a plan with nothing to do: no branch to rewrite, no edge to
+// record and no fork point to record again.
 //
 // An empty step list is not that question. A branch already sitting on the
 // --onto target has no commits to move and a recorded parent still naming
 // where it used to be, and a caller that skipped Apply for want of steps left
 // it recorded there while saying there was nothing to replay.
 func (p Plan) Nothing() bool {
-	return len(p.Steps) == 0 && len(p.reparenting()) == 0
+	return len(p.Steps) == 0 && len(p.Seated) == 0 && len(p.reparenting()) == 0
 }
 
 // Branches lists the branches this plan rewrites.
@@ -341,6 +356,8 @@ func (p Plan) Changed(other Plan) string {
 		return "whether the replay applies cleanly changed"
 	case !p.Worktrees.Equal(other.Worktrees):
 		return "another worktree took or let go of a branch, or its changes there came or went"
+	case !slices.Equal(p.Seated, other.Seated):
+		return "which branches already hold their parent, or where, changed"
 	case !slices.Equal(p.Stranded, other.Stranded):
 		return "the branches stacked outside the selection changed"
 	case !slices.Equal(p.TrunksBehind, other.TrunksBehind):

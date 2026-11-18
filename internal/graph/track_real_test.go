@@ -149,3 +149,81 @@ func TestTrackKeepsFeatureParentBoundaryDespiteNewerKnownUpstream(t *testing.T) 
 		t.Fatalf("feature boundary = %s, want recorded parent tip %s", got, fork)
 	}
 }
+
+// A branch that merged its parent in holds the parent's tip, so its own
+// commits begin there whatever the record says. Naming the recorded parent
+// again answered "nothing to do" while the old fork point went on reading as
+// a parent that had moved, and only untracking the branch first could move it.
+func TestTrackSeatsABranchThatHoldsItsRecordedParentsTip(t *testing.T) {
+	repo, service := sameTipRepository(t)
+	ctx := context.Background()
+	record := func(branch, parent string) graph.TrackPlan {
+		t.Helper()
+		plan, err := service.PlanTrack(ctx, graph.Selection{Branch: branch}, parent)
+		if err != nil || plan.Blocked() != "" {
+			t.Fatalf("track %s on %s: %v, %s", branch, parent, err, plan.Blocked())
+		}
+		return plan
+	}
+	if err := service.ApplyTrack(ctx, record("synthetic-one", "synthetic-main")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Run("switch", "-qc", "synthetic-child")
+	repo.Commit("synthetic child", "child.txt", "child")
+	if err := service.ApplyTrack(ctx, record("synthetic-child", "synthetic-one")); err != nil {
+		t.Fatal(err)
+	}
+	old := repo.Revision("synthetic-one")
+	repo.Run("switch", "-q", "synthetic-one")
+	repo.Commit("synthetic parent moves", "parent.txt", "moved")
+
+	// The parent moved and the branch does not hold it: restack has to see
+	// that, so the boundary stays.
+	if kept := record("synthetic-child", "synthetic-one"); kept.Refreshed || kept.Updated.Edges["synthetic-child"].ForkPoint != old {
+		t.Fatalf("a moved feature parent's tip was recorded for a branch that does not hold it: %+v", kept.Updated.Edges["synthetic-child"])
+	}
+
+	repo.Run("switch", "-q", "synthetic-child")
+	repo.Run("merge", "-q", "--no-edit", "synthetic-one")
+	seated := record("synthetic-child", "synthetic-one")
+	if got := seated.Updated.Edges["synthetic-child"].ForkPoint; !seated.Refreshed || got != repo.Revision("synthetic-one") {
+		t.Fatalf("fork point = %s (refreshed %t), want the parent's tip %s", got, seated.Refreshed, repo.Revision("synthetic-one"))
+	}
+	if err := service.ApplyTrack(ctx, seated); err != nil {
+		t.Fatal(err)
+	}
+	discovery, err := service.Discover(ctx, graph.Selection{Branch: "synthetic-child"})
+	if err != nil || discovery.States["synthetic-child"] != graph.StateAligned {
+		t.Fatalf("states = %v, %v, want synthetic-child aligned", discovery.States, err)
+	}
+	if again := record("synthetic-child", "synthetic-one"); again.Refreshed {
+		t.Error("a boundary already at the parent's tip was recorded again")
+	}
+}
+
+// A trunk that advanced after a branch was recorded on its tip is not in the
+// branch. The edge still says ancestry confirmed it, which was true when it
+// was written: believing that now recorded the trunk's new tip as the fork
+// point of a branch that does not hold it, and the branch read as moved off
+// its parent from then on.
+func TestTrackKeepsABoundaryOnATrunkThatAdvancedPastIt(t *testing.T) {
+	repo, service := sameTipRepository(t)
+	ctx := context.Background()
+	selection := graph.Selection{Branch: "synthetic-one"}
+	plan, err := service.PlanTrack(ctx, selection, "synthetic-main")
+	if err != nil || plan.Blocked() != "" {
+		t.Fatalf("track: %v, %s", err, plan.Blocked())
+	}
+	if err := service.ApplyTrack(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	fork := repo.Revision("synthetic-main")
+	repo.Run("switch", "-q", "synthetic-main")
+	repo.Commit("synthetic trunk advanced", "advanced.txt", "advanced")
+	repo.Run("switch", "-q", "synthetic-one")
+
+	again, err := service.PlanTrack(ctx, selection, "synthetic-main")
+	if err != nil || again.Refreshed || again.Updated.Edges[selection.Branch].ForkPoint != fork {
+		t.Fatalf("retracking moved a valid boundary to a commit the branch does not hold: %v, %+v", err, again.Updated.Edges[selection.Branch])
+	}
+}

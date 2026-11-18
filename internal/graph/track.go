@@ -168,12 +168,12 @@ func (s Service) recordedBoundary(ctx context.Context, branch, boundary string) 
 
 // refresh answers a track naming the parent already recorded.
 //
-// Where the recorded fork point still holds, it is preserved unless upstream
-// ancestry proves it includes trunk commits. Writing a feature parent's new
-// tip over it would hide a parent that moved, which restack needs to see. Where it does not — the branch was rewritten by hand,
-// or the commit is gone — the parent is right and the fork point is wrong, and
-// this is how to say so. It was a no-op, so the repair doctor names for both
-// states changed nothing and doctor named it again.
+// Where the recorded fork point still holds, it is preserved unless ancestry
+// proves the branch's own commits begin further along: see seat. Where it does
+// not — the branch was rewritten by hand, or the commit is gone — the parent
+// is right and the fork point is wrong, and this is how to say so. It was a
+// no-op, so the repair doctor names for both states changed nothing and doctor
+// named it again.
 //
 // A trunk that advanced still has an evidenced merge base. A rewritten feature
 // parent is different: its former work cannot be distinguished from the child's
@@ -182,28 +182,7 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	switch plan.States[plan.Target] {
 	case StateMovedOffParent, StateForkUnresolvable:
 	default:
-		// A valid boundary can still include trunk commits when the local
-		// trunk was stale at tracking time. Advance it only on upstream
-		// ancestry evidence; feature-parent boundaries remain unchanged.
-		if !plan.Graph.IsTrunk(recorded.Parent) {
-			return plan, nil
-		}
-		fork, err := s.trackFork(ctx, recorded.Parent, plan.Target, recorded.Origin, true)
-		if err != nil {
-			return TrackPlan{}, err
-		}
-		if fork == recorded.ForkPoint {
-			return plan, nil
-		}
-		forward, err := s.Git.IsAncestor(ctx, recorded.ForkPoint, fork)
-		if err != nil || !forward {
-			return plan, err
-		}
-		updated := plan.Graph.Clone()
-		recorded.ForkPoint = fork
-		updated.Edges[plan.Target] = recorded
-		plan.Updated, plan.Refreshed = updated, true
-		return plan, nil
+		return s.seat(ctx, plan, recorded)
 	}
 	built, err := s.Git.IsAncestor(ctx, recorded.Parent, plan.Target)
 	if err != nil {
@@ -223,6 +202,59 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 	}
 	updated := plan.Graph.Clone()
 	updated.Edges[plan.Target] = Edge{Parent: recorded.Parent, Origin: origin, ForkPoint: forkPoint}
+	plan.Updated, plan.Refreshed = updated, true
+	return plan, nil
+}
+
+// seat moves a fork point that still holds up to where ancestry shows the
+// branch's own commits begin, and never anywhere else.
+//
+// The parent's tip in the branch is that evidence for any parent: the branch
+// was fast-forwarded along it or merged it in, and holds everything the parent
+// has, so nothing below that tip is the branch's own. It answered "Nothing to
+// do" here while status went on reading the old fork point as a parent that
+// had moved, and a branch that had merged its parent in could be recorded
+// again only by untracking it first.
+//
+// A parent whose tip is not in the branch has moved, which restack needs to
+// see, so a feature parent's boundary stays where it is. A trunk's can still
+// include trunk commits when the local trunk was stale at tracking time, and
+// advances on upstream ancestry alone.
+//
+// Whether the tip is in the branch is asked of Git now. The recorded origin
+// says it was when the edge was written: taking that for a trunk that has
+// since advanced recorded the trunk's new tip for a branch that does not hold
+// it, which read as moved off its parent from then on.
+func (s Service) seat(ctx context.Context, plan TrackPlan, recorded Edge) (TrackPlan, error) {
+	origin, err := s.ancestryOf(ctx, recorded.Parent, plan.Target)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	trunk, holds := plan.Graph.IsTrunk(recorded.Parent), origin == OriginAncestry
+	if !trunk && !holds {
+		return plan, nil
+	}
+	fork, err := s.trackFork(ctx, recorded.Parent, plan.Target, origin, trunk)
+	if err != nil {
+		return TrackPlan{}, err
+	}
+	// An edge written before fork points were recorded has no boundary to
+	// move, and reads as forking at its parent's tip for as long as it holds.
+	if recorded.ForkPoint == "" || fork == recorded.ForkPoint {
+		return plan, nil
+	}
+	if !holds {
+		forward, err := s.Git.IsAncestor(ctx, recorded.ForkPoint, fork)
+		if err != nil || !forward {
+			return plan, err
+		}
+	}
+	updated := plan.Graph.Clone()
+	recorded.ForkPoint = fork
+	if holds {
+		recorded.Origin = OriginAncestry
+	}
+	updated.Edges[plan.Target] = recorded
 	plan.Updated, plan.Refreshed = updated, true
 	return plan, nil
 }

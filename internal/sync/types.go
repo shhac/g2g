@@ -182,7 +182,7 @@ func (p Plan) onto() string {
 // moves: the apply is what records that this clone has seen it dropped and
 // kept it, without which the next push would refuse to publish it.
 func (p Plan) Nothing() bool {
-	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Begins) == 0 && len(syncpoint.Of(p.Commits, syncpoint.Kept)) == 0 && len(p.Restack.Steps) == 0
+	return !p.Advance && !p.Supersede && len(p.Collect) == 0 && len(p.Begins) == 0 && len(syncpoint.Of(p.Commits, syncpoint.Kept)) == 0 && p.Restack.Nothing()
 }
 
 // Equal compares every fact that changes what the sync does.

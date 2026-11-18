@@ -48,7 +48,7 @@ func pullView(plan syncer.Plan) stackView {
 	}
 	view = dropNotes(view, plan)
 	view = view.note(replayNote(plan.Restack), severityNeutral)
-	return view
+	return seatedNotes(view, plan.Restack)
 }
 
 // pullCommits are the commits a pull names, for a machine.

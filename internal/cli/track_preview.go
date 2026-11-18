@@ -14,7 +14,7 @@ import (
 func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	view := driftNotes(graphView(plan.Discovery, "track"), plan.Discovery)
 	if plan.Blocked() == "" && plan.Refreshed {
-		view = view.note(fmt.Sprintf("Records a new fork point for %s on %s: the recorded one is no longer in it.", plan.Target, plan.Parent), severityOK)
+		view = view.note(refreshedNote(plan), severityOK)
 		if plan.NewTrunk != "" {
 			view = view.note(fmt.Sprintf("%s becomes a root of the graph.", plan.NewTrunk), severityNeutral)
 		}
@@ -71,6 +71,19 @@ func rangeNote(plan graph.TrackPlan) string {
 	}
 	return fmt.Sprintf("Records replay range %s for the next restack: every commit on %s that %s does not have, including any %s had when %s was built on it and has since rewritten.",
 		bounds, plan.Target, plan.Parent, plan.Parent, plan.Target)
+}
+
+// refreshedNote says why a track naming the parent already recorded writes
+// anything. A fork point the branch no longer holds is replaced; one it still
+// holds only ever moves up, past commits that are the parent's, and the
+// boundary it leaves and the one it takes are both named.
+func refreshedNote(plan graph.TrackPlan) string {
+	switch plan.States[plan.Target] {
+	case graph.StateMovedOffParent, graph.StateForkUnresolvable:
+		return fmt.Sprintf("Records a new fork point for %s on %s: the recorded one is no longer in it.", plan.Target, plan.Parent)
+	}
+	from, to := plan.Graph.Edges[plan.Target].ForkPoint, plan.Updated.Edges[plan.Target].ForkPoint
+	return fmt.Sprintf("Records that %s forks from %s at %s rather than %s: it already holds %s up to there.", plan.Target, plan.Parent, localgit.Short(to), localgit.Short(from), plan.Parent)
 }
 
 // confirmation says whether Git already agrees with the edge being recorded.

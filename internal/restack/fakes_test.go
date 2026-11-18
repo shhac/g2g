@@ -24,6 +24,7 @@ type fakeGit struct {
 	objects   map[string]string
 	ancestors map[string][]string
 	dropped   map[string][]string
+	merges    map[string][]string
 	behind    map[string]int
 	// collapses names branches whose own work is already in their new base.
 	collapses  map[string]bool
@@ -185,6 +186,10 @@ func (f *fakeGit) SwitchBranch(_ context.Context, branch string) error {
 	f.returned = append(f.returned, branch)
 	f.current = branch
 	return nil
+}
+
+func (f *fakeGit) Merges(_ context.Context, from, to string) ([]string, error) {
+	return f.merges[from+".."+to], nil
 }
 
 func (f *fakeGit) CherryDropped(_ context.Context, upstream, head string) ([]string, error) {

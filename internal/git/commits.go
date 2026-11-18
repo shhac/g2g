@@ -107,3 +107,17 @@ func (c Client) logEach(ctx context.Context, format string, ids []string) ([]str
 	}
 	return outputLines(output), nil
 }
+
+// Merges lists the merge commits in from..to, newest first. A replay cannot
+// carry one: git replay stops on it, and git rebase drops it and offers the
+// commits it merged as the branch's own.
+func (c Client) Merges(ctx context.Context, from, to string) ([]string, error) {
+	if err := safeRefs(from, to); err != nil {
+		return nil, err
+	}
+	output, err := c.run(ctx, "rev-list", "--merges", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	return outputLines(output), nil
+}

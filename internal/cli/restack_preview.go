@@ -27,8 +27,12 @@ func restackView(plan restack.Plan) stackView {
 		}
 		return view.note("Every selected branch already sits on its parent. Nothing to replay.", severityOK)
 	}
-	if len(plan.Steps) == 0 {
+	if len(plan.Steps) == 0 && len(plan.Seated) == 0 {
 		return view.note("Already sits on "+plan.Onto.Parent+" · nothing to replay, only the new parent to record.", severityOK)
+	}
+	view = seatedNotes(view, plan)
+	if len(plan.Steps) == 0 {
+		return view
 	}
 	// A branch that collapses is not replayed, only moved, and saying it was
 	// replayed would misdescribe what happened to its commits.
@@ -47,6 +51,18 @@ func restackView(plan restack.Plan) stackView {
 	view = strandedNote(view, plan)
 	view = behindNote(view, plan)
 	return engineNote(view, plan)
+}
+
+// seatedNotes names each branch whose fork point alone is recorded again, by
+// the boundary it leaves and the one it takes. Such a branch is not replayed,
+// and a line saying it was would promise new commit ids for a branch that
+// keeps the ones it has.
+func seatedNotes(view stackView, plan restack.Plan) stackView {
+	for _, seated := range plan.Seated {
+		view = view.note(fmt.Sprintf("%s already holds %s · records that it forks at %s rather than %s, and rewrites nothing.",
+			seated.Branch, seated.Parent, localgit.Short(seated.Base), localgit.Short(seated.ForkPoint)), severityOK)
+	}
+	return view
 }
 
 // behindNote warns that the replay is onto a trunk its remote, as last

@@ -10,14 +10,26 @@ import (
 	"github.com/shhac/g2g/internal/repair"
 )
 
+// measured is what a selection comes to: the branches to rewrite, parents
+// first, and the ones whose fork point alone is recorded again.
+type measured struct {
+	steps  []Step
+	seated []Seated
+}
+
 // steps builds the ordered rewrite, parents before children so each child is
 // measured against the base its parent will actually have.
 //
 // A branch in fixed stays where it is: another worktree holds it and this
 // rewrite leaves it there. It gets no step and is not counted as being
 // rewritten, so what sits on it is measured against where it actually is.
-func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending, fixed map[string]bool) ([]Step, error) {
+//
+// A branch that already holds its parent's tip, under a parent that is not
+// moving, has nothing to replay however far behind its recorded fork point
+// is: it is seated, and only the record changes.
+func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto, pending Pending, fixed map[string]bool) (measured, error) {
 	steps := make([]Step, 0, len(discovery.Branches))
+	seated := make([]Seated, 0)
 	// A branch whose parent is being rewritten has to be rewritten too, even
 	// though it still sits exactly where its fork point says. Judging each
 	// branch only against its parent's *current* tip restacks the bottom of a
@@ -41,25 +53,32 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		}
 		base, resolvedFork, tip, err := s.resolveStep(ctx, branch, parent, edge.ForkPoint, pending)
 		if err != nil {
-			return nil, err
+			return measured{}, err
 		}
 		head := pending.at(branch, tip)
 		if resolvedFork, err = s.forkFor(ctx, branch, edge.Parent, base, resolvedFork, tip, head, pending.Begins[branch]); err != nil {
-			return nil, err
+			return measured{}, err
 		}
 		lagging, err := s.onLaggingTrunk(ctx, onto, discovery.Graph, edge.Parent, parent, base, resolvedFork)
 		if err != nil {
-			return nil, err
+			return measured{}, err
 		}
 		if lagging {
 			continue
 		}
+		recordedFork := resolvedFork
 		resolvedFork, advanced, err := s.laterFork(ctx, onto, base, head, resolvedFork)
 		if err != nil {
-			return nil, err
+			return measured{}, err
 		}
-		if resolvedFork == base && !rewriting[parent] && !advanced {
+		if resolvedFork == base && !rewriting[parent] {
 			// Sitting where it belongs, under a parent that is not moving.
+			// Replaying it onto the commit it already sits on, to have the
+			// record follow, gave every commit a new id for nothing and could
+			// not be done at all for a branch that merged its parent in.
+			if advanced {
+				seated = append(seated, Seated{Branch: branch, Parent: edge.Parent, ForkPoint: recordedFork, Base: base})
+			}
 			continue
 		}
 		rewriting[branch] = true
@@ -72,12 +91,12 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		if below, replayed := placed[parent]; replayed && !below.Collapses {
 			contains, err := s.Git.IsAncestor(ctx, below.Head, head)
 			if err != nil {
-				return nil, err
+				return measured{}, err
 			}
 			step.Behind = !contains
 		}
 		if err := s.classifyOrphans(ctx, &step); err != nil {
-			return nil, err
+			return measured{}, err
 		}
 		// Nothing of this branch's own is left to replay, so its ref simply
 		// moves. Collapsing here is what keeps a child's replay range from
@@ -86,7 +105,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		// themselves.
 		step.Collapses, err = landed.Into(ctx, s.Git, step.Base, head, step.ForkPoint)
 		if err != nil {
-			return nil, err
+			return measured{}, err
 		}
 		if step.Collapses {
 			landing[branch] = step.Base
@@ -94,7 +113,7 @@ func (s Service) steps(ctx context.Context, discovery graph.Discovery, onto Onto
 		placed[branch] = step
 		steps = append(steps, step)
 	}
-	return steps, nil
+	return measured{steps: steps, seated: seated}, nil
 }
 
 // onLaggingTrunk reports a branch that started on its trunk's upstream while

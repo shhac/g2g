@@ -470,9 +470,13 @@ func TestRestackRepairsStaleTrunkBoundaryWhenBranchAlreadyContainsNewTrunk(t *te
 	if err := r.store.Save(ctx, g); err != nil {
 		t.Fatal(err)
 	}
+	tip := r.Revision("synthetic-feature")
 	plan := r.plan(graph.Selection{Branch: "synthetic-feature", Scope: graph.ScopeSubtree})
-	if len(plan.Steps) != 1 || plan.Steps[0].ForkPoint != base {
-		t.Fatalf("stale range retained: %+v", plan.Steps)
+	// The branch already sits on the trunk's tip, so the boundary is repaired
+	// in the record and nothing is replayed onto where it already is.
+	want := Seated{Branch: "synthetic-feature", Parent: "synthetic-main", ForkPoint: stale, Base: base}
+	if len(plan.Steps) != 0 || len(plan.Seated) != 1 || plan.Seated[0] != want {
+		t.Fatalf("stale range retained: steps %+v, seated %+v", plan.Steps, plan.Seated)
 	}
 	r.assertClean()
 	if err := r.service.Apply(ctx, plan); err != nil {
@@ -480,12 +484,15 @@ func TestRestackRepairsStaleTrunkBoundaryWhenBranchAlreadyContainsNewTrunk(t *te
 	}
 	r.assertClean()
 	r.builtOn("synthetic-main", "synthetic-feature")
+	if got := r.Revision("synthetic-feature"); got != tip {
+		t.Errorf("synthetic-feature was rewritten to %s, want it left at %s", got, tip)
+	}
 	g, err = r.store.Load(ctx)
 	if err != nil || g.Edges["synthetic-feature"].ForkPoint != base {
 		t.Fatalf("boundary not repaired: %+v, %v", g, err)
 	}
-	if next := r.plan(graph.Selection{Branch: "synthetic-feature"}); len(next.Steps) != 0 {
-		t.Fatalf("repaired branch still needs restack: %+v", next.Steps)
+	if next := r.plan(graph.Selection{Branch: "synthetic-feature"}); !next.Nothing() {
+		t.Fatalf("repaired branch still needs restack: %+v, %+v", next.Steps, next.Seated)
 	}
 }
 

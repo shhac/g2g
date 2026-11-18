@@ -251,15 +251,12 @@ func landedInATrunk(ctx context.Context, git Ancestry, g Graph, present map[stri
 		// looks wrong, and changing it changes what graph and prune report
 		// about a branch, so it belongs to a correctness review rather than a
 		// structural one.
-		upstream, err := landed.Into(ctx, git, trunk, branch, "")
+		edge := g.Edges[branch]
+		upstream, err := landed.Whole(ctx, git, trunk, branch, edge.ForkPoint, edge.Parent)
 		if err != nil {
 			return false
 		}
-		// The whole branch is asked about, because the branch it sits on
-		// may have landed with it. A yes is believed only if its own commits
-		// would change nothing either: one that takes back part of what its
-		// parent added is not in a merge of the whole branch at all.
-		if upstream && !landed.Carries(ctx, git, trunk, branch, g.Edges[branch].ForkPoint) {
+		if upstream {
 			return true
 		}
 	}

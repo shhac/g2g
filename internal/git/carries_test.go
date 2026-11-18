@@ -100,3 +100,58 @@ func TestCarriesSaysNothingOfAPointTheBranchDoesNotContain(t *testing.T) {
 		}
 	}
 }
+
+// A commit made after the branch's pull request merged is the branch's own
+// work whatever it does, and one that reverts what merged cancels out against
+// the fork: the whole branch then equals where it started, and merges into the
+// trunk without changing it. Measured from the head that merged, it is there.
+func TestAFollowUpThatRevertsWhatMergedHasNotLanded(t *testing.T) {
+	repo := testutil.NewGitRepo(t, "synthetic-trunk")
+	repo.Commit("synthetic base", "base.txt", "base")
+	repo.Run("checkout", "-q", "-b", "synthetic-a")
+	repo.Commit("synthetic work", "work.txt", "work")
+	merged := repo.Revision("synthetic-a")
+	repo.Run("checkout", "-q", "synthetic-trunk")
+	repo.Run("merge", "-q", "--squash", "synthetic-a")
+	repo.Run("commit", "-qm", "synthetic squash")
+	repo.Run("checkout", "-q", "synthetic-a")
+	repo.Run("revert", "--no-edit", "HEAD")
+	inRepo(t, repo.Dir)
+	client := Client{Runner: subprocess.ExecRunner{}}
+	ctx := context.Background()
+
+	if got := landed.Assess(ctx, client, "synthetic-trunk", "synthetic-a", "synthetic-trunk"); got != landed.Present {
+		t.Fatalf("Assess() = %v · bounded at the trunk, the revert is expected to go unseen", got)
+	}
+	if got := landed.AssessOwn(ctx, client, "synthetic-trunk", "synthetic-a", "synthetic-trunk", "synthetic-trunk", merged); got != landed.Absent {
+		t.Errorf("AssessOwn() from the merged head = %v, want the follow-up seen", got)
+	}
+	done, err := landed.Whole(ctx, client, "synthetic-trunk", "synthetic-a", merged)
+	if err != nil || done {
+		t.Errorf("Whole() from the merged head = %v, %v, want not landed", done, err)
+	}
+	if done, err := landed.Whole(ctx, client, "synthetic-trunk", merged, merged); err != nil || !done {
+		t.Errorf("Whole() of the merged head itself = %v, %v, want landed", done, err)
+	}
+}
+
+// The branch a child sits on can be rewritten after the child left it, and is
+// then no part of the child. The fork point the graph recorded still is, so
+// it is what says where the child's own work starts.
+func TestWholeBelievesTheForkPointWhenTheParentWasRewritten(t *testing.T) {
+	client := squashedParent(t, func(repo testutil.GitRepo) {
+		fork := repo.Revision("synthetic-parent")
+		repo.Run("rm", "-q", "extra.txt")
+		repo.Run("commit", "-qm", "synthetic removal")
+		repo.Run("update-ref", "refs/heads/synthetic-fork", fork)
+		repo.Run("checkout", "-q", "synthetic-parent")
+		repo.Run("commit", "-q", "--amend", "-m", "synthetic extra, reworded")
+	})
+	ctx := context.Background()
+	if done, err := landed.Whole(ctx, client, "synthetic-trunk", "synthetic-child", "synthetic-parent"); err != nil || !done {
+		t.Fatalf("Whole() from the rewritten parent = %v, %v · it is expected to say nothing", done, err)
+	}
+	if done, err := landed.Whole(ctx, client, "synthetic-trunk", "synthetic-child", "synthetic-fork", "synthetic-parent"); err != nil || done {
+		t.Errorf("Whole() from the fork point = %v, %v, want not landed", done, err)
+	}
+}

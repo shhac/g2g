@@ -77,7 +77,7 @@ func TestLandedBaseRefusesCreationAndLinkingOnly(t *testing.T) {
 	merged := githubstack.PullRequest{Head: "synthetic-parent", Base: "synthetic-main", State: "MERGED", Number: 41}
 	plan := Plan{Snapshot: snapshot, Existing: []githubstack.PullRequest{merged}, Superseded: map[string]githubstack.PullRequest{"synthetic-parent": merged}, MergedLanded: map[string]bool{"synthetic-parent": true}}
 	note := plan.Refusal(false)
-	if note.Reason != "synthetic-child depends on landed base synthetic-parent" || len(note.Ways) != 1 || note.Ways[0].Command != "g2g prune --branch synthetic-parent --scope branch" {
+	if note.Reason != "synthetic-child depends on landed base synthetic-parent" || len(note.Ways) != 1 || note.Ways[0].Command != "g2g prune --branch synthetic-parent" {
 		t.Fatalf("creation across a landed base: %+v", note)
 	}
 	git, github := &fakeGit{}, &fakeGitHub{}

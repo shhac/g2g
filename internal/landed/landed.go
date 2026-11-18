@@ -84,13 +84,46 @@ type Carrier interface {
 // base. Into asks it of its limit. A caller that asks Into about the whole
 // branch, with no limit, and knows where the branch's own work starts asks it
 // that here before believing a yes. A failure to answer is "could not tell".
+//
+// A call the context cut off is the one failure that is not: saying nothing
+// there would let a yes stand that was never checked, on the strength of a
+// deadline.
 func Carries(ctx context.Context, probe Probe, base, branch, since string) bool {
 	asker, ok := probe.(Carrier)
 	if !ok || since == "" {
 		return false
 	}
 	carries, err := asker.Carries(ctx, base, branch, since)
+	if ctx.Err() != nil {
+		return true
+	}
 	return err == nil && carries
+}
+
+// Whole reports a branch with nothing left to contribute to base, asked of
+// the whole branch rather than of its own commits: what it sits on may have
+// landed with it, so no limit can be given to Into.
+//
+// own names where the branch's own work starts, as far as the caller knows:
+// its recorded fork point, the branch it sits on, the head a pull request
+// merged at. A yes is believed only if the commits above none of them would
+// still change base. This was written out at each caller, and they did not
+// all hand it the same boundary.
+func Whole(ctx context.Context, probe Probe, base, branch string, own ...string) (bool, error) {
+	done, err := Into(ctx, probe, base, branch, "")
+	if err != nil || !done {
+		return false, err
+	}
+	return !carriesAbove(ctx, probe, base, branch, own), nil
+}
+
+func carriesAbove(ctx context.Context, probe Probe, base, branch string, own []string) bool {
+	for _, since := range own {
+		if Carries(ctx, probe, base, branch, since) {
+			return true
+		}
+	}
+	return false
 }
 
 // Untouched is the cheap question a Probe may also answer: whether base has

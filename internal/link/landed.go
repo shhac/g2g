@@ -61,7 +61,11 @@ func (s Service) assessLanded(ctx context.Context, plan Plan, issue Issue, previ
 		// trunk rather than excluding that work through the former base.
 		trunkEvidence := landed.Unknown
 		if !slices.Contains(plan.Absent, trunk) {
-			trunkEvidence = landed.Assess(ctx, s.Tips, trunk, issue.Branch, trunk)
+			own := []string{plan.SitsOn(issue.Branch)}
+			if previous != nil {
+				own = append(own, previous.HeadOID)
+			}
+			trunkEvidence = landed.AssessOwn(ctx, s.Tips, trunk, issue.Branch, trunk, own...)
 		}
 		switch trunkEvidence {
 		case landed.Present:

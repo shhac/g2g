@@ -198,12 +198,8 @@ func compareOne(ctx context.Context, git Comparer, latest syncpoint.Latest, bran
 		// the commonest way a branch lands -- a squash leaves no commit with an
 		// equivalent, so a branch that merged and was deleted read as new and
 		// was offered for republication.
-		upstream, err := landed.Into(ctx, git, trunk, branch, "")
-		// The whole branch, because what it sat on may have landed with it;
-		// and then its commits above its parent alone, which a merge of the
-		// whole does not show when they take back part of what the parent
-		// added.
-		if err != nil || !upstream || landed.Carries(ctx, git, trunk, branch, parent) {
+		upstream, err := landed.Whole(ctx, git, trunk, branch, parent)
+		if err != nil || !upstream {
 			return Publication{Standing: New}, syncpoint.Changes{}, err
 		}
 		return Publication{Standing: Landed}, syncpoint.Changes{}, nil

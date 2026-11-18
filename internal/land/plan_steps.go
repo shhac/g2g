@@ -24,13 +24,18 @@ func (s Service) decideSteps(ctx context.Context, discovery stack.Discovery, opt
 	if err != nil {
 		return nil, repair.Note{}, err
 	}
+	// Where each branch's own work starts, as the graph records it. The
+	// branch below is asked as well, but one rewritten since this branch
+	// left it is no part of this branch, and the recorded fork point still
+	// is. A record that cannot be read leaves only the branch below.
+	recorded, _ := s.Graph.Store.Load(ctx)
 	steps := make([]Step, 0, len(discovery.Branches))
 	for step := range githubstack.Across(intoTrunk(discovery.Base, discovery.Branches), discovery.Branches, discovery.PullRequests) {
 		tip, _ := s.Git.Resolve(ctx, step.Branch)
 		decided, note := classify(facts{
 			Step:           step,
 			State:          stateFor(mergeability, step),
-			Landed:         s.landedIn(ctx, step.Branch, trunks, discovery.Parents[step.Branch]),
+			Landed:         s.landedIn(ctx, step.Branch, trunks, recorded.Edges[step.Branch].ForkPoint, discovery.Parents[step.Branch]),
 			Current:        tip != "" && tips[step.Branch] == tip,
 			Tip:            tip,
 			Queue:          mergeability.Queue != nil,

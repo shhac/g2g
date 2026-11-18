@@ -137,12 +137,18 @@ func (p Plan) omittedBaseRepair(linking bool) repair.Note {
 	return repair.Note{}
 }
 
-// forgetLanded names the source's cleanup for one landed branch. Pruning that
-// branch alone records what sits on it where it now sits.
+// forgetLanded names the source's cleanup for a branch landed in the trunk.
+//
+// The prune is over that branch's stack, not the branch alone. A branch
+// absorbed into its parent is judged against that parent, and pruning it
+// alone is right. One landed in the trunk is judged through every landed
+// branch under it, and when those have not been forgotten yet a prune of it
+// alone asks whether it landed in the branch below, hears no, and forgets
+// nothing.
 func (p Plan) forgetLanded(branch string) repair.Step {
 	forget := link.ForgetLanded(p.Snapshot.Source)
 	if p.Snapshot.Source == stack.SourceG2G {
-		forget.Command = repair.Command([]string{"g2g", "prune", "--branch", branch, "--scope", "branch"})
+		forget.Command = repair.Command([]string{"g2g", "prune", "--branch", branch})
 	}
 	return forget
 }
@@ -165,7 +171,10 @@ func (s Service) mergedLanded(ctx context.Context, plan Plan) map[string]bool {
 		}
 		// The former feature base may contain the head now, so bound at the
 		// trunk rather than excluding the head through that feature base.
-		answers[index] = landed.Assess(ctx, probe, trunk, branch, trunk)
+		// Where its own work starts is the branch it sits on, or the head
+		// that merged: commits added since, or ones that take back part of
+		// what the branch below added, are not in a merge of the whole.
+		answers[index] = landed.AssessOwn(ctx, probe, trunk, branch, trunk, plan.Snapshot.SitsOn(branch), plan.Superseded[branch].HeadOID)
 		return nil
 	})
 	result := map[string]bool{}

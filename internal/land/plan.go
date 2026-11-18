@@ -263,15 +263,15 @@ func (s Service) republishing(ctx context.Context, recorded graph.Graph, last, r
 // yes is believed only if the branch's commits above below would change
 // nothing either: a commit that takes back part of what below added is not in
 // a merge of the whole branch at all.
-func (s Service) landed(ctx context.Context, branch, base, below string) bool {
-	upstream, err := landed.Into(ctx, s.Git, base, branch, "")
-	return err == nil && upstream && !landed.Carries(ctx, s.Git, base, branch, below)
+func (s Service) landed(ctx context.Context, branch, base string, own ...string) bool {
+	upstream, err := landed.Whole(ctx, s.Git, base, branch, own...)
+	return err == nil && upstream
 }
 
 // landedIn is landed against any of the trunk's versions.
-func (s Service) landedIn(ctx context.Context, branch string, trunks []string, below string) bool {
+func (s Service) landedIn(ctx context.Context, branch string, trunks []string, own ...string) bool {
 	for _, trunk := range trunks {
-		if s.landed(ctx, branch, trunk, below) {
+		if s.landed(ctx, branch, trunk, own...) {
 			return true
 		}
 	}

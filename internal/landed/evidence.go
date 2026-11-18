@@ -27,3 +27,16 @@ func Assess(ctx context.Context, probe Probe, base, branch, limit string) Eviden
 	}
 	return Absent
 }
+
+// AssessOwn is Assess for a caller that also knows where the branch's own
+// work may start, which the limit it bounds the comparison with is not: a
+// merged pull request is assessed against the trunk and bounded there, and
+// the trunk's tip is no part of the branch. Present is believed only if the
+// commits above none of those points would still change base.
+func AssessOwn(ctx context.Context, probe Probe, base, branch, limit string, own ...string) Evidence {
+	evidence := Assess(ctx, probe, base, branch, limit)
+	if evidence == Present && carriesAbove(ctx, probe, base, branch, own) {
+		return Absent
+	}
+	return evidence
+}

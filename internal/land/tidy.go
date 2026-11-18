@@ -200,7 +200,9 @@ func (s Service) forgetFetched(ctx context.Context, plan Plan, branch string) er
 		return err
 	}
 	limit := recorded.Edges[branch].ForkPoint
-	upstream, err := landed.Into(ctx, s.Git, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk), branch, limit)
+	// Asked of the repository, never of a remembered answer: what follows
+	// forgets the branch and may delete it.
+	upstream, err := landed.Into(landed.Fresh(ctx), s.Git, localgit.IsolatedRef(plan.Options.Remote, plan.Trunk), branch, limit)
 	if err != nil {
 		return err
 	}

@@ -688,6 +688,14 @@ description: |
   there and in `schema_test.go`. `gh pr create` and `gh pr merge` are
   deliberately not batched.
 
+- The search for a squash buried under later edits is remembered in
+  `g2g/landed.json` by commit (`internal/git/verdicts.go`): yes for any base
+  containing the commit that absorbed the branch, and for a no only the
+  commits since the last look are searched. The tip merge always runs,
+  destructive callers ask with `landed.Fresh(ctx)`, only a finished search is
+  kept, and a change to `internal/git/content.go` fails
+  `TestRememberedVerdictsAreTiedToTheRuleThatMadeThem` until `absorbedRules`
+  is bumped or the digest updated.
 - `--snapshot <path>` (`prune`, `restack`) connects a preview to its apply:
   the preview writes the plan with what it rests on (`snapshot.Rests`, named by
   the command), and `--apply` with the same file checks that basis and carries

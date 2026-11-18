@@ -1948,6 +1948,14 @@ concurrent reader sees either the old graph or the new one. Its
 `storeSchemaVersion` is separate from the `--json` output's `schemaVersion`;
 an unrecognised store version fails closed rather than being rewritten.
 
+Beside it, `g2g/landed.json` remembers what the search for a branch landed
+under later edits found, so that the next command does not search again. It
+holds commit ids only: the commit of a branch, and either the trunk commit
+that took its work in or the trunk commits it was not found up to. A branch
+that moved, or a trunk that was rewritten, simply has no answer there. It is
+never consulted to justify deleting a branch, and deleting the file costs
+nothing but the next run's time.
+
 ## Development
 
 Start with [AGENTS.md](AGENTS.md), which holds the process knowledge, and the

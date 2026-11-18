@@ -393,6 +393,24 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   the search at the commit before that edit, which also finds a squash buried
   deeper than the bound. It only ever rules commits out, a branch that adds no
   file or deletes one is asked as before, and every doubt reads as not landed.
+- What that search finds is remembered between runs, in `g2g/landed.json`
+  under the Git common directory (`internal/git/verdicts.go`). It is keyed by
+  the branch's commit and says one of two things about commits of the base:
+  the one that held the branch's work, which answers yes for any base that
+  contains it, or the ones the search reached without finding any, which
+  leave only the commits since to look at. Nothing is keyed by a name, so a
+  branch that moved has no answer and a trunk that was rewritten no longer
+  contains what an answer rested on. Four rules. Only the search is
+  remembered, never the merge at the base's tip, which still runs and is what
+  notices a squash that was reverted. Only an answer is remembered: a search
+  the deadline cut off or Git could not finish found nothing because it did
+  not look. A destructive caller asks afresh with `landed.Fresh(ctx)`: `prune
+  --delete-branches`, land's cleanup and `delete`. And an answer is only as
+  right as the rule that made it, so `absorbedRules` versions the file, and
+  `TestRememberedVerdictsAreTiedToTheRuleThatMadeThem` fails whenever
+  `content.go` changes until someone has decided whether the rule did. A
+  file that is missing, unreadable or from another rule holds nothing, and a
+  lost write costs asking again.
 - A yes from the whole-branch merge is believed only if the branch's own
   commits would change nothing either. `Absorbed` measures from where the
   branch left the trunk, and a change that cancels out over that distance is

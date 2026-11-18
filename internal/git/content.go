@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/shhac/g2g/internal/subprocess"
 )
 
 // CherryDropped returns the commits in upstream..head whose content is not
@@ -164,26 +166,50 @@ const absorbedPaths = 256
 // revert of the squash does not produce, so a branch whose work was taken back
 // out is not read as landed. Anything it cannot answer is no.
 func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
+	asked, keeping := c.asked(ctx, base, branch)
+	from := ""
+	if keeping {
+		answer, known, reached := c.rememberedAbsorption(ctx, asked)
+		if known {
+			return answer
+		}
+		from = reached
+	}
+	absorbed, answered := c.absorbedSince(ctx, base, branch, from)
+	// Only an answer is kept. A look the deadline cut off, or one Git could
+	// not finish, found nothing because it did not look, and remembering that
+	// as "not absorbed" would repeat it to every run after.
+	if keeping && answered && ctx.Err() == nil {
+		asked.remember(absorbed, from)
+	}
+	return absorbed != ""
+}
+
+// absorbedSince is the earlier look itself: the base commit that held the
+// branch's work, empty when there is none, and whether the look finished.
+// from is a base commit an earlier look already reached without finding one,
+// so only the commits since it are candidates.
+func (c Client) absorbedSince(ctx context.Context, base, branch, from string) (absorbed string, answered bool) {
 	forked, err := c.run(ctx, "merge-base", base, branch)
 	if err != nil {
-		return false
+		return "", false
 	}
 	since := strings.TrimSpace(string(forked))
 	changed, err := c.run(ctx, "diff", "--raw", "--no-abbrev", "--no-renames", "-z", since, branch)
 	if err != nil {
-		return false
+		return "", false
 	}
 	changes := rawChanges(changed)
 	if len(changes) == 0 || len(changes) > absorbedPaths {
-		return false
+		return "", true
 	}
 	paths := make([]string, 0, len(changes))
 	for _, change := range changes {
 		paths = append(paths, change.path)
 	}
-	held, before := c.heldAdded(ctx, since, base, addedFiles(changes))
+	held, before, asked := c.heldAdded(ctx, since, base, addedFiles(changes))
 	if !held {
-		return false
+		return "", asked
 	}
 	// Literal, because a file name is not a pattern: one called "*" would
 	// otherwise select every commit in the range. Newest first, and only that
@@ -196,15 +222,18 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 	// a clean merge is compared with: asking for it after each merge spawned a
 	// second process per candidate, and on a branch that conflicts with all
 	// of them that doubled the cost of the answer no.
-	range_ := []string{since + ".." + base}
+	candidates := []string{since + ".." + base}
 	if before != "" {
-		range_ = []string{before + "^@", "^" + since}
+		candidates = []string{before + "^@", "^" + since}
 	}
-	args := append([]string{"--literal-pathspecs", "log", "--format=%H %T", fmt.Sprintf("--max-count=%d", absorbedCandidates)}, range_...)
+	if from != "" {
+		candidates = append(candidates, "^"+from)
+	}
+	args := append([]string{"--literal-pathspecs", "log", "--format=%H %T", fmt.Sprintf("--max-count=%d", absorbedCandidates)}, candidates...)
 	args = append(append(args, "--"), paths...)
 	touched, err := c.run(ctx, args...)
 	if err != nil {
-		return false
+		return "", false
 	}
 	for _, line := range outputLines(touched) {
 		candidate, tree, found := strings.Cut(line, " ")
@@ -213,10 +242,15 @@ func (c Client) absorbedEarlier(ctx context.Context, base, branch string) bool {
 		}
 		merged, err := c.run(ctx, "merge-tree", "--write-tree", candidate, branch)
 		if err == nil && strings.TrimSpace(string(merged)) == tree {
-			return true
+			return candidate, true
+		}
+		// A conflict exits one and is an answer about this candidate.
+		// Anything else is a merge that was not made.
+		if code, exited := subprocess.ExitCode(err); err != nil && (!exited || code != 1) {
+			return "", false
 		}
 	}
-	return false
+	return "", true
 }
 
 // absorbedWitnesses bounds how many of a branch's new files are looked for in
@@ -298,9 +332,9 @@ func addedFiles(changes []rawChange) []rawChange {
 // edit never reached -- the answer is that the branch has not landed, which
 // is the direction that loses nothing. A branch that adds no file, or deletes
 // one, is not asked, and a failure to ask rules nothing out.
-func (c Client) heldAdded(ctx context.Context, since, base string, added []rawChange) (held bool, before string) {
+func (c Client) heldAdded(ctx context.Context, since, base string, added []rawChange) (held bool, before string, asked bool) {
 	if len(added) == 0 {
-		return true, ""
+		return true, "", true
 	}
 	// -m, because a merge is otherwise shown with no changes at all, and a
 	// file that arrived through one would read as never having arrived.
@@ -316,7 +350,7 @@ func (c Client) heldAdded(ctx context.Context, since, base string, added []rawCh
 	}
 	output, err := c.run(ctx, append(append(args, since+".."+base, "--"), paths...)...)
 	if err != nil {
-		return true, ""
+		return true, "", false
 	}
 	// Newest first, so the first thing read about a file is the last thing
 	// that happened to it, and the last edit read is the oldest of those.
@@ -332,10 +366,10 @@ func (c Client) heldAdded(ctx context.Context, since, base string, added []rawCh
 	}
 	for _, state := range latest {
 		if state == unseen {
-			return false, ""
+			return false, "", true
 		}
 	}
-	return true, before
+	return true, before, true
 }
 
 // sameTree reports whether merge-tree's answer is the revision's own tree.

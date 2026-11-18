@@ -209,3 +209,19 @@ func runLandedIn(ctx context.Context, probe Lineage, commits, kept []string, bas
 	}
 	return probe.Absorbed(ctx, base, newest)
 }
+
+type freshKey struct{}
+
+// Fresh marks a context whose questions must be answered from the repository
+// and not from an answer remembered from an earlier run. A destructive caller
+// asks this way: a remembered answer is as right as the rule that made it,
+// and deleting a branch is where being wrong about it is not recoverable.
+func Fresh(ctx context.Context) context.Context {
+	return context.WithValue(ctx, freshKey{}, true)
+}
+
+// IsFresh reports a context marked by Fresh.
+func IsFresh(ctx context.Context) bool {
+	fresh, _ := ctx.Value(freshKey{}).(bool)
+	return fresh
+}

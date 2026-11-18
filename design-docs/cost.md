@@ -230,6 +230,14 @@ Known, measured, and left for a change of its own:
   added files the trunk still holds unedited while something else conflicts.
   `merge-tree --stdin` would take the remaining merges in one process, but
   needs input on standard input, which `subprocess.Runner` does not carry.
+  What the search finds is remembered between runs (`g2g/landed.json`), by
+  commit: a branch found landed costs the merge at the tip from then on, and
+  one that was not is asked only about the commits the base gained since it
+  was last asked. The first run in a repository pays in full: the status above made 1,186
+  merges on its first run with the file empty and 285 on the next, in 39
+  seconds where it had taken over four minutes. What is left is the merge at
+  each branch's tip and the `Carries` check after a yes, neither of which is
+  remembered, because both depend on where the base is now.
 - **A landed answer is checked against the branch's own commits.** A yes from
   the whole-branch merge is followed by `Carries`: one ancestry check and one
   `merge-tree`, for each boundary the caller hands `landed.Whole` (a recorded

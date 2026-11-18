@@ -241,7 +241,7 @@ func (s Service) unique(ctx context.Context, plan Plan) ([]git.Commit, error) {
 	if since == "" {
 		since = plan.Parent
 	}
-	done, err := landed.Into(ctx, s.Git, plan.Parent, plan.Branch, since)
+	done, err := landed.Into(landed.Fresh(ctx), s.Git, plan.Parent, plan.Branch, since)
 	if err != nil || done {
 		return nil, err
 	}

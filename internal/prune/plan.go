@@ -16,6 +16,12 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	if !s.Ready() {
 		return Plan{}, fmt.Errorf("prune service is not fully configured")
 	}
+	if options.DeleteBranches {
+		// Deleting a branch is the one thing here that cannot be put back by
+		// recording it again, so nothing about whether it landed is taken
+		// from an answer remembered from an earlier run.
+		ctx = landed.Fresh(ctx)
+	}
 	discovery, err := s.Graph.Discover(ctx, selection)
 	if err != nil {
 		return Plan{}, err

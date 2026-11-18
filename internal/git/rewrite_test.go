@@ -428,7 +428,7 @@ func TestRewriteRejectsUnsafeRefNames(t *testing.T) {
 // Only the recorded argv proves --update-refs was sent, which is what moves
 // the intermediate branches of a stack rather than just its tip.
 func TestRebaseRequestsUpdateRefs(t *testing.T) {
-	recorder := testutil.FakeCLIs(t, map[string][]testutil.Route{"git": {{Prefix: "rebase"}}})
+	recorder := testutil.FakeCLIs(t, map[string][]testutil.Route{"git": {{Prefix: "rebase"}, {Prefix: "merge-base --is-ancestor"}}})
 
 	if err := (Client{Runner: subprocess.ExecRunner{}}).Rebase(context.Background(), "synthetic-trunk",
 		Range{From: "synthetic-fork", To: "synthetic-b"}); err != nil {
@@ -436,6 +436,28 @@ func TestRebaseRequestsUpdateRefs(t *testing.T) {
 	}
 
 	recorder.Find("git rebase --onto synthetic-trunk synthetic-fork synthetic-b --no-reapply-cherry-picks --empty=drop")
+}
+
+// Git exits zero from a rebase it could not start, having said why and moved
+// nothing, so the exit status alone is not the answer: the branch is asked
+// whether it is on its new base, and what Git printed is relayed when not.
+func TestRebaseThatExitsZeroWithoutRewritingIsAFailure(t *testing.T) {
+	recorder := testutil.FakeCLIs(t, map[string][]testutil.Route{"git": {
+		{Prefix: "rebase", Stderr: "error: synthetic could not create its state"},
+		{Prefix: "merge-base --is-ancestor", Exit: 1},
+	}})
+
+	err := (Client{Runner: subprocess.ExecRunner{}}).Rebase(context.Background(), "synthetic-trunk",
+		Range{From: "synthetic-fork", To: "synthetic-b"})
+	if err == nil {
+		t.Fatal("Rebase() error = nil for a branch the rebase left off its new base")
+	}
+	for _, want := range []string{"synthetic-b", "synthetic could not create its state"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Rebase() error = %v, want it to name %q", err, want)
+		}
+	}
+	recorder.Find("git merge-base --is-ancestor synthetic-trunk synthetic-b")
 }
 
 func TestRebaseStepsSuppressTheEditor(t *testing.T) {

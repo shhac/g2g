@@ -2,6 +2,8 @@ package restack
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/shhac/g2g/internal/diagnostic"
@@ -21,9 +23,41 @@ func (s Service) rebase(ctx context.Context, plan Plan, standing checkout) error
 	}
 	diagnostic.Event(ctx, "restack.rebase", diagnostic.Field{Key: "branches", Value: strings.Join(plan.Branches(), ",")})
 	if err := s.collapseAndRebase(ctx, plan, standing); err != nil {
-		return err
+		return s.neverStarted(ctx, record, standing, err)
 	}
 	return s.finish(ctx, record)
+}
+
+// neverStarted forgets the journal of a rebase that failed before it moved
+// anything, and says so.
+//
+// Stopping on a conflict leaves Git part-way through a rebase, which is what
+// the journal is for. A rebase Git could not start at all -- its index
+// locked, its directory not writable -- leaves every branch and the checkout
+// where they were, and a journal over that refused every other command for a
+// restack with nothing to continue and nothing to abort, under advice to
+// resolve files when none were unmerged. Anything this cannot confirm keeps
+// the journal: a cancelled run may have killed Git mid-rewrite, and a branch
+// or a checkout that has moved is exactly what --abort puts back.
+func (s Service) neverStarted(ctx context.Context, record Record, standing checkout, cause error) error {
+	if ctx.Err() != nil {
+		return cause
+	}
+	if inProgress, err := s.Git.RebaseInProgress(ctx); err != nil || inProgress {
+		return cause
+	}
+	if now, err := s.standingOn(ctx); err != nil || now != standing {
+		return cause
+	}
+	for branch, original := range record.Original {
+		if tip, err := s.Git.Resolve(ctx, branch); err != nil || tip != original {
+			return cause
+		}
+	}
+	if err := s.Journal.Clear(ctx); err != nil {
+		return errors.Join(cause, err)
+	}
+	return fmt.Errorf("%w · nothing was replayed: every branch is where it was, and no restack is left in progress", cause)
 }
 
 // collapseAndRebase moves what has nothing left, brings the checkout along,

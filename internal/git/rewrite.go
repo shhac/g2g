@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
@@ -157,9 +158,33 @@ func (c Client) Rebase(ctx context.Context, onto string, replayed Range) error {
 	// --update-refs is deliberately absent: each branch is rebased on its own,
 	// so there are no intermediate refs to carry, and it is the part that
 	// behaved differently across versions.
-	_, err := c.run(ctx, "rebase", "--onto", onto, replayed.From, replayed.To,
+	output, err := c.run(ctx, "rebase", "--onto", onto, replayed.From, replayed.To,
 		"--no-reapply-cherry-picks", "--empty=drop")
-	return err
+	if err != nil {
+		return err
+	}
+	return c.rebased(ctx, onto, replayed.To, output)
+}
+
+// rebased refuses a rebase that exited zero without rewriting anything.
+//
+// Git does that when it cannot create its own state directory -- a read-only
+// git directory, or a sandbox that forbids writing there: it prints "could not
+// create temporary .../rebase-merge" and reports success, with the branch
+// exactly where it was. Taking the exit status at its word made the restack
+// plan the same rebase again until it gave up counting passes, and what it
+// then reported named neither Git nor the reason. A rebase that worked always
+// leaves the branch on its new base, so that is what is asked, and what Git
+// printed is the only account of why it did not.
+func (c Client) rebased(ctx context.Context, onto, branch string, output []byte) error {
+	landed, err := c.IsAncestor(ctx, onto, branch)
+	if err != nil || landed {
+		return err
+	}
+	if reason := diagnostic.BoundedOutput(output); reason != "" {
+		return fmt.Errorf("git rebase reported success but left %s where it was: %s", branch, reason)
+	}
+	return fmt.Errorf("git rebase reported success but left %s where it was", branch)
 }
 
 // RebaseContinue resumes an interrupted rebase once conflicts are resolved.

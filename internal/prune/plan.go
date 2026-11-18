@@ -69,14 +69,8 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
 	// the same reason.
-	forgotten := append(slices.Clone(plan.Landed), plan.ForgottenMissing...)
-	rehome, left, err := s.rehome(ctx, placements(discovery, forgotten))
-	if err != nil {
+	if err := s.keepWhatStrands(ctx, &plan); err != nil {
 		return Plan{}, err
-	}
-	plan.Rehome = rehome
-	if len(left) != 0 {
-		plan.Repair = strandedNote(left)
 	}
 	if options.DeleteBranches && plan.Blocked() == "" {
 		if err := s.planDeletions(ctx, &plan, plan.Tips); err != nil {
@@ -279,4 +273,60 @@ func comparisonEdge(recorded graph.Graph, branch string, survives func(string) b
 		}
 	}
 	return graph.Edge{}, false
+}
+
+// keepWhatStrands takes out of the plan each branch whose forgetting would
+// strand a child nothing can place, and forgets the rest.
+//
+// One such branch used to refuse the whole prune. On a repository of a
+// hundred stacks, eighty of them landed, two branches whose children had not
+// been replayed yet kept every one of the others recorded -- and every
+// command that reads the record paying to ask whether they had landed. A
+// branch that strands nothing is safe to forget whatever its neighbours do,
+// so it is forgotten, and the ones kept are named with what would let them
+// go.
+//
+// A branch kept is a child of the branch below it again, so that one is asked
+// in turn, until nothing left to forget strands anything. When that leaves
+// nothing to forget at all, it is the refusal it always was: there is no
+// prune to run, only something to put right first.
+func (s Service) keepWhatStrands(ctx context.Context, plan *Plan) error {
+	landed, missing := slices.Clone(plan.Landed), slices.Clone(plan.ForgottenMissing)
+	asked := plan.Forgotten()
+	stranded := make([]placement, 0)
+	for {
+		rehome, left, err := s.rehome(ctx, placements(plan.Discovery, plan.Forgotten()))
+		if err != nil {
+			return err
+		}
+		if len(left) == 0 {
+			plan.Rehome = rehome
+			break
+		}
+		// A branch kept on account of a child is itself a child the branch
+		// below would strand. What put it there is the child, and the child
+		// is what there is to put right, so only that is named.
+		for _, each := range left {
+			if !slices.Contains(asked, each.child) {
+				stranded = append(stranded, each)
+			}
+		}
+		keeping := func(branch string) bool {
+			return slices.ContainsFunc(left, func(each placement) bool { return each.parent == branch })
+		}
+		plan.Landed = slices.DeleteFunc(plan.Landed, keeping)
+		plan.ForgottenMissing = slices.DeleteFunc(plan.ForgottenMissing, keeping)
+	}
+	if len(stranded) == 0 {
+		return nil
+	}
+	if plan.Nothing() {
+		// Shown as it was found: every branch that has landed, and why none
+		// of them can be forgotten yet.
+		plan.Landed, plan.ForgottenMissing, plan.Rehome = landed, missing, nil
+		plan.Repair = strandedNote(stranded)
+		return nil
+	}
+	plan.Kept = strandedNote(stranded)
+	return nil
 }

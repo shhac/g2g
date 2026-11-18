@@ -643,10 +643,19 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   forgetting its parent changes its record either way; leaving it to the
   refusal made `prune --branch <landed> --scope branch` refuse after every
   merge and pull. Without the ancestry — a trunk advanced by hand and the
-  stack not replayed — it still refuses, offering
-  `g2g pull --prune` and then one `g2g track --branch <child> --parent
-  <branch>` per child. Do not relax the check into a guess; `untrack` still
-  never reparents, and `delete` remains the one command that does on request.
+  stack not replayed — the branch that would strand it is kept, and the rest
+  of the prune goes ahead (`keepWhatStrands`, `Plan.Kept`): a branch that
+  strands nothing is safe to forget whatever its neighbours do, and one
+  unreplayed stack used to keep every other landed branch on the trunk
+  recorded, with every read of the record paying to ask about them again. A
+  kept branch is a child of the branch below it once more, so that one is
+  asked in turn, and only the child that started it is named. The kept
+  branches come with `g2g pull --prune` and one `g2g track --branch <child>
+  --parent <branch>` per child, and the run exits `0`: it did what the
+  preview said. With nothing safe to forget it is the refusal it always was,
+  shown with every landed branch. Do not relax the check into a guess;
+  `untrack` still never reparents, and `delete` remains the one command that
+  does on request.
 - `prune` remains graph-only by default. `--delete-branches` explicitly adds
   local deletion at assessed tips, refuses branches held by any worktree, and
   rechecks the heads and bases before mutation. `--forget-missing` explicitly

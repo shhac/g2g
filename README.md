@@ -1033,9 +1033,12 @@ the child there, with the same check and the same fork point `track` would use,
 because that is where the child already sits -- whether or not the child was
 selected, since forgetting its parent changes its record either way, so
 `g2g prune --branch <landed> --scope branch` forgets one branch after a merge
-and a pull. Where Git does not show it, prune refuses rather than reparenting
-around it: a trunk advanced by hand with the stack not replayed, say. The
-refusal offers
+and a pull. Where Git does not show it, prune will not reparent around it: a
+trunk advanced by hand with the stack not replayed, say. The branch that would
+strand the child stays recorded and the rest of the prune goes ahead, so one
+stack that has not been replayed does not keep every other landed branch
+recorded; the preview says which were kept. Only when nothing is safe to
+forget does the prune refuse. Either way it offers
 `g2g pull --prune` first, which replays the child and then prunes, and then a
 `g2g track --branch <child> --parent <branch>` for each child, to record it by
 hand.
@@ -1730,7 +1733,7 @@ advice, phrased as a next step, and `--json` carries it as `repair`.
 | Two open pull requests for one branch | none — close all but one; a person has to choose, and the preview says so |
 | The remote has moved on a branch `push` would publish | `g2g pull` to reconcile, or preview `g2g pull --take published --through synthetic-top` and review its listed local losses; the manual pinned replacement can drop remote-only work |
 | A branch and its published version (the remote's copy) have both moved | `g2g pull --take published`, bounded with `--through`, or reconcile it yourself |
-| `prune` would strand a child Git does not show sitting on the branch below | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
+| `prune` would strand a child Git does not show sitting on the branch below, and nothing else is safe to forget (otherwise it keeps that branch, says so, and forgets the rest) | `g2g pull --prune`, or `g2g track --branch <child> --parent <branch>` for each child |
 | A tracked branch was deleted with plain Git | `g2g untrack --branch <branch>` |
 | A branch was rebased by hand (moved off its parent) | re-record it with `g2g track` |
 | A branch's own commits include a merge commit, which a restack would flatten | `git merge <parent>` on the branch, then `g2g track --branch <branch> --parent <parent>`; `g2g restack --branch <parent> --scope path` first when the parent has to move |

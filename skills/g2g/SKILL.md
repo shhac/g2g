@@ -183,9 +183,11 @@ description: |
   that branch is an ancestor of the child** — what a pull leaves — with the
   same check and fork point `track` uses; that is recording where it already
   sits, not reparenting around it, and applies to a child outside the
-  selection too. Without that ancestry it still refuses, offering
-  `g2g pull --prune` and then a
-  `g2g track --branch <child> --parent <branch>` per child. Do not widen the
+  selection too. Without that ancestry the branch that would strand it is
+  kept and the rest are forgotten (`Plan.Kept`, exit `0`), naming
+  `g2g pull --prune` and a
+  `g2g track --branch <child> --parent <branch>` per child; only when nothing
+  is safe to forget does the whole prune refuse. Do not widen the
   rehome to a guess.
   A branch with no commits of its own is forgotten only where its tip is
   inside its parent (collapsed, or not started). One left on the tip its

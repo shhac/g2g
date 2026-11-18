@@ -79,6 +79,10 @@ type Plan struct {
 	// recorded with instead, keyed by the child. Only a child Git already shows
 	// sitting on the branch below is in it: see rehome.
 	Rehome map[string]graph.Edge
+	// Kept is why some landed branches stay recorded while the rest are
+	// forgotten, and what would let them go: forgetting them would strand a
+	// child nothing can place. Empty when nothing was held back.
+	Kept repair.Note
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed.
 	Repair repair.Note
@@ -96,7 +100,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options && maps.Equal(p.Delete, other.Delete) && maps.Equal(p.Tips, other.Tips) &&
 		slices.Equal(p.ForgottenMissing, other.ForgottenMissing) &&
-		p.Repair.Equal(other.Repair) &&
+		p.Repair.Equal(other.Repair) && p.Kept.Equal(other.Kept) &&
 		slices.Equal(p.Landed, other.Landed) &&
 		slices.Equal(p.Missing, other.Missing) &&
 		maps.Equal(p.Rehome, other.Rehome)

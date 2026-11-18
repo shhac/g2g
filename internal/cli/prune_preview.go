@@ -45,10 +45,26 @@ func pruneView(plan prune.Plan) stackView {
 		view = view.note("Records "+child+" on "+plan.Rehome[child].Parent+", where it already sits.", severityOK)
 	}
 	view = view.note("Forgets "+words.List(plan.Forgotten())+" from the recorded graph.", severityWarn)
+	view = keptNotes(view, plan)
 	if len(plan.Delete) != 0 {
 		return view.note("Deletes local branches "+words.List(plan.Deleted())+". Remote branches are untouched.", severityWarn)
 	}
 	return view.note(keptBranches(plan), severityNeutral)
+}
+
+// keptNotes says which landed branches stay recorded and what would let them
+// go. They are held back rather than holding the prune back: forgetting the
+// rest is safe whatever happens to these, and a prune that waited for every
+// branch waited for the slowest stack in the repository.
+func keptNotes(view stackView, plan prune.Plan) stackView {
+	if plan.Kept.Reason == "" {
+		return view
+	}
+	view = view.note("The rest stay recorded: "+plan.Kept.Reason+".", severityWarn)
+	for _, note := range alignedCommands(plan.Kept.Ways...) {
+		view = view.note(note.Text, note.Severity)
+	}
+	return view
 }
 
 // keptBranches says that the forgotten branches stay, and how to remove them

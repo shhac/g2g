@@ -12,6 +12,7 @@ package restack
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 
 	localgit "github.com/shhac/g2g/internal/git"
@@ -318,22 +319,61 @@ func (p Plan) Emptied() []string {
 }
 
 // Equal compares every fact that changes what the rewrite does.
-func (p Plan) Equal(other Plan) bool {
-	return p.Discovery.Equal(other.Discovery) &&
-		p.Onto == other.Onto &&
-		p.Above == other.Above &&
-		p.Absorb == other.Absorb &&
-		p.Repair.Equal(other.Repair) &&
-		p.Clean == other.Clean &&
-		p.Predicted == other.Predicted &&
-		p.Policy == other.Policy &&
-		p.Worktrees.Equal(other.Worktrees) &&
-		slices.Equal(p.Stranded, other.Stranded) &&
-		slices.Equal(p.TrunksBehind, other.TrunksBehind) &&
-		slices.EqualFunc(p.Steps, other.Steps, func(left, right Step) bool {
-			return left.Branch == right.Branch && left.Parent == right.Parent &&
-				left.Base == right.Base && left.ForkPoint == right.ForkPoint &&
-				left.Tip == right.Tip && left.Head == right.Head && left.Behind == right.Behind &&
-				slices.Equal(left.Orphans, right.Orphans)
-		})
+func (p Plan) Equal(other Plan) bool { return p.Changed(other) == "" }
+
+// Changed names the first fact that changes what the rewrite does and differs
+// in another plan, empty when none does. Equal is this finding nothing, so
+// the two cannot disagree about what counts.
+func (p Plan) Changed(other Plan) string {
+	if changed := p.Discovery.Changed(other.Discovery); changed != "" {
+		return changed
+	}
+	switch {
+	case p.Onto != other.Onto:
+		return "where the replay lands moved"
+	case p.Above != other.Above || p.Absorb != other.Absorb || p.Policy != other.Policy:
+		return "what was asked for changed"
+	case !p.Repair.Equal(other.Repair):
+		return "whether the restack may go ahead changed"
+	case p.Clean != other.Clean:
+		return "the working tree gained or lost uncommitted changes"
+	case p.Predicted != other.Predicted:
+		return "whether the replay applies cleanly changed"
+	case !p.Worktrees.Equal(other.Worktrees):
+		return "another worktree took or let go of a branch, or its changes there came or went"
+	case !slices.Equal(p.Stranded, other.Stranded):
+		return "the branches stacked outside the selection changed"
+	case !slices.Equal(p.TrunksBehind, other.TrunksBehind):
+		return "the remote's copy of a trunk moved"
+	case len(p.Steps) != len(other.Steps):
+		return fmt.Sprintf("the branches to replay changed from %d to %d", len(p.Steps), len(other.Steps))
+	}
+	for index, was := range p.Steps {
+		if changed := was.changed(other.Steps[index]); changed != "" {
+			return changed
+		}
+	}
+	return ""
+}
+
+// changed names what differs about one branch's replay.
+func (s Step) changed(other Step) string {
+	moved := func(what, was, is string) string {
+		return fmt.Sprintf("%s moved from %s to %s", what, localgit.Short(was), localgit.Short(is))
+	}
+	switch {
+	case s.Branch != other.Branch:
+		return fmt.Sprintf("the branches to replay changed: %s where %s was", other.Branch, s.Branch)
+	case s.Parent != other.Parent || s.Base != other.Base:
+		return fmt.Sprintf("what %s is replayed onto changed", s.Branch)
+	case s.Tip != other.Tip:
+		return moved(s.Branch, s.Tip, other.Tip)
+	case s.Head != other.Head:
+		return moved("the commit "+s.Branch+" is replayed onto", s.Head, other.Head)
+	case s.ForkPoint != other.ForkPoint:
+		return moved("where "+s.Branch+"'s own commits start", s.ForkPoint, other.ForkPoint)
+	case s.Behind != other.Behind || !slices.Equal(s.Orphans, other.Orphans):
+		return fmt.Sprintf("what %s carries from the branch below it changed", s.Branch)
+	}
+	return ""
 }

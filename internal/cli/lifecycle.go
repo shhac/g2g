@@ -243,7 +243,7 @@ func (f applyFlow[P]) revalidate(ctx context.Context, preview P) (P, error) {
 	if blocked := f.blockedReason(current); blocked != "" {
 		return none, fmt.Errorf("%s", blocked)
 	}
-	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, preview.Equal(current)); err != nil {
+	if err := diagnostic.Revalidated(ctx, f.revalidation.event, f.revalidation.subject, preview.Equal(current), whatChanged(preview, current)); err != nil {
 		return none, err
 	}
 	if f.settle == nil {
@@ -387,4 +387,17 @@ func (f applyFlow[P]) mutationSize(plan P) int {
 		return 0
 	}
 	return f.branches(plan)
+}
+
+// whatChanged is what a plan says differs from the one previewed, for the
+// plans that can say. Something else sharing the repository -- a fetch,
+// another session's restack -- is the ordinary reason an apply is refused,
+// and the reader cannot tell that from a defect without being told what
+// moved.
+func whatChanged[P any](preview, current P) string {
+	namer, ok := any(preview).(interface{ Changed(P) string })
+	if !ok {
+		return ""
+	}
+	return namer.Changed(current)
 }

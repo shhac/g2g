@@ -291,6 +291,37 @@ func (g Graph) Validate() error {
 
 // Equal reports whether two graphs record the same structure. Revalidation
 // compares this immediately before a write.
-func (g Graph) Equal(other Graph) bool {
-	return maps.Equal(defaulted(g.Edges), defaulted(other.Edges)) && slices.Equal(g.Trunks, other.Trunks) && maps.Equal(g.Declared, other.Declared)
+func (g Graph) Equal(other Graph) bool { return g.Changed(other) == "" }
+
+// Changed names the first difference from another graph, empty when they
+// record the same structure.
+func (g Graph) Changed(other Graph) string {
+	if !slices.Equal(g.Trunks, other.Trunks) {
+		return fmt.Sprintf("the recorded trunks changed from %s to %s", listed(g.Trunks), listed(other.Trunks))
+	}
+	if !maps.Equal(g.Declared, other.Declared) {
+		return "a declared trunk was recorded or changed"
+	}
+	branches := slices.Sorted(maps.Keys(defaulted(g.Edges)))
+	for branch := range other.Edges {
+		if _, tracked := g.Edges[branch]; !tracked {
+			branches = append(branches, branch)
+		}
+	}
+	slices.Sort(branches)
+	for _, branch := range branches {
+		was, tracked := g.Edges[branch]
+		is, still := other.Edges[branch]
+		switch {
+		case !tracked:
+			return fmt.Sprintf("%s was recorded on %s", branch, is.Parent)
+		case !still:
+			return fmt.Sprintf("%s was forgotten from the record", branch)
+		case was.Parent != is.Parent:
+			return fmt.Sprintf("%s was recorded on %s instead of %s", branch, is.Parent, was.Parent)
+		case was != is:
+			return fmt.Sprintf("the record of where %s starts on %s changed", branch, is.Parent)
+		}
+	}
+	return ""
 }

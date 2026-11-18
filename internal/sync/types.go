@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 
@@ -185,24 +186,37 @@ func (p Plan) Nothing() bool {
 }
 
 // Equal compares every fact that changes what the sync does.
-func (p Plan) Equal(other Plan) bool {
-	return p.Remote == other.Remote &&
-		p.Above == other.Above &&
-		p.Policy == other.Policy &&
-		p.Worktrees.Equal(other.Worktrees) &&
-		collectionsEqual(p.Collect, other.Collect) &&
-		p.Base == other.Base &&
-		p.Advance == other.Advance &&
-		p.Diverged == other.Diverged &&
-		p.Supersede == other.Supersede &&
-		slices.Equal(p.DiscardsBase, other.DiscardsBase) &&
-		maps.Equal(p.Published, other.Published) &&
-		slices.Equal(p.Keep, other.Keep) &&
-		slices.Equal(p.Commits, other.Commits) &&
-		maps.Equal(p.Begins, other.Begins) &&
-		p.Strict.Equal(other.Strict) &&
-		p.Repair.Equal(other.Repair) &&
-		p.Restack.Equal(other.Restack)
+func (p Plan) Equal(other Plan) bool { return p.Changed(other) == "" }
+
+// Changed names the first fact that changes what the sync does and differs in
+// another plan, empty when none does. Equal is this finding nothing.
+func (p Plan) Changed(other Plan) string {
+	switch {
+	case p.Remote != other.Remote || p.Above != other.Above || p.Policy != other.Policy || !slices.Equal(p.Keep, other.Keep):
+		return "what was asked for changed"
+	case !p.Worktrees.Equal(other.Worktrees):
+		return "another worktree took or let go of a branch, or its changes there came or went"
+	case p.Base != other.Base:
+		return fmt.Sprintf("the trunk changed from %s to %s", p.Base, other.Base)
+	case p.Advance != other.Advance || p.Diverged != other.Diverged || p.Supersede != other.Supersede || !slices.Equal(p.DiscardsBase, other.DiscardsBase):
+		return fmt.Sprintf("%s or the remote's copy of it moved", p.Base)
+	}
+	for _, branch := range slices.Sorted(maps.Keys(p.Published)) {
+		if was, is := p.Published[branch], other.Published[branch]; was != is {
+			return fmt.Sprintf("%s on %s moved from %s to %s", branch, p.Remote, localgit.Short(was), localgit.Short(is))
+		}
+	}
+	switch {
+	case !maps.Equal(p.Published, other.Published):
+		return fmt.Sprintf("a branch appeared on or left %s", p.Remote)
+	case !collectionsEqual(p.Collect, other.Collect):
+		return "what the remote holds that the branches here do not changed"
+	case !slices.Equal(p.Commits, other.Commits) || !maps.Equal(p.Begins, other.Begins):
+		return "the commits this would take or drop changed"
+	case !p.Strict.Equal(other.Strict) || !p.Repair.Equal(other.Repair):
+		return "whether the pull may go ahead changed"
+	}
+	return p.Restack.Changed(other.Restack)
 }
 
 // pending is where collect will leave each branch, which is what the replay has

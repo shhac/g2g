@@ -202,10 +202,16 @@ func sensitive(lower string) bool {
 //
 // subject names the operation in the refusal ("push plan", "the graphs"), and
 // event names it in the diagnostic stream.
-func Revalidated(ctx context.Context, event, subject string, equal bool) error {
+//
+// changed says what differed, for the plans that can; a mismatch with nothing
+// to name is reported as it always was.
+func Revalidated(ctx context.Context, event, subject string, equal bool, changed string) error {
 	if !equal {
-		Event(ctx, event+".revalidation", Field{Key: "match", Value: "false"})
-		return fmt.Errorf("%s changed during revalidation; rerun without --apply to review the new plan", subject)
+		Event(ctx, event+".revalidation", Field{Key: "match", Value: "false"}, Field{Key: "changed", Value: changed})
+		if changed == "" {
+			return fmt.Errorf("%s changed during revalidation; rerun without --apply to review the new plan", subject)
+		}
+		return fmt.Errorf("%s changed during revalidation: %s · rerun without --apply to review the new plan", subject, changed)
 	}
 	Event(ctx, event+".revalidation", Field{Key: "match", Value: "true"})
 	return nil

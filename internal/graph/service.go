@@ -76,15 +76,44 @@ func (d Discovery) EvidencedTrunk(branch string) bool {
 	return d.Graph.IsTrunk(branch) || branch == d.DefaultTrunk
 }
 
-func (d Discovery) Equal(other Discovery) bool {
-	return d.Target == other.Target &&
-		d.TargetSource == other.TargetSource &&
-		d.DefaultTrunk == other.DefaultTrunk &&
-		d.Scope == other.Scope &&
-		d.StorePath == other.StorePath &&
-		d.Graph.Equal(other.Graph) &&
-		slices.Equal(d.Branches, other.Branches) &&
-		maps.Equal(d.States, other.States)
+func (d Discovery) Equal(other Discovery) bool { return d.Changed(other) == "" }
+
+// Changed names the first fact that differs from another reading, empty when
+// none does. Equal is this finding nothing, so a refusal that two readings
+// differ can always say how.
+//
+// "The plan changed" sent its reader to a reflog to find out whether a
+// colleague's fetch or a defect had refused them, and several sessions
+// sharing one repository refuse each other often enough for that to matter.
+func (d Discovery) Changed(other Discovery) string {
+	switch {
+	case d.Target != other.Target || d.TargetSource != other.TargetSource || d.Scope != other.Scope || d.StorePath != other.StorePath:
+		return "what was selected changed"
+	case d.DefaultTrunk != other.DefaultTrunk:
+		return fmt.Sprintf("the remote's default branch changed from %q to %q", d.DefaultTrunk, other.DefaultTrunk)
+	}
+	if changed := d.Graph.Changed(other.Graph); changed != "" {
+		return changed
+	}
+	if !slices.Equal(d.Branches, other.Branches) {
+		return fmt.Sprintf("the selected branches changed from %s to %s", listed(d.Branches), listed(other.Branches))
+	}
+	for _, branch := range d.Branches {
+		if was, is := d.States[branch], other.States[branch]; was != is {
+			return fmt.Sprintf("%s went from %q to %q", branch, was, is)
+		}
+	}
+	if !maps.Equal(d.States, other.States) {
+		return "where a branch stands changed"
+	}
+	return ""
+}
+
+func listed(branches []string) string {
+	if len(branches) == 0 {
+		return "none"
+	}
+	return strings.Join(branches, ", ")
 }
 
 // Orphans reports selected branches whose recorded parent is neither tracked

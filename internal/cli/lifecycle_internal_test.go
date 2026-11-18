@@ -24,6 +24,13 @@ type interruptedPlan struct{ name string }
 
 func (p interruptedPlan) Equal(other interruptedPlan) bool { return p == other }
 
+func (p interruptedPlan) Changed(other interruptedPlan) string {
+	if p == other {
+		return ""
+	}
+	return "synthetic " + p.name + " became " + other.name
+}
+
 func interruptedFlow(t *testing.T, claim bool) (string, error) {
 	t.Helper()
 
@@ -262,6 +269,17 @@ func TestAnApplyReplansAndRefusesWhatMovedUnderneath(t *testing.T) {
 	}
 	if got := strings.Join(calls, ","); got != "plan,plan" {
 		t.Errorf("calls = %s, want two plans and no execute", got)
+	}
+}
+
+// A refusal that the plan changed says what changed, when the plan can: the
+// ordinary cause is something else sharing the repository, and without the
+// detail a reader cannot tell that from a defect.
+func TestARefusedApplyNamesWhatMovedUnderneath(t *testing.T) {
+	calls := []string{}
+	_, err := runSequenced(t, sequencedFlow(&calls, "first", "second"), true)
+	if err == nil || !strings.Contains(err.Error(), "changed during revalidation: synthetic first became second · rerun without --apply") {
+		t.Fatalf("refusal = %v, want it to name the change", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -104,7 +105,12 @@ type pullOptions struct {
 // chosen validates flag combinations before any plan reads the repository.
 func (o pullOptions) chosen(presentation Presentation) (syncer.Take, error) {
 	if err := o.selection.validateScope(); err != nil {
-		return syncer.Take{}, err
+		// The narrower scopes other commands take mean nothing here, and the
+		// two flags that do narrow a pull are not spelled as scopes. Saying
+		// only which values are accepted left a reader who had just used
+		// submit's --scope path to work out from the help whether a stack
+		// reached past their branch.
+		return syncer.Take{}, fmt.Errorf("%w · a pull advances the trunk and replays the whole stack on it, descendants included, so nothing narrower is a scope: --trunk-only advances the trunk alone, and --above <branch> replays only what sits above a branch", err)
 	}
 	if (o.cleanup.DeleteBranches || o.cleanup.ForgetMissing) && !o.alsoPrune {
 		return syncer.Take{}, errors.New("--delete-branches and --forget-missing require --prune")

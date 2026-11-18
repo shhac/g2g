@@ -109,6 +109,15 @@ func (s Service) landedThrough(ctx context.Context, recorded graph.Graph, branch
 	if !comparable {
 		return false, nil
 	}
+	// Asked of the branch's own record, before the wider range: measured
+	// from the forgotten parent's fork point, a branch still on that parent's
+	// old tip has commits, all of them the parent's and all of them landed,
+	// and so read as landed with it. It is the same unstarted branch left
+	// behind whether its parent was rewritten or squashed, and forgetting it
+	// loses the same record.
+	if behind, err := s.leftBehind(ctx, branch, recorded.Edges[branch]); err != nil || behind {
+		return false, err
+	}
 	landedWhole, err := s.assessBranch(ctx, branch, edge, deleting, tips)
 	if err != nil || !landedWhole {
 		return false, err

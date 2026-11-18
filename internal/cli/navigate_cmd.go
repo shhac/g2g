@@ -99,12 +99,12 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		// away from it is how that rebase's state gets stranded.
 		if guard != nil && !dryRun {
 			if err := guard.RequireIdle(ctx); err != nil {
-				return err
+				return budgets.discoveryTimedOut(ctx, err)
 			}
 		}
 		move, err := service.Plan(ctx, navigate.Request{Direction: each.direction, Steps: steps, From: stack.Source(selection.from), Trunk: selection.trunk})
 		if err != nil {
-			return budgets.discoveryTimedOut(err)
+			return budgets.discoveryTimedOut(ctx, err)
 		}
 		if move.Blocked() != "" {
 			if err := writeStackView(cmd.OutOrStdout(), moveView(move), presentation); err != nil {

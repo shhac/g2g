@@ -131,15 +131,31 @@ func TestMutationTimeoutLeavesOtherErrorsUnchanged(t *testing.T) {
 // to raise a flag they had raised.
 func TestDiscoveryTimeoutNamesTheCeilingInForce(t *testing.T) {
 	expired := context.DeadlineExceeded
-	if got := newBudgets(budgetCommand(t)).discoveryTimedOut(expired).Error(); !strings.Contains(got, discoveryTimeout.String()+" default") {
+	if got := newBudgets(budgetCommand(t)).discoveryTimedOut(context.Background(), expired).Error(); !strings.Contains(got, discoveryTimeout.String()+" default") {
 		t.Errorf("default budget said %q", got)
 	}
-	got := newBudgets(budgetCommand(t, "--timeout", "7m")).discoveryTimedOut(expired).Error()
+	got := newBudgets(budgetCommand(t, "--timeout", "7m")).discoveryTimedOut(context.Background(), expired).Error()
 	if !strings.Contains(got, "7m0s --timeout") || strings.Contains(got, "default") {
 		t.Errorf("an explicit --timeout said %q", got)
 	}
-	if other := errors.New("synthetic failure"); newBudgets(budgetCommand(t)).discoveryTimedOut(other) != other {
+	if other := errors.New("synthetic failure"); newBudgets(budgetCommand(t)).discoveryTimedOut(context.Background(), other) != other {
 		t.Error("a failure that is not a timeout was rewritten")
+	}
+}
+
+// A call the deadline cut off fails, and its reader often says what that
+// failure would ordinarily mean. The budget having run out is what decides.
+func TestDiscoveryTimeoutOutranksWhatTheInterruptedCallSaid(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	misread := errors.New(`revision "synthetic-a" is not a commit in this repository`)
+	got := newBudgets(budgetCommand(t)).discoveryTimedOut(ctx, misread).Error()
+	if !strings.Contains(got, "timed out") || strings.Contains(got, "not a commit") {
+		t.Errorf("an expired budget said %q", got)
+	}
+	if newBudgets(budgetCommand(t)).discoveryTimedOut(ctx, nil) != nil {
+		t.Error("a read that finished as its budget ran out was failed")
 	}
 }
 

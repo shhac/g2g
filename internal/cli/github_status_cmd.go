@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 
 	"github.com/spf13/cobra"
@@ -17,25 +18,25 @@ func newGitHubStatus(service link.Service, completions stack.Completions, presen
 		if err := selection.validate(); err != nil {
 			return err
 		}
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", selection.branch, selection.trunk))
-		defer cancel()
-		selected := selection.Selection()
-		selected.AllowAbsent = true
-		plan, err := service.Plan(ctx, selected)
-		if err != nil {
-			// "Nothing is stacked here" is an answer to what status was asked,
-			// not a failure to answer it. Refusing meant the read-only triage
-			// entry point exited non-zero on a repository that is simply not
-			// stacked yet — while the offline status rendered the very same fact and exited
-			// zero. Only this command renders it; anything that mutates still
-			// has nothing to act on and still refuses.
-			var undescribed stack.Undescribed
-			if errors.As(err, &undescribed) {
-				return writeUnstacked(cmd.OutOrStdout(), undescribed, presentation)
+		return newBudgets(cmd).reading(commandContext(cmd.Context(), cmd, "read_only", selection.branch, selection.trunk), func(ctx context.Context) error {
+			selected := selection.Selection()
+			selected.AllowAbsent = true
+			plan, err := service.Plan(ctx, selected)
+			if err != nil {
+				// "Nothing is stacked here" is an answer to what status was asked,
+				// not a failure to answer it. Refusing meant the read-only triage
+				// entry point exited non-zero on a repository that is simply not
+				// stacked yet — while the offline status rendered the very same fact and exited
+				// zero. Only this command renders it; anything that mutates still
+				// has nothing to act on and still refuses.
+				var undescribed stack.Undescribed
+				if errors.As(err, &undescribed) {
+					return writeUnstacked(cmd.OutOrStdout(), undescribed, presentation)
+				}
+				return err
 			}
-			return err
-		}
-		return writeGitHubStatus(cmd.OutOrStdout(), plan, presentation)
+			return writeGitHubStatus(cmd.OutOrStdout(), plan, presentation)
+		})
 	}
 	selection.register(cmd, completions, stack.ReadableSources, "local branch to inspect (defaults to current branch)", "trunk to use as the base")
 	// status reads, so it defaults to the whole stack: ancestors, descendants,

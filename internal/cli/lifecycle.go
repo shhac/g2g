@@ -162,14 +162,14 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	defer cancel()
 
 	if err := f.guardBefore(ctx); err != nil {
-		return err
+		return budgets.discoveryTimedOut(ctx, err)
 	}
 	plan, err := f.first(ctx)
 	if err != nil {
-		return budgets.discoveryTimedOut(err)
+		return budgets.discoveryTimedOut(ctx, err)
 	}
 	if err := f.guardAfter(ctx, plan); err != nil {
-		return err
+		return budgets.discoveryTimedOut(ctx, err)
 	}
 	if !apply {
 		return f.preview(cmd, plan, p)
@@ -181,7 +181,7 @@ func (f applyFlow[P]) run(cmd *cobra.Command, root context.Context, budgets budg
 	validated, err := f.revalidate(revalidateCtx, plan)
 	if err != nil {
 		// Each planning pass has its own budget and the same timeout advice.
-		return writeNotApplied(cmd.OutOrStdout(), p, budgets.discoveryTimedOut(err))
+		return writeNotApplied(cmd.OutOrStdout(), p, budgets.discoveryTimedOut(revalidateCtx, err))
 	}
 	switch f.outcome(validated) {
 	case planNoOp:

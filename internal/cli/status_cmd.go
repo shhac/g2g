@@ -27,23 +27,23 @@ func newStatus(service graph.Service, selector stack.PathSelector, published pus
 		if err := validateOfflineSource(from); err != nil {
 			return err
 		}
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", selection.branch, ""))
-		defer cancel()
-		if source := stack.Source(from); source != "" && source != stack.SourceG2G {
-			return writeSourceGraph(ctx, cmd, selector, selection, source, presentation)
-		}
-		discovery, err := service.Discover(ctx, selection.Selection())
-		if err != nil {
-			return err
-		}
-		publishing, err := readPublished(ctx, published, remote, cmd.Flags().Changed("remote"), discovery)
-		if err != nil {
-			return err
-		}
-		view := markPublished(statusView(discovery), selectedIn(discovery).from(remote), publishing)
-		view = noteRecentDrops(ctx, view, published, remote, discovery, time.Now())
-		view = rememberedPRs(ctx, view, discovery, observations)
-		return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
+		return newBudgets(cmd).reading(commandContext(cmd.Context(), cmd, "read_only", selection.branch, ""), func(ctx context.Context) error {
+			if source := stack.Source(from); source != "" && source != stack.SourceG2G {
+				return writeSourceGraph(ctx, cmd, selector, selection, source, presentation)
+			}
+			discovery, err := service.Discover(ctx, selection.Selection())
+			if err != nil {
+				return err
+			}
+			publishing, err := readPublished(ctx, published, remote, cmd.Flags().Changed("remote"), discovery)
+			if err != nil {
+				return err
+			}
+			view := markPublished(statusView(discovery), selectedIn(discovery).from(remote), publishing)
+			view = noteRecentDrops(ctx, view, published, remote, discovery, time.Now())
+			view = rememberedPRs(ctx, view, discovery, observations)
+			return writeGraphView(cmd.OutOrStdout(), view, discovery, presentation)
+		})
 	}
 	cmd.Flags().StringVar(&remote, "remote", localgit.DefaultRemote, "the remote whose last-known branches each one is compared with")
 	// Only the records that need no network. Reading a pull request base means

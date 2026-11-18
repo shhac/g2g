@@ -36,32 +36,32 @@ func newDoctor(service graph.Service, restacker restack.Service, published push.
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		presentation := presentation.resolve(cmd)
-		ctx, cancel := newBudgets(cmd).discovery(commandContext(cmd.Context(), cmd, "read_only", "", ""))
-		defer cancel()
-		from, err := doctorStart(ctx, service)
-		if err != nil {
-			return err
-		}
-		discovery, err := service.Discover(ctx, graph.Selection{Branch: from, Scope: graph.ScopeAll})
-		if err != nil {
-			return err
-		}
-		here, elsewhere, err := restacker.Unfinished(ctx)
-		if err != nil {
-			return err
-		}
-		publishing, err := readPublished(ctx, published, remote, cmd.Flags().Changed("remote"), discovery)
-		if err != nil {
-			return err
-		}
-		findings := diagnose(discovery, unfinished{here: here, elsewhere: elsewhere}, publishing, remote)
-		if err := writeStackView(cmd.OutOrStdout(), doctorView(discovery, findings), presentation); err != nil {
-			return err
-		}
-		if len(findings) != 0 {
-			return foundProblems(len(findings))
-		}
-		return nil
+		return newBudgets(cmd).reading(commandContext(cmd.Context(), cmd, "read_only", "", ""), func(ctx context.Context) error {
+			from, err := doctorStart(ctx, service)
+			if err != nil {
+				return err
+			}
+			discovery, err := service.Discover(ctx, graph.Selection{Branch: from, Scope: graph.ScopeAll})
+			if err != nil {
+				return err
+			}
+			here, elsewhere, err := restacker.Unfinished(ctx)
+			if err != nil {
+				return err
+			}
+			publishing, err := readPublished(ctx, published, remote, cmd.Flags().Changed("remote"), discovery)
+			if err != nil {
+				return err
+			}
+			findings := diagnose(discovery, unfinished{here: here, elsewhere: elsewhere}, publishing, remote)
+			if err := writeStackView(cmd.OutOrStdout(), doctorView(discovery, findings), presentation); err != nil {
+				return err
+			}
+			if len(findings) != 0 {
+				return foundProblems(len(findings))
+			}
+			return nil
+		})
 	}
 	cmd.Flags().StringVar(&remote, "remote", localgit.DefaultRemote, "the remote whose last-known branches each one is compared with")
 	return cmd

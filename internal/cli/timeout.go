@@ -103,17 +103,40 @@ func (b budgets) landing(ctx context.Context, branches int) (context.Context, co
 // It names the ceiling that was actually in force. Saying "the 45s default" to
 // someone who had already passed --timeout 10m sent them to raise a flag they
 // had raised.
-func (b budgets) discoveryTimedOut(err error) error {
-	if !errors.Is(err, context.DeadlineExceeded) {
+//
+// The budget having run out is the test, whatever the error says. A call cut
+// off by the deadline fails, and what reads that failure often gives it a
+// meaning of its own: a revision that could not be resolved in time came back
+// as "not a commit in this repository", naming a different branch each run,
+// and sent its reader looking for a branch that was there all along.
+func (b budgets) discoveryTimedOut(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return err
 	}
+	const what = "timed out working out what to do, before anything was changed"
 	if b.override > 0 {
-		return fmt.Errorf("timed out working out what to do, before anything was changed · it ran out of the %s --timeout allowed", b.override)
+		return fmt.Errorf("%s · it ran out of the %s --timeout allowed (%s)", what, b.override, timeoutDetail)
 	}
 	if b.minimum > discoveryTimeout {
-		return fmt.Errorf("timed out working out what to do, before anything was changed · it ran out of the %s G2G_TIMEOUT minimum budget (raise it with --timeout or G2G_TIMEOUT)", b.minimum)
+		return fmt.Errorf("%s · it ran out of the %s G2G_TIMEOUT minimum budget (raise it with --timeout or G2G_TIMEOUT; %s)", what, b.minimum, timeoutDetail)
 	}
-	return fmt.Errorf("timed out working out what to do, before anything was changed · a large repository can need longer than the %s default (raise it with --timeout)", discoveryTimeout)
+	return fmt.Errorf("%s · a large repository can need longer than the %s default (raise it with --timeout or G2G_TIMEOUT; %s)", what, discoveryTimeout, timeoutDetail)
+}
+
+// timeoutDetail is where the call that was cut off is named. The error it
+// left behind is not: it describes one command among hundreds, by whatever
+// the deadline happened to interrupt.
+const timeoutDetail = "--debug shows what it was waiting on"
+
+// reading runs a read-only command inside one discovery budget, so that
+// running out of it is reported as that rather than as whatever was in flight.
+func (b budgets) reading(root context.Context, read func(context.Context) error) error {
+	ctx, cancel := b.discovery(root)
+	defer cancel()
+	return b.discoveryTimedOut(ctx, read(ctx))
 }
 
 func mutationTimeout(err error, recovery string) error {

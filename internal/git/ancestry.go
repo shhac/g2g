@@ -224,6 +224,10 @@ func (c Client) Resolve(ctx context.Context, revision string) (string, error) {
 	// ^{commit} makes an object that exists but is not a commit an error here
 	// rather than a confusing failure inside a later rebase.
 	output, err := c.run(ctx, "rev-parse", "--verify", "--quiet", revision+"^{commit}")
+	// A call the deadline cut off says nothing about the revision.
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	if err != nil {
 		return "", fmt.Errorf("revision %q is not a commit in this repository", revision)
 	}

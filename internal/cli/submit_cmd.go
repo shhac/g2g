@@ -114,13 +114,13 @@ func (o *submitOptions) run(cmd *cobra.Command, service submit.Service, presenta
 	// half-rewritten checkout may otherwise fail before identifying its owner.
 	if o.apply && o.guard != nil {
 		if err := o.guard.RequireIdleHere(ctx); err != nil {
-			return err
+			return budgets.discoveryTimedOut(ctx, err)
 		}
 	}
 	plan, err := service.Plan(ctx, o.selection.Selection(), o.remote, upstreamFor(o.noSetUpstream))
 	plan = o.planned(plan)
 	if err != nil {
-		return budgets.discoveryTimedOut(err)
+		return budgets.discoveryTimedOut(ctx, err)
 	}
 	chosenTemplate, templateName := "", ""
 	if o.writeSpec != "" || o.edit || o.template != "" || o.noTemplate {

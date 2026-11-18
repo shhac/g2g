@@ -198,8 +198,49 @@ func (s Service) retainsRange(ctx context.Context, head string, edge graph.Edge)
 // individual equivalent in the parent, and merging the branch in changes the
 // parent not at all. A Git too old to be asked says no, which costs the
 // squash-merge case and nothing else.
+//
+// A branch with no commits of its own answers yes without having been asked
+// anything, so it is forgotten only where it sits inside its parent.
 func (s Service) landed(ctx context.Context, branch string, edge graph.Edge) (bool, error) {
-	return landed.Into(ctx, s.Git, edge.Parent, branch, edge.ForkPoint)
+	there, err := landed.Into(ctx, s.Git, edge.Parent, branch, edge.ForkPoint)
+	if err != nil || !there {
+		return there, err
+	}
+	behind, err := s.leftBehind(ctx, branch, edge)
+	return !behind, err
+}
+
+// leftBehind reports a branch nobody has committed to yet that is still on the
+// tip its parent had before the parent was rewritten: one a restack left where
+// a worktree holds it, or never selected.
+//
+// It has nothing to land, so "nothing left to contribute" is true of it and
+// says nothing. Forgetting it threw away the one record of where its own work
+// begins. The first commit made on it then sat on the parent's old commits
+// with nothing to tell them apart: recording the branch again could only
+// measure from where it meets the rewritten parent, which is below every one
+// of them, and the next restack replayed the parent's old commits as the
+// branch's own. Kept, it reads as needing a restack, which moves it.
+//
+// One whose tip the parent contains is the ordinary empty branch -- collapsed
+// onto its base, or not started -- and recording that one again loses nothing.
+func (s Service) leftBehind(ctx context.Context, branch string, edge graph.Edge) (bool, error) {
+	if edge.ForkPoint == "" || s.Graph.Git == nil {
+		return false, nil
+	}
+	tip, err := s.Graph.Git.Resolve(ctx, branch)
+	if err != nil {
+		return false, err
+	}
+	fork, err := s.Graph.Git.Resolve(ctx, edge.ForkPoint)
+	if err != nil {
+		return false, err
+	}
+	if tip != fork {
+		return false, nil
+	}
+	within, err := s.Graph.Git.IsAncestor(ctx, tip, edge.Parent)
+	return !within, err
 }
 
 // comparisonEdge includes inherited work when a parent disappeared. Limiting

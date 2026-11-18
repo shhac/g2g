@@ -22,8 +22,8 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	}
 	if plan.Blocked() == "" {
 		view = view.note(fmt.Sprintf("Records %s under %s.", plan.Target, plan.Parent), severityOK)
-		if edge, tracked := plan.Graph.Edges[plan.Target]; tracked && edge.Parent != plan.Parent {
-			view = view.note(fmt.Sprintf("Records replay range %s..%s for the next restack.", localgit.Short(plan.Updated.Edges[plan.Target].ForkPoint), plan.Target), severityNeutral)
+		if note := rangeNote(plan); note != "" {
+			view = view.note(note, severityNeutral)
 		}
 		if plan.Graph.IsDeclared(plan.Target) {
 			view = view.note(fmt.Sprintf("%s stops being a trunk%s, and is replayed with its stack from now on.", plan.Target, landingPhrase(plan.Graph.Declared[plan.Target])), severityWarn)
@@ -48,6 +48,29 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 		}
 	}
 	return view
+}
+
+// rangeNote names the replay range a recording writes down wherever that is
+// not simply the parent's tip. A changed parent keeps the range the branch
+// already had. A first recording under a parent the branch is not built on
+// starts where the two meet, so whatever the branch still carries of a parent
+// that has since been rewritten is recorded as the branch's own. That was
+// written without a word, and found only when a restack offered a parent's old
+// commits and did not apply.
+func rangeNote(plan graph.TrackPlan) string {
+	recorded := plan.Updated.Edges[plan.Target]
+	bounds := localgit.Short(recorded.ForkPoint) + ".." + plan.Target
+	if edge, tracked := plan.Graph.Edges[plan.Target]; tracked {
+		if edge.Parent == plan.Parent {
+			return ""
+		}
+		return fmt.Sprintf("Records replay range %s for the next restack.", bounds)
+	}
+	if recorded.Origin == graph.OriginAncestry {
+		return ""
+	}
+	return fmt.Sprintf("Records replay range %s for the next restack: every commit on %s that %s does not have, including any %s had when %s was built on it and has since rewritten.",
+		bounds, plan.Target, plan.Parent, plan.Parent, plan.Target)
 }
 
 // confirmation says whether Git already agrees with the edge being recorded.

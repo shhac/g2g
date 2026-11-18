@@ -125,12 +125,21 @@ func TestTrackWarnsWhenTheParentIsNotAnAncestor(t *testing.T) {
 	if !strings.Contains(out, "needing a restack") {
 		t.Errorf("output does not say what the edge will read as:\n%s", out)
 	}
+	// The range starts where the two meet, so it can hold commits the parent
+	// had and rewrote. Saying so here is the only warning before a restack
+	// offers them as the branch's own.
+	if !strings.Contains(out, "Records replay range ") || !strings.Contains(out, "every commit on synthetic-auth that synthetic-billing does not have") {
+		t.Errorf("output does not name the replay range an asserted edge records:\n%s", out)
+	}
 }
 
 func TestTrackConfirmsAnEdgeGitAlreadyAgreesWith(t *testing.T) {
 	out, _, err := runGraph(t, graph.New(), false, "track", "--branch", "synthetic-login", "--parent", "synthetic-auth")
 	if err != nil {
 		t.Fatalf("track: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "Records replay range") {
+		t.Errorf("an edge Git confirms starts at the parent's tip, and the output names a range anyway:\n%s", out)
 	}
 	if !strings.Contains(out, "Commit ancestry confirms synthetic-auth is already below synthetic-login") {
 		t.Errorf("output does not confirm the edge:\n%s", out)

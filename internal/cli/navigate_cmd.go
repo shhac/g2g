@@ -96,9 +96,10 @@ func newNavigate(each navigation, service navigate.Service, completions stack.Co
 		ctx, cancel := budgets.discovery(root)
 		defer cancel()
 		// Mid-restack the checkout is part-way through a rebase, and switching
-		// away from it is how that rebase's state gets stranded.
+		// away from it is how that rebase's state gets stranded. That is this
+		// checkout's rebase: another worktree's is untouched by a switch here.
 		if guard != nil && !dryRun {
-			if err := guard.RequireIdle(ctx); err != nil {
+			if err := guard.RequireIdleHere(ctx); err != nil {
 				return budgets.discoveryTimedOut(ctx, err)
 			}
 		}

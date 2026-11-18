@@ -21,7 +21,17 @@ func (s Service) RequireIdle(ctx context.Context) error {
 	if err != nil || len(others) == 0 {
 		return err
 	}
-	return busyElsewhere(others[0], nil)
+	return waitsForAll(others[0])
+}
+
+// waitsForAll is the refusal of a command that cannot say what it touches. It
+// says so: other commands go ahead beside the same restack, and a refusal
+// naming only somebody else's restack read as that restack holding this
+// command's branches, which it may not.
+func waitsForAll(other Elsewhere) error {
+	note := other.Repair(nil)
+	note.Reason += ", and this command waits for every restack because it cannot name the branches it would touch before it runs"
+	return errors.New(note.Sentence())
 }
 
 // RequireIdleHere refuses while this worktree has an unfinished restack,

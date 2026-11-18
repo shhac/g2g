@@ -170,7 +170,8 @@ func pullFlow(cmd *cobra.Command, service syncer.Service, selection graph.Select
 		suggest = nil
 	}
 	return applyFlow[syncer.Plan]{
-		guard: guard,
+		guard:   guard,
+		touches: syncer.Plan.Footprint,
 		plan: func(ctx context.Context) (syncer.Plan, error) {
 			return service.Plan(ctx, selection, remote, chosen, worktrees)
 		},

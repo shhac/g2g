@@ -260,3 +260,28 @@ func collectionsEqual(left, right []Collection) bool {
 func (p Plan) taken(branch string) bool {
 	return slices.ContainsFunc(p.Collect, func(collection Collection) bool { return collection.Branch == branch })
 }
+
+// Footprint is what applying the pull moves and reads, for the guard that
+// decides whether it may run beside another worktree's unfinished restack:
+// everything its replay does, the branches it takes from the remote or
+// records a new beginning for, and the base.
+//
+// A base it fast-forwards is advanced rather than moved, which is what lets a
+// pull of one stack run while another stack on the same trunk is stopped on a
+// conflict: see restack.Footprint. A base it resets to a rewritten trunk is
+// moved like any other branch, because what a stopped restack has replayed
+// would then sit on commits the trunk no longer has.
+func (p Plan) Footprint() restack.Footprint {
+	taken := slices.Collect(maps.Keys(p.Begins))
+	for _, collection := range p.Collect {
+		taken = append(taken, collection.Branch)
+	}
+	touching := p.Restack.Footprint().With(restack.Moves(taken...))
+	switch {
+	case p.Supersede:
+		return touching.With(restack.Moves(p.Base))
+	case p.Advance:
+		return touching.With(restack.Advances(p.Base))
+	}
+	return touching.With(restack.Reads(p.Base))
+}

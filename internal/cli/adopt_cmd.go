@@ -58,7 +58,8 @@ func adoptFlow(service graph.Service, selection graphOptions, trunk string, guar
 		render: func(writer io.Writer, plan graph.StackPlan, p Presentation) error {
 			return writeGraphView(writer, gitAdoptView(plan), plan.Discovery, p)
 		},
-		guard: guard,
+		guard:   guard,
+		touches: adoptTouches,
 		execute: func(ctx context.Context, plan graph.StackPlan) error {
 			if err := service.ApplyStack(ctx, plan); err != nil {
 				return err

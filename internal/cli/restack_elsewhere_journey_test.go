@@ -42,11 +42,16 @@ func TestJourneyARestackStoppedElsewhereLeavesOtherStacksFree(t *testing.T) {
 		t.Errorf("synthetic-loose is recorded under %q, want synthetic-free", got)
 	}
 
-	// pull cannot say what it touches before it has advanced the trunk the
-	// agent's restack replays onto, so it still waits for every restack.
+	// A pull of this stack replays it onto the trunk the agent's restack is
+	// replaying onto too, and moves nothing of the agent's. One of the
+	// agent's stack still waits.
+	mustRun(t, "pull", "--apply")
+	if !w.contains(w.Local, "main", "synthetic-loose") {
+		t.Error("the pull did not replay the unrelated stack onto main")
+	}
 	trunk := w.tip(w.Local, "main")
-	if _, stderr, err := run(t, "pull", "--apply"); err == nil || !strings.Contains(stderr+err.Error(), "unfinished in checkout") {
-		t.Errorf("pull went ahead beside another worktree's restack: %v", err)
+	if _, stderr, err := run(t, "pull", "--branch", "synthetic-busy", "--apply"); err == nil || !strings.Contains(stderr+err.Error(), "unfinished in checkout") {
+		t.Errorf("pull went ahead over another worktree's restack: %v", err)
 	}
 	if w.tip(w.Local, "main") != trunk {
 		t.Error("the refused pull moved the trunk")

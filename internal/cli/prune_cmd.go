@@ -11,6 +11,7 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
+	"github.com/shhac/g2g/internal/restack"
 	"github.com/shhac/g2g/internal/shape"
 )
 
@@ -60,7 +61,8 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		notices.changed = "The listed cleanup is complete. Remote branches were untouched."
 	}
 	return applyFlow[prunePlan]{
-		guard: guard,
+		guard:   guard,
+		touches: func(plan prunePlan) restack.Footprint { return pruneTouches(plan.Plan) },
 		plan: func(ctx context.Context) (prunePlan, error) {
 			plan, err := service.PlanWithOptions(ctx, selection, cleanup)
 			return prunePlan{Plan: plan, remote: remote}, err

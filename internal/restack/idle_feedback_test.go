@@ -161,3 +161,46 @@ func TestAPlanAndItsRecordReadTheOntoTargetAlike(t *testing.T) {
 		}
 	}
 }
+
+// A pull fast-forwards the trunk every stack replays onto. Where the trunk was
+// stays inside it, so a restack stopped while replaying onto it loses nothing;
+// counting the advance as a move made every pull wait for every stack's
+// conflict. It still meets a branch the restack is rewriting, and a trunk
+// reset to a rewritten one is a move like any other.
+func TestAnAdvanceMeetsWhatAnotherMovesAndNotWhatItReads(t *testing.T) {
+	paused := Record{
+		Original:  map[string]string{"synthetic-child": "1"},
+		Structure: map[string]RecordedEdge{"synthetic-child": {Parent: "main"}},
+	}.footprint()
+	for _, test := range []struct {
+		name string
+		mine Footprint
+		want []string
+	}{
+		{"advancing the trunk it replays onto", Advances("main").With(Moves("synthetic-free")), nil},
+		{"resetting the trunk it replays onto", Moves("main").With(Moves("synthetic-free")), []string{"main"}},
+		{"advancing a branch it is rewriting", Advances("synthetic-child"), []string{"synthetic-child"}},
+		{"forgetting a branch it is rewriting", Moves("synthetic-child"), []string{"synthetic-child"}},
+		{"reading the trunk beside it", Reads("main", "").With(Moves("")), nil},
+	} {
+		if got := test.mine.meets(paused); !slices.Equal(got, test.want) {
+			t.Errorf("%s: meets = %v, want %v", test.name, got, test.want)
+		}
+		if got := paused.meets(test.mine); !slices.Equal(got, test.want) {
+			t.Errorf("%s, asked the other way round: meets = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
+// A command that waits for every restack says that is why. Naming only the
+// other worktree's restack read as that restack holding this command's
+// branches, beside commands on the same branches that went ahead.
+func TestACommandThatWaitsForEveryRestackSaysWhy(t *testing.T) {
+	other := Elsewhere{Record: Record{Branch: "synthetic-a"}, Checkout: "/synthetic/agent"}
+	err := Service{Journal: &memoryJournal{others: []Elsewhere{other}}}.RequireIdle(context.Background())
+	for _, want := range []string{`for branch "synthetic-a" is unfinished in checkout "/synthetic/agent"`, "cannot name the branches it would touch", "wait for it"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("RequireIdle = %v, want it to say %q", err, want)
+		}
+	}
+}

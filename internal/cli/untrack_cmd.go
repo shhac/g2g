@@ -28,6 +28,7 @@ func newUntrack(service graph.Service, guard idleGuard, presentation Presentatio
 				return writeGraphView(writer, untrackView(plan), plan.Discovery, p)
 			},
 			guard:    guard,
+			touches:  untrackTouches,
 			execute:  service.ApplyUntrack,
 			branches: func(plan graph.UntrackPlan) int { return len(plan.Removed) + len(plan.Undeclared) },
 			noOp:     func(plan graph.UntrackPlan) bool { return plan.NoOp() },

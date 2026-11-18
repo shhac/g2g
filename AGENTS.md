@@ -675,8 +675,15 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `untrack` still never reparents, and `delete` remains the one command that
   does on request.
 - `prune` remains graph-only by default. `--delete-branches` explicitly adds
-  local deletion at assessed tips, refuses branches held by any worktree, and
-  rechecks the heads and bases before mutation. `--forget-missing` explicitly
+  local deletion at assessed tips and rechecks the heads and bases before
+  mutation. A landed branch a worktree has checked out is kept whole, record
+  and branch, and the rest are deleted (`keepWhatIsHeld`, `Plan.Held`): Git
+  will not delete it, and where each piece of work has a worktree of its own
+  the first one found used to refuse every cleanup. It is not merely left
+  undeleted, because prune deletes only what it records and could never
+  remove it later. It runs before `keepWhatStrands`, since a branch kept is a
+  child the branch below must not strand. With every landed branch held it
+  is the refusal it was. `--forget-missing` explicitly
   removes absent selected records without claiming their work landed. Both
   flags compose through `pull --prune`. Deletion precedes graph removal so a
   partial failure leaves recoverable records; report completed work and exit

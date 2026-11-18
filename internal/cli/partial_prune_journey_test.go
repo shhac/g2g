@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,5 +86,84 @@ func TestJourneyPruneWithOnlyStrandingBranchesStillRefuses(t *testing.T) {
 	}
 	if w.readStore() != before {
 		t.Error("a refused prune changed the record")
+	}
+}
+
+// landedPair is two branches on the trunk that have both landed there.
+func landedPair(t *testing.T) *world {
+	t.Helper()
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-free", "free.txt")
+	w.branchOff("main", "synthetic-held", "held.txt")
+	mustRun(t, "track", "--branch", "synthetic-free", "--parent", "main", "--apply")
+	mustRun(t, "track", "--branch", "synthetic-held", "--parent", "main", "--apply")
+	w.git(w.Local, "push", "-q", "origin", "synthetic-free", "synthetic-held")
+	w.git(w.Other, "fetch", "-q", "origin")
+	for _, landed := range []string{"synthetic-free", "synthetic-held"} {
+		w.git(w.Other, "merge", "-q", "--squash", "origin/"+landed)
+		w.git(w.Other, "commit", "-qm", "synthetic squash of "+landed)
+	}
+	w.git(w.Other, "push", "-q", "origin", "main")
+	w.git(w.Local, "switch", "-q", "main")
+	mustRun(t, "pull", "--trunk-only", "--apply")
+	return w
+}
+
+// A cleanup deletes every landed branch it can and keeps, whole, the ones a
+// worktree has checked out. Where each piece of work has a worktree of its
+// own, a branch that has landed is usually still checked out in the one it
+// was built in, and the first of those used to refuse the lot.
+func TestJourneyPruneDeletesWhatIsFreeAndKeepsWhatAWorktreeHolds(t *testing.T) {
+	w := landedPair(t)
+	elsewhere := filepath.Join(t.TempDir(), "synthetic-elsewhere")
+	w.git(w.Local, "worktree", "add", "-q", elsewhere, "synthetic-held")
+
+	preview := mustRun(t, "prune", "--scope", "trunk", "--delete-branches")
+	for _, want := range []string{
+		"Deletes local branches synthetic-free.",
+		"Kept as they are, record and branch: synthetic-held is checked out in ",
+		"git worktree remove ",
+	} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("preview lacks %q:\n%s", want, preview)
+		}
+	}
+	mustRun(t, "prune", "--scope", "trunk", "--delete-branches", "--apply")
+	branches := w.git(w.Local, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	if strings.Contains(branches, "synthetic-free") || !strings.Contains(branches, "synthetic-held") {
+		t.Errorf("branches after the cleanup:\n%s", branches)
+	}
+	structure := w.readStructure()
+	if _, recorded := structure["synthetic-free"]; recorded || structure["synthetic-held"] != "main" {
+		t.Errorf("recorded structure = %v, want only the held branch still recorded", structure)
+	}
+
+	// With the worktree gone, the branch that was kept goes too.
+	w.git(w.Local, "worktree", "remove", elsewhere)
+	mustRun(t, "prune", "--scope", "trunk", "--delete-branches", "--apply")
+	if strings.Contains(w.git(w.Local, "for-each-ref", "--format=%(refname:short)", "refs/heads"), "synthetic-held") {
+		t.Error("synthetic-held survived a cleanup once nothing held it")
+	}
+}
+
+// With every landed branch held there is nothing to clean up, and it is the
+// refusal it was, naming each one.
+func TestJourneyPruneWithEveryLandedBranchHeldStillRefuses(t *testing.T) {
+	w := landedPair(t)
+	for _, branch := range []string{"synthetic-free", "synthetic-held"} {
+		w.git(w.Local, "worktree", "add", "-q", filepath.Join(t.TempDir(), branch), branch)
+	}
+	before := w.readStore()
+	preview := mustRun(t, "prune", "--scope", "trunk", "--delete-branches")
+	for _, want := range []string{"Apply blocked", "synthetic-free is checked out in ", "synthetic-held is checked out in "} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("preview lacks %q:\n%s", want, preview)
+		}
+	}
+	if _, _, err := run(t, "prune", "--scope", "trunk", "--delete-branches", "--apply"); err == nil {
+		t.Error("a cleanup with nothing free to delete was applied")
+	}
+	if w.readStore() != before {
+		t.Error("a refused cleanup changed the record")
 	}
 }

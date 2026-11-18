@@ -83,6 +83,10 @@ type Plan struct {
 	// forgotten, and what would let them go: forgetting them would strand a
 	// child nothing can place. Empty when nothing was held back.
 	Kept repair.Note
+	// Held is why some landed branches are neither deleted nor forgotten
+	// while the rest are: a worktree has each of them checked out. Only a
+	// prune that deletes branches holds any back.
+	Held repair.Note
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed.
 	Repair repair.Note
@@ -100,7 +104,7 @@ func (p Plan) Equal(other Plan) bool {
 	return p.Discovery.Equal(other.Discovery) &&
 		p.Options == other.Options && maps.Equal(p.Delete, other.Delete) && maps.Equal(p.Tips, other.Tips) &&
 		slices.Equal(p.ForgottenMissing, other.ForgottenMissing) &&
-		p.Repair.Equal(other.Repair) && p.Kept.Equal(other.Kept) &&
+		p.Repair.Equal(other.Repair) && p.Kept.Equal(other.Kept) && p.Held.Equal(other.Held) &&
 		slices.Equal(p.Landed, other.Landed) &&
 		slices.Equal(p.Missing, other.Missing) &&
 		maps.Equal(p.Rehome, other.Rehome)

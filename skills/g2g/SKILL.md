@@ -175,7 +175,8 @@ description: |
   boundary. By default it edits the recorded graph and deletes no branch.
   `--delete-branches` opts into local deletion; `--forget-missing` also removes
   selected records whose refs are gone. Preview lists both acts separately.
-  Deletion is content-based, refuses every checked-out branch, rechecks heads
+  Deletion is content-based, keeps whole (record and branch) each landed
+  branch a worktree has checked out while deleting the rest, rechecks heads
   and bases, and removes refs under an expected-tip lease. Partial cleanup
   exits `3` with completed work and a scoped retry. Remote branches are untouched.
   A child that

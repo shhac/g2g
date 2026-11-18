@@ -1028,7 +1028,11 @@ These are independent choices, and the preview lists record removal and local
 deletion separately. Add `--apply` after reviewing it. Remote branches are
 untouched, and branches already forgotten from the graph are outside its scope,
 which is why a preview that forgets landed branches without deleting them names
-the `--delete-branches` run that would remove them too.
+the `--delete-branches` run that would remove them too. Git will not delete a
+branch a worktree has checked out, so a landed branch that is still checked out
+somewhere is kept as it is, record and branch, while the rest are deleted; the
+preview names each one and its worktree. Remove that worktree or switch it to
+another branch, and the next cleanup takes the branch.
 
 Deletion uses Git's content assessment, never a cached PR verdict. It refuses
 branches checked out in this or another worktree, rechecks the assessed heads

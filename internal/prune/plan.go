@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/g2g/internal/diagnostic"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/landed"
+	"github.com/shhac/g2g/internal/repair"
 )
 
 func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection, options Options) (Plan, error) {
@@ -75,6 +76,11 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	// child Git already shows on the branch below is recorded there; anything
 	// else is reported rather than reparented — the rule untrack follows, for
 	// the same reason.
+	if options.DeleteBranches {
+		if err := s.keepWhatIsHeld(ctx, &plan); err != nil {
+			return Plan{}, err
+		}
+	}
 	if err := s.keepWhatStrands(ctx, &plan); err != nil {
 		return Plan{}, err
 	}
@@ -334,5 +340,52 @@ func (s Service) keepWhatStrands(ctx context.Context, plan *Plan) error {
 		return nil
 	}
 	plan.Kept = strandedNote(stranded)
+	return nil
+}
+
+// keepWhatIsHeld takes out of a deleting prune each landed branch a worktree
+// has checked out, and deletes the rest.
+//
+// Git will not delete a branch that is checked out, and the first one found
+// used to refuse the whole cleanup. Where every piece of work has a worktree
+// of its own, most branches that have landed are still checked out in the
+// worktree they were built in, so nothing could ever be cleaned up at once.
+//
+// A held branch is kept whole, record and all, and not merely left undeleted:
+// prune deletes only branches it records, so one forgotten here could never
+// be removed by it later. It runs before keepWhatStrands, because a branch
+// kept is a child the branch below must not strand.
+func (s Service) keepWhatIsHeld(ctx context.Context, plan *Plan) error {
+	if len(plan.Landed) == 0 {
+		return nil
+	}
+	if s.Cleaner == nil {
+		return fmt.Errorf("local branch deletion is not configured")
+	}
+	holders, err := s.Cleaner.BranchHolders(ctx)
+	if err != nil {
+		return err
+	}
+	landed := slices.Clone(plan.Landed)
+	held := make([]string, 0)
+	ways := make([]repair.Step, 0)
+	for _, branch := range landed {
+		path, checkedOut := holders[branch]
+		if !checkedOut {
+			continue
+		}
+		held = append(held, branch+" is checked out in "+path)
+		ways = append(ways, repair.Step{Command: repair.Command([]string{"git", "worktree", "remove", path}), Effect: "remove that worktree, or switch it to another branch, then prune again"})
+		plan.Landed = slices.DeleteFunc(plan.Landed, func(each string) bool { return each == branch })
+	}
+	if len(held) == 0 {
+		return nil
+	}
+	note := repair.Note{Reason: strings.Join(held, ", and "), Ways: ways}
+	if plan.Nothing() {
+		plan.Landed, plan.Repair = landed, note
+		return nil
+	}
+	plan.Held = note
 	return nil
 }

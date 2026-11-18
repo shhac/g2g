@@ -7,6 +7,7 @@ import (
 
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
+	"github.com/shhac/g2g/internal/repair"
 	"github.com/shhac/g2g/internal/words"
 )
 
@@ -57,12 +58,20 @@ func pruneView(plan prune.Plan) stackView {
 // rest is safe whatever happens to these, and a prune that waited for every
 // branch waited for the slowest stack in the repository.
 func keptNotes(view stackView, plan prune.Plan) stackView {
-	if plan.Kept.Reason == "" {
-		return view
-	}
-	view = view.note("The rest stay recorded: "+plan.Kept.Reason+".", severityWarn)
-	for _, note := range alignedCommands(plan.Kept.Ways...) {
-		view = view.note(note.Text, note.Severity)
+	for _, kept := range []struct {
+		note repair.Note
+		says string
+	}{
+		{plan.Held, "Kept as they are, record and branch: "},
+		{plan.Kept, "The rest stay recorded: "},
+	} {
+		if kept.note.Reason == "" {
+			continue
+		}
+		view = view.note(kept.says+kept.note.Reason+".", severityWarn)
+		for _, note := range alignedCommands(kept.note.Ways...) {
+			view = view.note(note.Text, note.Severity)
+		}
 	}
 	return view
 }

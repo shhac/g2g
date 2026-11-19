@@ -1163,8 +1163,9 @@ that this branch still has would be published again, so `push` refuses and
 names `g2g pull` (drop it here too) and `g2g pull --keep <commit>` (keep it as
 yours, after which it publishes like any commit). Every dropped or moved commit
 is listed by branch, short id and subject, recorded in the sync point's reflog,
-and named by `status` for a week afterwards. A branch with no sync point yet is
-compared exactly as before.
+and named by `status` for a week afterwards: the newest few drops by short id,
+the rest as a count, with `git reflog show refs/g2g/synced/<remote>/<branch>`
+for every one. A branch with no sync point yet is compared exactly as before.
 
 A conflict resolved during a restack or a pull's replay rewrites each commit it
 touched, so by content the published version matches nothing here. Each is

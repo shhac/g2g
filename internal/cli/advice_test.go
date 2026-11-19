@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -132,8 +133,63 @@ func TestRecentDropEntriesNameOnlyTheLastWeeksDrops(t *testing.T) {
 		{Command: "push", At: now.Add(-2 * 24 * time.Hour)},
 		{Command: "pull", At: now.Add(-8 * 24 * time.Hour), Dropped: []string{"fedcba9876543210"}},
 	}
-	got := recentDropEntries("synthetic-b", points, now)
-	if len(got) != 1 || got[0] != "synthetic-b 0123456789ab (g2g pull, 3 hours ago)" {
-		t.Errorf("recentDropEntries() = %q, want only the drop inside the week", got)
+	got := recentDropsOf("synthetic-b", points, now)
+	if len(got) != 1 || got[0].says(now) != "synthetic-b 0123456789ab (g2g pull, 3 hours ago)" {
+		t.Errorf("recentDropsOf() = %+v, want only the drop inside the week", got)
+	}
+}
+
+// A week of rewrites on a wide repository drops hundreds of commits, and
+// naming each put one line of two hundred ids above everything else status
+// said. The newest few drops are named and the rest counted.
+func TestTheRecentDropsNoteCountsWhatItDoesNotName(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	commits := func(prefix string, count int) []string {
+		made := make([]string, 0, count)
+		for index := range count {
+			made = append(made, fmt.Sprintf("%s%011d0000", prefix, index))
+		}
+		return made
+	}
+	drops := make([]recentDrop, 0)
+	for index := range 12 {
+		drops = append(drops, recentDrop{
+			branch: fmt.Sprintf("synthetic-%02d", index), command: "push",
+			at: now.Add(-time.Duration(index+1) * time.Hour), commits: commits(fmt.Sprintf("%x", index), 20),
+		})
+	}
+	got := recentDropNote(drops, "origin", now)
+	for _, want := range []string{
+		"synthetic-00 000000000000, 000000000001, 000000000002 and 17 others (g2g push, 1 hour ago)",
+		"synthetic-02 ",
+		", and 180 more commits on 9 branches · ",
+		"git reflog show refs/g2g/synced/origin/<branch>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the note lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "synthetic-03") || len(got) > 600 {
+		t.Errorf("the note names more than the newest drops (%d characters):\n%s", len(got), got)
+	}
+
+	// A single small drop reads as it always did, with nowhere else to look.
+	one := recentDropNote([]recentDrop{{branch: "synthetic-b", command: "pull", at: now, commits: []string{"0123456789abcdef"}}}, "origin", now)
+	if want := "Dropped recently: synthetic-b 0123456789ab (g2g pull, just now) · "; !strings.HasPrefix(one, want) || strings.Contains(one, "reflog show") {
+		t.Errorf("recentDropNote() = %q, want it to start %q and name no listing", one, want)
+	}
+}
+
+// A branch pushed twice after one rewrite records the same commits both
+// times, and they are named once.
+func TestARecentDropIsNamedOnce(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	points := []localgit.SyncPoint{
+		{Command: "push", At: now.Add(-1 * time.Hour), Dropped: []string{"0123456789abcdef"}},
+		{Command: "push", At: now.Add(-5 * time.Hour), Dropped: []string{"0123456789abcdef"}},
+	}
+	got := recentDropsOf("synthetic-b", points, now)
+	if len(got) != 1 || got[0].at != now.Add(-5*time.Hour) {
+		t.Errorf("recentDropsOf() = %+v, want the one drop, from when it first happened", got)
 	}
 }

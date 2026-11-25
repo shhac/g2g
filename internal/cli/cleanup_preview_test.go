@@ -200,11 +200,12 @@ func TestPruneNamesABranchItKeepsThoughItsPullRequestMerged(t *testing.T) {
 	slices.Sort(branches)
 	landed, kept, unmerged := branches[0], branches[1], branches[2]
 	observed[unmerged], observed[branches[3]] = open, open
-	plan := prune.Plan{Discovery: graph.Discovery{Graph: recorded, Branches: branches, States: map[string]graph.NodeState{}}, Landed: []string{landed}}
+	plan := prune.Plan{Discovery: graph.Discovery{Graph: recorded, Branches: branches, States: map[string]graph.NodeState{}}, Found: []string{landed, branches[3]}, Landed: []string{landed}}
+	observed[branches[3]] = merged
 
 	got := mergedButKept(context.Background(), observed, plan)
 	if !slices.Equal(got, []string{kept}) {
-		t.Fatalf("merged but kept = %v, want only %s: %s landed and %s is still open", got, kept, landed, unmerged)
+		t.Fatalf("merged but kept = %v, want only %s: %s landed, %s landed and was held back, and %s is still open", got, kept, landed, branches[3], unmerged)
 	}
 	text := ""
 	for _, note := range mergedNotes(stackView{}, prunePlan{Plan: plan, merged: got}).Notes {

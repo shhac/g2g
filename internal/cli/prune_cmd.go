@@ -79,13 +79,19 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		touches: func(plan prunePlan) restack.Footprint { return pruneTouches(plan.Plan) },
 		plan: func(ctx context.Context) (prunePlan, error) {
 			plan, err := service.PlanWithOptions(ctx, selection, cleanup)
-			return prunePlan{Plan: plan, remote: remote, merged: mergedButKept(ctx, observations, plan)}, err
+			if err != nil {
+				return prunePlan{}, err
+			}
+			return prunePlan{Plan: plan, remote: remote, merged: mergedButKept(ctx, observations, plan)}, nil
 		},
 		revalidation: revalidation{"prune", "plan"},
 		// Only the plan an apply carries out is asked how what it keeps is
 		// published, since only it is followed by a suggestion.
 		settle: func(ctx context.Context, plan prunePlan) (prunePlan, error) {
 			plan.unpublished = keepsUnpublished(ctx, published, remote, plan.Plan)
+			// Asked again here because a plan read back from a snapshot does
+			// not carry it, and the apply shows the plan before it acts.
+			plan.merged = mergedButKept(ctx, observations, plan.Plan)
 			return plan, nil
 		},
 		render:   func(w io.Writer, plan prunePlan, p Presentation) error { return writePrunePlan(w, plan, p) },
@@ -233,14 +239,13 @@ func mergedButKept(ctx context.Context, observations githubstack.ObservationRead
 		return nil
 	}
 	merged := make([]string, 0)
-	for _, branch := range plan.Discovery.Branches {
-		if _, tracked := plan.Discovery.Graph.Parent(branch); !tracked || plan.Discovery.States[branch] == graph.StateBranchMissing {
+	for _, branch := range keptBy(plan).Branches {
+		// Found, not Landed: a landed branch held back for a worktree or a
+		// child has its own note, and its content is in the trunk.
+		if plan.Discovery.States[branch] == graph.StateBranchMissing || slices.Contains(plan.Found, branch) {
 			continue
 		}
-		if slices.Contains(plan.Landed, branch) || slices.Contains(plan.ForgottenMissing, branch) {
-			continue
-		}
-		if observed[branch].PullRequest.State == "MERGED" {
+		if observed[branch].PullRequest.Merged() {
 			merged = append(merged, branch)
 		}
 	}

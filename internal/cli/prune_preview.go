@@ -69,10 +69,7 @@ func keptNotes(view stackView, plan prune.Plan) stackView {
 		if kept.note.Reason == "" {
 			continue
 		}
-		view = view.note(kept.says+kept.note.Reason+".", severityWarn)
-		for _, note := range alignedCommands(kept.note.Ways...) {
-			view = view.note(note.Text, note.Severity)
-		}
+		view = view.note(kept.says+kept.note.Reason+".", severityWarn).ways(kept.note.Ways...)
 	}
 	return view
 }
@@ -108,26 +105,29 @@ func writePrunePlan(w io.Writer, plan prunePlan, p Presentation) error {
 	return writeGraphView(w, mergedNotes(pruneView(plan.Plan), plan), plan.Discovery, p)
 }
 
-// mergedNotes says why a branch whose pull request merged is still here, and
-// names the command that deletes one on purpose. delete previews any commit
-// that exists nowhere else, which is the question a merged pull request
-// cannot answer.
+// mergedNotes says why a branch whose pull request merged is still here. The
+// commonest reason is a trunk here that has not been pulled since the merge,
+// so the pull is named first; where the branch here is older than the one
+// merged, no pull finds it, and delete is the command that removes one on
+// purpose. Its preview names any commit that exists nowhere else, which is the
+// question a merged pull request cannot answer.
 func mergedNotes(view stackView, plan prunePlan) stackView {
 	if len(plan.merged) == 0 {
 		return view
 	}
-	view = view.note(fmt.Sprintf("Kept, though %s last seen merged: %s · what %s here was not found in the trunk, as when a branch here is older than the one that was merged.",
+	view = view.note(fmt.Sprintf("Kept, though %s last seen merged: %s · what %s here was not found in the trunk here, as when the trunk has not been pulled since, or the branch here is older than the one that was merged.",
 		words.Pick(len(plan.merged), "its pull request was", "their pull requests were"), words.List(plan.merged),
 		words.Pick(len(plan.merged), "it holds", "they hold")), severityWarn)
-	ways := make([]repair.Step, 0, len(plan.merged))
+	ways := make([]repair.Step, 0, len(plan.merged)+1)
+	ways = append(ways, repair.Step{
+		Command: selectedIn(plan.Discovery).from(plan.remote).aimedOr(pullCommand) + " --prune",
+		Effect:  "bring the trunk up to date and prune again, if the merge is newer than the last pull",
+	})
 	for _, branch := range plan.merged {
 		ways = append(ways, repair.Step{
 			Command: repair.Command([]string{"g2g", "delete", "--branch", branch}),
 			Effect:  "delete " + branch + " on purpose · its preview names any commit that exists nowhere else",
 		})
 	}
-	for _, note := range alignedCommands(ways...) {
-		view = view.note(note.Text, note.Severity)
-	}
-	return view
+	return view.ways(ways...)
 }

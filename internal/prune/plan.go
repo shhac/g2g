@@ -80,6 +80,7 @@ func (s Service) PlanWithOptions(ctx context.Context, selection graph.Selection,
 	// for one reason is a child the branch below must not strand, and it has
 	// to be told from a child that has work of its own.
 	found := plan.Forgotten()
+	plan.Found = slices.Clone(plan.Landed)
 	if options.DeleteBranches {
 		if err := s.keepWhatIsHeld(ctx, &plan); err != nil {
 			return Plan{}, err

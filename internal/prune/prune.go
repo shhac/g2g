@@ -65,6 +65,11 @@ type Plan struct {
 	// Landed is the branches whose work is entirely in their parent, in the
 	// order they were selected.
 	Landed []string
+	// Found is every branch Git found landed, before any was held back for a
+	// worktree or for a child it would strand. Landed is what is left of it
+	// to forget, so a reader asking whether a branch's work is in the trunk
+	// asks here: one kept for another reason has still landed.
+	Found []string
 	// Missing are recorded branches that are no longer local: deleted or
 	// renamed with plain Git. Nothing can be asked of Git about them, so they
 	// are not judged landed; --forget-missing or untrack forgets a stale edge.
@@ -105,7 +110,7 @@ func (p Plan) Equal(other Plan) bool {
 		p.Options == other.Options && maps.Equal(p.Delete, other.Delete) && maps.Equal(p.Tips, other.Tips) &&
 		slices.Equal(p.ForgottenMissing, other.ForgottenMissing) &&
 		p.Repair.Equal(other.Repair) && p.Kept.Equal(other.Kept) && p.Held.Equal(other.Held) &&
-		slices.Equal(p.Landed, other.Landed) &&
+		slices.Equal(p.Landed, other.Landed) && slices.Equal(p.Found, other.Found) &&
 		slices.Equal(p.Missing, other.Missing) &&
 		maps.Equal(p.Rehome, other.Rehome)
 }

@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,8 +118,19 @@ func TestJourneyPruneDeletesWhatIsFreeAndKeepsWhatAWorktreeHolds(t *testing.T) {
 	w := landedPair(t)
 	elsewhere := filepath.Join(t.TempDir(), "synthetic-elsewhere")
 	w.git(w.Local, "worktree", "add", "-q", elsewhere, "synthetic-held")
+	// Both pull requests were seen merged. The held branch has landed, so it
+	// is kept for its worktree and not for want of its content in the trunk.
+	observed := `{"schemaVersion":1,"branches":{` +
+		`"synthetic-free":{"pullRequest":{"number":1,"headRefName":"synthetic-free","state":"MERGED"}},` +
+		`"synthetic-held":{"pullRequest":{"number":2,"headRefName":"synthetic-held","state":"MERGED"}}}}`
+	if err := os.WriteFile(filepath.Join(w.Local, ".git", "g2g", "pull-requests.json"), []byte(observed), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	preview := mustRun(t, "prune", "--scope", "trunk", "--delete-branches")
+	if strings.Contains(preview, "last seen merged") || strings.Contains(preview, "g2g delete") {
+		t.Errorf("a landed branch a worktree holds was said not to be in the trunk:\n%s", preview)
+	}
 	for _, want := range []string{
 		"Deletes local branches synthetic-free.",
 		"Kept as they are, record and branch: synthetic-held is checked out in ",

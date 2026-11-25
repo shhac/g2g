@@ -43,9 +43,7 @@ func trackView(plan graph.TrackPlan, describedElsewhere bool) stackView {
 	// cannot read it — that independence is the point — but it can say so, and
 	// name the command that can, which is usually the shorter road.
 	if describedElsewhere && plan.Parent == "" {
-		for _, note := range alignedCommands(repair.Step{Command: "g2g graphite adopt", Effect: "adopt what Graphite already records"}) {
-			view = view.note(note.Text, note.Severity)
-		}
+		view = view.ways(repair.Step{Command: "g2g graphite adopt", Effect: "adopt what Graphite already records"})
 	}
 	return view
 }
@@ -144,6 +142,14 @@ func candidateNotes(plan graph.TrackPlan) []stackNote {
 // alignedCommands offers the commands that decide, as notes rather than as
 // advice: track has already said what it found, and these sit among those
 // findings rather than replacing a refusal.
+// ways appends the commands that decide to a view, one note each.
+func (v stackView) ways(steps ...repair.Step) stackView {
+	for _, note := range alignedCommands(steps...) {
+		v = v.note(note.Text, note.Severity)
+	}
+	return v
+}
+
 func alignedCommands(ways ...repair.Step) []stackNote {
 	notes := make([]stackNote, 0, len(ways))
 	for _, line := range alignedWays(ways) {

@@ -9,8 +9,9 @@ import (
 	"github.com/shhac/g2g/internal/subprocess"
 )
 
-// RequireClean refuses a submission over a working tree with changes, before
-// anything is re-discovered or read from GitHub. A preview does not need it.
+// RequireClean refuses a linking submission over a working tree with changes,
+// before anything is re-discovered or read from GitHub. A preview does not
+// need it, and neither does a submission that only publishes.
 func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ctx) }
 
 // Apply publishes all refs atomically, creates only branches with no PR, then

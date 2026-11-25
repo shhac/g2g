@@ -183,6 +183,20 @@ func (o submitOptions) submission(plan submit.Plan) (submission, error) {
 	return submission{submit.Spec{Draft: draft}, "Create a spec with: " + runnable(o.retryCommand("--write-spec", "<private-temp-dir>")+readyFlag(draft)), false}, nil
 }
 
+// precheck asks for a clean working tree only of a submission that links.
+//
+// Publishing moves refs on the remote and opens pull requests; none of it
+// reads the working tree, as push never has. Asking every submission for a
+// clean one refused publishing a committed parent while the branch checked
+// out above it held work in progress, and only the apply said so. Linking
+// runs gh stack, which is asked for what github link asks.
+func (o submitOptions) precheck(service submit.Service) func(context.Context) error {
+	if !o.link {
+		return nil
+	}
+	return service.RequireClean
+}
+
 // flow is submit's preview and apply. The spec is what a preview is of and
 // what an apply publishes; invitation closes a preview that could apply.
 func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview submit.Plan, spec submit.Spec, p Presentation, template, invitation string) applyFlow[submit.Plan] {
@@ -203,7 +217,7 @@ func (o submitOptions) flow(cmd *cobra.Command, service submit.Service, preview 
 			return o.planned(plan), err
 		},
 		revalidation: revalidation{"submit", "submit plan"},
-		precheck:     service.RequireClean,
+		precheck:     o.precheck(service),
 		suggest:      func(plan submit.Plan) string { return githubStatusNext(plan.Snapshot) },
 		blocked: func(plan submit.Plan) string {
 			if blocked := plan.Refusal(o.link).Sentence(); blocked != "" {

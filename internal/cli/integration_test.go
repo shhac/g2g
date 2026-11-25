@@ -544,7 +544,7 @@ func TestApplyOverADirtyTreeIsRefusedBeforeRediscovery(t *testing.T) {
 	for _, args := range [][]string{
 		{"github", "link", "--apply"},
 		{"github", "unlink", "--stack-number", "7", "--apply"},
-		{"submit", "--apply"},
+		{"submit", "--link", "--apply"},
 	} {
 		t.Run(strings.Join(args[:len(args)-1], " "), func(t *testing.T) {
 			routes, _ := graphiteRoutes(t, []testutil.Route{
@@ -565,6 +565,24 @@ func TestApplyOverADirtyTreeIsRefusedBeforeRediscovery(t *testing.T) {
 			recorder.AssertNone("gh stack", "git push", "gh pr create")
 		})
 	}
+}
+
+// A submission that only publishes reads no working tree, so it does not ask
+// for a clean one: a committed parent is published while the branch checked
+// out above it holds work in progress.
+func TestSubmitThatOnlyPublishesDoesNotAskForACleanTree(t *testing.T) {
+	routes, _ := graphiteRoutes(t, []testutil.Route{
+		{Prefix: "repo view", Output: `{"nameWithOwner":"example/synthetic"}`},
+		{Prefix: "api graphql", Output: pullRequestsJSON(openTopPullRequest)},
+	})
+	routes["git"] = append([]testutil.Route{{Prefix: "status --porcelain", Output: " M synthetic.txt"}}, routes["git"]...)
+	recorder := testutil.FakeCLIs(t, routes)
+
+	stdout, _, err := run(t, "submit", "--apply")
+	if err != nil && strings.Contains(err.Error(), "working tree is not clean") {
+		t.Fatalf("a submission that only publishes was refused over uncommitted work: %v\n%s", err, stdout)
+	}
+	recorder.AssertNone("git status --porcelain")
 }
 
 // The flow names each command's revalidation in the diagnostic stream as the

@@ -190,8 +190,12 @@ func TestRestackReplaysTheStackWithoutTouchingTheCheckout(t *testing.T) {
 	if status := gitOutput(t, "status", "--porcelain"); status != "" {
 		t.Errorf("the working tree is dirty after a clean restack:\n%s", status)
 	}
-	if !strings.Contains(stdout, "without touching your working tree") {
-		t.Errorf("output does not say the checkout was left alone:\n%s", stdout)
+	// The branch checked out is one of those replayed, so "without touching
+	// your checked-out branch" would be said of the branch that moved.
+	for _, want := range []string{"without a rebase in your working tree", head + " is checked out here, so it and its files move"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("output omits %q:\n%s", want, stdout)
+		}
 	}
 }
 
@@ -658,7 +662,8 @@ func TestRestackRefusesTwoResumeVerbsAtOnce(t *testing.T) {
 // replay moves refs and only then brings the checkout along, so local changes
 // to a file the rewrite touches would leave the branches rewritten and the
 // working tree unable to follow — changes nobody made. The clean check is the
-// one thing between the two, and no test asked for it.
+// one thing between the two, and no test asked for it. The preview refuses in
+// the same words: it used to promise the apply and leave the refusal to it.
 func TestRestackOverADirtyTreeChangesNothing(t *testing.T) {
 	restackRepo(t)
 	trackStack(t)
@@ -668,8 +673,12 @@ func TestRestackOverADirtyTreeChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	const refusal = "synthetic-b is checked out here, so its files move with it, and this working tree has uncommitted changes"
+	if preview, _, err := run(t, "restack", "--scope", "stack"); err != nil || !strings.Contains(preview, refusal) {
+		t.Fatalf("the preview does not refuse as the apply will: %v\n%s", err, preview)
+	}
 	stdout, _, err := run(t, "restack", "--scope", "stack", "--apply")
-	if err == nil || !strings.Contains(err.Error(), "working tree is not clean") {
+	if err == nil || !strings.Contains(err.Error(), refusal) {
 		t.Fatalf("restack --apply over a dirty tree: %v\n%s", err, stdout)
 	}
 	for branch, tip := range before {
@@ -682,5 +691,63 @@ func TestRestackOverADirtyTreeChangesNothing(t *testing.T) {
 	}
 	if _, _, err := run(t, "restack", "--continue"); err == nil || !strings.Contains(err.Error(), "no restack is in progress") {
 		t.Errorf("restack --continue = %v, want nothing in progress", err)
+	}
+}
+
+// Uncommitted work is refused only where the rewrite would meet it. A replay
+// that applies cleanly moves refs and never opens the working tree, so
+// changes on a branch it does not move are nothing to it; refusing them
+// stopped a child being replayed while the branch below it held work in
+// progress, under a preview that promised to leave the tree alone.
+func TestRestackLeavesUncommittedWorkOnABranchItDoesNotMove(t *testing.T) {
+	requireReplay(t)
+	restackRepo(t)
+	trackStack(t)
+	advanceTrunk(t, false)
+	gitOutput(t, "checkout", "-q", "synthetic-trunk")
+	if err := os.WriteFile("shared.txt", []byte("base\na\nsynthetic local edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "stack", "--apply")
+	if err != nil {
+		t.Fatalf("restack --apply beside uncommitted work: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "without touching your working tree or checked-out branch") {
+		t.Errorf("output does not say the checkout was left alone:\n%s", stdout)
+	}
+	if !isAncestor(t, "synthetic-trunk", "synthetic-b") {
+		t.Error("synthetic-b was not replayed onto the trunk")
+	}
+	if status := gitOutput(t, "status", "--porcelain"); status != "M shared.txt" {
+		t.Errorf("the uncommitted edit was not left as it was:\n%s", status)
+	}
+	if now := gitOutput(t, "branch", "--show-current"); now != "synthetic-trunk" {
+		t.Errorf("HEAD moved to %q", now)
+	}
+}
+
+// A replay that does not apply cleanly becomes a rebase in this working tree,
+// whichever branch is checked out, so uncommitted work is refused there.
+func TestRestackThatConflictsRefusesUncommittedWorkAnywhere(t *testing.T) {
+	requireReplay(t)
+	restackRepo(t)
+	trackStack(t)
+	advanceTrunk(t, true)
+	gitOutput(t, "checkout", "-q", "synthetic-trunk")
+	if err := os.WriteFile("synthetic-draft.txt", []byte("synthetic local edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tip := gitOutput(t, "rev-parse", "synthetic-b")
+
+	const refusal = "it is a rebase in this working tree, and this working tree has uncommitted changes"
+	if preview, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "stack"); err != nil || !strings.Contains(preview, refusal) {
+		t.Fatalf("the preview does not refuse: %v\n%s", err, preview)
+	}
+	if stdout, _, err := run(t, "restack", "--branch", "synthetic-b", "--scope", "stack", "--apply"); err == nil || !strings.Contains(err.Error(), refusal) {
+		t.Fatalf("restack --apply: %v\n%s", err, stdout)
+	}
+	if now := gitOutput(t, "rev-parse", "synthetic-b"); now != tip {
+		t.Errorf("synthetic-b moved from %s to %s", tip, now)
 	}
 }

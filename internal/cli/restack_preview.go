@@ -232,11 +232,28 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 		}
 		return view.note(strings.ToUpper(reason[:1])+reason[1:]+", so applying rebases in your working tree. If it stops on a conflict, resolve it and run "+runnable("g2g restack --continue")+".", severityWarn)
 	}
-	if plan.Clean && len(plan.Worktrees.Follow) != 0 {
-		return view.note("Applies without touching your working tree or checked-out branch; only the worktrees named above are brought along.", severityNeutral)
-	}
 	if plan.Clean {
-		return view.note("Applies without touching your working tree or checked-out branch.", severityNeutral)
+		return view.note(appliesInPlace(plan), severityNeutral)
 	}
 	return view.note("This will not apply cleanly. Applying rebases in your working tree and stops on the conflict for you to resolve, then "+runnable("g2g restack --continue")+".", severityWarn)
+}
+
+// appliesInPlace says what a replay that needs no rebase does to this
+// checkout. Needing no rebase is not the same as leaving the checkout alone:
+// the branch checked out here is moved like any other, and its files with it,
+// and "without touching your checked-out branch" was said of exactly that
+// branch.
+func appliesInPlace(plan restack.Plan) string {
+	followed := len(plan.Worktrees.Follow) != 0
+	if plan.Here != "" {
+		said := "Applies without a rebase in your working tree · " + plan.Here + " is checked out here, so it and its files move to the replayed result"
+		if followed {
+			return said + ", and the worktrees named above are brought along."
+		}
+		return said + "."
+	}
+	if followed {
+		return "Applies without touching your working tree or checked-out branch; only the worktrees named above are brought along."
+	}
+	return "Applies without touching your working tree or checked-out branch."
 }

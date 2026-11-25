@@ -85,6 +85,7 @@ func (s Service) Plan(ctx context.Context, selection graph.Selection, onto Onto,
 	if len(plan.Steps) == 0 {
 		return plan, nil
 	}
+	plan.Here = s.here(ctx, plan, pending)
 	if plan, err = s.annotate(ctx, plan); err != nil {
 		return Plan{}, err
 	}

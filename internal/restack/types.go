@@ -230,6 +230,14 @@ type Plan struct {
 	// old to replay, or a branch landing on a parent the caller is bringing
 	// down first, whose result only exists once it has been brought.
 	Unpredicted string
+	// Here is the branch checked out in this worktree when the rewrite moves
+	// it, and empty otherwise. Its files move with it, which a preview has to
+	// say: "without touching your checked-out branch" was said of the branch
+	// being replayed. Equal does not compare it. What the rewrite does to the
+	// refs is the same wherever the checkout stands, an apply shows the plan
+	// it validated before it moves anything, and comparing it would refuse
+	// over a switch between two branches the rewrite never touches.
+	Here string
 	// Held reports a refusal because a branch that would move is checked out
 	// in another worktree.
 	Held bool

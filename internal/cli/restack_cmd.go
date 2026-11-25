@@ -223,10 +223,13 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			if err != nil {
 				return restack.Plan{}, err
 			}
-			return service.Plan(ctx, selection, onto, options.absorb, restack.Pending{}, options.worktrees)
+			plan, err := service.Plan(ctx, selection, onto, options.absorb, restack.Pending{}, options.worktrees)
+			if err != nil {
+				return restack.Plan{}, err
+			}
+			return service.Uncommitted(ctx, plan), nil
 		},
 		revalidation: revalidation{"restack", "restack plan"},
-		precheck:     service.RequireClean,
 		render: func(w io.Writer, plan restack.Plan, p Presentation) error {
 			return writeStackView(w, restackView(plan), p)
 		},
@@ -297,6 +300,11 @@ func restackSnapshot(cmd *cobra.Command, service restack.Service, options restac
 			if err := stillFollows(ctx, service, plan); err != nil {
 				return err
 			}
+			// The plan was written from a tree it could be applied over, and
+			// whether it still is one is not in the basis.
+			if now := service.Uncommitted(ctx, plan); plan.Blocked() == "" && now.Blocked() != "" {
+				return errors.New(now.Blocked())
+			}
 			// Planning records that a branch level with its remote agreed
 			// with it before the replay, and nothing planned here.
 			service.RecordLevel(ctx, plan)
@@ -307,7 +315,7 @@ func restackSnapshot(cmd *cobra.Command, service restack.Service, options restac
 			if err != nil || !dirties {
 				return err
 			}
-			return fmt.Errorf("a snapshot at %s would be a change in the working tree, and a restack applies only to a clean one · write it outside the checkout, or somewhere Git ignores", path)
+			return fmt.Errorf("a snapshot at %s would be a change in the working tree, and a restack that moves what is checked out here applies only to a clean one · write it outside the checkout, or somewhere Git ignores", path)
 		},
 	}, nil
 }

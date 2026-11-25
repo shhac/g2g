@@ -23,10 +23,6 @@ import (
 	"github.com/shhac/g2g/internal/graph"
 )
 
-// RequireClean refuses a rewrite over a working tree with changes, before
-// anything is re-discovered. A preview does not need it.
-func (s Service) RequireClean(ctx context.Context) error { return s.Git.Clean(ctx) }
-
 // Apply performs the rewrite. A plan the preview said applies cleanly is
 // replayed without touching the checkout; anything else takes the resumable
 // engine, which needs the user's working tree and says so first.

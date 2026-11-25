@@ -64,6 +64,10 @@ func rangeNote(plan graph.TrackPlan) string {
 		if edge.Parent == plan.Parent {
 			return ""
 		}
+		if plan.Measured {
+			return fmt.Sprintf("Records replay range %s for the next restack: the recorded fork point is no longer in %s, so this is every commit on it that %s does not have, including any %s had when %s was built on it.",
+				bounds, plan.Target, plan.Parent, edge.Parent, plan.Target)
+		}
 		return fmt.Sprintf("Records replay range %s for the next restack.", bounds)
 	}
 	if recorded.Origin == graph.OriginAncestry {

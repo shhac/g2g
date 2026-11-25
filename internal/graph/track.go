@@ -25,7 +25,11 @@ type TrackPlan struct {
 	// Refreshed means the parent is the one already recorded and only the fork
 	// point is written again: see refresh.
 	Refreshed bool
-	Updated   Graph
+	// Measured means the parent changed to a trunk and the recorded fork
+	// point was no longer in the branch, so the range was read from where the
+	// branch meets that trunk: see reparentFork.
+	Measured bool
+	Updated  Graph
 	// Repair is why an apply would refuse and the ways out, empty when it
 	// would proceed.
 	Repair repair.Note
@@ -41,6 +45,7 @@ func (p TrackPlan) Equal(other TrackPlan) bool {
 		p.Parent == other.Parent &&
 		p.NewTrunk == other.NewTrunk &&
 		p.Refreshed == other.Refreshed &&
+		p.Measured == other.Measured &&
 		p.Repair.Equal(other.Repair) &&
 		slices.Equal(p.Candidates, other.Candidates) &&
 		p.Updated.Equal(other.Updated)
@@ -100,7 +105,7 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 	}
 	var forkPoint string
 	if recorded, tracked := discovery.Graph.Edges[discovery.Target]; tracked {
-		forkPoint, plan.Repair, err = s.reparentFork(ctx, plan, recorded, origin)
+		plan, forkPoint, err = s.reparentFork(ctx, plan, recorded, origin)
 	} else {
 		forkPoint, err = s.trackFork(ctx, parent, discovery.Target, origin, !discovery.Graph.Tracked(parent))
 	}
@@ -127,29 +132,45 @@ func (s Service) PlanTrack(ctx context.Context, selection Selection, parent stri
 // The old boundary need not be in the new parent: a sibling can fork from a
 // much older trunk. Only LaterFork may narrow that range on shared ancestry.
 // Without a usable old boundary, only a verified new parent tip separates
-// parent work from branch work; a merge base alone cannot do that.
-func (s Service) reparentFork(ctx context.Context, plan TrackPlan, recorded Edge, origin Origin) (string, repair.Note, error) {
+// parent work from branch work under a feature parent; a merge base alone
+// cannot do that.
+//
+// A trunk is different, as it is in refresh: nobody rewrites it, so where the
+// branch meets it is evidence of what the trunk does not have. Refusing that
+// too left a branch reset onto other commits, whose recorded parent had been
+// squash-merged, with no command that would record it: this one named a bare
+// track, which named this one, and the parent it was recorded under refused
+// for not being in the branch. Untracking first answered from the same merge
+// base. The plan says the range was measured, so the preview can say what
+// that range may hold.
+func (s Service) reparentFork(ctx context.Context, plan TrackPlan, recorded Edge, origin Origin) (TrackPlan, string, error) {
 	fork, valid, err := s.recordedBoundary(ctx, plan.Target, recorded.ForkPoint)
 	if err != nil {
-		return "", repair.Note{}, err
+		return plan, "", err
 	}
 	if valid {
 		if forks, ok := s.Git.(MergeBases); ok {
 			fork, err = LaterFork(ctx, s.Git, forks, plan.Parent, plan.Target, fork)
 		}
-		return fork, repair.Note{}, err
+		return plan, fork, err
 	}
 	if origin == OriginAncestry {
 		fork, err := s.trackFork(ctx, plan.Parent, plan.Target, origin, !plan.Graph.Tracked(plan.Parent))
-		return fork, repair.Note{}, err
+		return plan, fork, err
 	}
-	return "", repair.Note{
+	if plan.EvidencedTrunk(plan.Parent) {
+		plan.Measured = true
+		fork, err := s.trackFork(ctx, plan.Parent, plan.Target, origin, true)
+		return plan, fork, err
+	}
+	plan.Repair = repair.Note{
 		Reason: fmt.Sprintf("%s's recorded fork point is not a verified ancestor, and %s's tip is not in the branch, so its own replay range cannot be determined", plan.Target, plan.Parent),
 		Ways: []repair.Step{{
 			Command: repair.Command([]string{"g2g", "track", "--branch", plan.Target}),
 			Effect:  "choose and record the parent it is built on before reparenting",
 		}},
-	}, nil
+	}
+	return plan, "", nil
 }
 
 // recordedBoundary verifies the old range without deriving another one. A
@@ -189,7 +210,13 @@ func (s Service) refresh(ctx context.Context, plan TrackPlan, recorded Edge) (Tr
 		return TrackPlan{}, err
 	}
 	if !built && !plan.EvidencedTrunk(recorded.Parent) {
-		plan.Repair = repair.Note{Reason: fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent)}
+		plan.Repair = repair.Note{
+			Reason: fmt.Sprintf("%s is not built on %s's tip, so where it leaves %s cannot be read from ancestry · record the parent it is built on now", plan.Target, recorded.Parent, recorded.Parent),
+			Ways: []repair.Step{{
+				Command: repair.Command([]string{"g2g", "track", "--branch", plan.Target}),
+				Effect:  "see the branches it is built on, nearest first",
+			}},
+		}
 		return plan, nil
 	}
 	origin := OriginUser

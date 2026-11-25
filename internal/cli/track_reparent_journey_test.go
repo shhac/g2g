@@ -146,3 +146,51 @@ func TestJourneyTrackReparentNarrowsSharedRange(t *testing.T) {
 	}
 	w.assertClean(w.Local)
 }
+
+// A branch reset onto the reviewed copy of itself no longer holds its recorded
+// fork point, and once its parent was squash-merged the parent's tip is not in
+// it either. Each of track's refusals named another track that refused, so no
+// command would record it short of untracking first. A trunk is never
+// rewritten, so where the branch meets it is evidence enough, and the preview
+// says what that range may hold.
+func TestJourneyTrackOntoTheTrunkAfterTheRecordedParentLanded(t *testing.T) {
+	w := newWorld(t)
+	w.branchOff("main", "synthetic-a", "synthetic-a.txt")
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.branchOff("synthetic-a", "synthetic-b", "synthetic-b.txt")
+	mustRun(t, "track", "--parent", "synthetic-a", "--apply")
+	// The reviewed copy: the same work over another version of the parent.
+	meets := w.tip(w.Local, "main")
+	w.git(w.Local, "switch", "-c", "synthetic-reviewed", "main")
+	w.commit(w.Local, "synthetic-reviewed", "synthetic-a.txt", "synthetic-a.txt")
+	w.commit(w.Local, "synthetic-reviewed", "synthetic-b.txt", "synthetic-b.txt")
+	w.git(w.Local, "switch", "main")
+	w.git(w.Local, "merge", "--squash", "synthetic-a")
+	w.git(w.Local, "commit", "-m", "synthetic-a squashed")
+	w.git(w.Local, "switch", "synthetic-b")
+	w.git(w.Local, "reset", "--hard", "synthetic-reviewed")
+	w.git(w.Local, "branch", "-D", "synthetic-reviewed")
+
+	if stdout, _, err := run(t, "track", "--parent", "synthetic-a", "--apply"); err == nil || !strings.Contains(stdout, "g2g track --branch synthetic-b") {
+		t.Fatalf("the parent it is not built on was recorded, or its refusal named no way on: %v\n%s", err, stdout)
+	}
+	preview := mustRun(t, "track", "--parent", "main")
+	for _, want := range []string{"Records synthetic-b under main.", localgit.Short(meets) + "..synthetic-b", "the recorded fork point is no longer in synthetic-b", "including any synthetic-a had"} {
+		if !strings.Contains(preview, want) {
+			t.Errorf("preview omits %q:\n%s", want, preview)
+		}
+	}
+	mustRun(t, "track", "--parent", "main", "--apply")
+	w.assertClean(w.Local)
+	if got := w.tip(w.Local, "refs/g2g/forkpoints/synthetic-b"); got != meets {
+		t.Errorf("fork = %s, want where it meets the trunk %s", got, meets)
+	}
+	mustRun(t, "restack", "--apply")
+	w.assertClean(w.Local)
+	if !w.contains(w.Local, "main", "synthetic-b") {
+		t.Error("synthetic-b was not replayed onto the trunk")
+	}
+	if got := strings.TrimSpace(w.git(w.Local, "diff", "--name-only", "main", "synthetic-b")); got != "synthetic-b.txt" {
+		t.Errorf("synthetic-b differs from the trunk by %q, want its own file alone", got)
+	}
+}

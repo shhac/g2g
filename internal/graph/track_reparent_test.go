@@ -103,3 +103,44 @@ func TestRecordedBoundaryVerification(t *testing.T) {
 		})
 	}
 }
+
+// A trunk is never rewritten, so where a branch meets it is evidence of what
+// the trunk lacks even when the recorded boundary is no longer in the branch.
+// Refusing it left a branch reset onto other commits with no command that
+// would record it once its parent had been squash-merged.
+func TestPlanTrackReparentOntoATrunkMeasuresALostRange(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		fork    string
+		missing bool
+	}{
+		{name: "rewritten branch", fork: "synthetic-old-fork"},
+		{name: "missing boundary", fork: "synthetic-old-fork", missing: true},
+		{name: "legacy record"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git := fakeAncestry{
+				local:        []string{"synthetic-trunk", "synthetic-parent", "synthetic-target"},
+				objects:      map[string]string{"synthetic-parent": "synthetic-parent-tip"},
+				ancestors:    map[string][]string{"synthetic-target": {"synthetic-fork"}},
+				unresolvable: map[string]bool{tc.fork: tc.missing},
+			}
+			recorded := Graph{Trunks: []string{"synthetic-trunk"}, Edges: map[string]Edge{
+				"synthetic-parent": {Parent: "synthetic-trunk", ForkPoint: "synthetic-fork"},
+				"synthetic-target": {Parent: "synthetic-parent", ForkPoint: tc.fork},
+			}}
+			service, store := newService(t, git, recorded)
+			plan, err := service.PlanTrack(context.Background(), Selection{Branch: "synthetic-target"}, "synthetic-trunk")
+			if err != nil {
+				t.Fatal(err)
+			}
+			edge := plan.Updated.Edges[plan.Target]
+			if plan.Blocked() != "" || !plan.Measured || edge.Parent != "synthetic-trunk" || edge.ForkPoint != "synthetic-fork" {
+				t.Fatalf("edge = %+v, measured = %t, blocked = %s; want the merge base with the trunk", edge, plan.Measured, plan.Blocked())
+			}
+			if len(store.writes) != 0 {
+				t.Fatal("preview wrote the graph")
+			}
+		})
+	}
+}

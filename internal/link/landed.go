@@ -34,7 +34,7 @@ func (s Service) markLanded(ctx context.Context, plan Plan) error {
 	for _, issue := range plan.Issues {
 		previous := resolutions[issue.Branch].Latest
 		parent := plan.SitsOn(issue.Branch)
-		if previous != nil && previous.State == "MERGED" && previous.Base == parent && parent != plan.Trunk() && plan.here(issue.Branch) {
+		if previous != nil && previous.Merged() && previous.Base == parent && parent != plan.Trunk() && plan.here(issue.Branch) {
 			if !slices.Contains(parents, parent) {
 				parents = append(parents, parent)
 			}

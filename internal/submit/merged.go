@@ -91,7 +91,7 @@ func (p Plan) omitted(branch string) bool {
 // with no confirmed content stays a replacement or a refresh: lifecycle alone
 // is not landing.
 func (p Plan) landed(branch string) bool {
-	return p.Superseded[branch].State == "MERGED" && p.MergedLanded[branch]
+	return p.Superseded[branch].Merged() && p.MergedLanded[branch]
 }
 
 // Landed are the selected branches left out because the trunk has their

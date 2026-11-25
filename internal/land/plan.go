@@ -312,7 +312,7 @@ func deletableHead(tip, checked string) string {
 func (s Service) trunksToAsk(ctx context.Context, discovery stack.Discovery, trunk, remote string) ([]string, error) {
 	merged := false
 	for _, pr := range discovery.PullRequests {
-		merged = merged || pr.State == "MERGED"
+		merged = merged || pr.Merged()
 	}
 	if !merged {
 		return []string{trunk}, nil

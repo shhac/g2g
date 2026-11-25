@@ -130,6 +130,9 @@ func (q *Queue) Method() Method {
 // Merged reports a pull request GitHub has recorded as merged.
 func (m MergeState) Merged() bool { return m.State == stateMerged }
 
+// Merged reports a pull request GitHub has merged.
+func (p PullRequest) Merged() bool { return p.State == stateMerged }
+
 // Allowed is the merge methods a repository permits.
 type Allowed struct {
 	Squash bool

@@ -46,11 +46,11 @@ func TestJourneyPushPublishesAReplayThatResolvedConflicts(t *testing.T) {
 	s := newDropWorld(t)
 	s.resolveReplay(s.Local)
 
-	if status := mustRun(t, "status"); !strings.Contains(status, "2 changed in the replay") {
+	if status := mustRun(t, "status"); !strings.Contains(status, "rewritten since pushed · 2 revised") {
 		t.Errorf("status does not say the replay changed two commits:\n%s", status)
 	}
 	preview := mustRun(t, "push")
-	for _, want := range []string{"2 commits changed while resolving the replay", "Replaces 2 published commits", "synthetic x.txt", "synthetic y.txt"} {
+	for _, want := range []string{"2 commits revised", "Replaces 2 published commits", "synthetic x.txt", "synthetic y.txt"} {
 		if !strings.Contains(preview, want) {
 			t.Errorf("the push preview does not say %q:\n%s", want, preview)
 		}
@@ -175,7 +175,7 @@ func TestJourneyPushPublishesAReplayAndADropTogether(t *testing.T) {
 	s.git(s.Local, "reset", "-q", "--hard", "synthetic-b~1")
 
 	preview := mustRun(t, "push")
-	for _, want := range []string{"drops 1 published commit you dropped here", "1 commit changed while resolving the replay"} {
+	for _, want := range []string{"drops 1 published commit you dropped here", "1 commit revised"} {
 		if !strings.Contains(preview, want) {
 			t.Errorf("the push preview does not say %q:\n%s", want, preview)
 		}

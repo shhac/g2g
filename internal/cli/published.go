@@ -125,7 +125,7 @@ func publishedMark(remote string, publication push.Publication) stackMark {
 		return stackMark{Subject: remote, Detail: fmt.Sprintf("%d behind", publication.Theirs), Severity: severityWarn}
 	case push.Rewritten:
 		if publication.Replaced != 0 {
-			return stackMark{Subject: remote, Detail: fmt.Sprintf("replayed since pushed · %d changed in the replay", publication.Replaced), Severity: severityWarn}
+			return stackMark{Subject: remote, Detail: fmt.Sprintf("rewritten since pushed · %d revised", publication.Replaced), Severity: severityWarn}
 		}
 		return stackMark{Subject: remote, Detail: "replayed since pushed", Severity: severityWarn}
 	case push.Ahead:

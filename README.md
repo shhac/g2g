@@ -373,7 +373,7 @@ fetches nothing, and the output says that its evidence is local.
 | `N ahead` | commits here the remote does not have · `g2g push` |
 | `N behind` | the remote has work this branch does not · `g2g pull` |
 | `replayed since pushed` | restacked: nothing is missing on either side, and it needs pushing |
-| `replayed since pushed · N changed in the replay` | restacked, and N commits' patches changed while a conflict was resolved; `push` publishes them |
+| `rewritten since pushed · N revised` | rewritten, and N commits carry another patch under the same author, date and subject, as an amend or a conflict resolved in a replay leaves them; `push` publishes them |
 | `diverged · N here, M there` | both have moved · `g2g pull` shows the ways to reconcile |
 | `on a commit not here` | the remote's tip was never fetched · `g2g pull` fetches it |
 | `conflicting local records` | tracking and isolated fetched records for the branch or its base disagree; their order is unknown offline · `git fetch <remote>` |

@@ -46,7 +46,11 @@ func pushDropNotes(view stackView, plan push.Plan) stackView {
 		view = view.note(fmt.Sprintf("Moves %s between branches: %s.", words.Count(len(moved), "published commit", "published commits"), dropList(plan.Subjects, moved)), severityNeutral)
 	}
 	if replaced := of(syncpoint.Replaced); len(replaced) != 0 {
-		view = view.note(fmt.Sprintf("Replaces %s with the %s resolved in a replay here: %s · check the new %s before publishing.",
+		// What pairs them is the same author, date and subject under another
+		// patch. An amend leaves that as surely as a conflict resolved in a
+		// replay does, so the note says what is known and not how it came
+		// about: it used to say "resolved in a replay" of a plain amend.
+		view = view.note(fmt.Sprintf("Replaces %s with the revised %s here, the same author, date and subject under another patch: %s · check the new %s before publishing.",
 			words.Count(len(replaced), "published commit", "published commits"), words.Pick(len(replaced), "version", "versions"),
 			dropList(plan.Subjects, replaced), words.Pick(len(replaced), "patch", "patches")), severityNeutral)
 	}
@@ -88,7 +92,7 @@ func publicationState(publication push.Publication) (string, severity) {
 		return fmt.Sprintf("remote has %s this does not · publishing would drop %s", words.Count(publication.Theirs, "commit", "commits"), words.Pick(publication.Theirs, "it", "them")), severityBad
 	case push.Rewritten:
 		if publication.Replaced != 0 {
-			return fmt.Sprintf("rewritten since it was published · %s changed while resolving the replay · replaces it, and the remote holds nothing else", words.Count(publication.Replaced, "commit", "commits")), severityOK
+			return fmt.Sprintf("rewritten since it was published · %s revised · replaces it, and the remote holds nothing else", words.Count(publication.Replaced, "commit", "commits")), severityOK
 		}
 		return "rewritten since it was published · replaces it, and the remote holds nothing it lacks", severityOK
 	case push.Landed:
@@ -102,7 +106,7 @@ func publicationState(publication push.Publication) (string, severity) {
 	case push.Dropping:
 		said := fmt.Sprintf("drops %s you dropped here", words.Count(publication.Dropped, "published commit", "published commits"))
 		if publication.Replaced != 0 {
-			said += fmt.Sprintf(" · %s changed while resolving the replay", words.Count(publication.Replaced, "commit", "commits"))
+			said += fmt.Sprintf(" · %s revised", words.Count(publication.Replaced, "commit", "commits"))
 		}
 		return said, severityWarn
 	case push.Restoring:

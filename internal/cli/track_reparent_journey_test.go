@@ -163,6 +163,9 @@ func TestJourneyTrackOntoTheTrunkAfterTheRecordedParentLanded(t *testing.T) {
 	meets := w.tip(w.Local, "main")
 	w.git(w.Local, "switch", "-c", "synthetic-reviewed", "main")
 	w.commit(w.Local, "synthetic-reviewed", "synthetic-a.txt", "synthetic-a.txt")
+	// Under another message, or a copy made within the same second is the
+	// very commit synthetic-a has and the branch is built on its tip after all.
+	w.git(w.Local, "commit", "-q", "--amend", "-m", "synthetic-a as reviewed")
 	w.commit(w.Local, "synthetic-reviewed", "synthetic-b.txt", "synthetic-b.txt")
 	w.git(w.Local, "switch", "main")
 	w.git(w.Local, "merge", "--squash", "synthetic-a")

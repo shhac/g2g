@@ -227,7 +227,7 @@ func runRestack(cmd *cobra.Command, ctx context.Context, service restack.Service
 			if err != nil {
 				return restack.Plan{}, err
 			}
-			return service.Uncommitted(ctx, plan), nil
+			return service.Uncommitted(ctx, plan)
 		},
 		revalidation: revalidation{"restack", "restack plan"},
 		render: func(w io.Writer, plan restack.Plan, p Presentation) error {
@@ -302,7 +302,11 @@ func restackSnapshot(cmd *cobra.Command, service restack.Service, options restac
 			}
 			// The plan was written from a tree it could be applied over, and
 			// whether it still is one is not in the basis.
-			if now := service.Uncommitted(ctx, plan); plan.Blocked() == "" && now.Blocked() != "" {
+			now, err := service.Uncommitted(ctx, plan)
+			if err != nil {
+				return err
+			}
+			if now.Blocked() != plan.Blocked() {
 				return errors.New(now.Blocked())
 			}
 			// Planning records that a branch level with its remote agreed

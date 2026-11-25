@@ -583,6 +583,9 @@ func TestSubmitThatOnlyPublishesDoesNotAskForACleanTree(t *testing.T) {
 		t.Fatalf("a submission that only publishes was refused over uncommitted work: %v\n%s", err, stdout)
 	}
 	recorder.AssertNone("git status --porcelain")
+	if recorder.Count("git push") == 0 {
+		t.Errorf("nothing was published: %v\n%s", err, stdout)
+	}
 }
 
 // The flow names each command's revalidation in the diagnostic stream as the

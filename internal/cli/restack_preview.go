@@ -245,15 +245,15 @@ func engineNote(view stackView, plan restack.Plan) stackView {
 // branch.
 func appliesInPlace(plan restack.Plan) string {
 	followed := len(plan.Worktrees.Follow) != 0
-	if plan.Here != "" {
-		said := "Applies without a rebase in your working tree · " + plan.Here + " is checked out here, so it and its files move to the replayed result"
-		if followed {
-			return said + ", and the worktrees named above are brought along."
-		}
-		return said + "."
-	}
-	if followed {
+	switch {
+	case plan.Here == "" && followed:
 		return "Applies without touching your working tree or checked-out branch; only the worktrees named above are brought along."
+	case plan.Here == "":
+		return "Applies without touching your working tree or checked-out branch."
 	}
-	return "Applies without touching your working tree or checked-out branch."
+	said := "Applies without a rebase in your working tree · " + plan.Here + " is checked out here, so it and its files move to the replayed result"
+	if followed {
+		return said + ", and the worktrees named above are brought along."
+	}
+	return said + "."
 }

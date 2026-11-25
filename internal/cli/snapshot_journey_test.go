@@ -373,3 +373,28 @@ func TestJourneyARestackSnapshotIsPlacedAndAimedWhereItCanApply(t *testing.T) {
 		t.Error("a refused snapshot moved a branch")
 	}
 }
+
+// A snapshot is applied without planning again, so the question the plan
+// answered about uncommitted work is asked again of the tree as it is now:
+// an edit made since the preview, on the branch the replay moves, refuses the
+// apply before any ref moves.
+func TestJourneyARestackSnapshotIsRefusedOverChangesMadeSinceThePreview(t *testing.T) {
+	w, path := restackWorld(t)
+	on := w.git(w.Local, "branch", "--show-current")
+	mustRun(t, "restack", "--scope", "stack", "--snapshot", path)
+	tips := w.git(w.Local, "for-each-ref", "refs/heads")
+	if err := os.WriteFile(filepath.Join(w.Local, "synthetic-draft.txt"), []byte("synthetic draft\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := run(t, "restack", "--scope", "stack", "--snapshot", path, "--apply")
+	if err == nil || !strings.Contains(err.Error(), on+" is checked out here, so its files move with it, and this working tree has uncommitted changes") {
+		t.Fatalf("apply over changes made since the preview: %v\n%s", err, stdout)
+	}
+	if now := w.git(w.Local, "for-each-ref", "refs/heads"); now != tips {
+		t.Errorf("a branch moved under uncommitted work:\n%s", now)
+	}
+	if status := w.git(w.Local, "status", "--porcelain"); status != "?? synthetic-draft.txt" {
+		t.Errorf("status = %q, want only the draft", status)
+	}
+}

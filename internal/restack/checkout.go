@@ -2,9 +2,11 @@ package restack
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/shhac/g2g/internal/diagnostic"
+	localgit "github.com/shhac/g2g/internal/git"
 	"github.com/shhac/g2g/internal/repair"
 )
 
@@ -79,19 +81,22 @@ func (s Service) here(ctx context.Context, plan Plan, pending Pending) string {
 // touched, and the refusal came only from the apply. The two places a rewrite
 // does meet the tree are the branch checked out here, whose files move with
 // it, and a replay that does not apply cleanly, which becomes a rebase here.
-// It is part of the plan so that the preview refuses in the apply's words.
-func (s Service) Uncommitted(ctx context.Context, plan Plan) Plan {
+// It is part of the plan so that the preview refuses in the apply's words. A
+// status Git could not give is an error and never a refusal: a read the
+// budget cut off would otherwise tell someone with a clean tree to commit.
+func (s Service) Uncommitted(ctx context.Context, plan Plan) (Plan, error) {
 	why := plan.meetsWorkingTree()
 	if why == "" || plan.Blocked() != "" {
-		return plan
+		return plan, nil
 	}
-	if err := s.Git.Clean(ctx); err == nil {
-		return plan
+	err := s.Git.Clean(ctx)
+	if !errors.Is(err, localgit.ErrNotClean) {
+		return plan, err
 	}
 	return plan.refused(repair.Note{
 		Reason: why + ", and this working tree has uncommitted changes",
 		Ways:   []repair.Step{{Effect: "commit the changes, or restack from a worktree that has none"}},
-	})
+	}), nil
 }
 
 // meetsWorkingTree says why applying the plan needs this working tree, empty

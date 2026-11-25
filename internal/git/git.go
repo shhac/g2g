@@ -73,10 +73,15 @@ func (c Client) Clean(ctx context.Context) error {
 		return err
 	}
 	if strings.TrimSpace(string(output)) != "" {
-		return fmt.Errorf("working tree is not clean; commit or stash changes before --apply")
+		return ErrNotClean
 	}
 	return nil
 }
+
+// ErrNotClean is Clean's answer for a working tree with changes, so a caller
+// that refuses differently for one can tell it from a status Git could not
+// give.
+var ErrNotClean = errors.New("working tree is not clean; commit or stash changes before --apply")
 
 // Remote validates that name resolves to a configured remote without making
 // a network request.

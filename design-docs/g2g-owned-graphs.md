@@ -270,8 +270,15 @@ into branch work. `graph.LaterFork` may advance the boundary on shared ancestry
 with the new parent, but never move it backwards or onto another line. The old
 fork point must resolve and be an ancestor of the branch. Without that evidence
 (including a legacy edge with no fork point), only a verified new parent tip in
-the branch permits a new boundary; otherwise the plan refuses with a
-`repair.Note` asking the user to record the parent it is actually built on.
+the branch permits a new boundary under a feature parent; otherwise the plan
+refuses with a `repair.Note` asking the user to record the parent it is
+actually built on. A trunk is the exception, as it is when the trunk is the
+parent already recorded: nobody rewrites it, so where the branch meets it is
+evidence of what the trunk lacks, and the range is measured from there with a
+preview that says it may hold the old parent's commits. Without that, a branch
+reset onto another copy of itself after its parent was squash-merged could not
+be recorded by any track: the trunk refused, the bare track named the trunk,
+and the old parent refused for not being in the branch.
 Initial tracking of an unrecorded branch retains the explicit asserted-parent
 contract above. The reparent preview names the range being recorded, and
 restack names each actual range it will replay. A first recording under a

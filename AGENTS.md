@@ -486,8 +486,13 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   replay range. A sibling's older merge base must never pull trunk commits into
   that range. Only `graph.LaterFork` may narrow it on shared ancestry. Verify
   the old fork resolves and is an ancestor of the branch; if it does not (or is
-  absent), require the new parent's tip in the branch or refuse through
-  `repair.Note`, asking to record its actual parent first. Track's reparent
+  absent), require a feature parent's tip in the branch or refuse through
+  `repair.Note`, asking to record its actual parent first. An evidenced trunk
+  is the exception, as it is in `refresh`: nobody rewrites it, so the range is
+  measured from where the branch meets it (`TrackPlan.Measured`) and the
+  preview says it may hold the old parent's commits. Refusing that too left a
+  branch reset onto another copy of itself, whose parent had been
+  squash-merged, with three tracks each naming another that refused. Track's reparent
   preview names the boundary, and restack names each actual range it replays.
   A first recording under a parent the branch is not built on is named too
   (`rangeNote`): that range starts where the two meet, so it can hold commits
@@ -518,6 +523,23 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   `git switch` does: stale stat data reads to `read-tree` as a change, so a
   touched but unchanged file refused the resettle after the ref had moved.
   `SwitchTreeIn` shares the one implementation; only it refreshed, before.
+- Uncommitted work is refused only where a rewrite meets it, and the preview
+  refuses in the apply's words. A replay that applies cleanly moves refs and
+  never opens the working tree, so restack asks for a clean one in two cases
+  (`restack.Service.Uncommitted`, `Plan.meetsWorkingTree`): the branch checked
+  out here is one it moves (`Plan.Here`), or the replay needs a rebase
+  (`NeedsWorkingTree`). It is a refusal on the plan, never a `precheck`: a
+  blanket clean check ran only on apply, under a preview that said the working
+  tree would not be touched, and stopped a child being replayed while the
+  branch below held work in progress. `Plan.Here` also words the preview, which
+  said "without touching your checked-out branch" of the branch being
+  replayed; `Equal` does not compare it. Only the restack command asks: pull
+  and land decide for themselves, land through `dirtyWhereItMatters`. A status
+  Git could not give is an error, never that refusal (`git.ErrNotClean` is
+  how the two are told apart), or a read the budget cut off tells someone
+  with a clean tree to commit. A snapshot apply plans nothing, so its `still`
+  asks `Uncommitted` again. A submit
+  that only publishes asks for no clean tree at all, as push never has.
 - A rewrite never strands another worktree. It does not need to check a branch
   out to move it, so nothing stopped it: Git updated the ref, that worktree's
   index still described the old commit, and its next `git status` reported
@@ -674,6 +696,16 @@ parsing and can never confirm that the grammar is still the one Graphite emits.
   shown with every landed branch. Do not relax the check into a guess;
   `untrack` still never reparents, and `delete` remains the one command that
   does on request.
+- `prune` names a branch it keeps whose pull request was last seen merged
+  (`mergedButKept`, from the remembered observations, never the network), and
+  names `g2g delete --branch` for it. That is a note and never evidence: the
+  branch here can be older than the one merged, which is exactly when Git does
+  not find its content in the trunk, and prune goes on asking Git. It reads
+  `Plan.Found`, everything found landed before the keep passes, never
+  `Plan.Landed`: a landed branch held back for a worktree or a child has left
+  `Landed`, and the note said its content was not in the trunk and offered to
+  delete it. The pull is named before the delete, since a trunk not pulled
+  since the merge is the commoner cause.
 - `prune` remains graph-only by default. `--delete-branches` explicitly adds
   local deletion at assessed tips and rechecks the heads and bases before
   mutation. A landed branch a worktree has checked out is kept whole, record
@@ -1052,8 +1084,8 @@ property the original had.
   `sync.Plan.Changed` exist, and each `Equal` is `Changed(...) == ""`, so what
   counts as a change and what is named cannot drift apart. A plan without one
   is refused in the old words. `precheck` runs
-  before the second plan (a clean working tree for restack, submit, link and
-  unlink) and `settle` after the comparison (link's unresolved mappings,
+  before the second plan (a clean working tree for link, unlink and a submit
+  that links) and `settle` after the comparison (link's unresolved mappings,
   prune's publication facts), both only on apply. Twenty services each carried
   a `Revalidate` that re-planned and compared, and unlink was clean-checked only
   because it borrowed link's.

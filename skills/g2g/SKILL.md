@@ -191,6 +191,9 @@ description: |
   `g2g track --branch <child> --parent <branch>` per child; only when nothing
   is safe to forget does the whole prune refuse. Do not widen the
   rehome to a guess.
+  A kept branch whose pull request was last seen merged is named with
+  `g2g delete --branch` (`mergedButKept`); remembered PR state is a note,
+  never evidence that the content here landed.
   A branch with no commits of its own is forgotten only where its tip is
   inside its parent (collapsed, or not started). One left on the tip its
   parent had before a replay, held by another worktree meanwhile, is not
@@ -303,6 +306,12 @@ description: |
   rather than rebasing into somebody's changes. Cleanup never fails a descent. It is not journaled and must not
   become so: re-entrancy comes from recomputation, and `restack` stays the only
   resumable operation.
+- `restack` refuses uncommitted work the same way, as a refusal on the plan so
+  the preview shows it (`restack.Service.Uncommitted`): only when the replay
+  moves the branch checked out here (`Plan.Here`) or needs a rebase. A submit
+  that only publishes asks for no clean tree; `--link` does. Do not put a
+  blanket clean check back as a `precheck`: it refused only on apply, under a
+  preview that promised to leave the tree alone.
 - On a GitHub queue base, `land` reads the eventual trunk's queue in the
   batched readiness query and confirms PR policy after retargeting. It requests
   `enablePullRequestAutoMerge` when repository auto-merge is enabled, and
@@ -396,9 +405,10 @@ description: |
 - `track --parent` changing a recorded parent preserves its verified own range,
   even when the new parent forks from an older trunk. Only `graph.LaterFork`
   may narrow it on shared ancestry; never widen it to a new merge base. The old
-  fork must resolve and be an ancestor of the branch. Without it, require the
-  new parent's tip in the branch or refuse with `repair.Note` asking to record
-  its actual parent first. The reparent preview names the resulting boundary;
+  fork must resolve and be an ancestor of the branch. Without it, require a
+  feature parent's tip in the branch or refuse with `repair.Note` asking to
+  record its actual parent first; onto an evidenced trunk, measure from where
+  the branch meets it (`TrackPlan.Measured`) and say so in the preview. The reparent preview names the resulting boundary;
   restack previews each actual `forkPoint..head` range. A first recording
   under a parent the branch is not built on names its range too (`rangeNote`),
   since it can hold commits the parent had and rewrote.

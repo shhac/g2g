@@ -492,9 +492,14 @@ Changing a recorded parent preserves the branch's verified replay boundary.
 Reparenting `synthetic-b` onto `synthetic-a`, which left the trunk earlier,
 does not make the intervening trunk commits part of `synthetic-b`'s work.
 Shared ancestry may narrow the range, never widen it. If the old boundary is
-missing or no longer in the branch, the new parent's tip must be in the branch
-or tracking refuses and asks you to record its actual parent first. The track
-preview names the resulting range; restack previews the exact range it replays.
+missing or no longer in the branch, a feature parent's tip must be in the
+branch or tracking refuses and asks you to record its actual parent first. A
+trunk is never rewritten, so reparenting onto one measures from where the
+branch meets it instead, and the preview says that range is every commit the
+trunk lacks, including any the old parent had. That is the way through for a
+branch reset onto another copy of itself after its parent was squash-merged.
+The track preview names the resulting range; restack previews the exact range
+it replays.
 
 A trunk that has moved on is no longer an ancestor of the branches built from
 it, so recorded roots are always offered as candidates. Adopting the very first
@@ -706,13 +711,26 @@ g2g restack --abort
 g2g restack --skip
 ```
 
-**A clean replay never touches your working tree or checked-out branch.** The
-preview knows in advance whether the rewrite applies, and says so:
+**A clean replay needs no rebase in your working tree.** The preview knows in
+advance whether the rewrite applies, and says so:
 
 ```
 Replays feature/auth and feature/login onto main.
 Applies without touching your working tree or checked-out branch.
 ```
+
+When the branch checked out here is one of those replayed, it moves like the
+rest and its files with it, and the preview says that instead:
+
+```
+Applies without a rebase in your working tree · feature/login is checked out here, so it and its files move to the replayed result.
+```
+
+Uncommitted work is refused only where the replay would meet it: when it moves
+the branch checked out here, or when it does not apply cleanly and so becomes
+a rebase in this working tree. The preview refuses in the same words the apply
+would. Changes on a branch the replay does not move are left alone, so a child
+can be replayed while the branch below it holds work in progress.
 
 When it cannot apply cleanly the preview says `This will not apply cleanly`
 *before* you apply, because rebasing then happens in your own working tree —
@@ -1036,6 +1054,15 @@ preview names each one and its worktree, with the `git -C <worktree> switch
 cleanup then takes the branch. A branch below a held one is kept with it, so
 as not to strand it.
 
+A branch whose pull request was last seen merged, and whose content Git does
+not find in the trunk, is kept and named: a merged pull request is not
+evidence that what the branch holds here landed, since the branch here can be
+older than the one that was merged. The note names `g2g pull --prune` first,
+for a trunk not pulled since the merge, and then `g2g delete --branch
+<branch>` for each, whose preview lists any commit that exists nowhere else.
+A landed branch kept for a worktree or for a child it would strand is not
+named here; it has its own note.
+
 Deletion uses Git's content assessment, never a cached PR verdict. It refuses
 branches checked out in this or another worktree, rechecks the assessed heads
 and bases before applying, and deletes each ref only at its assessed tip. Work
@@ -1217,6 +1244,8 @@ stack as a GitHub native stack. That is opt-in because GitHub will not merge a
 linked pull request through `gh pr merge`, the direct landing transport;
 `land` refuses a linked stack and names the `g2g github unlink` that clears it.
 It never invokes `gt submit`, restacks Graphite, or retargets an existing PR.
+Publishing reads no working tree, so uncommitted work does not stop it; only
+`--link` asks for a clean one, as `github link` does.
 
 A stack that forks is submitted whole, in the same one push: each missing pull
 request opens on the branch it is recorded on, never on a sibling, and the

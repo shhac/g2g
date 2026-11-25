@@ -157,6 +157,10 @@ version the sync point holds **dropped**, and an unrelated commit **mine** (or
 commit had conflicted, as a branch made again; named the rest as dropped; and
 made `status` say "dropped here" about work that was all still there.
 
+An amend that keeps its message and date leaves the same pair, and the two
+cannot be told apart, so what push and status say of a pair is that the commit
+was revised, never that a replay resolved it.
+
 A replay keeps three things the patch does not: the author, the author date,
 and the message. `Classify` pairs a dropped commit with the one commit on the
 other side that shares its author, author date and subject, and records the

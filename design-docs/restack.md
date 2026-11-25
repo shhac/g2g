@@ -728,8 +728,12 @@ Restack is g2g's **first resumable operation**. Everything else is one-shot.
   it beside a stopped restack, and `track`, `untrack` and `adopt` save the
   whole graph as they read it when planning, so an edit another session makes
   in that window is lost. That is known and was left.
-- The clean-worktree precondition changes meaning: still required before apply,
-  but the tool may now leave the tree dirty on purpose.
+- The clean-worktree precondition changes meaning: the tool may now leave the
+  tree dirty on purpose. It is no longer asked of every apply. Uncommitted work
+  is refused only where the replay meets it, when it moves the branch checked
+  out here or needs a rebase in this working tree, and the preview refuses in
+  the same words, since a replay that applies cleanly moves refs and opens no
+  working tree.
 - The graph edge update is applied only when the whole operation completes, and
   is rolled back by `--abort`.
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"maps"
 	"slices"
@@ -103,6 +104,30 @@ func forgetState(plan prune.Plan, branch string) string {
 	return "landed · forget"
 }
 
-func writePrunePlan(w io.Writer, plan prune.Plan, p Presentation) error {
-	return writeGraphView(w, pruneView(plan), plan.Discovery, p)
+func writePrunePlan(w io.Writer, plan prunePlan, p Presentation) error {
+	return writeGraphView(w, mergedNotes(pruneView(plan.Plan), plan), plan.Discovery, p)
+}
+
+// mergedNotes says why a branch whose pull request merged is still here, and
+// names the command that deletes one on purpose. delete previews any commit
+// that exists nowhere else, which is the question a merged pull request
+// cannot answer.
+func mergedNotes(view stackView, plan prunePlan) stackView {
+	if len(plan.merged) == 0 {
+		return view
+	}
+	view = view.note(fmt.Sprintf("Kept, though %s last seen merged: %s · what %s here was not found in the trunk, as when a branch here is older than the one that was merged.",
+		words.Pick(len(plan.merged), "its pull request was", "their pull requests were"), words.List(plan.merged),
+		words.Pick(len(plan.merged), "it holds", "they hold")), severityWarn)
+	ways := make([]repair.Step, 0, len(plan.merged))
+	for _, branch := range plan.merged {
+		ways = append(ways, repair.Step{
+			Command: repair.Command([]string{"g2g", "delete", "--branch", branch}),
+			Effect:  "delete " + branch + " on purpose · its preview names any commit that exists nowhere else",
+		})
+	}
+	for _, note := range alignedCommands(ways...) {
+		view = view.note(note.Text, note.Severity)
+	}
+	return view
 }

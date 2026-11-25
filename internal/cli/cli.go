@@ -250,10 +250,10 @@ func NewWithOptions(options Options) *cobra.Command {
 		}
 	}
 	if options.Sync.Ready() {
-		root.AddCommand(newPull(options.Sync, options.Prune, options.Published, guard, presentation))
+		root.AddCommand(newPull(options.Sync, options.Prune, options.Published, guard, presentation, options.Observations))
 	}
 	if options.Prune.Ready() {
-		root.AddCommand(newPrune(options.Prune, options.Published, guard, presentation))
+		root.AddCommand(newPrune(options.Prune, options.Published, guard, presentation, options.Observations))
 	}
 	if options.Push.Ready() {
 		root.AddCommand(newPush(options.Push, completions, guard, presentation))

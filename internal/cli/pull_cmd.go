@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
@@ -17,7 +18,7 @@ import (
 	"github.com/shhac/g2g/internal/worktree"
 )
 
-func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard idleGuard, presentation Presentation) *cobra.Command {
+func newPull(service syncer.Service, pruner prune.Service, published push.Known, guard idleGuard, presentation Presentation, observations githubstack.ObservationReader) *cobra.Command {
 	options := pullOptions{}
 	cmd := &cobra.Command{
 		Use:     "pull",
@@ -36,7 +37,7 @@ func newPull(service syncer.Service, pruner prune.Service, published push.Known,
 		if !options.alsoPrune {
 			return pull.run(cmd, ctx, newBudgets(cmd), presentation, options.apply)
 		}
-		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, published, options.remote, options.selection.Selection(), guard, cmd, presentation, options.cleanup), presentation, options.apply)
+		return pullThenPrune(cmd, ctx, pull, pruneFlow(pruner, published, options.remote, options.selection.Selection(), guard, cmd, presentation, options.cleanup, observations), presentation, options.apply)
 	}
 
 	cmd.Flags().StringVar(&options.remote, "remote", localgit.DefaultRemote, "Git remote to read from, as git remote names it")

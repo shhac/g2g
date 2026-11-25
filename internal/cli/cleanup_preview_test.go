@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -83,7 +84,7 @@ func TestCleanupReportsCompletedDeletionAndScopedRetryAsPartWay(t *testing.T) {
 		Deleted: []string{"synthetic-work"}, Err: errors.New("synthetic graph write failure"),
 		Retry: "g2g prune --branch synthetic-main --scope all --forget-missing --delete-branches",
 	}
-	flow := pruneFlow(prune.Service{}, push.Known{}, localgit.DefaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true})
+	flow := pruneFlow(prune.Service{}, push.Known{}, localgit.DefaultRemote, graph.Selection{}, nil, cmd, Presentation{}, prune.Options{DeleteBranches: true}, nil)
 	flow.plan = func(context.Context) (prunePlan, error) { return prunePlan{Plan: plan}, nil }
 	// Nothing here is published, so there is nothing for settle to ask.
 	flow.settle = nil
@@ -179,5 +180,42 @@ func TestAGraphOnlyPruneNamesDeletionBeforeItForgets(t *testing.T) {
 				t.Errorf("notes say %q:\n%s", test.without, text)
 			}
 		})
+	}
+}
+
+// A merged pull request is not evidence that what a branch holds here landed,
+// so prune keeps the branch. It says so, and names the command that deletes
+// one on purpose, rather than keeping it without a word beside a status that
+// says the pull request merged.
+func TestPruneNamesABranchItKeepsThoughItsPullRequestMerged(t *testing.T) {
+	merged := githubstack.Observation{PullRequest: githubstack.PullRequest{Number: 1, State: "MERGED"}}
+	open := githubstack.Observation{PullRequest: githubstack.PullRequest{Number: 2, State: "OPEN"}}
+	recorded := graphFixture()
+	branches := make([]string, 0, len(recorded.Edges))
+	observed := observationFixture{}
+	for branch := range recorded.Edges {
+		branches = append(branches, branch)
+		observed[branch] = merged
+	}
+	slices.Sort(branches)
+	landed, kept, unmerged := branches[0], branches[1], branches[2]
+	observed[unmerged], observed[branches[3]] = open, open
+	plan := prune.Plan{Discovery: graph.Discovery{Graph: recorded, Branches: branches, States: map[string]graph.NodeState{}}, Landed: []string{landed}}
+
+	got := mergedButKept(context.Background(), observed, plan)
+	if !slices.Equal(got, []string{kept}) {
+		t.Fatalf("merged but kept = %v, want only %s: %s landed and %s is still open", got, kept, landed, unmerged)
+	}
+	text := ""
+	for _, note := range mergedNotes(stackView{}, prunePlan{Plan: plan, merged: got}).Notes {
+		text += plainCommands(note.Text) + "\n"
+	}
+	for _, want := range []string{"Kept, though its pull request was last seen merged: " + kept, "g2g delete --branch " + kept} {
+		if !strings.Contains(text, want) {
+			t.Errorf("notes omit %q:\n%s", want, text)
+		}
+	}
+	if mergedButKept(context.Background(), nil, plan) != nil {
+		t.Error("a build with no remembered pull requests named some")
 	}
 }

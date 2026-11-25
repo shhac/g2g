@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	localgit "github.com/shhac/g2g/internal/git"
+	"github.com/shhac/g2g/internal/githubstack"
 	"github.com/shhac/g2g/internal/graph"
 	"github.com/shhac/g2g/internal/prune"
 	"github.com/shhac/g2g/internal/push"
@@ -18,7 +19,7 @@ import (
 	"github.com/shhac/g2g/internal/snapshot"
 )
 
-func newPrune(service prune.Service, published push.Known, guard idleGuard, presentation Presentation) *cobra.Command {
+func newPrune(service prune.Service, published push.Known, guard idleGuard, presentation Presentation, observations githubstack.ObservationReader) *cobra.Command {
 	var selection graphOptions
 	var apply bool
 	var cleanup prune.Options
@@ -35,7 +36,7 @@ func newPrune(service prune.Service, published push.Known, guard idleGuard, pres
 			return err
 		}
 		ctx := commandContext(cmd.Context(), cmd, applyMode(apply), selection.branch, "")
-		flow := pruneFlow(service, published, localgit.DefaultRemote, selection.Selection(), guard, cmd, presentation, cleanup)
+		flow := pruneFlow(service, published, localgit.DefaultRemote, selection.Selection(), guard, cmd, presentation, cleanup, observations)
 		if snapshotPath != "" {
 			held, err := pruneSnapshot(cmd, service, snapshotPath)
 			if err != nil {
@@ -60,7 +61,7 @@ func newPrune(service prune.Service, published push.Known, guard idleGuard, pres
 
 // pruneFlow is prune's safety sequence over one selection, which pull --prune
 // runs too once the base has moved.
-func pruneFlow(service prune.Service, published push.Known, remote string, selection graph.Selection, guard idleGuard, cmd *cobra.Command, p Presentation, cleanup prune.Options) applyFlow[prunePlan] {
+func pruneFlow(service prune.Service, published push.Known, remote string, selection graph.Selection, guard idleGuard, cmd *cobra.Command, p Presentation, cleanup prune.Options, observations githubstack.ObservationReader) applyFlow[prunePlan] {
 	notices := flowNotices{
 		preview: "Rerun with --apply to forget them.", noOp: "Nothing has landed.", applied: "Forgotten.",
 		changed: "The graph no longer records them. No branch was deleted.",
@@ -78,7 +79,7 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 		touches: func(plan prunePlan) restack.Footprint { return pruneTouches(plan.Plan) },
 		plan: func(ctx context.Context) (prunePlan, error) {
 			plan, err := service.PlanWithOptions(ctx, selection, cleanup)
-			return prunePlan{Plan: plan, remote: remote}, err
+			return prunePlan{Plan: plan, remote: remote, merged: mergedButKept(ctx, observations, plan)}, err
 		},
 		revalidation: revalidation{"prune", "plan"},
 		// Only the plan an apply carries out is asked how what it keeps is
@@ -87,7 +88,7 @@ func pruneFlow(service prune.Service, published push.Known, remote string, selec
 			plan.unpublished = keepsUnpublished(ctx, published, remote, plan.Plan)
 			return plan, nil
 		},
-		render:   func(w io.Writer, plan prunePlan, p Presentation) error { return writePrunePlan(w, plan.Plan, p) },
+		render:   func(w io.Writer, plan prunePlan, p Presentation) error { return writePrunePlan(w, plan, p) },
 		execute:  func(ctx context.Context, plan prunePlan) error { return service.Apply(ctx, plan.Plan) },
 		branches: func(plan prunePlan) int { return len(plan.Forgotten()) },
 		noOp:     func(plan prunePlan) bool { return plan.Nothing() },
@@ -113,10 +114,14 @@ type prunePlan struct {
 	prune.Plan
 	remote      string
 	unpublished bool
+	// merged are the branches the prune keeps whose pull request was last
+	// seen merged: see mergedButKept.
+	merged []string
 }
 
 // Equal compares what the prune does. The remote and what is published there
-// change only the suggestion that follows it.
+// change only the suggestion that follows it, and a remembered pull request
+// only a note.
 func (p prunePlan) Equal(other prunePlan) bool { return p.Plan.Equal(other.Plan) }
 
 // keepsUnpublished reports whether a branch the prune keeps is not on the
@@ -207,4 +212,37 @@ func pruneSnapshot(cmd *cobra.Command, service prune.Service, path string) (*sna
 			return prunePlan{Plan: plan, remote: localgit.DefaultRemote}, err
 		},
 	}, nil
+}
+
+// mergedButKept is the branches a prune keeps although their pull request
+// was last seen merged.
+//
+// A merged pull request is not evidence that the commits here landed: the
+// branch here can be older than the one that was merged, and a name can be
+// used again. So prune goes on asking Git about content and keeps such a
+// branch. It kept it without a word, though, beside a status that said the
+// pull request had merged, and the reader was left to untrack the stack and
+// delete its branches by hand. It reads what g2g already remembers and never
+// the network, and a record that cannot be read is no answer.
+func mergedButKept(ctx context.Context, observations githubstack.ObservationReader, plan prune.Plan) []string {
+	if observations == nil {
+		return nil
+	}
+	observed, err := observations.Load(ctx)
+	if err != nil {
+		return nil
+	}
+	merged := make([]string, 0)
+	for _, branch := range plan.Discovery.Branches {
+		if _, tracked := plan.Discovery.Graph.Parent(branch); !tracked || plan.Discovery.States[branch] == graph.StateBranchMissing {
+			continue
+		}
+		if slices.Contains(plan.Landed, branch) || slices.Contains(plan.ForgottenMissing, branch) {
+			continue
+		}
+		if observed[branch].PullRequest.State == "MERGED" {
+			merged = append(merged, branch)
+		}
+	}
+	return merged
 }
